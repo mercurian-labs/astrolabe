@@ -380,6 +380,18 @@ export class GitVcsDriver extends Context.Service<
     readonly resolveCommit: (
       input: GitResolveCommitInput,
     ) => Effect.Effect<GitResolveCommitResult, GitCommandError>;
+    /** The newest commit in `commit`'s history that `remoteName` has; null when it has none. */
+    readonly nearestPushedCommit: (input: {
+      readonly cwd: string;
+      readonly commit: string;
+      readonly remoteName: string;
+    }) => Effect.Effect<string | null, GitCommandError>;
+    /** A file's text at a commit; null when it isn't there, or the commit isn't. */
+    readonly readFileAtCommit: (input: {
+      readonly cwd: string;
+      readonly commit: string;
+      readonly path: string;
+    }) => Effect.Effect<string | null, GitCommandError>;
     readonly refreshCheckedOutBranch: (
       input: GitRefreshCheckedOutBranchInput,
     ) => Effect.Effect<GitRefreshCheckedOutBranchResult, GitCommandError>;

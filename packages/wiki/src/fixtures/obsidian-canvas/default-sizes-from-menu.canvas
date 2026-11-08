@@ -1,0 +1,10 @@
+{
+	"nodes":[
+		{"id":"e504e2f032f76032","x":260,"y":-301,"width":400,"height":400,"type":"group","label":"Untitled group"},
+		{"id":"f5b17e9c34811db6","x":-220,"y":-241,"width":250,"height":60,"type":"text","text":"from menu"},
+		{"id":"ffbbfef4723d7e0e","x":80,"y":-241,"width":400,"height":400,"type":"file","file":"Note A.md"},
+		{"id":"a8ded4ea52fac0f3","x":-220,"y":139,"width":400,"height":150,"type":"file","file":"media/wide.png"},
+		{"id":"42afaa2abf1f22c3","x":-280,"y":299,"width":400,"height":400,"type":"link","url":"https://example.com"}
+	],
+	"edges":[]
+}

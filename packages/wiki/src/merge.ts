@@ -1,6 +1,6 @@
 /**
  * A three-way markdown merge by paragraphs, then sentences, instead of lines: it conflicts only
- * where both sides changed the same sentence, or sentences that touch. Text round-trips exactly.
+ * where both sides changed the same sentence differently. Text round-trips exactly.
  */
 
 export type MergeOutcome =
@@ -14,14 +14,9 @@ export function paragraphs(text: string): Tokens {
   return text.match(/[\s\S]*?(?:\n[ \t]*\n+|$)/g)?.filter((token) => token.length > 0) ?? [];
 }
 
-/**
- * Sentence tokens inside a paragraph: each sentence keeps the space before it, so a sentence
- * added after another leaves that one's token as it was.
- */
+/** Sentence tokens inside a paragraph. What separates them is a token too, so neighbours can merge. */
 export function sentences(text: string): Tokens {
-  return (
-    text.match(/[ \t]*[^.!?\n]*(?:[.!?]+(?=\s|$)|\n|$)/g)?.filter((token) => token.length > 0) ?? []
-  );
+  return text.split(/(?<=[.!?])([ \t]+)|(\n)/).filter(Boolean);
 }
 
 /** For each base token, the index of its match in `other` along a longest common subsequence. */

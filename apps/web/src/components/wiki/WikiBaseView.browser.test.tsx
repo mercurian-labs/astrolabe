@@ -36,7 +36,7 @@ describe("WikiBaseResults", () => {
     await expect.element(screen.getByText("Name", { exact: true })).toBeVisible();
     await userEvent.click(screen.getByRole("button", { name: "Beta" }));
     await userEvent.click(screen.getByRole("button", { name: "V" }));
-    expect(onOpenNote.mock.calls).toEqual([["Beta"], ["Venkat"]]);
+    expect(onOpenNote.mock.calls).toEqual([["Beta.md"], ["Venkat", "Alpha.md"]]);
   });
 
   it("opens a file that is no wiki document as a file, and shows the view's summaries", async () => {
@@ -87,7 +87,7 @@ describe("WikiBaseResults", () => {
     }
     await expect.element(screen.getByText("Showing 3 of 40 results.")).toBeVisible();
     await userEvent.click(screen.getByRole("button", { name: "Gamma" }));
-    expect(onOpenNote).toHaveBeenCalledWith("Gamma");
+    expect(onOpenNote).toHaveBeenCalledWith("Gamma.md");
   });
 
   it("lists a list view's rows with their properties after the name", async () => {
@@ -145,6 +145,8 @@ describe("WikiBaseResults", () => {
         editing={{
           file: "Open.base",
           edits: [],
+          savedCommit: null,
+          onRuns: vi.fn(),
           view: null,
           onPickView: vi.fn(),
           onEdit,

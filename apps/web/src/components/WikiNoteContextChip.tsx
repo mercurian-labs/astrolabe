@@ -8,6 +8,7 @@ import { PanesHostContext } from "~/panes/panesHost";
 import { leafWithTab } from "~/panes/tree";
 import { ContextChip, ContextChipLabel } from "./ContextChip";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+import { documentFile } from "./wiki/wiki.logic";
 import { wikiTabKey } from "./wiki/wikiTabs";
 
 /** Astrolabe: a referenced wiki note; it opens beside the chat as its own tab, or in Wikis. */
@@ -27,7 +28,7 @@ export function WikiNoteContextChip(props: {
         kind: "note",
         environmentId,
         wikiId,
-        name,
+        file: documentFile(name),
         changeRequestId: undefined,
       });
       panes.controller.update((arrangement) =>

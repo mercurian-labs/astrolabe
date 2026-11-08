@@ -412,6 +412,8 @@ import { SecretRequestAnswerInput, SecretRequestError } from "./secretRequest.ts
 import {
   WikiAmendInput,
   WikiAmendResult,
+  WikiAutosaveInput,
+  WikiAutosaveResult,
   WikiChangeRequest,
   WikiChangeRequestDetail,
   WikiChangeRequestListInput,
@@ -426,8 +428,14 @@ import {
   WikiMergeResult,
   WikiNoteInput,
   WikiNoteResult,
+  WikiCodeStatusInput,
+  WikiCodeStatusResult,
   WikiQueryInput,
   WikiQueryResult,
+  WikiListFilesInput,
+  WikiListFilesResult,
+  WikiReadFilesInput,
+  WikiReadFilesResult,
   WikiReadScope,
   WikiRegisterInput,
   WikiRevertInput,
@@ -438,7 +446,12 @@ import {
   WikiSetProjectLinkInput,
   WikiSummary,
   WikiTarget,
+  WikiDraftMoveInput,
+  WikiMoveInput,
+  WikiDraftPromoteInput,
   WikiTransformInput,
+  WikiKeepCanvasInput,
+  WikiKeepCanvasResult,
 } from "./wiki.ts";
 import {
   CodeIndexError,
@@ -668,11 +681,19 @@ export const WS_METHODS = {
   wikiIndex: "wiki.index",
   wikiReadNote: "wiki.readNote",
   wikiQuery: "wiki.query",
+  wikiReadFiles: "wiki.readFiles",
+  wikiListFiles: "wiki.listFiles",
+  wikiCodeStatus: "wiki.codeStatus",
   wikiChangeRequestsList: "wiki.changeRequests.list",
   wikiChangeRequestsGet: "wiki.changeRequests.get",
   wikiChangeRequestsOpen: "wiki.changeRequests.open",
   wikiAmend: "wiki.amend",
   wikiTransform: "wiki.transform",
+  wikiKeepCanvas: "wiki.keepCanvas",
+  wikiAutosave: "wiki.autosave",
+  wikiDraftPromote: "wiki.draftPromote",
+  wikiDraftMove: "wiki.draftMove",
+  wikiMove: "wiki.move",
   wikiRevertAmendment: "wiki.revertAmendment",
   wikiSaveWorktree: "wiki.saveWorktree",
   wikiMerge: "wiki.merge",
@@ -2206,6 +2227,24 @@ const WsWikiQueryRpc = Rpc.make(WS_METHODS.wikiQuery, {
   error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
 });
 
+const WsWikiListFilesRpc = Rpc.make(WS_METHODS.wikiListFiles, {
+  payload: WikiListFilesInput,
+  success: WikiListFilesResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiReadFilesRpc = Rpc.make(WS_METHODS.wikiReadFiles, {
+  payload: WikiReadFilesInput,
+  success: WikiReadFilesResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiCodeStatusRpc = Rpc.make(WS_METHODS.wikiCodeStatus, {
+  payload: WikiCodeStatusInput,
+  success: WikiCodeStatusResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
 const WsWikiChangeRequestsListRpc = Rpc.make(WS_METHODS.wikiChangeRequestsList, {
   payload: WikiChangeRequestListInput,
   success: WikiChangeRequestListResult,
@@ -2233,6 +2272,36 @@ const WsWikiAmendRpc = Rpc.make(WS_METHODS.wikiAmend, {
 const WsWikiTransformRpc = Rpc.make(WS_METHODS.wikiTransform, {
   payload: WikiTransformInput,
   success: WikiAmendResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiAutosaveRpc = Rpc.make(WS_METHODS.wikiAutosave, {
+  payload: WikiAutosaveInput,
+  success: WikiAutosaveResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiDraftPromoteRpc = Rpc.make(WS_METHODS.wikiDraftPromote, {
+  payload: WikiDraftPromoteInput,
+  success: WikiChangeRequest,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiDraftMoveRpc = Rpc.make(WS_METHODS.wikiDraftMove, {
+  payload: WikiDraftMoveInput,
+  success: WikiChangeRequest,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiMoveRpc = Rpc.make(WS_METHODS.wikiMove, {
+  payload: WikiMoveInput,
+  success: WikiAutosaveResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiKeepCanvasRpc = Rpc.make(WS_METHODS.wikiKeepCanvas, {
+  payload: WikiKeepCanvasInput,
+  success: WikiKeepCanvasResult,
   error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
 });
 
@@ -2781,11 +2850,19 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsWikiIndexRpc,
   WsWikiReadNoteRpc,
   WsWikiQueryRpc,
+  WsWikiReadFilesRpc,
+  WsWikiListFilesRpc,
+  WsWikiCodeStatusRpc,
   WsWikiChangeRequestsListRpc,
   WsWikiChangeRequestsGetRpc,
   WsWikiChangeRequestsOpenRpc,
   WsWikiAmendRpc,
   WsWikiTransformRpc,
+  WsWikiAutosaveRpc,
+  WsWikiDraftPromoteRpc,
+  WsWikiDraftMoveRpc,
+  WsWikiMoveRpc,
+  WsWikiKeepCanvasRpc,
   WsWikiRevertAmendmentRpc,
   WsWikiSaveWorktreeRpc,
   WsWikiMergeRpc,

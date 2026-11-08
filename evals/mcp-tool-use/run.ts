@@ -42,6 +42,7 @@ import { buildCodexAdditionalContext } from "../../apps/server/src/provider/Code
 import { makeSideChatContext } from "../../apps/server/src/orchestration-v2/ContextHandoffService.ts";
 import { withInlineContext } from "../../apps/server/src/orchestration-v2/ContextHandoffDelivery.ts";
 import { AttachmentToolkit } from "../../apps/server/src/mcp/toolkits/attachment/tools.ts";
+import { CanvasToolkit } from "../../apps/server/src/mcp/toolkits/canvas/tools.ts";
 import { CodeToolkit } from "../../apps/server/src/mcp/toolkits/code/tools.ts";
 import { DeviceToolkit } from "../../apps/server/src/mcp/toolkits/device/tools.ts";
 import { EnvironmentToolkit } from "../../apps/server/src/mcp/toolkits/environment/tools.ts";
@@ -374,6 +375,7 @@ const t3SourceTools: ReadonlyArray<Tool.Any> = [
   HtmlToolkit,
   CodeToolkit,
   WikiToolkit,
+  CanvasToolkit,
 ].flatMap((toolkit): ReadonlyArray<Tool.Any> => Object.values(toolkit.tools));
 const t3Tools: ReadonlyArray<ApiTool> = t3SourceTools.map((tool) => ({
   name: `${T3_PREFIX}${tool.name}`,

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { canonicalizePullRequestUrl, definition, parsePullRequestUrl } from "./definition.ts";
 
+const SHA = "a".repeat(40);
 const parse = (url: string) => definition.parseChangeRequestUrl(new URL(url));
 
 describe("GitCafe change request URLs", () => {
@@ -94,5 +95,14 @@ describe("GitCafe remotes", () => {
       "gitcafe",
     );
     expect(recognizeRemoteWith(definition, "https://cafe.example/a/b")).toBeNull();
+  });
+});
+
+describe("GitCafe file URLs", () => {
+  const base = { host: "git.cafe", repository: "acme/web" };
+  it.each([
+    [{ path: "src/a.ts", lines: [10, 20] }, `https://git.cafe/acme/web/blob/${SHA}/src/a.ts`],
+  ] as const)("links %j", (file, url) => {
+    expect(definition.fileUrl({ ...base, sha: SHA, ...file })).toBe(url);
   });
 });

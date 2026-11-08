@@ -21,9 +21,13 @@ import type { WikiNoteSession } from "@mercurian/wiki-editor/note-buffer";
 import { wikilinkNoteName } from "@mercurian/wiki-editor/incoming";
 import {
   useWikiLinkTools,
+  type WikiLinkOption,
+  type WikiLinkScope,
   wikilinkDisplay,
   type WikiLinkPeek,
 } from "@mercurian/wiki-editor/link-tools";
+import type { WikiFileArrival } from "./useWikiAttachments";
+import { useStableCallback } from "~/hooks/useStableCallback";
 
 // The live preview reads the app's theme tokens, so a note matches the rest of the app in
 // light, dark, and custom themes. Module-level: a new array would remount the editor.
@@ -63,9 +67,39 @@ const WIKI_EDITOR_THEME = EditorView.theme({
 
 const selectVimModeEnabled = (settings: ClientSettings) => settings.vimModeEnabled;
 
+/** A pasted or dropped file lands in the wiki and leaves its embed at the caret, or the drop. */
+function filesIntoNote(
+  attach: (files: ReadonlyArray<File>, arrival: WikiFileArrival) => Promise<ReadonlyArray<string>>,
+) {
+  const land = (view: EditorView, files: ReadonlyArray<File>, arrival: WikiFileArrival) => {
+    void attach(files, arrival).then((embeds) => {
+      if (embeds.length > 0) view.dispatch(view.state.replaceSelection(embeds.join("\n\n")));
+    });
+  };
+  return EditorView.domEventHandlers({
+    paste(event, view) {
+      const files = [...(event.clipboardData?.files ?? [])];
+      if (files.length === 0) return false;
+      event.preventDefault();
+      land(view, files, "paste");
+      return true;
+    },
+    drop(event, view) {
+      const files = [...(event.dataTransfer?.files ?? [])];
+      if (files.length === 0) return false;
+      event.preventDefault();
+      const at = view.posAtCoords({ x: event.clientX, y: event.clientY });
+      if (at !== null) view.dispatch({ selection: { anchor: at } });
+      land(view, files, "drop");
+      return true;
+    },
+  });
+}
+
 const previewOptions = (
   keys: LivePreviewOptions["keys"],
   openNote: (name: string) => void,
+  resolveEmbed: NonNullable<LivePreviewOptions["resolveEmbed"]>,
   codeBlocks: NonNullable<LivePreviewOptions["codeBlocks"]>,
   embedBlocks: NonNullable<LivePreviewOptions["embedBlocks"]>,
 ): LivePreviewOptions => ({
@@ -73,8 +107,7 @@ const previewOptions = (
     const name = wikilinkNoteName(target);
     if (name !== null) openNote(name);
   },
-  // Embeds name wiki files, which the page cannot serve as images yet.
-  resolveEmbed: () => null,
+  resolveEmbed,
   wikilinkDisplay,
   ...(keys === undefined ? {} : { keys }),
   codeBlocks,
@@ -95,11 +128,11 @@ const READ_ONLY_EXTENSIONS = [
   appVimKeys(() => null),
 ];
 
-interface BaseBlock {
+interface HostBlock {
   readonly id: number;
-  /** A ```base block's YAML, or an embed's target (`Open.base#Table`). */
+  /** A code block's source, or an embed's target (`Open.base#Table`). */
   readonly source: string;
-  readonly embed: boolean;
+  readonly kind: "base" | "base-embed" | "canvas-embed" | "mermaid";
   readonly element: HTMLElement;
 }
 
@@ -116,7 +149,13 @@ export function WikiNoteEditor({
   onWrite,
   renderBase,
   renderBaseEmbed,
+  renderCanvasEmbed,
+  renderMermaid,
   linkTypes,
+  linkOptions,
+  linkScope,
+  onAttach,
+  resolveEmbed,
   renderLinkPreview,
 }: {
   readonly session: WikiNoteSession;
@@ -126,57 +165,77 @@ export function WikiNoteEditor({
   readonly renderBase: (source: string) => ReactNode;
   /** An embedded base's view, `![[Open.base#Table]]` alone on its line, by its target. */
   readonly renderBaseEmbed?: (target: string) => ReactNode;
-  /** Vim's `:w`: saves the note, as Save to change request does. */
+  /** An embedded canvas, `![[Board.canvas]]` alone on its line, by its target. */
+  readonly renderCanvasEmbed?: (target: string) => ReactNode;
+  /** A ```mermaid block's diagram, from its source; it shows until the block is edited. */
+  readonly renderMermaid?: (source: string) => ReactNode;
+  /** Vim's `:w`: saves the note now, rather than after the usual pause. */
   readonly onWrite?: () => void;
   /** The `@` types the wiki uses, which typing `@` inside a link suggests. */
   readonly linkTypes: ReadonlyArray<string>;
+  readonly linkOptions?: ReadonlyArray<WikiLinkOption>;
+  readonly linkScope?: WikiLinkScope | null;
+  /** Lands files pasted or dropped on the note; gives the text each leaves behind. */
+  readonly onAttach?: (
+    files: ReadonlyArray<File>,
+    arrival: WikiFileArrival,
+  ) => Promise<ReadonlyArray<string>>;
+  /** Where an embedded image is; without it, it shows broken. */
+  readonly resolveEmbed?: NonNullable<LivePreviewOptions["resolveEmbed"]>;
   /** What a link's preview shows, drawn into its popover. */
   readonly renderLinkPreview: (link: WikiLinkPeek) => ReactNode;
 }) {
-  // Read through a ref, so the preview options never change with it.
+  // Read through refs, so the preview options never change with them.
   const openNoteRef = useRef(onOpenNote);
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the latest note-open handler for the editor's preview options
+  const resolveEmbedRef = useRef(resolveEmbed);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the latest handlers for the editor's preview options
   useLayoutEffect(() => {
     openNoteRef.current = onOpenNote;
-  }, [onOpenNote]);
+    resolveEmbedRef.current = resolveEmbed;
+  }, [onOpenNote, resolveEmbed]);
   const writeRef = useRef(onWrite);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the latest write handler for the editor's Vim save key
   useLayoutEffect(() => {
     writeRef.current = onWrite;
   }, [onWrite]);
-  const linkTools = useWikiLinkTools(linkTypes, renderLinkPreview);
+  const linkTools = useWikiLinkTools(linkTypes, renderLinkPreview, linkOptions, linkScope ?? null);
+  const attach = useStableCallback(
+    (files: ReadonlyArray<File>, arrival: WikiFileArrival) =>
+      onAttach?.(files, arrival) ?? Promise.resolve([]),
+  );
   // One array for the editor's life: a new one would remount it.
   const [editableExtensions] = useState(() => [
     WIKI_EDITOR_THEME,
     vimNormalModeFont,
     outline(),
     agentChangeBar(),
-    appVimKeys(() => ({ label: "Save edits", run: () => writeRef.current?.() })),
+    appVimKeys(() => ({ label: "Save now", run: () => writeRef.current?.() })),
     linkTools.extension,
+    filesIntoNote(attach),
   ]);
   const [readOnlyExtensions] = useState(() => [...READ_ONLY_EXTENSIONS, linkTools.extension]);
   // The blocks the editor draws, each filled through a portal so the view keeps the app's context.
-  const [baseBlocks, setBaseBlocks] = useState<ReadonlyArray<BaseBlock>>([]);
+  const [hostBlocks, setHostBlocks] = useState<ReadonlyArray<HostBlock>>([]);
   const [stable] = useState(() => {
     const ids = { next: 0 };
+    const draw = (kind: HostBlock["kind"]) => (source: string, element: HTMLElement) => {
+      const id = ids.next++;
+      setHostBlocks((blocks) => [...blocks, { id, source, kind, element }]);
+      return () => setHostBlocks((blocks) => blocks.filter((block) => block.id !== id));
+    };
     return {
       openNote: (name: string) => openNoteRef.current(name),
-      codeBlocks: {
-        base: (source: string, element: HTMLElement) => {
-          const id = ids.next++;
-          setBaseBlocks((blocks) => [...blocks, { id, source, embed: false, element }]);
-          return () => setBaseBlocks((blocks) => blocks.filter((block) => block.id !== id));
-        },
-      },
-      embedBlocks: {
-        base: (target: string, element: HTMLElement) => {
-          const id = ids.next++;
-          setBaseBlocks((blocks) => [...blocks, { id, source: target, embed: true, element }]);
-          return () => setBaseBlocks((blocks) => blocks.filter((block) => block.id !== id));
-        },
-      },
+      resolveEmbed: (target: string) => resolveEmbedRef.current?.(target) ?? null,
+      codeBlocks: { base: draw("base"), mermaid: draw("mermaid") },
+      embedBlocks: { base: draw("base-embed"), canvas: draw("canvas-embed") },
     };
   });
+  const renderers = {
+    base: renderBase,
+    "base-embed": renderBaseEmbed,
+    "canvas-embed": renderCanvasEmbed,
+    mermaid: renderMermaid,
+  };
   const vim = useClientSettings(selectVimModeEnabled);
   useVimScreenLines();
   // The formatting keys follow the keybindings; a change remounts the editor on the same text.
@@ -185,11 +244,23 @@ export function WikiNoteEditor({
   const findKeys = useEditorFindKeys();
   const [preview, setPreview] = useState(() => ({
     keys,
-    options: previewOptions(keys, stable.openNote, stable.codeBlocks, stable.embedBlocks),
+    options: previewOptions(
+      keys,
+      stable.openNote,
+      stable.resolveEmbed,
+      stable.codeBlocks,
+      stable.embedBlocks,
+    ),
   }));
   let livePreview = preview.options;
   if (preview.keys !== keys) {
-    livePreview = previewOptions(keys, stable.openNote, stable.codeBlocks, stable.embedBlocks);
+    livePreview = previewOptions(
+      keys,
+      stable.openNote,
+      stable.resolveEmbed,
+      stable.codeBlocks,
+      stable.embedBlocks,
+    );
     setPreview({ keys, options: livePreview });
   }
   return (
@@ -208,9 +279,9 @@ export function WikiNoteEditor({
         vimPanel={false}
         findKeys={findKeys}
       />
-      {baseBlocks.map((block) =>
+      {hostBlocks.map((block) =>
         createPortal(
-          block.embed ? (renderBaseEmbed?.(block.source) ?? null) : renderBase(block.source),
+          renderers[block.kind]?.(block.source) ?? null,
           block.element,
           String(block.id),
         ),

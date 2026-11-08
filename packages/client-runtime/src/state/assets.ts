@@ -99,7 +99,8 @@ export function blockedAssetUrlState(
     fileAccess.canReadFiles ||
     (resource._tag !== "workspace-file" &&
       resource._tag !== "media-file" &&
-      resource._tag !== "draft-workspace-file")
+      resource._tag !== "draft-workspace-file" &&
+      resource._tag !== "wiki-file")
   ) {
     return null;
   }

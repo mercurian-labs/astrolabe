@@ -183,6 +183,7 @@ function makeHarness(options: HarnessOptions = {}) {
       update: () => Effect.die("unused"),
       delete: () => Effect.die("unused"),
       listPage: () => Effect.die("unused"),
+      readRepositoryIdentity: () => Effect.die("unused"),
       getById: (id) =>
         Effect.succeed(
           id === projectId

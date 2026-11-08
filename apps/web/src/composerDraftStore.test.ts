@@ -104,7 +104,7 @@ import {
   environmentContextRecord,
   terminalContextReference,
   wikiNoteContextRecord,
-  wikiNoteContextReference,
+  wikiContextReference,
 } from "./lib/composerContextRecords";
 import { threadContextRecord } from "@t3tools/shared/composerContextReferences";
 import {
@@ -779,11 +779,11 @@ describe("composerDraftStore wiki notes", () => {
 
   it("keeps a draft holding only a note chip through persistence, and drops its chip with it", () => {
     const store = useComposerDraftStore.getState();
-    const prompt = formatInlineContextReference(wikiNoteContextReference(note));
+    const prompt = formatInlineContextReference(wikiContextReference(note));
     store.setPrompt(threadRef, prompt);
-    store.addWikiNotes(threadRef, [note]);
-    store.addWikiNotes(threadRef, [{ ...note, wikiName: "Renamed" }]);
-    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.wikiNotes).toEqual([note]);
+    store.addWikiContexts(threadRef, [note]);
+    store.addWikiContexts(threadRef, [{ ...note, wikiName: "Renamed" }]);
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)?.wikiContexts).toEqual([note]);
 
     const merge = useComposerDraftStore.persist.getOptions().merge!;
     const hydrated = merge(
@@ -793,10 +793,10 @@ describe("composerDraftStore wiki notes", () => {
       useComposerDraftStore.getInitialState(),
     );
     const hydratedDraft = hydrated.draftsByThreadKey[scopedThreadKey(threadRef)];
-    expect(hydratedDraft?.wikiNotes).toEqual([note]);
+    expect(hydratedDraft?.wikiContexts).toEqual([note]);
     expect(hydratedDraft?.prompt).toBe(prompt);
 
-    store.setWikiNotes(threadRef, []);
+    store.setWikiContexts(threadRef, []);
     expect(draftFor(threadId, TEST_ENVIRONMENT_ID)).toBeUndefined();
   });
 });

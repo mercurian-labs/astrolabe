@@ -151,7 +151,7 @@ const buildExeCmd = Command.make(
       if (linuxArm64) {
         yield* injectLinuxArm64Sea({
           bundlePath,
-          outputPath: path.join(serverDir, "dist-exe/t3"),
+          outputPath: path.join(serverDir, "dist-exe/astrolabe"),
           nodeVersion: rootPackageJson.engines.node,
           verbose: config.verbose,
         });

@@ -693,6 +693,9 @@ importers:
       '@material/material-color-utilities':
         specifier: 0.3.0
         version: 0.3.0
+      '@mercurian/wiki':
+        specifier: workspace:*
+        version: link:../../packages/wiki
       '@mercurian/wiki-editor':
         specifier: workspace:*
         version: link:../../packages/wiki-editor
@@ -1232,6 +1235,9 @@ importers:
       '@mercurian/graph':
         specifier: workspace:*
         version: link:../../packages/graph
+      '@mercurian/wiki':
+        specifier: workspace:*
+        version: link:../../packages/wiki
       '@mercurian/wiki-editor':
         specifier: workspace:*
         version: link:../../packages/wiki-editor
@@ -1373,9 +1379,6 @@ importers:
       pdfjs-dist:
         specifier: 6.4.299
         version: 6.4.299
-      pele:
-        specifier: ^1.8.0
-        version: 1.8.0
       react:
         specifier: 'catalog:'
         version: 19.3.0
@@ -1724,6 +1727,9 @@ importers:
       '@electric-sql/client':
         specifier: 1.5.28
         version: 1.5.28
+      '@mercurian/wiki':
+        specifier: workspace:*
+        version: link:../wiki
       '@pierre/diffs':
         specifier: 1.6.1
         version: 1.6.1(patch_hash=4645364ddf113e48e8827f3b4966b3b1ff745317011e5a3d904e2d8672dee7dc)(@shikijs/themes@4.2.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -2820,6 +2826,15 @@ importers:
       '@mercurian/wiki':
         specifier: workspace:*
         version: link:../wiki
+      dompurify:
+        specifier: ^3.4.16
+        version: 3.4.16
+      katex:
+        specifier: ^0.18.9
+        version: 0.18.10
+      pele:
+        specifier: ^1.8.0
+        version: 1.8.0
       react-dom:
         specifier: 19.2.6
         version: 19.2.6(react@19.2.6)

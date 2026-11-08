@@ -9,6 +9,7 @@ import {
   PositiveInt,
   ThreadId,
   TrimmedNonEmptyString,
+  TurnItemId,
 } from "./baseSchemas.ts";
 import { GUEST_MESSAGE_MAX_LENGTH, GUEST_NAME_MAX_LENGTH } from "./guestShare.ts";
 import { WikiId } from "./wiki.ts";
@@ -26,6 +27,7 @@ export const COMPOSER_CONTEXT_KINDS = [
   "skill",
   "thread",
   "wiki-note",
+  "canvas",
   "environment",
 ] as const;
 export type KnownComposerContextKind = (typeof COMPOSER_CONTEXT_KINDS)[number];
@@ -42,6 +44,7 @@ const COMPOSER_CONTEXT_ELEMENT_STYLES_MAX_CHARS = 8_000;
 export const COMPOSER_CONTEXT_REVIEW_TEXT_MAX_CHARS = 16_000;
 export const COMPOSER_CONTEXT_REVIEW_DIFF_MAX_CHARS = 32_000;
 const COMPOSER_CONTEXT_PREVIEW_COMMENT_MAX_CHARS = 8_000;
+export const COMPOSER_CONTEXT_CANVAS_COMMENT_MAX_CHARS = 8_000;
 
 export const ComposerContextId = TrimmedNonEmptyString.check(
   Schema.isMaxLength(CONTEXT_ID_MAX_CHARS),
@@ -225,6 +228,23 @@ export const WikiNoteContextRecord = Schema.Struct({
 export type WikiNoteContextRecord = typeof WikiNoteContextRecord.Type;
 
 /**
+ * Astrolabe: a board an agent drew in a thread, named rather than copied since a board can be
+ * large, with what the user said about it.
+ */
+export const CanvasContextRecord = Schema.Struct({
+  ...recordBase,
+  kind: Schema.Literal("canvas"),
+  threadId: ThreadId,
+  itemId: TurnItemId,
+  title: ContextLabel,
+  comment: Schema.optional(BoundedString(COMPOSER_CONTEXT_CANVAS_COMMENT_MAX_CHARS)),
+});
+export type CanvasContextRecord = typeof CanvasContextRecord.Type;
+
+export const WikiContextRecord = Schema.Union([WikiNoteContextRecord, CanvasContextRecord]);
+export type WikiContextRecord = typeof WikiContextRecord.Type;
+
+/**
  * One of the user's machines (a T3 Code environment), mentioned so the agent
  * links it or works there. Only identity travels: the agent links it by id,
  * and the user's client supplies its addresses.
@@ -267,6 +287,7 @@ export const KnownComposerContextRecord = Schema.Union([
   SkillContextRecord,
   ThreadContextRecord,
   WikiNoteContextRecord,
+  CanvasContextRecord,
   EnvironmentContextRecord,
 ]);
 export type KnownComposerContextRecord = typeof KnownComposerContextRecord.Type;

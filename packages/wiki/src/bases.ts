@@ -210,11 +210,11 @@ const yamlScalar = (text: string, type: Scalar["type"]): string =>
  * A base's YAML with every expression literal that names the note `from` naming `to` (see
  * `noteReferences`); everything else keeps its bytes. Block scalars are left alone.
  */
-export function renameInBase(source: string, from: string, to: string): string {
+export function renameInBase(source: string, rename: (name: string) => string | null): string {
   const document = readBase(source);
   if (document === null) return source;
   const edits = expressionNodes(document).flatMap((node) => {
-    const next = renameInExpression(node.value, from, to);
+    const next = renameInExpression(node.value, rename);
     const block = node.type === "BLOCK_LITERAL" || node.type === "BLOCK_FOLDED";
     return next === node.value || block || !node.range ? [] : [{ node, next }];
   });
@@ -243,11 +243,14 @@ export function renameInBase(source: string, from: string, to: string): string {
 }
 
 /** A note with every ```` ```base ```` block in it renamed as `renameInBase` does. */
-export function renameInBaseBlocks(source: string, from: string, to: string): string {
+export function renameInBaseBlocks(
+  source: string,
+  rename: (name: string) => string | null,
+): string {
   let output = source;
   for (const { from: start, to: end } of baseBlockRanges(source).toReversed()) {
     const block = source.slice(start, end);
-    const next = renameInBase(block, from, to);
+    const next = renameInBase(block, rename);
     if (next !== block) output = output.slice(0, start) + next + output.slice(end);
   }
   return output;

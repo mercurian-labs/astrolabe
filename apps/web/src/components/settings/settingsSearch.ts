@@ -1050,6 +1050,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     scope: "environment-defaults",
   },
   {
+    id: "wiki-canvases",
+    title: "Canvases",
+    to: "/settings/wikis",
+    searchTerms: ["canvas board snap grid objects mouse wheel card names zoom threshold"],
+  },
+  {
     id: "wikis",
     title: "Wikis",
     to: "/settings/wikis",

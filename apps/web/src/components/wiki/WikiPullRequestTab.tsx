@@ -20,7 +20,7 @@ import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
-import { describeIndexError, hasUnpublishedWork, noteNameOfFile, wikiTerms } from "./wiki.logic";
+import { describeIndexError, hasUnpublishedWork, wikiTerms } from "./wiki.logic";
 import { AmendmentRow, LinkedPullRequests, NO_LINKS } from "./WikiChangeRequestView";
 import { useWikiCommand } from "./wikiEnvironment";
 import { wikiTabKey } from "./wikiTabs";
@@ -108,7 +108,7 @@ export function WikiPullRequestTab({
         kind: "note",
         environmentId,
         wikiId,
-        name: noteNameOfFile(file),
+        file,
         // An open change's notes read inside it; a merged or closed one's from main.
         changeRequestId: open ? changeRequestId : undefined,
       }),

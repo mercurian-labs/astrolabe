@@ -80,6 +80,7 @@ import IconInfoCircle from "@tabler/icons-react-native/IconInfoCircle";
 import IconKeyboard from "@tabler/icons-react-native/IconKeyboard";
 import IconKeyboardHide from "@tabler/icons-react-native/IconKeyboardHide";
 import IconLock from "@tabler/icons-react-native/IconLock";
+import IconLayoutBoard from "@tabler/icons-react-native/IconLayoutBoard";
 import IconLayoutColumns from "@tabler/icons-react-native/IconLayoutColumns";
 import IconLayoutSidebar from "@tabler/icons-react-native/IconLayoutSidebar";
 import IconLayoutSidebarRight from "@tabler/icons-react-native/IconLayoutSidebarRight";
@@ -272,6 +273,7 @@ const ANDROID_ICON_BY_SF_SYMBOL = {
   "text.alignleft": IconAlignLeft,
   "text.bubble": IconMessage,
   "questionmark.bubble": IconMessageCircleQuestion,
+  "rectangle.3.group": IconLayoutBoard,
   "exclamationmark.shield": IconShieldQuestion,
   "bubble.left.and.bubble.right": IconMessage,
   "bubble.left": IconMessage,

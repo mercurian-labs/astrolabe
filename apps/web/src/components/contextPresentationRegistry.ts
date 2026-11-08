@@ -53,6 +53,10 @@ const DEFINITIONS = [
     capabilities: { details: "tooltip", expanded: "none", defaultDraftView: "compact" },
   },
   {
+    kind: "canvas",
+    capabilities: { details: "tooltip", expanded: "none", defaultDraftView: "compact" },
+  },
+  {
     kind: "environment",
     capabilities: { details: "tooltip", expanded: "none", defaultDraftView: "compact" },
   },

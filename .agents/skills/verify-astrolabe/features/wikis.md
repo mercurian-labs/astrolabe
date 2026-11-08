@@ -27,8 +27,10 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   Pull requests moved to Changes
   (pull-requests.md): with any open, a first row **Open changes · N →** sets the
   kind and that section's wiki to the Wikis filter's wiki when it picks exactly one (else
-  every wiki) and goes there. Documents (newest first) use the settled threads'
-  slim row (`[data-testid=wiki-sidebar-row-slim]`: dimmed wiki icon, name, a pen icon
+  every wiki) and goes there. The tree's rows show a time, or a change's mark; right-click or
+  Shift-F10 opens a row's menu, F2 renames, a drag onto a folder moves (`wiki.move`) and a drag
+  out carries the selection to panes and boards. **Flat list, newest first** and search use the
+  settled threads' slim row (`[data-testid=wiki-sidebar-row-slim]`: dimmed wiki icon, name, a pen icon
   when an open change holds the document, time). Hovering a row opens the threads' hover
   card: wiki, machine, links and the open changes holding it. A wiki pull request
   opened here (the finder, a deep link) is a foreign tab offering **Open in Changes**.
@@ -38,8 +40,10 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
 - **Worktrees** (with a wiki picked, or the only wiki): `combobox "Work on a pull request in a worktree"`
   beside the filter lists open pull requests; a pick puts its branch `cr/<id>` in a
   worktree (as Projects does: its own, a free one, or a new `t3-<8 hex>`), and
-  a typed title offers "New pull request “<title>” in a worktree". There is no list or
-  tree mode: outside search the sidebar is each shown wiki's worktrees (`WikiWorktreeSections`;
+  a typed title offers "New pull request “<title>” in a worktree". Outside search the sidebar is
+  each shown wiki's worktrees, main's documents a `@pierre/trees` tree (`WikiDocumentTree`, flat
+  newest-first and hidden files are choices in the filter, `astrolabe:wiki-tree-view:v1`;
+  `WikiWorktreeSections`;
   with several wikis each under `button "<wiki>"` with its icon, open by default), as Projects
   lists a repository's: main under the wiki's main branch, a pull request's under its title.
   Each header has Projects' toggle, `button "Show its files"` / `"Show its documents"`
@@ -54,10 +58,10 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   sidebar (`astrolabe:wiki-filter:v1` `hidden`, pill `Hiding <titles>`), the focused tab's
   worktree staying, marked. A note or pull request tab in a pull request with a worktree
   shows its number before its ✕; opening such a note numbers the worktree
-  (`useNumberWhenOpened`). A top-level `.md`
-  clicked in a tree, on the main line or a `cr/` branch, opens as
-  `wiki-note:<env>:<wiki>:<pull request id or empty>:<name>`; README, AGENTS, CLAUDE,
-  `*.skillmap.md`, nested `.md`, any `.md` on another branch, and every other file open as
+  (`useNumberWhenOpened`). A `.md` or `.canvas`
+  clicked in a tree, at any depth, on the main line or a `cr/` branch, opens as
+  `wiki-note:<env>:<wiki>:<pull request id or empty>:<file>`; README, AGENTS, CLAUDE,
+  `*.skillmap.md`, any `.md` on another branch, and every other file open as
   `wiki-file:` file tabs; tree rows open on a plain click only (no middle-click
   or modifiers). A pull request worktree's menu adds **Save edits to the change
   request** while it has uncommitted files (`wiki.saveWorktree`, one amendment, worktree left
@@ -96,8 +100,22 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   Mod-click on a wikilink follows it in the same tab, unless the target is open in
   another tab (that one comes forward) or the note has unsaved edits (it opens in a
   new tab). Clicking inside a pane focuses it.
-- **Vim**: with Vim keybindings on, notes edit with Vim and `:w` opens Save to change
-  request (vim-mode.md). The keyboard menu's `w` group opens Wikis and the finder,
+- **Drafts**: nothing in a document saves by hand. The first edit on main starts one draft per
+  wiki (`wiki.autosave` with no `changeRequestId`), and main's folder doesn't change. The tab key
+  stays on main: a document reads from the draft once the draft holds it
+  (`wikiDocumentScope`), with no remount, so the caret stays put. The header's `Main` becomes a
+  pill, `Draft · N documents`, on every document of that wiki; its menu has Open draft, Make it a
+  pull request… (title prefilled `Edit <document>`), Move to another one… (target and document
+  checkboxes; a target whose agent is mid-turn is disabled), and Discard… (a confirm). The Wikis
+  sidebar gets a `Draft · N documents` row above Open changes, which doesn't count it; Changes gets
+  **Your drafts** above Wiki changes, and a discarded one sits on Merged and closed as "discarded
+  draft" with **Reopen draft**. The draft's tab offers the three ways out in place of Close and
+  Merge. **Wiki: Open your draft** in the palette opens it. Status text after the title: `Saving…`,
+  `Saved`, `Not saved`, `Saves when the turn ends`, `Saves once this runs` (a base whose edit can't
+  run). A failed save shows an alert with **Try again** and keeps trying; only then does leaving
+  ask. A document in a merged or closed pull request is read only.
+- **Vim**: with Vim keybindings on, notes edit with Vim and `:w` saves now
+  (vim-mode.md). The keyboard menu's `w` group opens Wikis and the finder,
   and `:e <name>` in the Command Palette opens a document.
 - **Find and symbols**: in a note Cmd+F opens CodeMirror's find bar (`.cm-search`, focus in
   `input[name=search]`, a replace row; Cmd+Enter replaces all), read-only notes too, and
@@ -146,6 +164,26 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   the note that opens `WikiDocument` (`ThreadFeed.tsx`).
 - Narrow windows: the sheet sidebar holds the Wikis list, and its footer offers
   Agents as the way back. Splits stay at every width.
+- **Canvases** (`wiki/WikiCanvasView.tsx`, the board in `packages/wiki-editor/src/CanvasBoard.tsx`,
+  the format in `packages/wiki/src/canvas.ts`): a `.canvas` is a document named by its file, with a
+  `Waypoints` icon in the sidebar and Finder. Its tab reads as **Canvas**, with **Read only** only where it can't be edited. Walk: fit
+  on open; `Zoom in`, `Reset zoom`, `Fit the board in view`, `Zoom out`; ⇧1 and ⇧2; below 0.3 text
+  cards become a lines glyph; a first click selects (`data-selected`) and only then is content
+  live (`data-live`). `[data-card-id]` counts what's mounted, and it must follow the view. Every
+  card kind: text with Mermaid and math, note with `subpath`, image, PDF, audio, video, base with a
+  pinned view, nested canvas as a minimap, missing file, link (selecting mounts an iframe), code
+  with a staleness mark. **Jump to group** in the tab and the palette. New canvas: type a name in
+  the Finder, pick **New canvas**, **Create canvas** lands it in the draft with no dialog. `![[Board.canvas]]`
+  in a note draws a thumbnail that opens it; Mermaid draws in ordinary notes. Invalid JSON shows the
+  error and its raw text. A change landing on the canvas refreshes it with the camera where it was.
+- **Agents on a canvas** (`packages/wiki/src/canvasEdits.ts`, `canvasPlace.ts`, the transform in
+  `WikiService.transform`): ask an agent to add to a canvas with the board open in its change
+  request. It calls `astrolabe_wiki_transform` with kind `canvas`, no coordinates; `astrolabe_wiki_amend`
+  refuses and names the transform. No existing card moves, unless a group had to grow, and its
+  cards stay. The camera stays; each changed card highlights once (`.cv-flash`, gone after about a
+  second, nothing repainting at rest), then keeps its mark until the pull request is merged or
+  closed. On main there are no marks. The tool row's **Open canvas** opens the board in that change
+  request. Search by card text returns `cards`, not line numbers.
 - **Bases** (`wiki/WikiBaseView.tsx`; engine `packages/wiki/src/bases.ts`, server
   `WikiService.query` / `wiki.query`, agents `astrolabe_wiki_query`): a `.base` file lists as a
   document named `<name>.base` (no links line in its hover card) and opens as a tab labelled
@@ -163,6 +201,37 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   page draws only the base (`showBase` in `protocol.ts`, the same `BaseBlock`); a `View` header
   menu (iOS only, as every header button) appears with two or more views and ticks the one shown.
   A row's name opens its note on top; Back returns to the base.
+- **Canvas review** (`wiki/WikiCanvasReview.tsx`, the logic in `packages/wiki/src/canvas.ts` and
+  `canvasMerge.ts`, the pass in `WikiService.mergeTrees`): seed a pull request and main with
+  worktree edits to one `.canvas`. A changed canvas shows a board with marks and a change list, not
+  a JSON diff; **JSON** swaps to the diff and back. Check each mark (Added, Removed, Text, Moved,
+  Style), including on an arrow, in dark mode and the Mercurian theme. A row focuses and selects
+  its card; a removed card under a new one comes up on top. Moves are folded. The wheel scrolls the
+  page until the board is clicked. Merge: adjacent cards merge clean; an arrow onto a card main
+  deleted shows under **Merging decides these** and is gone from main afterwards; a card edited
+  here and deleted there is a conflict naming the card, whose advice says worktree, not amend;
+  saving the worktree to agree with main clears it. Revert an amendment that later work drew an
+  arrow on: a toast says the arrow was dropped. Invalid JSON on a side is a conflict and the file is
+  left as it was.
+- **Canvas review on the phone** (`WikiCanvasReviewRouteScreen.tsx`, `WikiCanvasChanges.tsx`): the
+  pull request's row shows a count such as `2 added, 1 moved`, and a deleted canvas's row opens
+  too. It opens the board with marks and the list below; a row selects its card. A conflict says it
+  can't be settled from the phone, and the notes show under the merge card.
+- **Canvases on the phone** (`WikiCanvasScreen.tsx`, the page's `mobileCanvas.tsx`): an agent's
+  change shows in the feed as a row, `Changed the canvas <name>`, that opens it in the change
+  request, with the same marks and one highlight per commit. A `.canvas`
+  lists as `button "<name>, canvas, <wiki>"` with "Canvas", or "Canvas · read only" where it can't be edited, and opens in `WikiDocument`
+  from the list, a pull request's documents, links in notes and a base's rows, subtitle
+  `<wiki> · Main · Canvas · read only`, with a `Jump to group` header menu when it has labelled
+  groups. Walk: touch pan, pinch, left-edge back swipe, first tap selects and a second acts (a link,
+  a code card, a file card's name; Back returns to the board with its camera). File cards read in
+  batches at the commit shown (`readFiles`/`filesRead`, split at 256 KB a message). Images, audio and
+  video load from a commit-scoped asset URL (`readAsset`/`assetRead`); a PDF, and media WebKit
+  can't play, shows its name and **Open**, the app's viewer. Check repository images on a plain-http
+  server (the page's origin must stay `http://localhost/`: on https WebKit upgrades them and they
+  fail). Base cards, nested canvases as minimaps, `![[Board.canvas]]` in a note, Mermaid on cards and
+  in notes (each diagram type injected the first time it draws, `peleOnDemand.ts`). Android is
+  the same code and needs its own walk.
 - **Mobile** (iPhone; iPad drops the tab, `workspace-tabs-state.ts`): a Wikis tab
   (`apps/mobile/src/features/wikis/WikisScreen.tsx`) with its search `Search wikis` and a
   `Filter by wiki` menu (All wikis, each wiki). With any open, the first row reads "Open
@@ -171,12 +240,13 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   `button "<doc>, <wiki>"`. A document (route `WikiDocument`) is the wiki editor in a web
   view; its header has `Edit the document`/`Stop editing` (iOS exposes them as `button "Edit"`/`"Done"`;
   not on read-only skill maps), and
-  once edited `Save to a pull request` and `Document actions` › Discard edits. Save opens
-  the "Save to pull request" sheet: New pull request or an open one, `Pull request
-  title` (captioned "Title" on iOS), `What changed`, then Save (`Save when the turn ends` while the agent works). A
-  pull request (route `WikiChangeRequest`, from the Changes tab) has `Change
+  there is no Save: the subtitle reads `Saving…` then `Saved`, or `saves when the turn ends`
+  while an agent works. With a draft a bar in place of Main (`Draft · N documents`) opens the "Your
+  draft" sheet: `Pull request title` and Make it a pull request, Move with its documents, and
+  Discard. A
+  pull request (route `WikiChangeRequest`, from the Changes tab) has `Pull
   request actions` (on iOS the ⋯ button is named after the pull request; Merge into main,
-  Close/Reopen, and Open thread when it has one), "Amendments (N)" with
+  Close/Reopen, and Open thread when it has one; a draft's offers the sheet instead of Merge and Close), "Amendments (N)" with
   `Revert <subject>` while open, and "Documents changed (N)". Adding a wiki or a document
   stays on the computer. Walk it on an iPhone with test-t3-mobile.
 
@@ -204,7 +274,7 @@ from Search. ("Open wikis" is an action: in the Command Palette, or `>open wikis
 in Search.) A wiki
 must be registered first (the filter's **Add a wiki**, or the palette's **Add wiki**). A
 clean or seeded home may have none: before walking, add one with the palette's **Add wiki** →
-**Local folder** and the path to a git repository with top-level `*.md` files (Gotchas).
+**Local folder** and the path to a git repository with `*.md` files (Gotchas).
 
 ## Driving it with the Browser panel
 
@@ -239,11 +309,32 @@ returns a node whose `closest('[data-testid=wiki-sidebar-row-slim]')` is the row
 (`JSON.parse(localStorage['astrolabe:workspace-tab-history:v1'])`) and expands every group. Save
 a screenshot of the section.
 
+### Walk drafts
+
+1. Open a note on main and type. Within about two seconds the header reads Saved, `Main` is the
+   pill `Draft · 1 document`, the caret hasn't moved, and `git -C <wiki> log main` is unchanged.
+2. Keep typing over a few pauses, then open the draft: one amendment. Edit a second note, and
+   the pill reads 2 documents, with two amendments; a third note on main still shows main's text.
+3. Reload. The pill and your text are still there.
+4. In a base, edit a cell, then rename a view. No Save anywhere; a board's card moves and stays.
+   New canvas's **Create canvas** adds to the draft.
+5. Stop the dev server mid-typing (by its tracked PID), keep typing: `Not saved`, the alert, and it
+   lands by itself after restart. Leaving while it shows asks first.
+6. Make it a pull request: the tab stays on the note, now inside it; the next edit on main starts
+   a new draft. Move one of two documents into an open pull request. Discard, then reopen from
+   Merged and closed. Reopen with a newer draft open: refused, saying why.
+7. Merge something else to main that clashes: the draft's tab and the pill's menu say so, and it
+   still saves.
+8. In an agent's pull request mid-turn: `Saves when the turn ends`, and it lands when it ends.
+9. Two clients on one note: each one's text lands in the other, attributed "You, elsewhere", and
+   neither is overwritten.
+10. Phone: the same, from Edit; no Save, the bar opens the sheet, and backgrounding the app saves.
+
 ## Gotchas
 
 - A fixture wiki needs a git repository at its top level, with a branch checked
-  out and at least one commit; only top-level `*.md` files count (never README,
-  AGENTS, CLAUDE). Clone one (for example the almagest vault) anywhere the server
+  out and at least one commit; `*.md` files count at any depth (never README,
+  AGENTS, CLAUDE, in any folder), and a dot-folder's show only under **Hidden files**. Clone one (for example the almagest vault) anywhere the server
   can read, such as `<home>/wiki-fixtures/`, and register it: the palette's **Add wiki** (or
   the filter's **Add a wiki**) → **Local folder** → type the absolute path, Enter. No project
   is made; the palette then offers the link step (pick a project or **Not now**). **New wiki**
@@ -281,3 +372,43 @@ mobile `features/threads/ThreadFeed.tsx` (the sent chip). Bases: `wiki/WikiBaseV
 `packages/wiki/src/bases.ts`, `baseExpression.ts` and `properties.ts`,
 `packages/wiki-editor/src/BaseBlock.tsx` and `baseCells.ts`, server `wiki/wikiViews.ts` and
 `mcp/toolkits/wiki/` (`astrolabe_wiki_query`).
+
+## Editing a canvas
+
+Walk on a seeded wiki, on web and on the phone. After each group, open the `.canvas` in the
+pull request's worktree: it's tabs, one card per line, and a key the card had that Astrolabe
+doesn't know is still there. Open it in Obsidian once at the end.
+
+- **Add:** double-click (250x60, centred, typing), the board's menu, a drag from the bottom bar, a
+  dropped connection, paste of text, an address and an image, a dropped file, a dropped folder, a
+  sidebar row dragged on. Escape on a dropped connection leaves nothing.
+- **Move:** a drag lands on the grid; a neighbour's edge beats the grid; ⌃ mid-drag lands exactly;
+  Shift holds an axis; Alt leaves the original and copies arrows and group contents; arrows nudge
+  20, Shift 100. A dragged card comes to the end of `nodes`; a nudged one doesn't.
+- **Resize:** eight grips outside the edge, 50x50 at least, an image holds its shape on a corner,
+  a double-click on the bottom or right grip fits the text.
+- **Connect:** a dot on each side, the side nearest the drop, no arrow to itself; drag an arrow to
+  move its nearer end and the `id` stays; Enter in a label makes a new line; line direction writes
+  only `toEnd:"none"` or `fromEnd:"arrow"`.
+- **Groups:** only the label selects one, and an unlabelled one by marquee. A card half out stays
+  behind. **Create group** leaves 20 around the selection with the label ready. A "ratio"
+  background changes the group's height.
+- **Arrange:** all thirteen from **Align**, on two and on five cards, and on a lone group's contents.
+- **Convert and narrow:** a name that's taken gets a number, the card keeps its place and arrows
+  under a new id; narrowing to a block with no id writes a 6-hex one into the note; **Pin view** on
+  a base; **Swap file** drops `subpath`; **New note** on a missing card.
+- **Undo:** a gesture at a time, three quick nudges as one, after the save landed too. Pan and zoom
+  aren't steps.
+- **Two windows:** edit one card in both: the board keeps both versions and says so. Delete a card
+  the other window is typing in: the text stays. Selection and camera stay.
+- **Drafts:** the first edit on main starts a draft, and the board doesn't blink, lose its selection
+  or close an open card. Discard from the pill takes the board back to main.
+- **Reads:** a chat board, a review, a closed pull request and a board with **Read-only** on take
+  no edits. Read-only keeps Zoom to selection and survives a reload on web.
+- **Keys:** with the board focused, the leader key opens on a tap of Space and doesn't on Space-drag.
+  ⇧F10 opens a menu, ⌥ arrows reach cards, Tab reaches the toolbar, and focus comes back after an edit.
+  With Vim on, Escape ends insert mode, and the next leaves the card.
+- **Export:** on web and desktop, both areas, zoom, logo, privacy. Compare an image card from a
+  remote environment: if it draws as a name, CORS refused it.
+- **Phone:** long-press menus, tap toolbar, double-tap to edit with the card above the keyboard,
+  handles and dots by finger, **Select**, pinch, and a swipe from the left edge still goes back.

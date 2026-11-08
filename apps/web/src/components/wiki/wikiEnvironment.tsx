@@ -1,8 +1,10 @@
-import type {
+import type { WikiPlacement } from "@mercurian/wiki/placement";
+import {
   EnvironmentId,
-  PullRequestRef,
-  WikiChangeRequestId,
-  WikiId,
+  type PullRequestRef,
+  type UnifiedSettings,
+  type WikiChangeRequestId,
+  type WikiId,
 } from "@t3tools/contracts";
 import {
   type AtomCommand,
@@ -10,8 +12,10 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";
+import { wikiSaveFailure } from "@t3tools/client-runtime/wikiLogic";
 import { useAtomValue } from "@effect/atom-react";
 
+import { useEnvironmentSettings } from "~/hooks/useSettings";
 import { usePrimaryEnvironmentId, useEnvironments } from "~/state/environments";
 import { useEnvironmentQuery } from "~/state/query";
 import { useAtomCommand } from "~/state/use-atom-command";
@@ -130,6 +134,24 @@ export function useWikiTerms(environmentId: EnvironmentId | undefined, wikiId: W
   );
   return wikiTerms(data?.wikis.find((entry) => entry.wikiId === wikiId));
 }
+/** Lands an autosave, reading a failure as the autosave store does. */
+export function useWikiAutosaveCommand() {
+  const run = useAtomCommand(wikiEnvironment.autosave, { reportFailure: false });
+  return async (value: Parameters<typeof run>[0]) => {
+    const result = await run(value);
+    if (result._tag === "Success") return { ok: true as const, value: result.value };
+    return isAtomCommandInterrupted(result)
+      ? { ok: false as const, message: "The save was cancelled.", retry: true }
+      : wikiSaveFailure(squashAtomCommandFailure(result));
+  };
+}
+
+const selectLocations = (settings: UnifiedSettings) => settings.wikiLocations;
+const NO_ENVIRONMENT = EnvironmentId.make("none");
+
+/** Where `environmentId` puts a wiki's new files; its defaults when there's none to ask. */
+export const useWikiPlacement = (environmentId: EnvironmentId | null): WikiPlacement =>
+  useEnvironmentSettings(environmentId ?? NO_ENVIRONMENT, selectLocations);
 
 export type WikiCommandOutcome<A> =
   | { readonly ok: true; readonly value: A }

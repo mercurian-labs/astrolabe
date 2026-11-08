@@ -1,0 +1,81 @@
+{
+ "extra": "top",
+ "nodes": [
+  {
+   "id": "mover",
+   "type": "text",
+   "text": "mover",
+   "x": 0,
+   "y": 0,
+   "width": 200,
+   "height": 100
+  },
+  {
+   "id": "fracstill",
+   "type": "text",
+   "text": "frac unmoved",
+   "x": 300.5,
+   "y": 0.25,
+   "width": 200.7,
+   "height": 100.1
+  },
+  {
+   "id": "unk",
+   "type": "weird",
+   "x": 0,
+   "y": 300,
+   "width": 200,
+   "height": 100,
+   "foo": "bar"
+  },
+  {
+   "id": "link",
+   "type": "link",
+   "url": "https://example.com",
+   "x": 300,
+   "y": 300,
+   "width": 300,
+   "height": 200,
+   "astrolabe": {
+    "repository": "x",
+    "commit": "y",
+    "path": "a.ts",
+    "lines": [
+     1,
+     2
+    ]
+   }
+  },
+  {
+   "id": "linkedge",
+   "type": "text",
+   "text": "edge to unk",
+   "x": 700,
+   "y": 0,
+   "width": 200,
+   "height": 100,
+   "color": "mauve"
+  }
+ ],
+ "edges": [
+  {
+   "id": "e1",
+   "fromNode": "mover",
+   "toNode": "fracstill",
+   "meta": {
+    "a": 1
+   },
+   "style": "dashed",
+   "color": "9"
+  },
+  {
+   "id": "e2",
+   "fromNode": "unk",
+   "toNode": "linkedge"
+  }
+ ],
+ "zzz": [
+  1,
+  2
+ ]
+}

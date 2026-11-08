@@ -44,6 +44,7 @@ import {
   installAppearanceRuntime,
   useAppearancePreferences,
 } from "./features/settings/appearance/AppearancePreferencesProvider";
+import { wikiDocumentLink } from "./features/wikis/wikiRoutes";
 import { RootStack, rootPathnameFromState, workspaceLocationFromState } from "./Stack";
 import { appAtomRegistry } from "./state/atom-registry";
 import { subscribeComposerDraftModelReconciliation } from "./state/use-composer-drafts";
@@ -110,7 +111,7 @@ const linkingConfig = {
 
 function getAppStateFromPath(path: string, options: Parameters<typeof getStateFromPath>[1]) {
   return pipe(
-    getStateFromPath(path, options),
+    getStateFromPath(wikiDocumentLink(path), options),
     (state) => restoreDraftLinkState(state, path),
     (state) => restoreSettingsLinkState(state, settingsLinkPage()),
     takeThreadPromptLink,

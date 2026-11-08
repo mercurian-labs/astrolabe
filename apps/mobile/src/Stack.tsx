@@ -35,6 +35,7 @@ import {
   PullRequestFileRouteScreen,
 } from "./features/pull-requests/PullRequestRouteScreen";
 import { PullRequestFilesSheet } from "./features/pull-requests/PullRequestFiles";
+import { WikiCanvasReviewRouteScreen } from "./features/wikis/WikiCanvasReviewRouteScreen";
 import { WikiChangeRequestRouteScreen } from "./features/wikis/WikiChangeRequestRouteScreen";
 import { WikiDocumentRouteScreen } from "./features/wikis/WikiDocumentRouteScreen";
 import { PullRequestReviewSheet } from "./features/pull-requests/PullRequestReviewSheet";
@@ -77,6 +78,7 @@ import {
   ThreadRouteScreen,
 } from "./features/threads/ThreadRouteScreen";
 import { McpAppFullscreenScreen } from "./features/threads/McpAppFullscreenScreen";
+import { ThreadCanvasScreen } from "./features/threads/ThreadCanvasScreen";
 import { ConnectionsRouteScreen } from "./features/connection/ConnectionsRouteScreen";
 import { ConnectionsNewRouteScreen } from "./features/connection/ConnectionsNewRouteScreen";
 import { AddProjectDestinationRoute } from "./features/projects/AddProjectDestinationRoute";
@@ -681,6 +683,11 @@ const RootStackConfig = createWorkspaceStackNavigator({
       linking: "wikis/:environmentId/:wikiId/changes/:changeRequestId",
       options: GLASS_HEADER_OPTIONS,
     }),
+    WikiCanvasReview: createNativeStackScreen({
+      screen: WikiCanvasReviewRouteScreen,
+      linking: "wikis/:environmentId/:wikiId/changes/:changeRequestId/canvases/:name",
+      options: SOLID_HEADER_OPTIONS,
+    }),
     PullRequestGuideStop: createNativeStackScreen({
       screen: PullRequestGuideStopScreen,
       options: DETAIL_HEADER_OPTIONS,
@@ -907,6 +914,11 @@ const RootStackConfig = createWorkspaceStackNavigator({
       screen: ThreadFileScreen,
       linking: `${THREAD_LINKING_PREFIX}/files/:path*`,
       options: GLASS_HEADER_OPTIONS,
+    }),
+    ThreadCanvas: createNativeStackScreen({
+      screen: ThreadCanvasScreen,
+      linking: `${THREAD_LINKING_PREFIX}/canvases/:itemId`,
+      options: SOLID_HEADER_OPTIONS,
     }),
     ThreadMcpApp: createNativeStackScreen({
       screen: McpAppFullscreenScreen,

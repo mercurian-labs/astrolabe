@@ -1,12 +1,15 @@
+import { useAtomValue } from "@effect/atom-react";
+import type { WikiSaveOutcome } from "@t3tools/client-runtime/wikiAutosave";
 import type {
   EnvironmentId,
   WikiChangeRequest,
   WikiChangeRequestId,
   WikiId,
+  WikiIndexResult,
 } from "@t3tools/contracts";
 import { useBlocker } from "@tanstack/react-router";
 import { TriangleAlertIcon } from "lucide-react";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { lazy, Suspense, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { ensureLocalApi } from "~/localApi";
 import { useEnvironmentQuery } from "~/state/query";
@@ -20,84 +23,154 @@ import { toastManager } from "../ui/toast";
 import {
   authorColor,
   describeWikiFailure,
+  documentFile,
+  documentPath,
+  documentTitle,
+  exactWikiPath,
+  isSettledChangeRequest,
   latestAmendmentFor,
-  noteKey,
   PERSON_ACTOR,
-  queuedSaveStep,
-  type QueuedWikiSave,
+  wikiDocumentFilesWithDraft,
+  wikiDocumentScope,
+  wikiDraft,
+  wikiLinkFiles,
+  wikiLinkOptions,
+  wikiLinkFile,
 } from "./wiki.logic";
-import { WikiLinkPreview, type WikiLinkPeek } from "@mercurian/wiki-editor/link-tools";
+import {
+  namesAttachment,
+  WikiLinkPreview,
+  type WikiLinkPeek,
+  type WikiLinkScope,
+} from "@mercurian/wiki-editor/link-tools";
+import { linkFiles, resolveLink } from "@mercurian/wiki/resolve-link";
 import { WikiNoteBuffer, type WikiNoteAuthor } from "@mercurian/wiki-editor/note-buffer";
 import { WikiBase } from "./WikiBaseView";
+import { WikiMermaid } from "./WikiMermaid";
 import { WikiNoteEditor } from "./WikiNoteEditor";
-import { useWikiCommand, useWikiTerms } from "./wikiEnvironment";
+import { useWikiEmbeds } from "./useWikiEmbeds";
+import {
+  holdsEdits,
+  useChangeRequestTurn,
+  useWikiAutosave,
+  WikiSaveFailure,
+  WikiSaveStatus,
+} from "./wikiAutosave";
+import { useWikiAttachments } from "./useWikiAttachments";
+import { useWikiAutosaveCommand, useWikiPlacement } from "./wikiEnvironment";
+import { useWikiTreeView } from "./wikiTreeView";
 import { WikiPart } from "./WikiParts";
-import { SaveToChangeRequestDialog, useChangeRequestTurn, type SaveTarget } from "./WikiSaveDialog";
 
 const NO_LINK_TYPES: ReadonlyArray<string> = [];
+
+/** What a document gives its draft's pill: acting on the draft acts on what's still unsaved. */
+export interface WikiDraftEdits {
+  readonly flush: () => Promise<boolean>;
+  readonly drop: () => void;
+}
+
+const WikiCanvasEmbed = lazy(() => import("./WikiCanvasEmbed"));
 
 function LinkPreview({
   environmentId,
   wikiId,
   changeRequestId,
+  draft,
+  index,
+  linkScope,
+  from,
   link,
 }: {
   readonly environmentId: EnvironmentId;
   readonly wikiId: WikiId;
   readonly changeRequestId: WikiChangeRequestId | undefined;
+  readonly draft: WikiChangeRequest | null;
+  readonly index: WikiIndexResult | null;
+  readonly linkScope: WikiLinkScope | null;
+  /** The file the link is written in. */
+  readonly from: string;
   readonly link: WikiLinkPeek;
 }) {
-  const scope = changeRequestId === undefined ? {} : { changeRequestId };
+  const resolved = linkScope === null ? undefined : resolveLink(link.name, from, linkScope.files);
+  const file = resolved?.file ?? wikiLinkFile(index, link.name, from);
+  const readsFrom = wikiDocumentScope({ tabChangeRequestId: changeRequestId, draft, file });
   const { data } = useEnvironmentQuery(
-    wikiEnvironment.note({ environmentId, input: { wikiId, name: link.name, ...scope } }),
+    wikiEnvironment.note({
+      environmentId,
+      input: {
+        wikiId,
+        name: exactWikiPath(file),
+        ...(readsFrom === undefined ? {} : { changeRequestId: readsFrom }),
+      },
+    }),
   );
   return (
     <WikiLinkPreview
       link={link}
       source={data === null ? undefined : data.exists ? data.source : null}
+      resolved={resolved}
     />
   );
 }
 
 /**
- * One note, editable; edits stay in the buffer until saved to a change request. Inside one, every
- * version that is not the person's own save is an amendment that lands live, attributed and
- * reviewable, without touching unsaved edits; Save waits for the thread's turn to end, then commits
- * the buffer holding both. Read from main, a change reloads the note only with no unsaved edits.
+ * One note, editable; edits save by themselves, to the change request the tab is in, else the
+ * person's draft. Reading from a change request, every version that isn't this buffer's own is an
+ * amendment landing live, attributed and reviewable, beside whatever hasn't saved yet. While the
+ * thread's turn runs, saves wait for it to end. Read from main, a change reloads the note.
  */
 export function WikiNoteView({
   environmentId,
   wikiId,
-  name,
+  file: tabFile,
   changeRequestId,
-  openChangeRequests,
+  savesTo,
+  changeRequests,
+  location,
+  renderDraftPill,
   onOpenNote,
-  onSaved,
   registerUnsaved,
 }: {
   readonly environmentId: EnvironmentId;
   readonly wikiId: WikiId;
-  readonly name: string;
+  readonly file: string;
+  /** The change request the note reads from; none reads main. */
   readonly changeRequestId: WikiChangeRequestId | undefined;
-  readonly openChangeRequests: ReadonlyArray<WikiChangeRequest>;
-  readonly onOpenNote: (name: string) => void;
-  readonly onSaved: (changeRequestId: WikiChangeRequestId) => void;
+  /** The change request the tab is in; none saves to the draft. */
+  readonly savesTo: WikiChangeRequestId | undefined;
+  readonly changeRequests: ReadonlyArray<WikiChangeRequest>;
+  /** Where the note reads from, as the tab header names it. */
+  readonly location: string;
+  /** The draft's pill in the header's place for `location`, when there's a draft. */
+  readonly renderDraftPill?: (edits: WikiDraftEdits) => ReactNode;
+  /** Follows a link; `from` is the file it's written in, when that isn't this note. */
+  readonly onOpenNote: (target: string, from?: string) => void;
   /** Lets whoever shows the note ask whether its edits are unsaved, as closing its tab does. */
-  readonly registerUnsaved?: (isUnsaved: () => boolean) => () => void;
+  readonly registerUnsaved?: (isUnsaved: () => boolean, save: () => Promise<boolean>) => () => void;
 }) {
   const scope = changeRequestId === undefined ? {} : { changeRequestId };
   const note = useEnvironmentQuery(
-    wikiEnvironment.note({ environmentId, input: { wikiId, name, ...scope } }),
+    wikiEnvironment.note({
+      environmentId,
+      input: { wikiId, name: exactWikiPath(tabFile), ...scope },
+    }),
   );
   const index = useEnvironmentQuery(
     wikiEnvironment.index({ environmentId, input: { wikiId, ...scope } }),
   );
-  const terms = useWikiTerms(environmentId, wikiId);
-  const viewingChange = openChangeRequests.find(
+  const viewingChange = changeRequests.find(
     (changeRequest) => changeRequest.changeRequestId === changeRequestId,
   );
-  const viewingTurn = useChangeRequestTurn(environmentId, viewingChange?.threadId);
-  const file = note.data?.file ?? null;
+  const settled = isSettledChangeRequest(viewingChange);
+  const viewingTurn = useChangeRequestTurn(
+    environmentId,
+    viewingChange?.status === "open" ? viewingChange.threadId : null,
+  );
+  // A first save moves the read from main to the draft; the note stays on screen across it.
+  const [lastNote, setLastNote] = useState(note.data);
+  if (note.data !== null && note.data !== lastNote) setLastNote(note.data);
+  const data = note.data ?? lastNote;
+  const file = data?.file ?? null;
   // Who a live version is by: the newest amendment of this note in the change request.
   const latest = file === null ? null : latestAmendmentFor(viewingChange, file);
   const authorName =
@@ -106,9 +179,8 @@ export function WikiNoteView({
     viewingTurn.runId !== null ? `run:${viewingTurn.runId}` : `amendment:${latest?.commit ?? ""}`;
 
   const [buffer] = useState(() => new WikiNoteBuffer());
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- releases the note buffer on unmount
-  useEffect(() => () => buffer.release(), [buffer]);
   const incoming = note.data?.source ?? null;
+  const incomingCommit = note.data?.commit ?? null;
   const live = changeRequestId !== undefined;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- feeds the fetched note source and its author into the note buffer
   useEffect(() => {
@@ -116,75 +188,101 @@ export function WikiNoteView({
     const author: WikiNoteAuthor | null = live
       ? { name: authorName, color: authorColor(authorName), turnId }
       : null;
-    buffer.receive(incoming, author);
+    buffer.receive(incoming, author, incomingCommit);
     // Outside a running turn a write is the whole turn: it settles at once.
     if (!viewingTurn.running) buffer.endTurn();
-  }, [buffer, incoming, live, authorName, turnId, viewingTurn.running]);
+  }, [buffer, incoming, incomingCommit, live, authorName, turnId, viewingTurn.running]);
   const snapshot = useSyncExternalStore(buffer.subscribe, buffer.getSnapshot);
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- registers this note's unsaved-edits check with its tab until unmount
-  useEffect(() => registerUnsaved?.(() => buffer.getSnapshot().dirty), [buffer, registerUnsaved]);
 
-  // Leaving the note, for another note or another page, would drop unsaved edits.
+  const send = useWikiAutosaveCommand();
+  /** Lands `text`, which agreed with `readAt` when typed. */
+  const land = async (text: string, readAt: string | null): Promise<WikiSaveOutcome> => {
+    if (file === null) return { ok: true };
+    const outcome = await send({
+      environmentId,
+      input: {
+        wikiId,
+        ...(savesTo === undefined ? {} : { changeRequestId: savesTo }),
+        document: file,
+        write: { kind: "text", file, text, ...(readAt === null ? {} : { readAt }) },
+      },
+    });
+    if (!outcome.ok) return outcome;
+    buffer.markSaved(text, outcome.value.commit ?? undefined);
+    return { ok: true };
+  };
+  const title = documentTitle(tabFile);
+  const { autosave, status } = useWikiAutosave({
+    subject: title,
+    save: async () =>
+      buffer.getSnapshot().dirty ? land(buffer.current(), buffer.version()) : { ok: true },
+    freeze: () => {
+      const text = buffer.current();
+      const readAt = buffer.version();
+      return () => land(text, readAt);
+    },
+  });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- releases the note buffer on unmount, after the store above took what it holds
+  useEffect(() => () => buffer.release(), [buffer]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- each edit reaches the autosave store outside React, so typing renders nothing
+  useEffect(() => buffer.onEdit(autosave.edited), [buffer, autosave]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a running turn holds the autosave store, which lives outside React
+  useEffect(() => autosave.setHeld(viewingTurn.running), [autosave, viewingTurn.running]);
+  const holding = holdsEdits(status);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- registers this note's held-edits check with its tab until unmount
+  useEffect(
+    () => registerUnsaved?.(() => holdsEdits(autosave.getStatus()), autosave.flush),
+    [autosave, registerUnsaved],
+  );
+
+  // Edits that save by themselves don't stop anyone leaving; ones that can't yet do.
   useBlocker({
-    disabled: !snapshot.dirty,
-    enableBeforeUnload: () => buffer.getSnapshot().dirty,
+    disabled: !holding,
+    enableBeforeUnload: () => holdsEdits(autosave.getStatus()),
     shouldBlockFn: async () => {
-      if (!buffer.getSnapshot().dirty) return false;
+      if (!holdsEdits(autosave.getStatus())) return false;
       const leave = await ensureLocalApi().dialogs.confirm(
-        `Leave ${name}? Your unsaved edits will be lost.`,
+        `Leave ${title}? Your unsaved edits will be lost.`,
         { variant: "destructive" },
       );
+      if (leave) autosave.cancel();
       return !leave;
     },
   });
 
-  const amend = useWikiCommand(wikiEnvironment.amend, "Couldn't save the note");
-  /** Commits the buffer as it stands now; the outcome's message, or null on success. */
-  const commit = async (target: SaveTarget, message: string): Promise<string | null> => {
-    if (file === null) return "The note isn't loaded yet.";
-    const text = buffer.current();
-    const outcome = await amend({
-      environmentId,
-      input: { wikiId, message, changes: { [file]: text }, ...target },
-    });
-    if (!outcome.ok) return outcome.message ?? "The save was cancelled.";
-    buffer.markSaved(text);
-    onSaved(outcome.value.changeRequest.changeRequestId);
-    return null;
-  };
+  const canEdit = useAtomValue(wikiEnvironment.autosave.permissionAtom(environmentId));
+  const { showHidden } = useWikiTreeView();
+  const placement = useWikiPlacement(environmentId);
+  const { resolveEmbed, landedAt } = useWikiEmbeds({
+    environmentId,
+    wikiId,
+    commit: data?.commit ?? "",
+    from: tabFile,
+  });
+  const { embed } = useWikiAttachments({
+    environmentId,
+    wikiId,
+    savesTo,
+    source: file,
+    placement,
+    onLanded: landedAt,
+  });
+  const linkOptions = index.data === null ? [] : wikiLinkOptions(index.data, showHidden);
+  const draft = wikiDraft(changeRequests);
+  const outsideDraft = changeRequestId === undefined ? draft : null;
+  const files =
+    index.data === null
+      ? null
+      : outsideDraft === null
+        ? wikiLinkFiles(index.data)
+        : linkFiles(wikiDocumentFilesWithDraft(index.data, outsideDraft));
+  const linkScope = files === null || file === null ? null : { files, from: file };
 
-  // A save queued behind a running turn commits once that turn ends.
-  const [queued, setQueued] = useState<QueuedWikiSave | null>(null);
-  const committing = useRef(false);
-  const queuedChange = openChangeRequests.find(
-    (changeRequest) => changeRequest.changeRequestId === queued?.changeRequestId,
-  );
-  const queuedTurn = useChangeRequestTurn(environmentId, queuedChange?.threadId);
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- commits the queued save through the server once the change request's turn stops running
-  useEffect(() => {
-    const step = queuedSaveStep({
-      queued,
-      turnRunning: queuedTurn.running,
-      committing: committing.current,
-    });
-    if (step !== "commit" || queued === null) return;
-    // The buffer is committed as it stands when the turn ends: the agent's writes and the
-    // person's edits together.
-    committing.current = true;
-    void commit({ changeRequestId: queued.changeRequestId }, queued.message).finally(() => {
-      committing.current = false;
-      setQueued(null);
-    });
-  }, [queued, queuedTurn.running, commit]);
-
-  const [saving, setSaving] = useState(false);
-  const known = new Set((index.data?.notes ?? []).map((entry) => noteKey(entry.name)));
-
-  if (note.data === null) {
+  if (data === null) {
     return note.error !== null ? (
       <Empty>
         <EmptyHeader>
-          <EmptyTitle>Couldn't open {name}</EmptyTitle>
+          <EmptyTitle>Couldn't open {title}</EmptyTitle>
           <EmptyDescription>{describeWikiFailure(note.failure ?? note.error)}</EmptyDescription>
         </EmptyHeader>
       </Empty>
@@ -194,48 +292,40 @@ export function WikiNoteView({
       </Empty>
     );
   }
-  const data = note.data;
-  const readOnly = data.file.endsWith(".skillmap.md");
+  const skillMap = data.file.endsWith(".skillmap.md");
+  const readOnly = skillMap || settled || !canEdit;
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <TabHeader.Root>
         <TabHeader.Title
           label="Document"
-          parent={
-            changeRequestId === undefined ? "Main" : (viewingChange?.title ?? `A ${terms.singular}`)
-          }
+          parent={location}
+          parentControl={renderDraftPill?.({
+            flush: autosave.flush,
+            drop: () => {
+              autosave.cancel();
+            },
+          })}
         >
-          {data.name}
+          {documentPath(tabFile)}
         </TabHeader.Title>
-        {readOnly ? <TabHeader.Status>Skill map · read only</TabHeader.Status> : null}
+        {skillMap ? <TabHeader.Status>Skill map · read only</TabHeader.Status> : null}
+        {settled ? (
+          <TabHeader.Status>{`${viewingChange?.status === "merged" ? "Merged" : "Closed"} · read only`}</TabHeader.Status>
+        ) : null}
         {data.exists ? null : <TabHeader.Status>Not written yet</TabHeader.Status>}
         {viewingTurn.running ? <TabHeader.Status>Agent working</TabHeader.Status> : null}
-        {queued !== null ? (
-          <TabHeader.Actions>
-            <TabHeader.Status>Saves when the turn ends</TabHeader.Status>
-            <Button variant="ghost" size="sm" onClick={() => setQueued(null)}>
-              Cancel save
-            </Button>
-          </TabHeader.Actions>
-        ) : snapshot.dirty ? (
-          <TabHeader.Actions>
-            <Button variant="ghost" size="sm" onClick={() => buffer.discard()}>
-              Discard edits
-            </Button>
-            <Button size="sm" onClick={() => setSaving(true)}>
-              {`Save to ${terms.singular}`}
-            </Button>
-          </TabHeader.Actions>
-        ) : null}
+        <WikiSaveStatus status={status} />
       </TabHeader.Root>
+      <WikiSaveFailure status={status} autosave={autosave} />
       {snapshot.changedUnderneath ? (
         <div className="shrink-0 px-6 pt-3">
           <Alert variant="warning">
             <TriangleAlertIcon />
             <AlertTitle>This note changed while you were editing</AlertTitle>
             <AlertDescription>
-              Your edits are kept. Save them, or load the new version and lose them.
+              Your edits are kept, and they save over it unless you load the new version.
             </AlertDescription>
             <AlertAction>
               <Button variant="outline" size="sm" onClick={() => buffer.loadChanged()}>
@@ -249,7 +339,7 @@ export function WikiNoteView({
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-6 pt-6 pb-12">
           {data.exists ? null : (
             <WikiPart.Muted>
-              {`No note is called ${data.name} yet. Write it here and save it to a ${terms.singular}.`}
+              {`No note is called ${title} yet. Write it here, and it saves to your draft.`}
             </WikiPart.Muted>
           )}
           {snapshot.session ? (
@@ -259,11 +349,19 @@ export function WikiNoteView({
               readOnly={readOnly}
               onOpenNote={onOpenNote}
               linkTypes={index.data?.linkTypes ?? NO_LINK_TYPES}
+              linkOptions={linkOptions}
+              linkScope={linkScope}
+              onAttach={embed}
+              resolveEmbed={resolveEmbed}
               renderLinkPreview={(link) => (
                 <LinkPreview
                   environmentId={environmentId}
                   wikiId={wikiId}
                   changeRequestId={changeRequestId}
+                  draft={draft}
+                  index={index.data}
+                  linkScope={linkScope}
+                  from={data.file}
                   link={link}
                 />
               )}
@@ -283,14 +381,27 @@ export function WikiNoteView({
                     environmentId={environmentId}
                     wikiId={wikiId}
                     changeRequestId={changeRequestId}
-                    from={{ base: base.trim() }}
+                    from={{ base: base.trim(), note: data.name }}
                     view={view?.trim() || undefined}
                     onOpenNote={onOpenNote}
                   />
                 );
               }}
+              renderCanvasEmbed={(target) => (
+                <Suspense fallback={null}>
+                  <WikiCanvasEmbed
+                    environmentId={environmentId}
+                    wikiId={wikiId}
+                    changeRequestId={changeRequestId}
+                    file={target.split("#")[0]?.trim() ?? target}
+                    from={data.file}
+                    onOpen={onOpenNote}
+                  />
+                </Suspense>
+              )}
+              renderMermaid={(source) => <WikiMermaid source={source} />}
               onWrite={() => {
-                if (buffer.getSnapshot().dirty) setSaving(true);
+                if (buffer.getSnapshot().dirty) void autosave.flush();
                 else toastManager.add({ type: "info", title: "No edits to save" });
               }}
             />
@@ -301,7 +412,11 @@ export function WikiNoteView({
                 <WikiPart.Muted>No note links here yet.</WikiPart.Muted>
               ) : (
                 data.incoming.map((source) => (
-                  <WikiPart.Row key={source} title={source} onClick={() => onOpenNote(source)} />
+                  <WikiPart.Row
+                    key={source}
+                    title={source}
+                    onClick={() => onOpenNote(documentFile(source))}
+                  />
                 ))
               )}
             </WikiPart.Section>
@@ -313,7 +428,13 @@ export function WikiNoteView({
                   <WikiPart.Row
                     key={target}
                     title={target}
-                    tone={index.data === null || known.has(noteKey(target)) ? "default" : "missing"}
+                    tone={
+                      linkScope === null ||
+                      namesAttachment(target) ||
+                      resolveLink(target, data.file, linkScope.files).file !== null
+                        ? "default"
+                        : "missing"
+                    }
                     onClick={() => onOpenNote(target)}
                   />
                 ))
@@ -322,25 +443,6 @@ export function WikiNoteView({
           </div>
         </div>
       </div>
-      {saving ? (
-        <SaveToChangeRequestDialog
-          environmentId={environmentId}
-          wikiId={wikiId}
-          subject={data.name}
-          openChangeRequests={openChangeRequests}
-          viewing={changeRequestId}
-          onClose={() => setSaving(false)}
-          onSave={async (target, message) => {
-            const error = await commit(target, message);
-            if (error === null) setSaving(false);
-            return error;
-          }}
-          onQueue={(save) => {
-            setQueued(save);
-            setSaving(false);
-          }}
-        />
-      ) : null}
     </div>
   );
 }

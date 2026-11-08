@@ -7,25 +7,44 @@
 import {
   backlinks,
   baseBlocks,
+  canvasMatches,
+  canvasSourceOutline,
+  documentFile,
   findMap,
+  isCanvasFile,
+  isHidden,
+  isWikiDocument,
   key,
+  linkDestination,
+  linkedDocument,
   noteName,
+  parseCanvas,
+  resolveLink,
   support,
-  unresolved,
   typedLinks,
+  typesTo,
+  unresolved,
   walk,
+  type CanvasMatch,
   type WikiFiles,
   type WikiIndex,
 } from "@mercurian/wiki";
-import type { WikiId, WikiIndexResult, WikiNoteResult, WikiQueryInput } from "@t3tools/contracts";
+import type {
+  WikiChangeRequestDetail,
+  WikiId,
+  WikiIndexResult,
+  WikiNoteResult,
+  WikiQueryInput,
+} from "@t3tools/contracts";
 
-/** Each distinct link target of a note, as first written, compared case-insensitively. */
-const outgoingTargets = (index: WikiIndex, name: string): ReadonlyArray<string> => {
-  const note = index.notes.get(key(name));
-  if (!note) return [];
+/** Each distinct document a note or canvas links to, as first written. */
+const outgoingTargets = (index: WikiIndex, file: string): ReadonlyArray<string> => {
+  const links = (index.notes.get(file) ?? index.canvases.get(file))?.links ?? [];
   const seen = new Map<string, string>();
-  for (const link of note.links)
-    if (!seen.has(key(link.target))) seen.set(key(link.target), link.target);
+  for (const link of links) {
+    const id = linkDestination(index, link, file) ?? key(link.target);
+    if (!seen.has(id)) seen.set(id, link.target);
+  }
   return [...seen.values()];
 };
 
@@ -38,35 +57,60 @@ export const indexResult = (
   const incoming = new Map<string, Set<string>>();
   const links: Array<{ from: string; to: string }> = [];
   const linkTypes = new Set<string>();
+  /** Records a document's links, returning how many documents they reach. */
+  const follow = (
+    name: string,
+    file: string,
+    outgoing: ReadonlyArray<{ readonly target: string; readonly card?: "text" | "file" }>,
+  ) => {
+    const reached = new Set<string>();
+    for (const link of outgoing) {
+      const landed = linkDestination(index, link, file);
+      const id = landed ?? key(link.target);
+      if (reached.has(id)) continue;
+      reached.add(id);
+      links.push({ from: name, to: landed === null ? link.target : noteName(landed) });
+      const sources = incoming.get(id) ?? new Set<string>();
+      sources.add(file);
+      incoming.set(id, sources);
+    }
+    return reached.size;
+  };
   const notes = [...index.notes.values()].map((note) => {
-    const targets = outgoingTargets(index, note.name);
+    const outgoing = follow(note.name, note.file, note.links);
     for (const link of typedLinks(note.source, note.links)) {
       for (const type of link.types) linkTypes.add(type);
-    }
-    for (const target of targets) {
-      links.push({ from: note.name, to: target });
-      const sources = incoming.get(key(target)) ?? new Set<string>();
-      sources.add(key(note.name));
-      incoming.set(key(target), sources);
     }
     const editedAt = editTimes.get(note.file);
     return {
       name: note.name,
       file: note.file,
-      outgoing: targets.length,
+      outgoing,
+      ...(editedAt === undefined ? {} : { editedAt }),
+    };
+  });
+  const canvases = [...index.canvases.values()].map(({ file, links: outgoing }) => {
+    const editedAt = editTimes.get(file);
+    return {
+      file,
+      outgoing: follow(file, file, outgoing),
       ...(editedAt === undefined ? {} : { editedAt }),
     };
   });
   return {
     wikiId,
     commit,
-    notes: notes.map((note) => ({ ...note, incoming: incoming.get(key(note.name))?.size ?? 0 })),
+    notes: notes.map((note) => ({ ...note, incoming: incoming.get(note.file)?.size ?? 0 })),
     links,
     linkTypes: [...linkTypes].toSorted((a, b) => a.localeCompare(b)),
     bases: [...index.bases.keys()].map((file) => {
       const editedAt = editTimes.get(file);
       return editedAt === undefined ? { file } : { file, editedAt };
     }),
+    canvases: canvases.map((canvas) => ({
+      ...canvas,
+      incoming: incoming.get(canvas.file)?.size ?? 0,
+    })),
     maps: [...index.maps].map(([file, map]) => ({
       file,
       name: map.name,
@@ -79,7 +123,32 @@ export const indexResult = (
   };
 };
 
-/** A note, or any other wiki document such as a skill map, read by name. */
+/** Names that searched and found more than one document: the one taken, and the rest. */
+const ambiguousLinks = (
+  index: WikiIndex,
+  file: string,
+  requested: string,
+): NonNullable<WikiNoteResult["ambiguous"]> => {
+  const written = (index.notes.get(file) ?? index.canvases.get(file))?.links ?? [];
+  const named = [
+    { target: requested, from: null },
+    ...written.flatMap((link) =>
+      "card" in link && link.card === "file" ? [] : [{ target: link.target, from: file }],
+    ),
+  ];
+  const seen = new Set<string>();
+  return named.flatMap(({ target, from }) => {
+    const { file: chosen, others } = resolveLink(target, from, index.documents);
+    if (chosen === null || others.length === 0 || seen.has(key(target))) return [];
+    seen.add(key(target));
+    return [{ target, file: chosen, others }];
+  });
+};
+
+/**
+ * A note, or any other wiki document such as a skill map, by what a link from the root would
+ * find; a client names a file with a leading `/`. A canvas reads as its outline.
+ */
 export const noteResult = (
   wikiId: WikiId,
   commit: string,
@@ -87,21 +156,85 @@ export const noteResult = (
   files: WikiFiles,
   requested: string,
 ): WikiNoteResult => {
-  const name = noteName(requested);
-  const note = index.notes.get(key(name));
-  const document =
-    note === undefined
-      ? Object.keys(files).find((file) => key(file) === key(`${name}.md`))
-      : undefined;
+  const file = documentFile(index, requested);
+  const ambiguous = ambiguousLinks(index, file, requested);
+  const ambiguity = ambiguous.length === 0 ? {} : { ambiguous };
+  const canvas = index.canvases.get(file);
+  if (canvas !== undefined) {
+    return {
+      wikiId,
+      commit,
+      name: canvas.file,
+      file: canvas.file,
+      exists: true,
+      source: canvasSourceOutline(canvas.file, canvas.source),
+      outgoing: outgoingTargets(index, canvas.file),
+      incoming: backlinks(index, `/${canvas.file}`),
+      ...ambiguity,
+    };
+  }
+  const source = files[file];
   return {
     wikiId,
     commit,
-    name: note?.name ?? (document === undefined ? name : noteName(document)),
-    file: note?.file ?? document ?? `${name}.md`,
-    exists: note !== undefined || document !== undefined,
-    source: note?.source ?? (document === undefined ? "" : (files[document] ?? "")),
-    outgoing: outgoingTargets(index, name),
-    incoming: backlinks(index, name),
+    name: noteName(file),
+    file,
+    exists: source !== undefined,
+    source: source ?? "",
+    outgoing: outgoingTargets(index, file),
+    incoming: backlinks(index, `/${file}`),
+    ...ambiguity,
+  };
+};
+
+const MAX_LISTED_ENTRIES = 200;
+
+/** What's directly in one folder, by path from the root. A subfolder counts all it holds. */
+export interface WikiFolderListing {
+  readonly folder: string;
+  readonly folders: ReadonlyArray<{ readonly path: string; readonly documents: number }>;
+  readonly documents: ReadonlyArray<string>;
+  /** Anything else, such as images a note can embed. */
+  readonly files: ReadonlyArray<string>;
+  /** True when the folder holds more than the listing carries. */
+  readonly truncated: boolean;
+}
+
+/** `folder`'s contents among `files`, the root for `""`; null when nothing is there. */
+export const folderListing = (
+  files: ReadonlyArray<string>,
+  folder: string,
+): WikiFolderListing | null => {
+  const path = folder.trim().replace(/^\/+|\/+$/g, "");
+  const prefix = path === "" ? "" : `${key(path)}/`;
+  const subfolders = new Map<string, number>();
+  const documents: string[] = [];
+  const others: string[] = [];
+  let found: string | undefined;
+  for (const file of files) {
+    if (isHidden(file) || !key(file).startsWith(prefix)) continue;
+    found ??= file.slice(0, prefix.length);
+    const rest = file.slice(prefix.length);
+    const slash = rest.indexOf("/");
+    if (slash >= 0) {
+      const subfolder = file.slice(0, prefix.length + slash);
+      const held = subfolders.get(subfolder) ?? 0;
+      subfolders.set(subfolder, held + (isWikiDocument(file) ? 1 : 0));
+    } else {
+      (isWikiDocument(file) ? documents : others).push(file);
+    }
+  }
+  if (found === undefined && path !== "") return null;
+  const folders = [...subfolders].map(([subfolder, count]) => ({
+    path: subfolder,
+    documents: count,
+  }));
+  return {
+    folder: (found ?? "").replace(/\/$/, ""),
+    folders: folders.slice(0, MAX_LISTED_ENTRIES),
+    documents: documents.slice(0, MAX_LISTED_ENTRIES),
+    files: others.slice(0, MAX_LISTED_ENTRIES),
+    truncated: Math.max(folders.length, documents.length, others.length) > MAX_LISTED_ENTRIES,
   };
 };
 
@@ -121,19 +254,17 @@ export const locateBase = (
   if ((input.base === undefined) === (input.source === undefined)) {
     return { problem: "invalid", message: "Name a base, or give a base's source; not both." };
   }
+  const self = input.note === undefined ? null : documentFile(index, input.note);
   if (input.source !== undefined) {
-    if (input.note === undefined) return { source: input.source, self: undefined };
-    const note = index.notes.get(key(noteName(input.note)));
-    return { source: input.source, self: note?.file ?? `${noteName(input.note)}.md` };
+    return { source: input.source, self: self ?? undefined };
   }
   const name = input.base ?? "";
-  const wanted = [key(name), key(`${name}.base`)];
-  for (const candidate of wanted) {
-    for (const [file, source] of index.bases) {
-      if (key(file) === candidate) return { source, self: file };
-    }
+  for (const candidate of [name, `${name}.base`]) {
+    const file = linkedDocument(index, candidate, self);
+    const source = file === null ? undefined : index.bases.get(file);
+    if (file !== null && source !== undefined) return { source, self: file };
   }
-  const note = index.notes.get(key(noteName(name)));
+  const note = index.notes.get(linkedDocument(index, name, self) ?? "");
   if (note === undefined) {
     return { problem: "not-found", message: `No base or note is named ${name}.` };
   }
@@ -165,24 +296,21 @@ export interface WikiLinksResult {
 }
 
 export const linksResult = (index: WikiIndex, requested: string): WikiLinksResult => {
-  const name = noteName(requested);
-  const note = index.notes.get(key(name));
-  const typed = note ? typedLinks(note.source, note.links) : [];
+  const file = documentFile(index, requested);
+  const note = index.notes.get(file);
   const typedBacklinks = [...index.notes.values()].flatMap((source) => {
-    const types = typedLinks(source.source, source.links).find(
-      (link) => key(link.target) === key(name),
-    )?.types;
+    const types = typesTo(index, source, file);
     return types ? [{ source: source.name, types }] : [];
   });
   return {
-    name: note?.name ?? name,
-    exists: note !== undefined,
-    outgoing: outgoingTargets(index, name).map((target) => ({
+    name: index.canvases.has(file) ? file : noteName(file),
+    exists: note !== undefined || index.canvases.has(file),
+    outgoing: outgoingTargets(index, file).map((target) => ({
       target,
-      unresolved: !index.notes.has(key(target)),
-      types: typed.find((link) => key(link.target) === key(target))?.types ?? [],
+      unresolved: linkedDocument(index, target, file) === null,
+      types: (note && typesTo(index, note, documentFile(index, target, file))) ?? [],
     })),
-    backlinks: backlinks(index, name),
+    backlinks: backlinks(index, `/${file}`),
     typedBacklinks,
     unresolved: unresolved(index),
   };
@@ -227,9 +355,9 @@ export const orientResult = (index: WikiIndex, mapName: string): WikiOrientResul
     name: map.name,
     purpose: map.purpose,
     teaching: map.body ?? "",
-    walk: walk(map, index),
+    walk: walk(map, index, file),
     edges: map.edges.map((edge) => {
-      const evidence = support(index, edge);
+      const evidence = support(index, edge, file);
       return {
         from: edge.from,
         type: edge.type,
@@ -257,37 +385,73 @@ export interface WikiSearchResult {
   readonly matches: ReadonlyArray<{
     readonly name: string;
     readonly lines: ReadonlyArray<{ readonly line: number; readonly text: string }>;
+    /** A canvas's matches: cards, which have ids to edit them by, not lines. */
+    readonly cards?: ReadonlyArray<CanvasMatch>;
   }>;
-  /** True when more notes or lines matched than the result carries. */
+  /** True when more documents, lines or cards matched than the result carries. */
   readonly truncated: boolean;
 }
 
-/** Case-insensitive substring search over note names and text, bounded for an agent's context. */
+const clipped = (text: string) =>
+  text.length > MAX_LINE_LENGTH ? `${text.slice(0, MAX_LINE_LENGTH)}…` : text;
+
+/** Case-insensitive substring search over document names and text, bounded for an agent's context. */
 export const searchNotes = (index: WikiIndex, query: string): WikiSearchResult => {
   const needle = query.toLowerCase();
   const matches: Array<WikiSearchResult["matches"][number]> = [];
   let truncated = false;
-  for (const note of index.notes.values()) {
+  // A hidden document is read only by its exact path, which search never offers.
+  const documents: ReadonlyArray<{ readonly name: string; readonly source: string }> = [
+    ...index.notes.values(),
+    ...[...index.canvases.values()].map(({ file, source }) => ({ name: file, source })),
+  ].filter(({ name }) => !isHidden(name));
+  for (const { name, source } of documents) {
+    const board = isCanvasFile(name) ? parseCanvas(source) : null;
+    if (board?.ok === true) {
+      const cards = canvasMatches(board.data, query);
+      if (cards.length === 0 && !name.toLowerCase().includes(needle)) continue;
+      if (matches.length >= MAX_SEARCH_NOTES) {
+        truncated = true;
+        break;
+      }
+      truncated ||= cards.length > MAX_LINES_PER_NOTE;
+      matches.push({
+        name,
+        lines: [],
+        cards: cards
+          .slice(0, MAX_LINES_PER_NOTE)
+          .map((card) => ({ ...card, text: clipped(card.text) })),
+      });
+      continue;
+    }
     const lines: Array<{ line: number; text: string }> = [];
     let more = false;
-    note.source.split("\n").forEach((text, position) => {
+    source.split("\n").forEach((text, position) => {
       if (!text.toLowerCase().includes(needle)) return;
       if (lines.length >= MAX_LINES_PER_NOTE) {
         more = true;
         return;
       }
-      lines.push({
-        line: position + 1,
-        text: text.length > MAX_LINE_LENGTH ? `${text.slice(0, MAX_LINE_LENGTH)}…` : text,
-      });
+      lines.push({ line: position + 1, text: clipped(text) });
     });
-    if (!lines.length && !note.name.toLowerCase().includes(needle)) continue;
+    if (!lines.length && !name.toLowerCase().includes(needle)) continue;
     if (matches.length >= MAX_SEARCH_NOTES) {
       truncated = true;
       break;
     }
     truncated ||= more;
-    matches.push({ name: note.name, lines });
+    matches.push({ name, lines });
   }
   return { matches, truncated };
 };
+
+/** A change request as agents review it: a canvas's files as outlines, not coordinates. */
+export const withCanvasOutlines = (detail: WikiChangeRequestDetail): WikiChangeRequestDetail => ({
+  ...detail,
+  files: detail.files.map((change) => {
+    if (!isCanvasFile(change.file)) return change;
+    const outline = (source: string | null) =>
+      source === null ? null : canvasSourceOutline(change.file, source);
+    return { ...change, before: outline(change.before), after: outline(change.after) };
+  }),
+});

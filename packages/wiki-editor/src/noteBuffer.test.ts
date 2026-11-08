@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { WikiNoteBuffer } from "./noteBuffer";
 
@@ -97,6 +97,48 @@ describe("WikiNoteBuffer live amendments", () => {
     buffer.receive("one two three", author);
     expect(buffer.current()).toBe("mine one two three");
     expect(changeLog(buffer)).toBe(2);
+  });
+
+  it("ignores a late read of a version it saved, and lands another device's", () => {
+    const buffer = makeBuffer("v1");
+    type(buffer, " two");
+    buffer.markSaved(buffer.current(), "c2");
+    type(buffer, " three");
+    buffer.markSaved(buffer.current(), "c3");
+    type(buffer, " four");
+
+    buffer.receive("v1 two", author, "c2");
+    buffer.receive("v1", author, "c1");
+    expect(buffer.current()).toBe("v1 two three four");
+    expect(buffer.version()).toBe("c3");
+    expect(changeLog(buffer)).toBe(0);
+
+    buffer.receive("v1 two three", author, "c3");
+    buffer.receive("v1 two three, from the phone", author, "c4");
+    expect(buffer.current()).toBe("v1 two three four, from the phone");
+    expect(buffer.version()).toBe("c4");
+  });
+
+  it("tells of the person's edits, never a write landing live", () => {
+    const buffer = makeBuffer("v1");
+    const edited = vi.fn();
+    buffer.onEdit(edited);
+    buffer.receive("v1 agent", author);
+    expect(edited).not.toHaveBeenCalled();
+    type(buffer, " mine");
+    expect(edited).toHaveBeenCalled();
+  });
+
+  it("stays at the last commit it agrees with while a change waits underneath", () => {
+    const buffer = new WikiNoteBuffer();
+    buffers.push(buffer);
+    buffer.receive("v1", null, "c1");
+    type(buffer, " edit");
+    buffer.receive("v2", null, "c2");
+    expect(buffer.getSnapshot().changedUnderneath).toBe(true);
+    expect(buffer.version()).toBe("c1");
+    buffer.loadChanged();
+    expect(buffer.version()).toBe("c2");
   });
 
   it("ignores the person's own save coming back", () => {

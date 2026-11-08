@@ -47,6 +47,7 @@ import {
   MessagesSquare,
   Plus,
   TerminalSquare,
+  LayoutDashboard,
   Waypoints,
 } from "lucide-react";
 import { Volume2, VolumeOff } from "lucide";
@@ -640,6 +641,8 @@ export function surfaceTitle(
       return "Pull requests";
     case "graph":
       return "Graph";
+    case "canvas":
+      return "Canvas";
     case "lineage":
       return "Lineage";
     case "device":
@@ -736,6 +739,8 @@ export function SurfaceIcon({
       return <PullRequestGlyph.link className="size-3 shrink-0" />;
     case "graph":
       return <Waypoints className="size-3 shrink-0" />;
+    case "canvas":
+      return <LayoutDashboard className="size-3 shrink-0" />;
     case "lineage":
       return <GitFork className="size-3 shrink-0" />;
     case "side-chat":

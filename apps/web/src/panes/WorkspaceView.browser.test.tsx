@@ -234,6 +234,7 @@ import {
   splitTab,
   startingArrangement,
 } from "./arrangement";
+import { carryDrag, endDrag } from "./drag";
 import type { PanelProps } from "./panesController";
 import { KEPT_CHATS } from "./recentChats";
 import { leaves } from "./tree";
@@ -731,6 +732,32 @@ describe("WorkspaceView under the chat routes", () => {
       expect(chatNode("A")).toBe(nodeA);
       expect(totals().instances).toEqual(mounted);
     }
+  });
+});
+
+describe("WorkspaceView under a sidebar's rows", () => {
+  it.each([
+    ["a file row", { key: "file", keys: [], place: () => {}, wikiFiles: ["Plan.md"] }],
+    ["a folder row", { key: "folder", keys: [], wikiFiles: ["b/"] }],
+  ])("leaves %s to the board it's over", async (_row, item) => {
+    setup();
+    workspace.update(() => openTab(startingArrangement(), chatOf("A")));
+    await using _screen = await mount(null);
+    const board = document.createElement("div");
+    board.setAttribute("data-takes-documents", "");
+    chatNode("A")!.append(board);
+    const heard: string[] = [];
+    for (const type of ["dragover", "drop"]) {
+      board.addEventListener(type, () => heard.push(type));
+    }
+
+    carryDrag(item);
+    for (const type of ["dragover", "drop"]) {
+      board.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true }));
+    }
+    endDrag();
+
+    expect(heard).toEqual(["dragover", "drop"]);
   });
 });
 

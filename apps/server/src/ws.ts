@@ -248,6 +248,7 @@ import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import * as TriageService from "./triage/TriageService.ts";
 import * as PullRequestService from "./pullRequest/PullRequestService.ts";
 import * as WikiHostService from "./wiki/WikiHostService.ts";
+import * as CanvasKeep from "./wiki/CanvasKeep.ts";
 import * as WikiService from "./wiki/WikiService.ts";
 import * as Documents from "./documents/Documents.ts";
 import { withUnsavedTexts } from "./documents/unsavedSearch.ts";
@@ -1244,6 +1245,7 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
   Effect.gen(function* () {
     const wikis = yield* WikiService.WikiService;
     const wikiHosts = yield* WikiHostService.WikiHostService;
+    const canvasKeep = yield* CanvasKeep.CanvasKeep;
     const vimrc = yield* Vimrc.Vimrc;
     const review = yield* ReviewService.ReviewService;
     const changeGroups = yield* ChangeGroupService.ChangeGroupService;
@@ -1284,12 +1286,22 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
       [WS_METHODS.wikiIndex]: (input) => wikis.index(input),
       [WS_METHODS.wikiReadNote]: (input) => wikis.readNote(input),
       [WS_METHODS.wikiQuery]: (input) => wikis.query(input),
-      [WS_METHODS.wikiChangeRequestsList]: (input) => wikis.changeRequestsList(input),
+      [WS_METHODS.wikiReadFiles]: (input) => wikis.readFiles(input),
+      [WS_METHODS.wikiListFiles]: (input) => wikis.listFiles(input),
+      [WS_METHODS.wikiCodeStatus]: (input) => wikis.codeStatus(input),
+      [WS_METHODS.wikiChangeRequestsList]: (input) =>
+        wikis.changeRequestsList(input, WikiService.person),
       [WS_METHODS.wikiChangeRequestsGet]: (input) => wikis.changeRequestsGet(input),
       [WS_METHODS.wikiChangeRequestsOpen]: (input) =>
         wikis.changeRequestsOpen(input, WikiService.person),
       [WS_METHODS.wikiAmend]: (input) => wikis.amend(input, WikiService.person),
       [WS_METHODS.wikiTransform]: (input) => wikis.transform(input, WikiService.person),
+      [WS_METHODS.wikiKeepCanvas]: (input) =>
+        canvasKeep.keep(input, { actor: WikiService.person.actor, threadId: input.threadId }),
+      [WS_METHODS.wikiAutosave]: (input) => wikis.autosave(input, WikiService.person),
+      [WS_METHODS.wikiDraftPromote]: (input) => wikis.draftPromote(input, WikiService.person),
+      [WS_METHODS.wikiDraftMove]: (input) => wikis.draftMove(input, WikiService.person),
+      [WS_METHODS.wikiMove]: (input) => wikis.move(input, WikiService.person),
       [WS_METHODS.wikiRevertAmendment]: (input) => wikis.revertAmendment(input, WikiService.person),
       [WS_METHODS.wikiSaveWorktree]: (input) => wikis.saveWorktree(input, WikiService.person),
       // A host wiki merges on its pull request's own screen, like any repository's.
@@ -1346,6 +1358,7 @@ const layerWsUpstreamRpc = (
       const applicationEvents = yield* OrchestrationEventStore.OrchestrationEventStore;
       const projectStore = yield* ProjectStore.ProjectStoreV2;
       const projectService = yield* ProjectService.ProjectService;
+      const wikiFiles = yield* WikiService.WikiService;
       const managedFolders = yield* ManagedProjectFolders.ManagedProjectFolders;
       const scratchThreadPromotion = yield* ScratchThreadPromotion.ScratchThreadPromotion;
       const eventLoopMonitor = yield* EventLoopMonitor.EventLoopMonitor;
@@ -2994,6 +3007,18 @@ const layerWsUpstreamRpc = (
                 resource: input.resource,
                 workspaceRoot: input.resource.cwd,
               });
+            }
+            if (input.resource._tag === "wiki-file") {
+              const wikiBlob = yield* wikiFiles.locateFile(input.resource).pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new AssetWorkspaceContextResolutionError({
+                      resource: input.resource,
+                      cause,
+                    }),
+                ),
+              );
+              return yield* issueAssetUrl({ resource: input.resource, wikiBlob });
             }
             if (input.resource._tag === "project-favicon") {
               const project = yield* projectStore

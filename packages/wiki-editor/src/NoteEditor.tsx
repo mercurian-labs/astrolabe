@@ -3,14 +3,19 @@ import "@mercurian/editor/markdown/katex.css";
 
 import { agentChangeBar } from "@mercurian/editor/collab/agent-changes";
 import { AtlasEditor } from "@mercurian/editor/editor";
-import type { LivePreviewOptions } from "@mercurian/editor/markdown";
+import type { EmbedSource, LivePreviewOptions } from "@mercurian/editor/markdown";
 import { EditorView } from "@codemirror/view";
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import type { WikiNoteSession } from "./noteBuffer";
 import { wikilinkNoteName } from "./incoming";
-import { useWikiLinkTools, wikilinkDisplay, type WikiLinkPeek } from "./linkTools";
+import {
+  useWikiLinkTools,
+  wikilinkDisplay,
+  type WikiLinkPeek,
+  type WikiLinkScope,
+} from "./linkTools";
 
 // The live preview reads the app's theme tokens, so a note matches the rest of the app in
 // light, dark, and custom themes. Module-level: a new array would remount the editor.
@@ -58,7 +63,11 @@ export function WikiNoteEditor({
   onOpenNote,
   onOpenUrl,
   renderBase,
+  renderCanvasEmbed,
+  renderMermaid,
+  resolveEmbed,
   linkTypes,
+  linkScope,
   renderLinkPreview,
 }: {
   readonly session: WikiNoteSession;
@@ -66,6 +75,7 @@ export function WikiNoteEditor({
   readonly onOpenNote: (name: string) => void;
   /** The `@` types the wiki uses, which typing `@` inside a link suggests. */
   readonly linkTypes: ReadonlyArray<string>;
+  readonly linkScope?: WikiLinkScope | null;
   /** What a link's preview shows, drawn into its popover. */
   readonly renderLinkPreview: (link: WikiLinkPeek) => ReactNode;
   /** Opens an external link; the editor opens a new window when omitted. */
@@ -75,36 +85,53 @@ export function WikiNoteEditor({
    * (`![[Open.base#Table]]`); it shows until the block is edited.
    */
   readonly renderBase?: (source: string) => ReactNode;
+  /** An embedded canvas, `![[Board.canvas]]` alone on its line, by its target. */
+  readonly renderCanvasEmbed?: (target: string) => ReactNode;
+  /** A ```mermaid block's diagram, from its source; it shows until the block is edited. */
+  readonly renderMermaid?: (source: string) => ReactNode;
+  /** Where an embedded image is; without it, it shows broken. */
+  readonly resolveEmbed?: (target: string) => EmbedSource;
 }) {
   // Read through refs, so the preview options stay one object and never remount the editor.
   const openNoteRef = useRef(onOpenNote);
   const openUrlRef = useRef(onOpenUrl);
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the latest note and URL open handlers for the editor's link callbacks
+  const resolveEmbedRef = useRef(resolveEmbed);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the latest handlers for the editor's link and embed callbacks
   useLayoutEffect(() => {
     openNoteRef.current = onOpenNote;
     openUrlRef.current = onOpenUrl;
-  }, [onOpenNote, onOpenUrl]);
+    resolveEmbedRef.current = resolveEmbed;
+  }, [onOpenNote, onOpenUrl, resolveEmbed]);
   const hasOpenUrl = onOpenUrl !== undefined;
   // The blocks the editor draws, each filled through a portal, so the view keeps this tree.
-  const [baseBlocks, setBaseBlocks] = useState<
-    ReadonlyArray<{ readonly id: number; readonly source: string; readonly element: HTMLElement }>
+  const [hostBlocks, setHostBlocks] = useState<
+    ReadonlyArray<{
+      readonly id: number;
+      readonly kind: "base" | "canvas-embed" | "mermaid";
+      readonly source: string;
+      readonly element: HTMLElement;
+    }>
   >([]);
   const [{ codeBlocks, embedBlocks }] = useState(() => {
     let next = 0;
-    const draw = (source: string, element: HTMLElement) => {
-      const id = next++;
-      setBaseBlocks((blocks) => [...blocks, { id, source, element }]);
-      return () => setBaseBlocks((blocks) => blocks.filter((block) => block.id !== id));
-    };
+    const draw =
+      (kind: "base" | "canvas-embed" | "mermaid") => (source: string, element: HTMLElement) => {
+        const id = next++;
+        setHostBlocks((blocks) => [...blocks, { id, kind, source, element }]);
+        return () => setHostBlocks((blocks) => blocks.filter((block) => block.id !== id));
+      };
+    const base = draw("base");
     return {
-      codeBlocks: { base: draw },
-      // An embedded base is asked for by its embed, `![[Open.base#Table]]` (see `embeddedBase`).
+      codeBlocks: { base, mermaid: draw("mermaid") },
       embedBlocks: {
-        base: (target: string, element: HTMLElement) => draw(`![[${target}]]`, element),
+        // An embedded base is asked for by its embed, `![[Open.base#Table]]` (see `embeddedBase`).
+        base: (target: string, element: HTMLElement) => base(`![[${target}]]`, element),
+        canvas: draw("canvas-embed"),
       },
     };
   });
-  const linkTools = useWikiLinkTools(linkTypes, renderLinkPreview);
+  const renderers = { base: renderBase, "canvas-embed": renderCanvasEmbed, mermaid: renderMermaid };
+  const linkTools = useWikiLinkTools(linkTypes, renderLinkPreview, [], linkScope ?? null);
   // One array for the editor's life: a new one would remount it.
   const [extensions] = useState(() => [...EXTENSIONS, linkTools.extension]);
   const drawsBases = renderBase !== undefined;
@@ -117,8 +144,7 @@ export function WikiNoteEditor({
       ...(hasOpenUrl ? { openUrl: (href: string) => openUrlRef.current?.(href) } : {}),
       linksOpenOnClick: true,
       wikilinkDisplay,
-      // Embeds name wiki files, which the page cannot serve as images yet.
-      resolveEmbed: () => null,
+      resolveEmbed: (target) => resolveEmbedRef.current?.(target) ?? null,
       ...(drawsBases ? { codeBlocks, embedBlocks } : {}),
     }),
     [hasOpenUrl, drawsBases, codeBlocks, embedBlocks],
@@ -137,11 +163,13 @@ export function WikiNoteEditor({
         livePreview={livePreview}
         readOnly={readOnly}
       />
-      {renderBase
-        ? baseBlocks.map((block) =>
-            createPortal(renderBase(block.source), block.element, String(block.id)),
-          )
-        : null}
+      {hostBlocks.map((block) =>
+        createPortal(
+          renderers[block.kind]?.(block.source) ?? null,
+          block.element,
+          String(block.id),
+        ),
+      )}
       {linkTools.previews}
     </div>
   );

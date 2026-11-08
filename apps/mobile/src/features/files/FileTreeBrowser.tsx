@@ -32,14 +32,18 @@ function cachedFileTree(entries: ReadonlyArray<ProjectEntry>): ReadonlyArray<Fil
   return tree;
 }
 
-const FileTreeRow = function FileTreeRow(props: {
+export const FileTreeRow = function FileTreeRow(props: {
   readonly item: VisibleFileTreeNode;
   readonly selected: boolean;
   readonly expanded: boolean;
   readonly loading: boolean;
   readonly onPressDirectory: (path: string, expand: boolean) => void;
-  readonly onPreviewFile?: (path: string) => void;
+  readonly onPreviewFile?: ((path: string) => void) | undefined;
   readonly onPressFile: (path: string) => void;
+  /** Astrolabe: what a long press offers a row, such as moving it. */
+  readonly onLongPress?: ((node: FileTreeNode) => void) | undefined;
+  /** Astrolabe: a short note at the row's end, such as when it last changed. */
+  readonly trailing?: string | null | undefined;
 }) {
   const { node, depth } = props.item;
 
@@ -53,6 +57,7 @@ const FileTreeRow = function FileTreeRow(props: {
           props.onPreviewFile?.(node.path);
         }
       }}
+      {...(props.onLongPress === undefined ? {} : { onLongPress: () => props.onLongPress?.(node) })}
       onPress={() => {
         if (node.kind === "directory") {
           props.onPressDirectory(node.path, !props.expanded);
@@ -90,6 +95,9 @@ const FileTreeRow = function FileTreeRow(props: {
       >
         {node.name}
       </Text>
+      {props.trailing ? (
+        <Text className="text-xs tabular-nums text-foreground-tertiary">{props.trailing}</Text>
+      ) : null}
       {node.kind === "directory" && props.expanded && props.loading ? (
         <AppActivityIndicator size="small" accessibilityLabel={`Loading ${node.name}`} />
       ) : null}

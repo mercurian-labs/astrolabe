@@ -4,7 +4,6 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   isSkillMapFile,
   isWikiBaseFile,
-  wikiBaseTitle,
   wikiDocumentAuthor,
   wikiDocumentSubtitle,
 } from "./wikiDocument.logic";
@@ -17,6 +16,7 @@ describe("wikiDocumentSubtitle", () => {
     expect(
       wikiDocumentSubtitle({
         wikiName: "almagest",
+        file: "Plan.md",
         changeRequest: null,
         readsChangeRequest: false,
         noun: "pull request",
@@ -26,6 +26,17 @@ describe("wikiDocumentSubtitle", () => {
     expect(
       wikiDocumentSubtitle({
         wikiName: "almagest",
+        file: "a/deep/Plan.md",
+        changeRequest: null,
+        readsChangeRequest: false,
+        noun: "pull request",
+        agentWorking: false,
+      }),
+    ).toBe("almagest · a/deep · Main");
+    expect(
+      wikiDocumentSubtitle({
+        wikiName: "almagest",
+        file: "Plan.md",
         changeRequest: { title: "Grow Atlas" },
         readsChangeRequest: true,
         noun: "pull request",
@@ -34,7 +45,19 @@ describe("wikiDocumentSubtitle", () => {
     ).toBe("almagest · In “Grow Atlas” · agent working");
     expect(
       wikiDocumentSubtitle({
+        wikiName: "almagest",
+        file: "Plan.md",
+        changeRequest: { title: "Edit Atlas", draft: true },
+        readsChangeRequest: true,
+        noun: "pull request",
+        agentWorking: false,
+        saving: "Saving…",
+      }),
+    ).toBe("almagest · In your draft · Saving…");
+    expect(
+      wikiDocumentSubtitle({
         wikiName: null,
+        file: "Plan.md",
         changeRequest: null,
         readsChangeRequest: true,
         noun: "merge request",
@@ -80,11 +103,9 @@ describe("isSkillMapFile", () => {
 });
 
 describe("wiki base files", () => {
-  it("opens a .base file as its view, titled without the extension", () => {
+  it("opens a .base file as its view", () => {
     expect(isWikiBaseFile("Projects.base")).toBe(true);
     expect(isWikiBaseFile("Projects")).toBe(false);
     expect(isWikiBaseFile("Database notes")).toBe(false);
-    expect(wikiBaseTitle("Projects.base")).toBe("Projects");
-    expect(wikiBaseTitle("plans/Open work.base")).toBe("plans/Open work");
   });
 });

@@ -1,7 +1,7 @@
 import type { WikiId } from "@t3tools/contracts";
 import { useEffect } from "react";
 
-import type { WikiSearch } from "./wiki.logic";
+import { documentFile, type WikiSearch } from "./wiki.logic";
 import { useWikiEnvironment } from "./wikiEnvironment";
 import { showWikiTab } from "./wikiPanes";
 
@@ -24,7 +24,7 @@ export function WikiDeepLink({
         kind: "note",
         environmentId,
         wikiId,
-        name: note,
+        file: documentFile(note),
         changeRequestId: changeRequest,
       });
     } else if (changeRequest !== undefined) {

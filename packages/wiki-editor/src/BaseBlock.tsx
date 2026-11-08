@@ -6,10 +6,9 @@ import type { WikiEditorPage } from "./mobilePageController";
 
 const isNoteProperty = (column: string) =>
   !column.startsWith("file.") && !column.startsWith("formula.") && !column.startsWith("this.");
-const isEditableNote = (file: string) =>
-  /^[^/]+\.md$/i.test(file) && !/\.skillmap\.md$/i.test(file);
+const isEditableNote = (file: string) => /\.md$/i.test(file) && rowDocument({ file }) !== null;
 
-/** Cells of notes at the top of the wiki edit in place; a board's cards move between groups. */
+/** Cells of notes edit in place; a board's cards move between groups. */
 function editingHost(
   groupProperty: string | undefined,
   onEdit: (file: string, property: string, value: BaseCellValue) => void,
@@ -29,7 +28,8 @@ function editingHost(
 /**
  * A base's view on the phone, a ```base block's or a `.base` file's: the app runs it and keeps
  * the page's copy current. One view, the one the app picked (a block's first); each row's name
- * opens its note. A map view lists its places, and repository images show as blanks.
+ * opens its note. A map view lists its places, and repository images show as blanks outside a
+ * board.
  */
 export function BaseBlock({
   page,
@@ -37,13 +37,17 @@ export function BaseBlock({
   onOpenNote,
   onOpenUrl,
   onEdit,
+  renderImage,
 }: {
   readonly page: WikiEditorPage;
   readonly source: string;
-  readonly onOpenNote: (name: string) => void;
+  /** Follows a link, or opens a file; `from` is the file a cell's link is written in. */
+  readonly onOpenNote: (name: string, from?: string) => void;
   readonly onOpenUrl?: (href: string) => void;
   /** Sets a note's property, where the base shown alone edits in place. */
   readonly onEdit?: (file: string, property: string, value: BaseCellValue) => void;
+  /** A repository file as an image, where the page can reach one; else it shows blank. */
+  readonly renderImage?: BaseLayoutHost["renderImage"];
 }) {
   const base = useSyncExternalStore(
     (listener) => page.watchBase(source, listener),
@@ -57,6 +61,7 @@ export function BaseBlock({
     },
     openLink: onOpenNote,
     ...(onOpenUrl ? { openUrl: onOpenUrl } : {}),
+    ...(renderImage ? { renderImage } : {}),
     ...(onEdit && base?.result
       ? editingHost(base.result.settings?.groupBy?.property ?? base.result.groupBy?.id, onEdit)
       : {}),

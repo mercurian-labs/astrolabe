@@ -17,6 +17,11 @@ export interface DragItem {
    */
   readonly place?: (paneId: string, drop: { side: Side | null; index: number }) => void;
   /**
+   * Astrolabe: the wiki files a row carries, which a canvas in that wiki takes as cards. A folder
+   * ends in `/`, and only a board can take one.
+   */
+  readonly wikiFiles?: readonly string[];
+  /**
    * Astrolabe: a tab group dragged by its marker (`tabGroups`), by its id: `keys` are its run's
    * tabs, which hide behind the marker until the drop, and it lands between whole runs.
    */
@@ -49,11 +54,22 @@ export function startDrag(
   setTimeout(changed);
 }
 
+/** Holds `item` for a drag something else started and draws, as a file tree does its rows. */
+export function carryDrag(item: DragItem) {
+  current = item;
+  setTimeout(changed);
+}
+
 export function endDrag() {
   stopTabDragPreview();
   if (current === null) return;
   current = null;
   changed();
+}
+
+/** The wiki files being dragged, if a wiki's rows are what's travelling. */
+export function draggedWikiFiles(): readonly string[] | null {
+  return current?.wikiFiles ?? null;
 }
 
 /** Whether a tab is travelling in the current drag: the pills dragged dim while they are. */
