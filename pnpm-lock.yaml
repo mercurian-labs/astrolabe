@@ -1587,6 +1587,9 @@ importers:
         specifier: 4.1.2
         version: 4.1.2
     devDependencies:
+      '@alchemy.run/test':
+        specifier: 'catalog:'
+        version: 2.0.0-beta.85(patch_hash=29c0539ea71d9cc372f0b16558640599beb9bc609605feb2a493da268d72713e)(36f8671b0ef3923e8fb47376c2caf7db)
       '@types/node':
         specifier: 24.12.4
         version: 24.12.4
