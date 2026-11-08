@@ -132,7 +132,7 @@
               </div>
               <div class="surface__ui">
           <figure class="window">
-            <div class="app app--poster app--doc app--base" role="img" aria-label="A base open in the Wikis section of Astrolabe, named What depends on Rounding. It follows depends-on and decided-in links to Rounding and lists seven notes with their link type, hops, the note they came through and when each last changed: Ledger, Invoices and the decision Round in the ledger one link away; Payments, Reconciliation and Refunds two away; Webhooks three away. A preview of Ledger shows the link written as Rounding, rounding, at depends-on.">
+            <div class="app app--poster app--doc app--base" role="img" aria-label="A base open in the Wikis section of Astrolabe, named What depends on Rounding. It lists the seven notes that link to Rounding as depends-on or decided-in, with each link type and when the note last changed: Payments, Ledger, Invoices, Refunds, Reconciliation, Webhooks and the decision Round in the ledger. A preview of Ledger shows the link written as Rounding, rounding, at depends-on.">
               <div class="tb">
                 <div class="tb__cap">
                   <span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
@@ -189,20 +189,20 @@
                     <span class="bt__count">7 results</span>
                     <span class="spacer"></span>
                     <span class="mini mini--ghost bt__filter"><svg class="ico ico--xs"><use href="#i-filter" /></svg>Links to Rounding: depends-on, decided-in</span>
-                    <span class="mini mini--ghost">Sort: Hops</span>
+                    <span class="mini mini--ghost">Sort: Last changed</span>
                   </div>
                   <table class="bt">
                     <thead>
-                      <tr><th>Note</th><th>Link type</th><th class="bt__num">Hops</th><th class="bt__via">Through</th><th class="bt__when">Last changed</th></tr>
+                      <tr><th>Note</th><th>Link type</th><th class="bt__when">Last changed</th></tr>
                     </thead>
                     <tbody>
-                        <tr class="is-hover"><td><span class="bt__link">Ledger</span></td><td><span class="bt__type">depends-on</span></td><td class="bt__num">1</td><td class="bt__via">Rounding</td><td class="bt__when">3d</td></tr>
-                        <tr><td><span class="bt__link">Invoices</span></td><td><span class="bt__type">depends-on</span></td><td class="bt__num">1</td><td class="bt__via">Rounding</td><td class="bt__when">3d</td></tr>
-                        <tr><td><span class="bt__link">Round in the ledger</span></td><td><span class="bt__type">decided-in</span></td><td class="bt__num">1</td><td class="bt__via">Rounding</td><td class="bt__when">3w</td></tr>
-                        <tr><td><span class="bt__link">Payments</span></td><td><span class="bt__type">depends-on</span></td><td class="bt__num">2</td><td class="bt__via">Ledger</td><td class="bt__when">now</td></tr>
-                        <tr><td><span class="bt__link">Reconciliation</span></td><td><span class="bt__type">depends-on</span></td><td class="bt__num">2</td><td class="bt__via">Ledger</td><td class="bt__when">2w</td></tr>
-                        <tr><td><span class="bt__link">Refunds</span></td><td><span class="bt__type">depends-on</span></td><td class="bt__num">2</td><td class="bt__via">Invoices</td><td class="bt__when">5d</td></tr>
-                        <tr><td><span class="bt__link">Webhooks</span></td><td><span class="bt__type">depends-on</span></td><td class="bt__num">3</td><td class="bt__via">Payments</td><td class="bt__when">2w</td></tr>
+                        <tr><td><span class="bt__link">Payments</span></td><td><span class="bt__type">depends-on</span></td><td class="bt__when">now</td></tr>
+                        <tr class="is-hover"><td><span class="bt__link">Ledger</span></td><td><span class="bt__type">depends-on</span></td><td class="bt__when">3d</td></tr>
+                        <tr><td><span class="bt__link">Invoices</span></td><td><span class="bt__type">depends-on</span></td><td class="bt__when">3d</td></tr>
+                        <tr><td><span class="bt__link">Refunds</span></td><td><span class="bt__type">depends-on</span></td><td class="bt__when">5d</td></tr>
+                        <tr><td><span class="bt__link">Reconciliation</span></td><td><span class="bt__type">depends-on</span></td><td class="bt__when">2w</td></tr>
+                        <tr><td><span class="bt__link">Webhooks</span></td><td><span class="bt__type">depends-on</span></td><td class="bt__when">2w</td></tr>
+                        <tr><td><span class="bt__link">Round in the ledger</span></td><td><span class="bt__type">decided-in</span></td><td class="bt__when">3w</td></tr>
                     </tbody>
                   </table>
                   <div class="peek" aria-hidden="true">
@@ -223,9 +223,9 @@
                   The type reads as a mark beside the words and stays in the Markdown.
                 </p>
                 <p>
-                  A base is a query over the wiki that follows those links. This one starts at Rounding and
-                  follows depends-on and decided-in links to every note they reach. Agents and people both
-                  run it to find the notes a change touches.
+                  A base is a query over the wiki that reads those links. This one lists every note that
+                  links to Rounding as depends-on or decided-in. Agents and people both run it to find the
+                  notes a change touches.
                 </p>
                 <p class="surface__note">
                   Bases use Obsidian’s format, so a base written in Obsidian works here. Obsidian keeps typed

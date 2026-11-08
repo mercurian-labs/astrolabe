@@ -3510,11 +3510,6 @@ hidden, leaves the sticky stage working). */
 .bt tr.is-hover td {
   background: var(--app-row-hover);
 }
-.bt .bt__num {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-.bt .bt__via,
 .bt .bt__when {
   color: var(--app-muted);
 }
@@ -3572,11 +3567,6 @@ hidden, leaves the sticky stage working). */
   font-family: var(--mono);
   font-size: 0.86em;
   color: var(--ink);
-}
-@container (max-width: 900px) {
-  .bt .bt__via {
-    display: none;
-  }
 }
 @container (max-width: 560px) {
   .bt__filter,
