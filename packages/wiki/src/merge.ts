@@ -164,15 +164,17 @@ export function mergeMarkdown(base: string, ours: string, theirs: string): Merge
   if (ours === base) return { status: "merged", text: theirs };
   if (theirs === base) return { status: "merged", text: ours };
   // The file's last newlines merge apart, so an editor that drops them changes no sentence.
-  const [b, o, t] = [base, ours, theirs].map(
-    (text) => /^([\s\S]*?)(\n*)$/.exec(text) ?? ["", text, ""],
-  );
-  const body = mergeTokens(
-    paragraphs(b[1] ?? ""),
-    paragraphs(o[1] ?? ""),
-    paragraphs(t[1] ?? ""),
-    sentences,
-  );
+  const b = splitEnd(base);
+  const o = splitEnd(ours);
+  const t = splitEnd(theirs);
+  const body = mergeTokens(paragraphs(b.body), paragraphs(o.body), paragraphs(t.body), sentences);
   if (body.status === "conflict") return body;
-  return { status: "merged", text: body.text + (o[2] === b[2] ? t[2] : o[2]) };
+  return { status: "merged", text: body.text + (o.end === b.end ? t.end : o.end) };
+}
+
+type Ends = { readonly body: string; readonly end: string };
+
+function splitEnd(text: string): Ends {
+  const body = text.replace(/\n+$/, "");
+  return { body, end: text.slice(body.length) };
 }
