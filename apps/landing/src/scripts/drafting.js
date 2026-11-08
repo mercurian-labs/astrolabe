@@ -294,13 +294,13 @@ scrubQuery.addEventListener("change", () => {
   requestFrame();
 });
 
-/* The thread figure: progress across a 300vh runway, pinned while it is scrubbed. */
+/* The thread figure: progress across a 360vh runway, pinned while it is scrubbed. */
 
 const story = $("[data-story]");
 const storyCount = story && $("[data-story-count]", story);
 const storySteps = story ? $$(".story__steps li", story) : [];
 let storyStep = -1;
-const storyStages = [0.16, 0.32, 0.5, 0.66];
+const storyStages = [0.16, 0.32, 0.5, 0.66, 0.78];
 function layoutStory() {
   if (!story) return;
   story.classList.toggle("is-pinned", story.classList.contains("is-scrubbed"));
@@ -315,7 +315,7 @@ if (story) {
     const step = found === -1 ? storyStages.length : found;
     if (step === storyStep) return;
     storyStep = step;
-    storyCount.textContent = `Stage ${step + 1} / 5`;
+    storyCount.textContent = `Stage ${step + 1} / ${storySteps.length}`;
     storySteps.forEach((li, i) => li.classList.toggle("is-on", i === step));
   });
 }
