@@ -68,7 +68,9 @@ describe("CanvasFrame", () => {
       <CanvasFrame id="item-1" view={view} threadRef={threadRef} source={source} />,
       { router: false }, // The frame reads no route.
     );
-    await userEvent.click(screen.getByRole("button", { name: `Open ${view.title} in a panel` }));
+    await userEvent.click(
+      screen.getByRole("button", { name: `Open ${view.title} in a linked tab` }),
+    );
     expect(open).toHaveBeenCalledExactlyOnceWith(threadRef, "canvas");
     expect(useThreadCanvasStore.getState().shownByThread[canvasViewsKey(threadRef)]).toBe("item-1");
   });
@@ -127,7 +129,9 @@ describe("CanvasFrame", () => {
       },
     );
     await expect.element(guest.getByText("Client")).toBeVisible();
-    expect(guest.getByRole("button", { name: `Open ${view.title} in a panel` }).query()).toBeNull();
+    expect(
+      guest.getByRole("button", { name: `Open ${view.title} in a linked tab` }).query(),
+    ).toBeNull();
   });
 });
 
