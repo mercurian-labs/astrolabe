@@ -487,8 +487,8 @@ interface StoredChangeRequest {
 }
 
 /** A person's way out of a canvas conflict. An agent changes the clashing cards with a transform. */
-const SETTLE_IN_WORKTREE =
-  "A canvas is settled in the change request's worktree: edit it there so the clashing cards agree with main, save the edits to the change request, then merge again.";
+const settleInWorktree = (noun: string) =>
+  `A canvas is settled in the ${noun}'s worktree: edit it there so the clashing cards agree with main, save the edits to the ${noun}, then merge again.`;
 
 /** Two commits merged as a tree, or what stopped them, with what a canvas's merge had to say. */
 type WikiTreeMerge =
@@ -1778,7 +1778,7 @@ const make = Effect.gen(function* () {
       if (typeof held === "string" || typeof onMain !== "string") return stored;
       return yield* new WikiError({
         reason: "conflict",
-        message: `Your draft clashes with main in ${conflicts.join(", ")}, so ${documentSubject(document)} can't join it yet. Make the draft a change request and settle that first.`,
+        message: `Your draft clashes with main in ${conflicts.join(", ")}, so ${documentSubject(document)} can't join it yet. Make the draft a ${wikiTerms(wiki).singular} and settle that first.`,
       });
     }
     const now = yield* DateTime.now;
@@ -1978,7 +1978,7 @@ const make = Effect.gen(function* () {
     if (stored.record.draft) return stored;
     return yield* new WikiError({
       reason: "invalid",
-      message: "This change request isn't a draft.",
+      message: `This ${wikiTerms(wiki).singular} isn't a draft.`,
       changeRequestId,
     });
   });
@@ -2084,7 +2084,7 @@ const make = Effect.gen(function* () {
             if (target.record.draft) {
               return yield* new WikiError({
                 reason: "invalid",
-                message: "A draft moves into a change request, not another draft.",
+                message: `A draft moves into a ${wikiTerms(wiki).singular}, not another draft.`,
               });
             }
             const { base } = draft.record;
@@ -2121,7 +2121,7 @@ const make = Effect.gen(function* () {
             if (tree === null) {
               return yield* new WikiError({
                 reason: "conflict",
-                message: `This draft conflicts with that change request in ${conflicts.join(", ") || "some files"}. Nothing was moved.`,
+                message: `This draft conflicts with that ${wikiTerms(wiki).singular} in ${conflicts.join(", ") || "some files"}. Nothing was moved.`,
               });
             }
             const merged = yield* changesBetween(wiki, target.head, tree);
@@ -2215,7 +2215,7 @@ const make = Effect.gen(function* () {
               return yield* new WikiError({
                 reason: "conflict",
                 message: merged.conflicts.some(isCanvasFile)
-                  ? `This amendment overlaps later work in the ${wikiTerms(wiki).singular}, in ${merged.conflicts.join(", ")}. ${SETTLE_IN_WORKTREE}`
+                  ? `This amendment overlaps later work in the ${wikiTerms(wiki).singular}, in ${merged.conflicts.join(", ")}. ${settleInWorktree(wikiTerms(wiki).singular)}`
                   : `This amendment overlaps later work in the ${wikiTerms(wiki).singular}; reconcile it with a new amendment instead.`,
               });
             }
@@ -2471,7 +2471,7 @@ const make = Effect.gen(function* () {
             if (stored.record.draft) {
               return yield* new WikiError({
                 reason: "invalid",
-                message: "A draft doesn't merge. Make it a change request first.",
+                message: `A draft doesn't merge. Make it a ${wikiTerms(wiki).singular} first.`,
               });
             }
             const main = yield* mainTip(wiki);
@@ -2487,7 +2487,7 @@ const make = Effect.gen(function* () {
                 reason: "conflict",
                 message: `Merging conflicts with main in ${conflicts.join(", ") || "some files"}. ${
                   conflicts.some(isCanvasFile)
-                    ? SETTLE_IN_WORKTREE
+                    ? settleInWorktree(wikiTerms(wiki).singular)
                     : `Amend the ${wikiTerms(wiki).singular} to reconcile, then merge again.`
                 }`,
               });
@@ -3046,8 +3046,7 @@ const make = Effect.gen(function* () {
             ) {
               return yield* new WikiError({
                 reason: "invalid",
-                message:
-                  "You have another draft on this wiki. Make it a change request or discard it, then reopen this one.",
+                message: `You have another draft on this wiki. Make it a ${wikiTerms(wiki).singular} or discard it, then reopen this one.`,
               });
             }
             const now = yield* DateTime.now;

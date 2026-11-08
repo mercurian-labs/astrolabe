@@ -276,7 +276,9 @@ export function WikiChangeRequestView({
               }
             : {})}
         />
-        {open && wiki?.host == null ? <MergePreviewNotice preview={mergePreview} /> : null}
+        {open && wiki?.host == null ? (
+          <MergePreviewNotice preview={mergePreview} noun={terms.singular} />
+        ) : null}
         {open && wiki?.host == null ? <CanvasMergeNotes preview={mergePreview} /> : null}
         {errors.length > 0 ? (
           <Alert variant="warning">
@@ -549,7 +551,13 @@ function MergeButton({
   );
 }
 
-function MergePreviewNotice({ preview }: { readonly preview: WikiMergePreview }) {
+function MergePreviewNotice({
+  preview,
+  noun,
+}: {
+  readonly preview: WikiMergePreview;
+  readonly noun: string;
+}) {
   switch (preview.status) {
     case "clean":
       return (
@@ -563,7 +571,9 @@ function MergePreviewNotice({ preview }: { readonly preview: WikiMergePreview })
         <Alert variant="error">
           <TriangleAlertIcon />
           <AlertTitle>Conflicts with main</AlertTitle>
-          <AlertDescription>{mergeConflictAdvice(preview.conflicts, "computer")}</AlertDescription>
+          <AlertDescription>
+            {mergeConflictAdvice(preview.conflicts, "computer", noun)}
+          </AlertDescription>
         </Alert>
       );
     default:

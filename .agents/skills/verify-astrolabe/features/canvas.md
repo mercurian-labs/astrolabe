@@ -11,8 +11,8 @@ real model, and ask for a diagram of boxes and arrows that cites a file.
   touch. A swipe from the left edge goes back, and doesn't pan. A code card opens its file. A
   killed page (`onContentProcessDidTerminate`) comes back with the camera where it was.
 - **Keep:** the board's Keep button (a bookmark in the timeline, **Keep** in the Canvas tab, the
-  phone's header) asks for a wiki and a name, then says it's in a change request. Check the
-  file opens at the coordinates the thread showed, ids are 16 hex, and closing the change request
+  phone's header) asks for a wiki and a name, then says it's in a pull request. Check the
+  file opens at the coordinates the thread showed, ids are 16 hex, and closing the pull request
   leaves the thread's board. Code cards: a pushed commit gives a link pinned to it, with `astrolabe`
   holding repository, commit, path and lines; an unpushed commit links to the nearest pushed one
   and the dialog says so; a file only in unpushed commits, a repository with no remote, and a

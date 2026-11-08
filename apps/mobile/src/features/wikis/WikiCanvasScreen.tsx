@@ -652,7 +652,7 @@ export function WikiCanvasScreen({
       return (
         <EmptyState
           title={`No canvas is called ${title} yet`}
-          detail="Start one in a change request on a computer."
+          detail={`Start one in a ${wikiTerms(wiki).singular} on a computer.`}
         />
       );
     }

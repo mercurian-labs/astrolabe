@@ -5,6 +5,7 @@ import {
   draftLabel,
   draftMoveTargets,
   mergeBlockedReason,
+  wikiTerms,
 } from "@t3tools/client-runtime/wikiLogic";
 import {
   type AtomCommandResult,
@@ -68,6 +69,8 @@ export function WikiDraftSheet(props: DraftActions & { readonly onClose: () => v
   const detail = useEnvironmentQuery(
     wikiEnvironment.changeRequest({ environmentId, input: target }),
   );
+  const wikis = useEnvironmentQuery(wikiEnvironment.list({ environmentId, input: {} }));
+  const terms = wikiTerms(wikis.data?.wikis.find((entry) => entry.wikiId === draft.wikiId));
   const promote = useAtomCommand(wikiEnvironment.promoteDraft, { reportFailure: false });
   const move = useAtomCommand(wikiEnvironment.moveDraft, { reportFailure: false });
   const setStatus = useAtomCommand(wikiEnvironment.setChangeRequestStatus, {
@@ -113,14 +116,14 @@ export function WikiDraftSheet(props: DraftActions & { readonly onClose: () => v
         keyboardShouldPersistTaps="handled"
       >
         <Text className="text-sm text-foreground-muted">
-          Your edits save here by themselves. Main changes only when a change request merges.
+          {`Your edits save here by themselves. Main changes only when a ${terms.singular} merges.`}
         </Text>
         {conflict ? <Text className="text-sm text-foreground-muted">{conflict}</Text> : null}
 
         <View className="gap-1.5">
           <Text className="px-4 text-xs text-foreground-muted">Title</Text>
           <TextInput
-            accessibilityLabel="Change request title"
+            accessibilityLabel={`${terms.Singular} title`}
             value={title}
             onChangeText={setTitle}
             maxLength={200}
@@ -128,7 +131,7 @@ export function WikiDraftSheet(props: DraftActions & { readonly onClose: () => v
           />
         </View>
         <Button
-          label="Make it a change request"
+          label={`Make it a ${terms.singular}`}
           tone="primary"
           fullWidth
           loading={busy}

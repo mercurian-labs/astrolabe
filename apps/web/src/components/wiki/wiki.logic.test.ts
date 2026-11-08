@@ -63,13 +63,15 @@ describe("mergeBlockedReason", () => {
 
 describe("mergeConflictAdvice", () => {
   it("sends a canvas to its worktree, because an amendment can't write one", () => {
-    expect(mergeConflictAdvice(["A.md"], "computer")).toContain("Amend");
-    expect(mergeConflictAdvice([], "computer")).toContain("Amend");
-    const canvas = mergeConflictAdvice(["A.md", "Board.canvas"], "computer");
+    expect(mergeConflictAdvice(["A.md"], "computer", "pull request")).toContain("Amend");
+    expect(mergeConflictAdvice([], "computer", "pull request")).toContain("Amend");
+    const canvas = mergeConflictAdvice(["A.md", "Board.canvas"], "computer", "pull request");
     expect(canvas).toContain("worktree");
     expect(canvas).not.toContain("Amend");
-    expect(mergeConflictAdvice(["Board.canvas"], "phone")).toContain("from the phone");
-    expect(mergeConflictAdvice(["A.md"], "phone")).toContain("Amend");
+    expect(mergeConflictAdvice(["Board.canvas"], "phone", "pull request")).toContain(
+      "from the phone",
+    );
+    expect(mergeConflictAdvice(["A.md"], "phone", "pull request")).toContain("Amend");
   });
 });
 

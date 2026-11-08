@@ -85,7 +85,7 @@ function PlaceForm({
       }}
     >
       <p className="text-xs text-muted-foreground">
-        It goes to a change request on a wiki. Main changes only when someone merges it.
+        It goes to a wiki for review. Main changes only when someone merges it.
       </p>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor={`${id}-wiki`}>Wiki</Label>

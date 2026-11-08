@@ -1,5 +1,5 @@
 import { reviewCanvasFiles } from "@mercurian/wiki/canvas";
-import { documentTitle } from "@t3tools/client-runtime/wikiLogic";
+import { documentTitle, wikiTerms } from "@t3tools/client-runtime/wikiLogic";
 import type { EnvironmentId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
 import type { StaticScreenProps } from "@react-navigation/native";
 import { useMemo } from "react";
@@ -22,6 +22,8 @@ export function WikiCanvasReviewRouteScreen({ route }: StaticScreenProps<WikiCan
   const detail = useEnvironmentQuery(
     wikiEnvironment.changeRequest({ environmentId, input: { wikiId, changeRequestId } }),
   );
+  const wikis = useEnvironmentQuery(wikiEnvironment.list({ environmentId, input: {} }));
+  const terms = wikiTerms(wikis.data?.wikis.find((entry) => entry.wikiId === wikiId));
   const change = detail.data?.files.find((file) => file.file === name);
   const before = change?.before ?? null;
   const after = change?.after ?? null;
@@ -44,7 +46,7 @@ export function WikiCanvasReviewRouteScreen({ route }: StaticScreenProps<WikiCan
               detail.error ??
               (review !== null && "invalid" in review
                 ? `${review.invalid} Open it on a computer to see the JSON.`
-                : "This change request no longer changes it.")
+                : `This ${terms.singular} no longer changes it.`)
             }
           />
         )}

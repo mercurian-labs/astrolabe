@@ -1348,7 +1348,14 @@ function OpenCommandPaletteDialog(props: {
     actionItems.push({
       kind: "action",
       value: "action:wiki-open-draft",
-      searchTerms: ["draft", "open draft", "make change request", "move draft", "discard draft"],
+      searchTerms: [
+        "draft",
+        "open draft",
+        "make pull request",
+        "make merge request",
+        "move draft",
+        "discard draft",
+      ],
       title: "Wiki: Open your draft",
       icon: <FilePenLineIcon className={ITEM_ICON_CLASS} />,
       run: async () => showChangeRequestTab(draftTab, "new-tab"),

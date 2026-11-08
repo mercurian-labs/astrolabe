@@ -31,7 +31,7 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { Spinner } from "../ui/spinner";
 import { mergeBlockedReason } from "./wiki.logic";
 import { useChangeRequestTurn } from "./wikiAutosave";
-import { useWikiCommand } from "./wikiEnvironment";
+import { useWikiCommand, useWikiTerms } from "./wikiEnvironment";
 
 interface DraftActionsInput {
   readonly environmentId: EnvironmentId;
@@ -115,6 +115,7 @@ export function WikiDraftPill({
 }) {
   const { environmentId, draft } = input;
   const actions = useWikiDraftActions(input);
+  const terms = useWikiTerms(environmentId, draft.wikiId);
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -128,7 +129,7 @@ export function WikiDraftPill({
           <MenuItem onClick={onOpen}>Open draft</MenuItem>
           <MenuSeparator />
           <MenuItem disabled={!actions.canAct} onClick={actions.promote}>
-            Make it a change request…
+            {`Make it a ${terms.singular}…`}
           </MenuItem>
           <MenuItem disabled={!actions.canAct} onClick={actions.move}>
             Move to another one…
@@ -177,6 +178,7 @@ function PromoteDraftDialog({
   readonly onLanded: (changeRequestId: WikiChangeRequestId) => void;
 }) {
   const id = useId();
+  const terms = useWikiTerms(environmentId, draft.wikiId);
   const [title, setTitle] = useState(draft.title);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -212,9 +214,9 @@ function PromoteDraftDialog({
           }}
         >
           <DialogHeader>
-            <DialogTitle>Make it a change request</DialogTitle>
+            <DialogTitle>{`Make it a ${terms.singular}`}</DialogTitle>
             <DialogDescription>
-              Your draft becomes a change request you can merge. Main changes only when it does.
+              {`Your draft becomes a ${terms.singular} you can merge. Main changes only when it does.`}
             </DialogDescription>
           </DialogHeader>
           <DialogPanel>
@@ -237,7 +239,7 @@ function PromoteDraftDialog({
             </Button>
             <Button type="submit" disabled={!canSubmit}>
               {busy ? <Spinner /> : null}
-              Make it a change request
+              {`Make it a ${terms.singular}`}
             </Button>
           </DialogFooter>
         </form>
@@ -276,6 +278,7 @@ function MoveDraftDialog({
   readonly onLanded?: (changeRequestId: WikiChangeRequestId, files: ReadonlyArray<string>) => void;
 }) {
   const id = useId();
+  const terms = useWikiTerms(environmentId, draft.wikiId);
   const files = changeRequestFiles(draft);
   const [target, setTarget] = useState<WikiChangeRequestId | null>(null);
   const [picked, setPicked] = useState<ReadonlySet<string>>(() => new Set(files));
@@ -315,7 +318,7 @@ function MoveDraftDialog({
           }}
         >
           <DialogHeader>
-            <DialogTitle>Move to another change request</DialogTitle>
+            <DialogTitle>{`Move to another ${terms.singular}`}</DialogTitle>
             <DialogDescription>
               The documents you pick join it as one amendment and leave your draft.
             </DialogDescription>
@@ -323,10 +326,10 @@ function MoveDraftDialog({
           <DialogPanel>
             <div className="flex flex-col gap-4">
               {targets.length === 0 ? (
-                <DraftError message="No other change request is open on this wiki." />
+                <DraftError message={`No other ${terms.singular} is open on this wiki.`} />
               ) : (
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor={`${id}-target`}>Change request</Label>
+                  <Label htmlFor={`${id}-target`}>{terms.Singular}</Label>
                   <Select
                     value={target}
                     items={Object.fromEntries(

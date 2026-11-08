@@ -355,7 +355,9 @@ export function WikiChangeRequestRouteScreen({
             }
           />
         ) : null}
-        {open && hostProjectId === null ? <MergePreview preview={mergePreview} /> : null}
+        {open && hostProjectId === null ? (
+          <MergePreview preview={mergePreview} noun={terms.singular} />
+        ) : null}
         {errors.length > 0 ? (
           <Card>
             <Text className="text-sm font-t3-medium text-foreground">
@@ -510,7 +512,13 @@ function Card(props: { readonly children: ReactNode }) {
   return <View className="gap-1.5 rounded-[20px] bg-grouped-card px-4 py-3">{props.children}</View>;
 }
 
-function MergePreview({ preview }: { readonly preview: WikiMergePreview }) {
+function MergePreview({
+  preview,
+  noun,
+}: {
+  readonly preview: WikiMergePreview;
+  readonly noun: string;
+}) {
   return (
     <Card>
       <Text className="text-sm font-t3-medium text-foreground">
@@ -522,7 +530,7 @@ function MergePreview({ preview }: { readonly preview: WikiMergePreview }) {
       </Text>
       {preview.status === "conflict" ? (
         <Text className="text-sm text-foreground-muted">
-          {mergeConflictAdvice(preview.conflicts, "phone")}
+          {mergeConflictAdvice(preview.conflicts, "phone", noun)}
         </Text>
       ) : null}
       {preview.canvases.map(({ file, notes }) => (

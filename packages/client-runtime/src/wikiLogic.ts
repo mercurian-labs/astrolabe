@@ -341,16 +341,16 @@ export function mergeBlockedReason(input: {
 export function mergeConflictAdvice(
   conflicts: ReadonlyArray<string>,
   from: "computer" | "phone",
+  noun: string,
 ): string {
-  if (conflicts.length === 0)
-    return "Amend this change request to settle the conflict, then merge.";
+  if (conflicts.length === 0) return `Amend this ${noun} to settle the conflict, then merge.`;
   const both = `Edited on both sides: ${conflicts.join(", ")}.`;
   if (!conflicts.some(isCanvasName)) {
-    return `${both} Amend this change request to settle them, then merge.`;
+    return `${both} Amend this ${noun} to settle them, then merge.`;
   }
   return from === "phone"
-    ? `${both} A canvas can't be settled from the phone. On a computer, edit it in this change request's worktree so the clashing cards agree with main, and save the edits to the change request.`
-    : `${both} A canvas is settled in this change request's worktree: edit it there, in Obsidian or any editor, so the clashing cards agree with main, then use Save edits to the change request and merge.`;
+    ? `${both} A canvas can't be settled from the phone. On a computer, edit it in this ${noun}'s worktree so the clashing cards agree with main, and save the edits to the ${noun}.`
+    : `${both} A canvas is settled in this ${noun}'s worktree: edit it there, in Obsidian or any editor, so the clashing cards agree with main, then use Save edits to the ${noun} and merge.`;
 }
 
 /** A standing index error in plain words. */

@@ -189,7 +189,7 @@ export function KeepCanvasSheet(props: {
     return (
       <>
         <Text className="text-sm text-foreground-muted">
-          It goes to a change request on a wiki. Main changes only when someone merges it.
+          It goes to a wiki for review. Main changes only when someone merges it.
         </Text>
         <View className="overflow-hidden rounded-[20px] bg-grouped-card">
           {wikis.map((wiki, index) => (
