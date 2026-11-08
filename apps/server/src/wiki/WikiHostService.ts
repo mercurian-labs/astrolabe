@@ -130,8 +130,12 @@ type Job =
 
 const isWikiError = Schema.is(WikiError);
 
+// A draft is the person's own until it's made a pull request, so it never goes to the host.
 const hasUnpublishedAmendments = (entry: WikiChangeRequest) =>
-  entry.status === "open" && entry.amendments.length > 0 && entry.pushedHead !== entry.head;
+  entry.status === "open" &&
+  !entry.draft &&
+  entry.amendments.length > 0 &&
+  entry.pushedHead !== entry.head;
 
 const hostError = (message: string) => (cause: unknown) =>
   isWikiError(cause) ? cause : new WikiError({ reason: "git-failed", message, cause });
@@ -266,6 +270,12 @@ const make = Effect.gen(function* () {
     function* (input) {
       const wiki = yield* wikis.get(input.wikiId);
       const host = yield* hostOf(wiki);
+      if ((yield* wikis.changeRequest(input)).draft) {
+        return yield* new WikiError({
+          reason: "invalid",
+          message: `A draft stays here. Make it a ${wikiTerms(wiki).singular} to publish it.`,
+        });
+      }
       // A reviewer's commit on the host and an amendment here: bring them together, then push.
       const pushed = yield* wikis.pushChangeRequest(input).pipe(
         Effect.catchIf(
@@ -606,7 +616,7 @@ const make = Effect.gen(function* () {
     changeRequestId: WikiChangeRequestId,
   ) {
     const entry = yield* wikis.changeRequest({ wikiId, changeRequestId });
-    if (entry.status !== "open") return;
+    if (entry.status !== "open" || entry.draft) return;
     if (entry.amendments.at(-1)?.actor !== WikiService.person.actor) return;
     yield* publishQuietly(wikiId, entry);
   });
@@ -702,7 +712,9 @@ const make = Effect.gen(function* () {
     wikis.subscribe.pipe(
       Stream.runForEach((event) => {
         const { changeRequestId, wikiId } = event;
-        if (event.kind !== "amended" || changeRequestId === null) return Effect.void;
+        // A draft made a pull request reads as a status change.
+        if (event.kind !== "amended" && event.kind !== "status") return Effect.void;
+        if (changeRequestId === null) return Effect.void;
         return wikis.hosted.pipe(
           Effect.flatMap((hosted) =>
             hosted.includes(wikiId)

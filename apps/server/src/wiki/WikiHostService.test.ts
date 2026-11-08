@@ -414,6 +414,43 @@ it.effect("a person's edit publishes on its own; an agent's waits for its turn t
   ),
 );
 
+it.effect("a draft stays off the host until it's made a pull request", () =>
+  withFixture(({ host, hosts, wikiId, wikis }) =>
+    Effect.gen(function* () {
+      const saved = yield* wikis.autosave(
+        {
+          wikiId,
+          document: "Draft.md",
+          write: { kind: "text", file: "Draft.md", text: "# Draft\n" },
+        },
+        WikiService.person,
+      );
+      const draft = saved.changeRequest!;
+      assert.isTrue(draft.draft);
+      const refused = yield* Effect.flip(
+        hosts.publish({ wikiId, changeRequestId: draft.changeRequestId }),
+      );
+      assert.equal(refused.reason, "invalid");
+
+      // Publishes run in order, so the first to open shows whether the draft's save opened one.
+      const edit = yield* wikis.amend(
+        { wikiId, message: "By hand", changes: { "Hand.md": "# Hand\n" } },
+        WikiService.person,
+      );
+      const first = yield* Queue.take(host.opened);
+      assert.equal(first.head, `cr/${edit.changeRequest.changeRequestId}`);
+
+      yield* wikis.draftPromote(
+        { wikiId, changeRequestId: draft.changeRequestId, title: "Launch notes" },
+        WikiService.person,
+      );
+      const promoted = yield* Queue.take(host.opened);
+      assert.equal(promoted.head, `cr/${draft.changeRequestId}`);
+      assert.lengthOf(host.pulls, 2);
+    }),
+  ),
+);
+
 it.effect("a change request with nothing in it opens no pull request", () =>
   withFixture(({ host, hosts, wikiId, wikis }) =>
     Effect.gen(function* () {

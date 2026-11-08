@@ -425,6 +425,7 @@ export function summarizeHost(
 /** Whether a change request holds work the host has not received. */
 export const hasUnpublishedWork = (changeRequest: WikiChangeRequest): boolean =>
   changeRequest.status === "open" &&
+  !changeRequest.draft &&
   changeRequest.amendments.length > 0 &&
   changeRequest.pushedHead !== changeRequest.head;
 
