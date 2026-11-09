@@ -1,5 +1,10 @@
 import { useAtomValue } from "@effect/atom-react";
-import { AuthRelayReadScope, AuthRelayWriteScope, type AuthSessionState } from "@t3tools/contracts";
+import {
+  AuthRelayReadScope,
+  AuthRelayWriteScope,
+  type AuthSessionState,
+  managedCapabilityDenial,
+} from "@t3tools/contracts";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { useState } from "react";
 
@@ -18,6 +23,7 @@ import {
   usePrimaryEnvironment,
   usePrimaryEnvironmentId,
 } from "~/state/environments";
+import { usePrimaryManagedPolicy } from "~/state/managedPolicy";
 import { environmentSession, readEnvironmentScope, useEnvironmentScope } from "~/state/session";
 import {
   type T3ConnectAccountPageUrl,
@@ -62,7 +68,10 @@ function ConfiguredConnectOnboardingDialog() {
   );
   const canReadRelay = useEnvironmentScope(primaryEnvironmentId, AuthRelayReadScope);
   const canWriteRelay = useEnvironmentScope(primaryEnvironmentId, AuthRelayWriteScope);
-  const canManageRelay = canReadRelay && canWriteRelay;
+  // A policy that turns Connect off leaves nothing to publish; reaching other devices still works.
+  const connectAllowed =
+    managedCapabilityDenial(usePrimaryManagedPolicy(), "connect") === undefined;
+  const canManageRelay = canReadRelay && canWriteRelay && connectAllowed;
   const sessionScopesKnown =
     primaryEnvironmentId === null ? environmentsReady : primarySessionState._tag !== "Initial";
 

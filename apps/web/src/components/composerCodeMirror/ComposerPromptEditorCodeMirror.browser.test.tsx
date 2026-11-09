@@ -101,7 +101,7 @@ it("keeps focus and the caret inside dollar text that is not a skill across text
 
 it("shows a skill chip only while the provider offers the skill, with its description", async () => {
   const initial = { a: "run $babysit now", b: "" };
-  const chip = () => page.getByRole("button", { name: "Skill Babysit. Show details" });
+  const chip = () => page.getByRole("button", { name: "Skill babysit. Show details" });
   await using screen = await render(
     <Composer initial={initial} skills={[{ ...babysit, enabled: false }]} />,
   );

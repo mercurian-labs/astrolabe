@@ -143,10 +143,7 @@ export class WorkspaceSearchIndex extends Context.Service<
     readonly searchContents: (
       input: IndexedContentSearchInput,
     ) => Effect.Effect<IndexedContentSearchResult, WorkspaceSearchIndexSearchFailed>;
-    readonly refresh: () => Effect.Effect<
-      void,
-      WorkspaceSearchIndexRefreshFailed | WorkspaceSearchIndexScanTimedOut
-    >;
+    readonly refresh: () => Effect.Effect<void, WorkspaceSearchIndexRefreshFailed>;
   }
 >()("t3/workspace/WorkspaceSearchIndex") {}
 
@@ -449,6 +446,8 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
         reason: result.error,
       });
     }
+    // A rescan that outlasts the wait keeps running, and the finder answers
+    // from its previous index until it finishes, so the index stays usable.
     yield* waitForIndexReady(
       cwd,
       finder,
@@ -458,7 +457,7 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
           reason,
           cause,
         }),
-    );
+    ).pipe(Effect.catchTags({ WorkspaceSearchIndexScanTimedOut: () => Effect.void }));
   });
 
   const list: WorkspaceSearchIndex["Service"]["list"] = Effect.fn("WorkspaceSearchIndex.list")(
@@ -515,7 +514,8 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
     const matchRanges = mapContentMatchRanges(match.lineContent, match.matchRanges).filter(
       (range) => !input.wholeWord || isWholeWordRange(match.lineContent, range),
     );
-    if (matchRanges.length === 0) return null;
+    // fff reports hits past its 512-char lineContent cap with no ranges, so whole words can't be verified there.
+    if (input.wholeWord && matchRanges.length === 0) return null;
     return {
       path,
       lineNumber: match.lineNumber,

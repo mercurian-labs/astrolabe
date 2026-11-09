@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import { serializeCanvas } from "@mercurian/wiki";
@@ -66,7 +67,7 @@ const layer = (baseDir: string) =>
     Layer.provideMerge(SqlitePersistence.layerMemory),
     Layer.provideMerge(ServerSettings.layerTest()),
     Layer.provideMerge(ServerConfig.layerTest(baseDir, baseDir)),
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
   );
 
 interface Harness {
@@ -101,7 +102,7 @@ const withWikis = <A, E>(
           Effect.orDie,
         );
     return yield* body({ baseDir, folder }).pipe(Effect.provide(layer(baseDir)));
-  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer));
+  }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)));
 
 const git = (cwd: string, args: ReadonlyArray<string>, stdin?: string) =>
   ProcessRunner.ProcessRunner.pipe(

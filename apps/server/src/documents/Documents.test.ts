@@ -1,5 +1,6 @@
 import { getSyncedVersion, receiveUpdates, sendableUpdates, collab } from "@codemirror/collab";
 import { ChangeSet, EditorState, type ChangeSpec } from "@codemirror/state";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
 import type { DocumentError, DocumentStreamItem, DocumentTarget } from "@t3tools/contracts";
@@ -40,7 +41,7 @@ const layerTest = Documents.layer.pipe(
   Layer.provideMerge(WorkspacePaths.layer),
   Layer.provide(VcsDriverRegistry.layer.pipe(Layer.provide(VcsProcess.layer))),
   Layer.provide(ServerConfig.ServerConfig.layerTest(process.cwd(), { prefix: "t3-documents-" })),
-  Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
 );
 
 const RELATIVE_PATH = "src/notes.txt";

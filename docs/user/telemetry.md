@@ -11,6 +11,9 @@ environment before starting it. Relay tracing also stops when `ASTROLABE_OTEL_SD
 `OTEL_SDK_DISABLED` turns OpenTelemetry export off. The web app in a browser, including one the
 `astrolabe` CLI opens, does not read these variables.
 
+An administrator can turn relay tracing off for every user on a machine with
+a [managed policy](./managed-policy.md#other-capabilities).
+
 The desktop app reads `ASTROLABE_TELEMETRY_ENABLED` from your shell profile (for example `~/.zshrc`) on macOS and
 Linux, so export it there and restart the app. On Windows, set it as a user environment variable.
 

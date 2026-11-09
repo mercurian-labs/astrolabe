@@ -1,5 +1,5 @@
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
@@ -84,7 +84,7 @@ const make = Effect.gen(function* () {
   const statusBroadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
   const threadManagement = yield* ThreadManagement.ThreadManagementService;
   const sql = yield* SqlClient.SqlClient;
-  const crypto = yield* Crypto.Crypto;
+  const digest = yield* Digest.Digest;
 
   const failure = (input: VcsBaseTextInput, detail: string) => (cause: unknown) =>
     new VcsBaseTextError({ cwd: input.cwd, path: input.path, detail, cause });
@@ -142,7 +142,7 @@ const make = Effect.gen(function* () {
     const ref = yield* checkpointRefForScopeOrdinal({
       scopeId: CheckpointScopeId.make(scopeId),
       ordinalWithinScope: Math.max(0, ordinal - 1),
-    }).pipe(Effect.provideService(Crypto.Crypto, crypto));
+    }).pipe(Effect.provideService(Digest.Digest, digest));
     const result = yield* runGit(input, "startBlobId", ["ls-tree", ref, "--", `./${input.path}`]);
     // The checkpoint was never captured, or was deleted.
     if (result.exitCode !== 0) return undefined;

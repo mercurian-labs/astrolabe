@@ -27,10 +27,10 @@ import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import { OrchestrationEffectRequestV2 } from "./EffectOutbox.ts";
 import * as EventSink from "./EventSink.ts";
 import * as EventStore from "./EventStore.ts";
-import * as ProjectionMaintenance from "./ProjectionMaintenance.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import { DELETED_THREAD_TITLE, planThreadDeletion } from "./ThreadDeletion.ts";
 import * as ThreadPurge from "./ThreadPurge.ts";
+import * as ProjectionReplay from "./testkit/ProjectionReplay.ts";
 
 type DeletedRefs = Array<ReadonlyArray<CheckpointRef>>;
 
@@ -61,7 +61,7 @@ function layerTest(deletedRefs: DeletedRefs, options: { readonly gitFails?: bool
   return Layer.mergeAll(
     stores,
     EventSink.layer.pipe(Layer.provide(stores)),
-    ProjectionMaintenance.layer.pipe(Layer.provide(stores)),
+    ProjectionReplay.layer.pipe(Layer.provide(stores)),
     ThreadPurge.layer.pipe(Layer.provide(stores), Layer.provide(checkpointStore)),
     IdAllocator.layer,
   ).pipe(
@@ -245,7 +245,7 @@ it.effect("leaves a content-free tombstone and every other thread untouched", ()
     const sql = yield* SqlClient.SqlClient;
     const sink = yield* EventSink.EventSinkV2;
     const projections = yield* ProjectionStore.ProjectionStoreV2;
-    const maintenance = yield* ProjectionMaintenance.ProjectionMaintenanceV2;
+    const maintenance = yield* ProjectionReplay.ProjectionReplay;
     const deletedId = ThreadId.make("thread:purge-deleted");
     const keptId = ThreadId.make("thread:purge-kept");
     yield* sink.write({
@@ -534,7 +534,7 @@ it.effect("sweeps up deletions an older build only hid, staggered, and revives f
     const sql = yield* SqlClient.SqlClient;
     const sink = yield* EventSink.EventSinkV2;
     const projections = yield* ProjectionStore.ProjectionStoreV2;
-    const maintenance = yield* ProjectionMaintenance.ProjectionMaintenanceV2;
+    const maintenance = yield* ProjectionReplay.ProjectionReplay;
     const purges = yield* ThreadPurge.ThreadPurge;
     const hiddenId = ThreadId.make("thread:purge-hidden");
     const importedId = ThreadId.make("thread:purge-imported-deleted");

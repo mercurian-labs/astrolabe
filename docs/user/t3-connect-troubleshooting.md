@@ -103,8 +103,8 @@ Fix:
 
 ## Sign-in, account, or link problems
 
-Remote access does not have an active link between your Astrolabe account and
-the host.
+This device's remote access sign-in is not ready yet, or remote access does not
+have an active link between your Astrolabe account and the host.
 
 - **The host is linked to a different account.** Sign in to the same Astrolabe
   account on this device and on the host. On the host, run `astrolabe connect logout`,
@@ -112,10 +112,14 @@ the host.
 - **Remote access is off on the host, or the host only publishes agent activity.**
   On the host, open **Settings > Sharing & access** and turn **Remote access** on, or
   run `astrolabe connect`.
-- **The host was linked, but the server did not apply the link yet.** Run
-  `astrolabe service restart` on the host, or restart `astrolabe serve`.
+- **The host was linked, but the server did not apply the link yet.** Restart
+  the server on the host: quit and reopen the Astrolabe desktop app, run
+  `astrolabe service restart`, or stop `astrolabe serve` and run it again.
 - **This device's sign-in expired, or the host no longer accepts this
   device.** Sign out of your Astrolabe account and sign in again.
+- **This device is still loading its remote access sign-in.** Wait a moment;
+  Astrolabe retries on its own. If it keeps waiting, reload or restart Astrolabe on
+  this device.
 - **Your account reached its tunnel limit.** Remove an environment you do not
   use from your account menu's **Remote access** page, then restart Astrolabe on the host.
 
@@ -153,3 +157,7 @@ If none of this helps, report it to the Astrolabe team. Include:
 - The text from **Copy diagnostics** in the environment's **Details**.
 - The output of `astrolabe connect status` on the host.
 - The trace ID, if one is shown.
+- If the tunnel dropped earlier, the host's tunnel log, `relay-client.ndjson`
+  in the logs folder (`~/.astrolabe/userdata/logs` by default). It records when the
+  tunnel connected, warned, exited, and restarted, with the tunnel token
+  removed.

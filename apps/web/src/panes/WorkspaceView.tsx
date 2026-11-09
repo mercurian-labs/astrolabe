@@ -4,7 +4,7 @@ import { Navigate, useNavigate } from "@tanstack/react-router";
 import { Activity, memo, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { chatRouteOf, ChatTabWatch } from "~/chatTabs/chatTabLabel";
+import { chatRouteOf, ChatTabWatch, useChatTagFilter } from "~/chatTabs/chatTabLabel";
 import { isCommandPaletteOpen } from "~/commandPaletteBus";
 import { registerThreadTabDrop } from "~/chatTabs/threadTabDrop";
 import { BackgroundThreadContext } from "~/components/chat/backgroundThread";
@@ -318,7 +318,14 @@ function WorkspaceTabContents() {
       {keys.flatMap((key) =>
         parseChatTabKey(key) === null
           ? []
-          : [<ChatTabWatch key={key} chatKey={key} onGone={closeGoneChat} />],
+          : [
+              <ChatTabWatch
+                key={key}
+                chatKey={key}
+                onGone={closeGoneChat}
+                onHidden={workspace.close}
+              />,
+            ],
       )}
     </>
   );
@@ -338,7 +345,7 @@ const TabContent = memo(function TabContent({
     <PaneTabKeyContext value={tabKey}>
       {chat !== null ? (
         <ChatOwnerContext value={tabKey}>
-          <PaneChat threadRef={chat} />
+          <FilteredPaneChat threadRef={chat} />
         </ChatOwnerContext>
       ) : repository !== null ? (
         <RepositoryTabView tabKey={tabKey} tab={repository} />
@@ -348,6 +355,11 @@ const TabContent = memo(function TabContent({
     </PaneTabKeyContext>
   );
 });
+
+/** A chat the tag filter hides never mounts; `ChatTabWatch` closes its tab. */
+function FilteredPaneChat({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
+  return useChatTagFilter(threadRef) === "visible" ? <PaneChat threadRef={threadRef} /> : null;
+}
 
 const closeGoneChat = (chatKey: string) => {
   const ref = parseChatTabKey(chatKey);
