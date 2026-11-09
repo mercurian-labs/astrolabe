@@ -27,7 +27,7 @@ const expectClear = (result: ReturnType<typeof resolve>) => {
 
 describe("chat canvas layout", () => {
   it("does not enlarge the preview when its right edge is dragged inward", () => {
-    for (const height of [300, 400, 600, 900]) {
+    for (const height of [300 + bar, 400, 600, 900]) {
       for (const x of [12, 200, 500, 700]) {
         const start = resolve(1000, { ...preview, position: { x, y: 500 } }, height).frame!;
         const resized = resizePreviewMiniPlayer({
