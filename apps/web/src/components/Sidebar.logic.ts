@@ -23,6 +23,7 @@ import {
   type EnvironmentId,
   type ThreadId,
 } from "@t3tools/contracts";
+import { repositoryGroupingDisplayNameOf, type RepositoryIdentity } from "@t3tools/contracts";
 import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from "@t3tools/contracts/settings";
 import type { AsyncResult } from "effect/reactivity";
 import {
@@ -717,6 +718,19 @@ export function resolveThreadLastVisitedAt(
   // servers.
   if (serverLastVisitedAt === undefined) return localLastVisitedAt;
   return serverLastVisitedAt ?? undefined;
+}
+
+/** A row's project name: a group named after its repository drops the owner; a chosen title stays whole. */
+export function sidebarRowProjectName(group: {
+  readonly displayName: string;
+  readonly repositoryIdentity?: RepositoryIdentity | null | undefined;
+}): string {
+  const repositoryName = group.repositoryIdentity
+    ? repositoryGroupingDisplayNameOf(group.repositoryIdentity)
+    : undefined;
+  return group.displayName === repositoryName
+    ? group.displayName.slice(group.displayName.lastIndexOf("/") + 1)
+    : group.displayName;
 }
 
 export function hasUnseenCompletion(thread: ThreadStatusInput): boolean {
