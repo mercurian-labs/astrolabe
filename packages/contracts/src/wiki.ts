@@ -102,6 +102,14 @@ export const wikiAgentGuidance = (names: ReadonlyArray<string>): string => {
   return `This repository is linked to the ${names.length === 1 ? "wiki" : "wikis"} ${list}, where its research and plans live. When a task involves research, planning, or building a feature, first search it with the astrolabe_wiki_* tools for what it already says. Write findings and plans there with astrolabe_wiki_amend, not as files in this repository.`;
 };
 
+/** What a thread's agent is told, after its message, about the wikis its repository is linked to. */
+export const linkedWikiAgentNote = (names: ReadonlyArray<string>): string | null =>
+  names.length === 0
+    ? null
+    : `<astrolabe_wikis>
+${wikiAgentGuidance(names)}
+</astrolabe_wikis>`;
+
 const WikiSummaryFields = {
   wikiId: WikiId,
   name: TrimmedNonEmptyString,

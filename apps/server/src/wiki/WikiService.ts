@@ -97,7 +97,7 @@ import {
   type WikiTarget,
   type WikiTransform,
   type WikiTransformInput,
-  wikiAgentGuidance,
+  linkedWikiAgentNote,
   type SourceControlProviderKind,
 } from "@t3tools/contracts";
 import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
@@ -183,14 +183,6 @@ export interface WikiAuthor {
 
 /** The person at the keyboard, for changes made from the app. */
 export const person: WikiAuthor = { actor: "You", threadId: null };
-
-/** What a thread's agent is told about the wikis its repository is linked to. */
-const linkedWikiNote = (names: ReadonlyArray<string>): string | null =>
-  names.length === 0
-    ? null
-    : `<astrolabe_wikis>
-${wikiAgentGuidance(names)}
-</astrolabe_wikis>`;
 
 /**
  * Where a read comes from: a named change request's head, else the thread's own open change
@@ -3327,7 +3319,7 @@ const make = Effect.gen(function* () {
   const agentNote: WikiService["Service"]["agentNote"] = (projectId, linkedSince) =>
     loadRegistry.pipe(
       Effect.map((registry) =>
-        linkedWikiNote(
+        linkedWikiAgentNote(
           registry.wikis
             .filter((wiki) => {
               if (!wiki.projectIds.includes(projectId)) return false;

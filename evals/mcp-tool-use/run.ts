@@ -35,7 +35,12 @@ import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http";
 import { taskPrompt } from "../../apps/server/src/mcp/delegatedTaskModes.ts";
 import * as McpInvocationContext from "../../apps/server/src/mcp/McpInvocationContext.ts";
 import { advertisedJsonSchema } from "../../apps/server/src/mcp/advertisedJsonSchema.ts";
-import { EnvironmentId, ORCHESTRATOR_MCP_RUNNING_TASK_NEXT, ThreadId } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  linkedWikiAgentNote,
+  ORCHESTRATOR_MCP_RUNNING_TASK_NEXT,
+  ThreadId,
+} from "@t3tools/contracts";
 import { projectComposerContextForProvider } from "@t3tools/shared/composerContextReferences";
 import { formatThreadLink } from "@t3tools/shared/threadLinks";
 import { buildCodexAdditionalContext } from "../../apps/server/src/provider/CodexDeveloperInstructions.ts";
@@ -253,6 +258,13 @@ export const McpToolUseCase = Schema.Struct({
     /** Regexes on one part of a shell command. A match wins over the shell simulator. */
     shellMocks: Schema.optional(
       Schema.Array(Schema.Struct({ match: Schema.String, output: Schema.String })),
+    ),
+    /**
+     * Wikis linked to the thread's repository. T3 appends their note to `prompt`. `folder` is the
+     * checkout the agent reaches: the repository itself for a project wiki.
+     */
+    linkedWikis: Schema.optional(
+      Schema.Array(Schema.Struct({ name: Schema.String, folder: Schema.String })),
     ),
     /** The thread is a side chat's first turn: T3 puts the parent's digest ahead of `prompt`. */
     sideChat: Schema.optional(
@@ -882,10 +894,12 @@ export const buildMessages = (sample: Sample) => {
     }
     if (turn.text) push(turn.role, text(turn.text));
   }
-  const userText =
+  const composed =
     testCase.promptContext === undefined
       ? testCase.prompt
       : projectComposerContextForProvider({ text: testCase.prompt, ...testCase.promptContext });
+  const wikiNote = linkedWikiAgentNote((testCase.setup.linkedWikis ?? []).map((wiki) => wiki.name));
+  const userText = wikiNote === null ? composed : `${composed}\n\n${wikiNote}`;
   const sideChat = testCase.setup.sideChat;
   const prompt =
     sideChat === undefined
