@@ -1,4 +1,4 @@
-import { LSPPlugin } from "@codemirror/lsp-client";
+import { type LSPClient, LSPPlugin } from "@codemirror/lsp-client";
 import type { Extension } from "@codemirror/state";
 import { EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 
@@ -131,7 +131,8 @@ class Lenses {
   private drawPending = false;
   private destroyed = false;
   /** The params of each resolve under way, which is how lsp-client cancels one. */
-  private readonly resolving = new Set<object>();
+  /** Each with the client it went to: see `ServerAsk.sent` for why teardown can't look it up. */
+  private readonly resolving = new Map<object, LSPClient>();
 
   constructor(private readonly view: EditorView) {
     this.list = new ServerAsk(view);
@@ -196,7 +197,7 @@ class Lenses {
         ...entry.lens,
         range: { start: plugin.toPosition(entry.pos), end: plugin.toPosition(entry.end) },
       };
-      this.resolving.add(params);
+      this.resolving.set(params, plugin.client);
       plugin.client.request<ServerLens, ServerLens | null>("codeLens/resolve", params).then(
         (lens) => {
           this.resolving.delete(params);
@@ -216,8 +217,7 @@ class Lenses {
   }
 
   private cancelResolves() {
-    const client = LSPPlugin.get(this.view)?.client;
-    for (const params of this.resolving) client?.cancelRequest(params);
+    for (const [params, client] of this.resolving) client.cancelRequest(params);
     this.resolving.clear();
   }
 

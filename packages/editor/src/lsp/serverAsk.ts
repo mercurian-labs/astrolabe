@@ -1,4 +1,4 @@
-import { LSPPlugin, type WorkspaceMapping } from "@codemirror/lsp-client";
+import { type LSPClient, LSPPlugin, type WorkspaceMapping } from "@codemirror/lsp-client";
 import type { EditorView } from "@codemirror/view";
 
 /**
@@ -8,7 +8,9 @@ import type { EditorView } from "@codemirror/view";
  */
 export class ServerAsk {
   private timer: ReturnType<typeof setTimeout> | null = null;
-  private sent: object | null = null;
+  /** With the client it went to: `cancel` runs in plugin teardown, where asking the view for its
+   * LSPPlugin updates it early and CodeMirror then destroys it, closing the file on the server. */
+  private sent: { readonly params: object; readonly client: LSPClient } | null = null;
 
   constructor(private readonly view: EditorView) {}
 
@@ -30,12 +32,12 @@ export class ServerAsk {
   ) {
     const plugin = LSPPlugin.get(this.view);
     if (!plugin) return;
-    this.cancelSent(plugin);
+    this.cancelSent();
     plugin.client.sync();
-    const sent = params(plugin);
+    const sent = { params: params(plugin), client: plugin.client };
     this.sent = sent;
     void plugin.client.withMapping((mapping) =>
-      plugin.client.request<object, Answer>(method, sent).then(
+      plugin.client.request<object, Answer>(method, sent.params).then(
         (answer) => {
           if (this.sent !== sent) return;
           this.sent = null;
@@ -50,14 +52,14 @@ export class ServerAsk {
     );
   }
 
-  private cancelSent(plugin: LSPPlugin | null) {
-    if (this.sent !== null) plugin?.client.cancelRequest(this.sent);
+  private cancelSent() {
+    this.sent?.client.cancelRequest(this.sent.params);
     this.sent = null;
   }
 
   cancel() {
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = null;
-    this.cancelSent(LSPPlugin.get(this.view));
+    this.cancelSent();
   }
 }

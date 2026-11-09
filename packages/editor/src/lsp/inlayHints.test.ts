@@ -1,3 +1,4 @@
+import { Compartment, Prec } from "@codemirror/state";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { inlayHints } from "./inlayHints.ts";
@@ -146,6 +147,32 @@ describe("inlayHints", () => {
       );
       await vi.advanceTimersByTimeAsync(500);
       expect(hintRequests(editor)).toHaveLength(2);
+    } finally {
+      editor.view.destroy();
+      vi.useRealTimers();
+    }
+  });
+
+  it("draws again when turned off and back on, ahead of the LSP plugin", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const shown = new Compartment();
+    const hints = () => inlayHints({ types: true, parameters: true });
+    const editor = setup(TEXT, {
+      capabilities: { inlayHintProvider: true },
+      answer: (method) =>
+        method === "textDocument/inlayHint"
+          ? [{ position: at(0, 4), label: "left:", kind: 2 }]
+          : undefined,
+      // Ahead of the LSP plugin, as the app's settings-driven extensions are.
+      extensions: Prec.highest(shown.of(hints())),
+    });
+    try {
+      await editor.initialize();
+      await vi.advanceTimersByTimeAsync(500);
+      editor.view.dispatch({ effects: shown.reconfigure([]) });
+      editor.view.dispatch({ effects: shown.reconfigure(hints()) });
+      await vi.advanceTimersByTimeAsync(500);
+      expect(shownHints(editor.view)).toEqual(["left:"]);
     } finally {
       editor.view.destroy();
       vi.useRealTimers();
