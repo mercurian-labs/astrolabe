@@ -2236,11 +2236,16 @@ describe("LanguageServers with companions on a file", () => {
         reason: "Active: found eslint in package.json.",
       });
       yield* service.restart({ cwd: checkout.cwd, server: "typescript" });
+      yield* session.state("starting");
+      yield* session.state("ready");
       yield* statuses((list) => list.some((status) => status.server === "eslint"));
 
       // And its going lets the companion go.
       yield* checkout.write("package.json", "{}");
       yield* service.restart({ cwd: checkout.cwd, server: "typescript" });
+      // Ready, so the restarted fake has written its log before the checkout is removed.
+      yield* session.state("starting");
+      yield* session.state("ready");
       yield* statuses((list) => !list.some((status) => status.server === "eslint"));
     }).pipe(Effect.scoped, Effect.provide(layerFor({ specs: withBoth, idleTimeout: 0 }))),
   );
