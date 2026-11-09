@@ -254,6 +254,7 @@ import * as WikiService from "./wiki/WikiService.ts";
 import * as Documents from "./documents/Documents.ts";
 import { withUnsavedTexts } from "./documents/unsavedSearch.ts";
 import * as LanguageServers from "./languageServers/LanguageServers.ts";
+import { searchProjectSymbols } from "./languageServers/projectSymbols.ts";
 import * as ChangeGroupService from "./changeGroups/ChangeGroupService.ts";
 import * as ProjectWorktreeService from "./worktrees/ProjectWorktreeService.ts";
 import * as CodeIndex from "./codeIndex/CodeIndex.ts";
@@ -1447,13 +1448,25 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
       [WS_METHODS.documentsReplaceAll]: (input) => documents.replaceAll(input),
       [WS_METHODS.documentsUndoReplaceAll]: (input) => documents.undoReplaceAll(input),
       [WS_METHODS.languageServersSubscribe]: (_input) => languageServers.subscribe,
+      [WS_METHODS.languageServersCheck]: (input) => languageServers.check(input.cwd),
+      [WS_METHODS.languageServersProjectSymbols]: (input) =>
+        searchProjectSymbols(languageServers, codeIndex, input),
       [WS_METHODS.languageServersRestart]: (input) => languageServers.restart(input),
       [WS_METHODS.languageServersStop]: (input) => languageServers.stop(input),
-      [WS_METHODS.languageServersConfirmDownload]: (_input) => languageServers.confirmDownload,
+      [WS_METHODS.languageServersTrustProject]: (input) => languageServers.trustProject(input.cwd),
+      [WS_METHODS.languageServersRevokeProjectTrust]: (input) =>
+        languageServers.revokeProjectTrust(input.cwd),
+      [WS_METHODS.languageServersLogs]: (input) => languageServers.logs(input),
+      [WS_METHODS.languageServersSetTrace]: (input) => languageServers.setTrace(input),
       [WS_METHODS.languageServersSession]: (input) => languageServers.session(input),
       [WS_METHODS.languageServersSend]: (input) => languageServers.send(input),
       [WS_METHODS.languageServersUndoEdit]: (input) => languageServers.undoEdit(input),
       [WS_METHODS.languageServersProblems]: (input) => languageServers.problems(input.cwd),
+      [WS_METHODS.languageServersRoutes]: (input) => languageServers.routes(input.cwd),
+      [WS_METHODS.languageServersToolchains]: (input) => languageServers.toolchains(input.cwd),
+      [WS_METHODS.languageServersRunContext]: (input) => languageServers.runContext(input),
+      [WS_METHODS.languageServersSettings]: (input) => languageServers.settings(input.cwd),
+      [WS_METHODS.languageServersUpdateSettings]: (input) => languageServers.updateSettings(input),
     });
   }),
 );

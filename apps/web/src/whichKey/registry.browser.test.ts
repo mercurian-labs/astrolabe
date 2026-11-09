@@ -10,6 +10,7 @@ import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   type EnvironmentId,
   type KeybindingCommand,
+  type LanguageServerStatus,
   type ResolvedKeybindingTrigger,
   ThreadId,
 } from "@t3tools/contracts";
@@ -23,6 +24,14 @@ import { useMaximizedPaneStore } from "~/panes/maximize";
 import type { PaneArrangementSnapshot, PaneTabs } from "~/panes/panesHost";
 import { leaves } from "~/panes/tree";
 import { diffBaseControl, type FileDiffBase } from "~/components/repositories/fileDiffBase";
+import {
+  languageServerFile,
+  registerLanguageServerFile,
+  restartLanguageServer,
+  stopLanguageServer,
+  trustLanguageServerProject,
+  type LanguageServerFile,
+} from "~/components/repositories/languageServerFile";
 import { chatTabKey } from "~/sectionTabs/sectionTabs";
 import { appCommand, cycleKey, fullScreenState, type AppCommandContext } from "./commands";
 import type { PanesHandle } from "./handles";
@@ -35,6 +44,14 @@ import {
   type WhichKeyGroup,
 } from "./menu";
 import { whichKeyRoot } from "./registry";
+
+vi.mock(import("~/components/repositories/languageServerFile"), async (original) => ({
+  ...(await original()),
+  canMaintainLanguageServers: () => true,
+  restartLanguageServer: vi.fn(),
+  stopLanguageServer: vi.fn(),
+  trustLanguageServerProject: vi.fn(),
+}));
 
 const stops: Array<() => void> = [];
 /** Undoes, as a test ends, a maximized pane and the handles it registered. */
@@ -481,6 +498,103 @@ describe("a code file's changes from the keyboard menu", () => {
   });
 });
 
+describe("a language server's commands", () => {
+  const status = (patch: Partial<LanguageServerStatus>): LanguageServerStatus => ({
+    cwd: "/tmp/app",
+    server: "typescript",
+    name: "TypeScript 7.0.2",
+    state: "ready",
+    source: "path",
+    restricted: false,
+    message: null,
+    memoryBytes: null,
+    ...patch,
+  });
+  const fileWith = (patch: Partial<LanguageServerStatus>): LanguageServerFile => ({
+    environmentId: "env" as EnvironmentId,
+    cwd: "/tmp/app",
+    server: "typescript",
+    toolchain: null,
+    status: () => status(patch),
+    openLogs: vi.fn(),
+    openSettings: vi.fn(),
+  });
+  function editorOn(file: LanguageServerFile) {
+    const view = new EditorView({
+      parent: document.body,
+      state: EditorState.create({ extensions: languageServerFile.of(file) }),
+    });
+    stops.push(() => view.destroy());
+    return view;
+  }
+  const keyIn = (view: EditorView) => ({ element: view.contentDOM, view: null, write: null });
+  const from = (file: LanguageServerFile) => context().actingFrom(keyIn(editorOn(file)));
+
+  it("say so where no server serves the file", () => {
+    using _cleanup = cleanup();
+    for (const command of [
+      "lsp.restartServer",
+      "lsp.stopServer",
+      "lsp.trustProject",
+      "lsp.checkServers",
+      "lsp.viewLogs",
+    ] as const) {
+      expect(appCommand(command, context().actingFrom(null))).toMatchObject({
+        label: "No language server here",
+        disabled: true,
+      });
+    }
+  });
+
+  it("offer only what can move the server on, and Restart comes back after Stop", async () => {
+    using _cleanup = cleanup();
+    const ready = from(fileWith({}));
+    expect(appCommand("lsp.stopServer", ready).disabled).toBe(false);
+    expect(appCommand("lsp.trustProject", ready).disabled).toBe(true);
+
+    const stopped = from(fileWith({ state: "stopped" }));
+    expect(appCommand("lsp.stopServer", stopped).disabled).toBe(true);
+    const restart = appCommand("lsp.restartServer", stopped);
+    expect(restart.disabled).toBe(false);
+    restart.run();
+    await vi.waitFor(() => expect(vi.mocked(restartLanguageServer)).toHaveBeenCalled());
+
+    const held = from(fileWith({ state: "trust-needed" }));
+    expect(appCommand("lsp.stopServer", held).disabled).toBe(true);
+    appCommand("lsp.trustProject", held).run();
+    await vi.waitFor(() => expect(vi.mocked(trustLanguageServerProject)).toHaveBeenCalled());
+
+    const restricted = from(fileWith({ restricted: true }));
+    expect(appCommand("lsp.trustProject", restricted).disabled).toBe(false);
+    appCommand("lsp.stopServer", restricted).run();
+    await vi.waitFor(() => expect(vi.mocked(stopLanguageServer)).toHaveBeenCalled());
+
+    // Off in settings: settings are the way back, so Restart doesn't pretend to be.
+    const off = from(fileWith({ state: "disabled" }));
+    expect(appCommand("lsp.restartServer", off).disabled).toBe(true);
+    expect(appCommand("lsp.stopServer", off).disabled).toBe(true);
+  });
+
+  it("reach Settings and the logs, and a wiki's file has no project's settings", async () => {
+    using _cleanup = cleanup();
+    const file = fileWith({ state: "stopped" });
+    appCommand("lsp.viewLogs", from(file)).run();
+    await vi.waitFor(() => expect(file.openLogs).toHaveBeenCalled());
+    appCommand("lsp.checkServers", from(file)).run();
+    await vi.waitFor(() => expect(file.openSettings).toHaveBeenCalled());
+    const wikiFile = { ...file, openSettings: null };
+    expect(appCommand("lsp.checkServers", from(wikiFile)).disabled).toBe(true);
+  });
+
+  it("find the server of the file in front when focus is outside its editor", () => {
+    using _cleanup = cleanup();
+    const panes = twoPanes();
+    stops.push(registerLanguageServerFile("c", fileWith({})));
+    const { actingFrom } = context({ panes });
+    expect(appCommand("lsp.stopServer", actingFrom(null)).disabled).toBe(false);
+  });
+});
+
 describe("Go to symbol", () => {
   function editor(extensions: Extension, parent: HTMLElement = document.body) {
     const view = new EditorView({
@@ -562,6 +676,8 @@ describe("a code file's editing commands", () => {
       ["z", "No rename to undo"],
       ["=", "No language server here"],
       ["q", "No language server here"],
+      ["L", "Language server"],
+      ["R", "Run"],
       // Nor a repository tab in front, or a multi-file view's excerpt.
       ["v", "No project in front"],
       ["x", "No results here"],

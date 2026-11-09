@@ -49,7 +49,7 @@ const codeFailure = (error: CodeIndexError) => {
 const diagnosticsFailure = (error: LanguageServerError) =>
   new OrchestratorMcpFailure({
     code:
-      error.reason === "download-needed" || error.reason === "not-running"
+      error.reason === "trust-needed" || error.reason === "not-running"
         ? "invalid_request"
         : "orchestration_error",
     message: `${error.message} Run the project's type checker instead.`,
@@ -58,7 +58,7 @@ const diagnosticsFailure = (error: LanguageServerError) =>
 const locateFailure = (error: LanguageServerError) =>
   new OrchestratorMcpFailure({
     code:
-      error.reason === "download-needed" ||
+      error.reason === "trust-needed" ||
       error.reason === "not-running" ||
       error.reason === "unsupported" ||
       error.reason === "document"

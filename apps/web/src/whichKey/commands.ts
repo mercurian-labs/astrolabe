@@ -24,12 +24,28 @@ import {
   goToDefinition,
   goToImplementation,
   goToTypeDefinition,
+  showIncomingCalls,
+  showOutgoingCalls,
 } from "@mercurian/editor/lsp/navigation";
 import { renameSymbol } from "@mercurian/editor/lsp/rename";
 import { formatCode } from "@mercurian/editor/lsp/format";
 import { showCodeActions } from "@mercurian/editor/lsp/code-actions";
+import { hasRunMarkers, runAtCursor, runSiteAt } from "@mercurian/editor/run";
 import { fileSave, hasFileSave } from "~/components/repositories/fileSave";
+import { getClientSettings, updateClientSettings } from "~/hooks/useSettings";
+import {
+  canMaintainLanguageServers,
+  hasLanguageServerFile,
+  languageServerFile,
+  languageServerFileOfTab,
+  restartLanguageServer,
+  stopLanguageServer,
+  trustLanguageServerProject,
+  type LanguageServerFile,
+} from "~/components/repositories/languageServerFile";
+import { openInterpreterPicker } from "~/components/repositories/InterpreterPicker";
 import { lastRename } from "~/components/repositories/renameUndo";
+import { lastRunStarter } from "~/components/repositories/runTabs";
 import { hasLanguageServer } from "@mercurian/editor/lsp";
 import type { EditorState } from "@codemirror/state";
 import { runVimEx } from "@mercurian/editor/vim";
@@ -39,6 +55,7 @@ import { diffBaseControl, hasDiffBaseControl } from "~/components/repositories/f
 import { commandLabel } from "~/components/settings/KeybindingsSettings.logic";
 import { codeEditingCommandOf } from "~/editorKeybindings";
 import { openOutlinePicker } from "~/components/outline/OutlinePicker";
+import { projectSymbolsOpener } from "~/components/outline/ProjectSymbolPicker";
 import { isEmptyTab } from "~/panes/arrangement";
 import { focusedChatOf, workspace } from "~/panes/workspace";
 import { parseChatTabKey } from "~/sectionTabs/sectionTabs";
@@ -234,6 +251,29 @@ function lspEntry(origin: KeyOrigin | null, label: string, run: (view: EditorVie
     view ? () => afterPalette(() => void run(view)) : null,
   );
 }
+
+/**
+ * A command on a language server: of the code file the key came from, else the file in front of
+ * the focused pane. `run` is null to read faint under `label`, as when nothing can be done now.
+ */
+function languageServerEntry(
+  context: AppCommandContext,
+  label: string,
+  run: (file: LanguageServerFile) => (() => void) | null,
+) {
+  const view = editorFrom(context.origin, hasLanguageServerFile);
+  const pane = context.panes ? focusedPaneOf(context.panes.controller) : null;
+  const file =
+    view?.state.facet(languageServerFile) ??
+    (pane ? languageServerFileOfTab(pane.leaf.active) : null);
+  if (!file) return entry("No language server here", null);
+  const act = run(file);
+  return entry(label, act && (() => afterPalette(act)));
+}
+
+/** `act` where it applies (`can`) and this client may maintain the environment's servers. */
+const maintaining = (file: LanguageServerFile, can: boolean, act: () => void) =>
+  can && canMaintainLanguageServers(file.environmentId) ? act : null;
 
 /** A change command on the code file the key came from; faint where no file shows changes. */
 function hunkEntry(command: keyof typeof HUNK_ENTRIES, origin: KeyOrigin | null): AppCommand {
@@ -481,16 +521,60 @@ function astrolabeCommand(
       return lspEntry(context.origin, "Go to implementation", goToImplementation);
     case "lsp.references":
       return lspEntry(context.origin, "Find references", findReferences);
+    case "lsp.incomingCalls":
+      return lspEntry(context.origin, "Show incoming calls", showIncomingCalls);
+    case "lsp.outgoingCalls":
+      return lspEntry(context.origin, "Show outgoing calls", showOutgoingCalls);
     case "lsp.rename":
       return lspEntry(context.origin, "Rename symbol", renameSymbol);
     case "lsp.format":
       return lspEntry(context.origin, "Format document", formatCode);
     case "lsp.codeActions":
       return lspEntry(context.origin, "Show code actions", showCodeActions);
+    case "lsp.restartServer":
+      return languageServerEntry(context, "Restart language server", (file) =>
+        maintaining(file, file.status()?.state !== "disabled", () => restartLanguageServer(file)),
+      );
+    case "lsp.stopServer":
+      return languageServerEntry(context, "Stop language server", (file) => {
+        const state = file.status()?.state;
+        const running = state === "ready" || state === "starting";
+        return maintaining(file, running, () => stopLanguageServer(file));
+      });
+    case "lsp.trustProject":
+      return languageServerEntry(context, "Trust project", (file) => {
+        const status = file.status();
+        const untrusted = status?.restricted === true || status?.state === "trust-needed";
+        return maintaining(file, untrusted, () => trustLanguageServerProject(file));
+      });
+    case "lsp.checkServers":
+      return languageServerEntry(context, "Check language servers", (file) => file.openSettings);
+    case "lsp.viewLogs":
+      return languageServerEntry(
+        context,
+        "View language server logs",
+        (file) => () => file.openLogs(),
+      );
+    case "lsp.selectInterpreter":
+      return languageServerEntry(context, "Select Python interpreter", (file) =>
+        maintaining(file, file.toolchain === "python", () => openInterpreterPicker(file)),
+      );
     case "file.save": {
       const view = editorFrom(context.origin, hasFileSave);
       const run = view?.state.facet(fileSave) ?? null;
       return entry(run ? "Save file" : "No file to save here", run);
+    }
+    case "lsp.toggleInlayHints": {
+      const on = getClientSettings().inlayHints;
+      return entry(on ? "Hide inlay hints" : "Show inlay hints", () =>
+        updateClientSettings({ inlayHints: !on }),
+      );
+    }
+    case "lsp.toggleInlineDiagnostics": {
+      const on = getClientSettings().inlineDiagnostics;
+      return entry(on ? "Hide inline diagnostics" : "Show inline diagnostics", () =>
+        updateClientSettings({ inlineDiagnostics: !on }),
+      );
     }
     case "lsp.undoRename": {
       const rename = lastRename.get();
@@ -502,6 +586,22 @@ function astrolabeCommand(
         view ? "Go to symbol" : "No file to outline",
         view ? () => afterPalette(() => openOutlinePicker(view)) : null,
       );
+    }
+    case "run.atCursor": {
+      const view = editorFrom(context.origin, hasRunMarkers);
+      const site = view && runSiteAt(view.state, view.state.selection.main.head);
+      return entry(
+        site ? "Run at cursor" : "Nothing to run at the cursor",
+        view && site ? () => afterPalette(() => void runAtCursor(view)) : null,
+      );
+    }
+    case "run.last": {
+      const start = lastRunStarter(panes?.controller ?? workspace.store);
+      return entry(start ? "Run last" : "Nothing run yet", start);
+    }
+    case "lsp.projectSymbols": {
+      const open = projectSymbolsOpener(panes?.controller ?? null);
+      return entry(open ? "Go to symbol in project" : "No project in front", open);
     }
     case "repository.localGraph":
       return entry("Open local graph", localGraphOpener(panes?.controller ?? null));

@@ -1,5 +1,5 @@
 import type { MultibufferFileInput } from "@mercurian/editor/multibuffer";
-import type { GoToKind, NavigationLocation } from "@mercurian/editor/lsp/navigation";
+import type { NavigationLocation, PlacesKind } from "@mercurian/editor/lsp/navigation";
 import type { FileDiagnostics, ProjectContentMatch } from "@t3tools/contracts";
 
 import type { LocationList, MultibufferLocation } from "./openMultibuffer";
@@ -86,19 +86,26 @@ export function locationFiles(locations: readonly MultibufferLocation[]): Multib
   }));
 }
 
+const READ_TOGETHER: ReadonlySet<PlacesKind> = new Set([
+  "references",
+  "implementation",
+  "incoming",
+  "outgoing",
+]);
+
 /**
- * Several places a language server named, as a list to read together: references and
- * implementations, the checkout's places only. Null leaves them to the picker: definitions,
- * declarations and type definitions are a jump to one place, and a file outside the checkout
- * has no excerpt to show.
+ * Several places a language server named, as a list to read together: references,
+ * implementations and calls, the checkout's places only. Null leaves them to the picker:
+ * definitions, declarations and type definitions are a jump to one place, and a file outside the
+ * checkout has no excerpt to show.
  */
 export function navigationList(
-  kind: GoToKind | "references",
+  kind: PlacesKind,
   title: string,
   places: readonly NavigationLocation[],
   pathOf: (uri: string) => string,
 ): LocationList | null {
-  if (kind !== "references" && kind !== "implementation") return null;
+  if (!READ_TOGETHER.has(kind)) return null;
   const locations = places.flatMap((place): MultibufferLocation[] => {
     const path = pathOf(place.uri);
     if (path.startsWith("/") || path.includes("://")) return [];

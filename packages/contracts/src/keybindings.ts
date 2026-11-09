@@ -67,12 +67,27 @@ export const LSP_KEYBINDING_COMMANDS = [
   "lsp.typeDefinition",
   "lsp.implementation",
   "lsp.references",
+  "lsp.incomingCalls",
+  "lsp.outgoingCalls",
   "lsp.rename",
   "lsp.undoRename",
   "lsp.format",
   "lsp.codeActions",
 ] as const;
 export type LspKeybindingCommand = (typeof LSP_KEYBINDING_COMMANDS)[number];
+
+/** Astrolabe: commands on the language server itself, which the command registry runs. */
+const LANGUAGE_SERVER_KEYBINDING_COMMANDS = [
+  "lsp.restartServer",
+  "lsp.stopServer",
+  "lsp.trustProject",
+  "lsp.checkServers",
+  "lsp.viewLogs",
+  "lsp.selectInterpreter",
+  "lsp.projectSymbols",
+  "lsp.toggleInlayHints",
+  "lsp.toggleInlineDiagnostics",
+] as const;
 
 /**
  * Astrolabe: commands the client's command registry runs (`apps/web/src/whichKey/commands.ts`),
@@ -118,6 +133,9 @@ export const ASTROLABE_KEYBINDING_COMMANDS = [
   "diagnostic.next",
   "diagnostic.previous",
   ...LSP_KEYBINDING_COMMANDS,
+  ...LANGUAGE_SERVER_KEYBINDING_COMMANDS,
+  "run.atCursor",
+  "run.last",
   "repository.localGraph",
   "file.save",
   // Multi-file views (search results, problems): stacked excerpt editors.

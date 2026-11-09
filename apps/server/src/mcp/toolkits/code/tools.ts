@@ -103,8 +103,7 @@ const CodeDiagnosticsTool = Tool.make("astrolabe_code_diagnostics", {
     ProjectService.ProjectService,
     LanguageServers.LanguageServers,
   ],
-  description:
-    "The errors and warnings TypeScript's language server reports for TypeScript and JavaScript files at your thread's checkout, as the files are now: everything you wrote before the call is included. Use it after editing to check those files instead of type-checking the whole project. Lines and columns count from 1. The first call in a checkout can take a while as the project loads. Paths are repository-relative.",
+  description: `The errors and warnings each file's language servers report at your thread's checkout, for most languages (TypeScript, Python, Rust, Go, C and C++, Java and more), as the files are now: everything you wrote before the call is included. Use it after editing to check those files instead of type-checking or building the whole project. Lines and columns count from 1. The first call in a checkout can take a while as the project loads. Paths are repository-relative.`,
   parameters: Schema.Struct({
     paths: Schema.Array(Text)
       .check(Schema.isMinLength(1), Schema.isMaxLength(20))
@@ -140,8 +139,7 @@ const SYMBOL_AT = Schema.Struct({
   }),
 });
 
-const LANGUAGE_SERVER_SCOPE =
-  "Asks TypeScript's language server about TypeScript and JavaScript files at your thread's checkout, as they are now, so it is exact where a name is shared, re-exported, or imported under another name. Lines and columns count from 1; each location has its line's text. The first call in a checkout can take a while as the project loads.";
+const LANGUAGE_SERVER_SCOPE = `Asks the file's language server at your thread's checkout, as the file is now, so it is exact where a name is shared, re-exported, or imported under another name. Lines and columns count from 1; each location has its line's text. The first call in a checkout can take a while as the project loads.`;
 
 const CodeDefinitionTool = Tool.make("astrolabe_code_definition", {
   ...shared,

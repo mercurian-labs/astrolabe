@@ -9,6 +9,7 @@ import { isCommandPaletteOpen } from "~/commandPaletteBus";
 import { registerThreadTabDrop } from "~/chatTabs/threadTabDrop";
 import { BackgroundThreadContext } from "~/components/chat/backgroundThread";
 import { changeGroupTabKey } from "~/components/changeRequests/groups/changeGroupTabs";
+import { closedRuns, closeRunTerminal } from "~/components/repositories/runTabs";
 import { RepositoryTabView } from "~/components/repositories/RepositoryTabView";
 import { parseRepositoryTabKey } from "~/components/repositories/repositoryTabs";
 import { SidebarInset } from "~/components/ui/sidebar";
@@ -33,6 +34,7 @@ import {
   focusedChatOf,
   useWorkspaceArrangement,
   useWorkspaceFront,
+  useWorkspaceOpenKeys,
   useWorkspaceSnapshot,
   useWorkspaceTabHistory,
   workspace,
@@ -191,6 +193,7 @@ export function WorkspaceView({
                 <DraftRouteRedirect draftId={routeTarget.draftId} />
               ) : null}
               <GroupsSync />
+              <RunTabsSync />
             </PanesLayoutKeyContext.Provider>
           </PanesHostContext.Provider>
         </WorkspaceHostContext.Provider>
@@ -371,6 +374,18 @@ function useHost() {
   const host = useContext(WorkspaceHostContext);
   if (!host) throw new Error("The workspace's contents render inside its host.");
   return host;
+}
+
+/** Ends a run's terminal when its tab closes, however it closed. Renders nothing. */
+function RunTabsSync() {
+  const keys = useWorkspaceOpenKeys();
+  const seen = useRef(keys);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- ends environment terminals no tab shows any more
+  useEffect(() => {
+    closedRuns(seen.current, keys).forEach(closeRunTerminal);
+    seen.current = keys;
+  }, [keys]);
+  return null;
 }
 
 /**

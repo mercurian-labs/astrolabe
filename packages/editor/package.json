@@ -91,9 +91,41 @@
       "types": "./src/lsp/contextMenu.ts",
       "default": "./src/lsp/contextMenu.ts"
     },
+    "./lsp/linked-editing": {
+      "types": "./src/lsp/linkedEditing.ts",
+      "default": "./src/lsp/linkedEditing.ts"
+    },
+    "./lsp/semantic-tokens": {
+      "types": "./src/lsp/semanticTokens.ts",
+      "default": "./src/lsp/semanticTokens.ts"
+    },
+    "./lsp/code-lens": {
+      "types": "./src/lsp/codeLens.ts",
+      "default": "./src/lsp/codeLens.ts"
+    },
+    "./lsp/symbol-highlights": {
+      "types": "./src/lsp/symbolHighlights.ts",
+      "default": "./src/lsp/symbolHighlights.ts"
+    },
+    "./lsp/inlay-hints": {
+      "types": "./src/lsp/inlayHints.ts",
+      "default": "./src/lsp/inlayHints.ts"
+    },
     "./lsp/code-actions": {
       "types": "./src/lsp/codeActions.ts",
       "default": "./src/lsp/codeActions.ts"
+    },
+    "./run": {
+      "types": "./src/run/runMarkers.ts",
+      "default": "./src/run/runMarkers.ts"
+    },
+    "./run/command": {
+      "types": "./src/run/command.ts",
+      "default": "./src/run/command.ts"
+    },
+    "./run/detect": {
+      "types": "./src/run/detect.ts",
+      "default": "./src/run/detect.ts"
     },
     "./multibuffer": {
       "types": "./src/multibuffer/multibuffer.ts",

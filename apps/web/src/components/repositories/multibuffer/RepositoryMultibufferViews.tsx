@@ -5,16 +5,18 @@ import { isWholeWord, textMatcher } from "@t3tools/shared/textReplace";
 import type { FileDiagnostics } from "@t3tools/contracts";
 import { AsyncResult } from "effect/reactivity";
 import { RefreshCwIcon } from "lucide-react";
-import { type ReactNode, useContext, useEffect, useState } from "react";
+import { type ReactNode, useContext, useEffect, useState, useSyncExternalStore } from "react";
 
 import { useStableCallback } from "~/hooks/useStableCallback";
 import { openTab } from "~/panes/arrangement";
+import { recordJump } from "~/panes/jumpHistory";
 import { PanesHostContext } from "~/panes/panesHost";
 import { languageServersEnvironment } from "~/state/languageServers";
 import { projectContentSearchPage } from "~/state/projects";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { Spinner } from "../../ui/spinner";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { repositoryFileReveal } from "../repositoryFileReveal";
 import { workspace } from "~/panes/workspace";
 import {
@@ -25,7 +27,7 @@ import {
 } from "../repositoryTabs";
 import { MultibufferView } from "./MultibufferView";
 import { locationFiles, problemCounts, problemFiles, searchFiles } from "./multibufferInputs";
-import { locationList } from "./openMultibuffer";
+import { type LocationList, locationList } from "./openMultibuffer";
 import { replaceAll, type ReplaceAllDone } from "./replaceAll";
 import { newClientId, useMultibuffer, type MultibufferSaveState } from "./useMultibuffer";
 
@@ -43,7 +45,7 @@ const REPLACE_CONFIRM_FILES = 10;
 type Checkout = Pick<RepositorySearchTab, "environmentId" | "projectId" | "cwd">;
 
 /** Opens a file of the checkout at a line, in the panes the view is in. */
-function useOpenFile(checkout: Checkout) {
+function useOpenFile(tabKey: string, checkout: Checkout) {
   const panes = useContext(PanesHostContext)?.controller ?? workspace.store;
   return (path: string, line: number) => {
     const { environmentId, projectId, cwd } = checkout;
@@ -54,6 +56,7 @@ function useOpenFile(checkout: Checkout) {
       checkout: { cwd },
       path,
     });
+    recordJump(tabKey, key);
     panes.update((next) => openTab(next, key));
     repositoryFileReveal.request(key, line);
   };
@@ -93,7 +96,7 @@ export function RepositorySearchView({
 }) {
   const { environmentId, cwd, search } = tab;
   const registry = useContext(RegistryContext);
-  const openFile = useOpenFile(tab);
+  const openFile = useOpenFile(tabKey, tab);
   const { multibuffer, canWrite, saveState } = useMultibuffer({
     tabKey,
     environmentId,
@@ -303,7 +306,7 @@ export function RepositoryProblemsView({
   readonly tab: RepositoryProblemsTab;
 }) {
   const { environmentId, cwd } = tab;
-  const openFile = useOpenFile(tab);
+  const openFile = useOpenFile(tabKey, tab);
   const { multibuffer, canWrite, saveState } = useMultibuffer({
     tabKey,
     environmentId,
@@ -382,6 +385,44 @@ function ProblemCountsLabel({
   );
 }
 
+function editedPlaces(edit: NonNullable<LocationList["edit"]>, listed: number) {
+  const all = `${plural(edit.edits, "place")} in ${plural(edit.files, "file")}`;
+  return listed < edit.edits ? `${all}, the first ${listed.toLocaleString()} shown` : all;
+}
+
+function UndoEdit({ edit }: { readonly edit: NonNullable<LocationList["edit"]> }) {
+  const state = useSyncExternalStore(edit.undo.subscribe, edit.undo.state);
+  if (state === "undone") return <span className="shrink-0">Undone</span>;
+  if (state === "failed") return <span className="shrink-0">Could not be undone</span>;
+  if (state === "partly") {
+    const skipped = edit.undo.skipped();
+    return (
+      <Tooltip>
+        <TooltipTrigger render={<span className="shrink-0" />}>
+          {`Undone, except ${plural(skipped.length, "file")} changed since`}
+        </TooltipTrigger>
+        <TooltipPopup>
+          {skipped.map((path) => (
+            <div key={path} className="text-xs">
+              {path}
+            </div>
+          ))}
+        </TooltipPopup>
+      </Tooltip>
+    );
+  }
+  return (
+    <Button
+      size="xs"
+      variant="outline"
+      disabled={state === "undoing"}
+      onClick={() => edit.undo.run()}
+    >
+      {edit.undoLabel}
+    </Button>
+  );
+}
+
 export function RepositoryLocationsView({
   tabKey,
   tab,
@@ -390,7 +431,7 @@ export function RepositoryLocationsView({
   readonly tab: RepositoryLocationsTab;
 }) {
   const { environmentId, cwd } = tab;
-  const openFile = useOpenFile(tab);
+  const openFile = useOpenFile(tabKey, tab);
   const { multibuffer, canWrite, saveState } = useMultibuffer({
     tabKey,
     environmentId,
@@ -407,7 +448,10 @@ export function RepositoryLocationsView({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <Toolbar>
-        <span className="min-w-0 truncate">{`${list.title} · ${plural(list.locations.length, "place")}`}</span>
+        <span className="min-w-0 truncate">
+          {`${list.title} · ${list.edit ? editedPlaces(list.edit, list.locations.length) : plural(list.locations.length, "place")}`}
+        </span>
+        {list.edit ? <UndoEdit edit={list.edit} /> : null}
         <span className="ml-auto shrink-0">{saveLabel(saveState, !canWrite)}</span>
       </Toolbar>
       <MultibufferView

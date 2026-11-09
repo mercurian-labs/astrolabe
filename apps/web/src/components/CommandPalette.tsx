@@ -250,6 +250,8 @@ import { Checkbox } from "./ui/checkbox";
 import { ProjectFilePicker } from "./files/ProjectFilePicker";
 import { LocationPicker, locationPickerEditor } from "./outline/LocationPicker";
 import { OutlinePicker, outlinePickerEditor } from "./outline/OutlinePicker";
+import { ProjectSymbolPicker } from "./outline/ProjectSymbolPicker";
+import { InterpreterPicker } from "./repositories/InterpreterPicker";
 import { openLinkPullRequestDialog } from "./pullRequest/LinkPullRequestDialog";
 import { canShareWithGuestAtom } from "./chat/guestShareAvailability";
 import { openGuestShareDialog } from "./chat/guestShareDialogState";
@@ -387,7 +389,11 @@ function CommandPaletteDialog(props: {
               ? "Go to symbol"
               : props.mode === "locations"
                 ? "Pick a location"
-                : "Search"
+                : props.mode === "symbols"
+                  ? "Go to symbol in project"
+                  : props.mode === "interpreter"
+                    ? "Select Python interpreter"
+                    : "Search"
       }
       className={cn("overflow-hidden", props.mode === "content" && "h-105")}
       data-command-palette="true"
@@ -428,6 +434,10 @@ function CommandPaletteDialog(props: {
         <OutlinePicker setOpen={props.setOpen} />
       ) : props.mode === "locations" ? (
         <LocationPicker setOpen={props.setOpen} />
+      ) : props.mode === "symbols" ? (
+        <ProjectSymbolPicker setOpen={props.setOpen} />
+      ) : props.mode === "interpreter" ? (
+        <InterpreterPicker setOpen={props.setOpen} />
       ) : props.mode === "content" ? (
         <ProjectContentSearchDialog onOpenChange={props.setOpen} />
       ) : (

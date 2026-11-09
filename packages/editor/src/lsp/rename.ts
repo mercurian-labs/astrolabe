@@ -10,11 +10,22 @@ import { lineBlocks, setLineBlocks } from "../blocks/lineBlocks.ts";
  * inverse, so the host can offer one "Undo rename" (see docs/internals/language-servers.md).
  */
 
+/** A place an applied edit changed: lines from 1, columns from 0. */
+export interface EditPlace {
+  readonly path: string;
+  readonly line: number;
+  readonly column: number;
+  readonly endLine: number;
+  readonly endColumn: number;
+}
+
 /** What the environment did: its undo id, the files it changed, and how many edits. */
 export interface RenameResult {
   readonly id: string;
   readonly files: readonly string[];
   readonly edits: number;
+  /** The first of them, in the files as the edit left them. */
+  readonly places: readonly EditPlace[];
   readonly from: string;
   readonly to: string;
 }
@@ -122,9 +133,11 @@ function submit(
     .then(
       (answer) => {
         if (!answer?.applied) return;
+        // An older environment names no places.
+        const { places = [] } = answer.applied;
         view.state
           .facet(renameHost)
-          ?.renamed(view, { ...answer.applied, from: oldName, to: newName });
+          ?.renamed(view, { ...answer.applied, places, from: oldName, to: newName });
       },
       (error) => plugin.reportError("Rename failed", error),
     );

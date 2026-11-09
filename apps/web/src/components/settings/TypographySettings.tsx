@@ -28,6 +28,7 @@ import {
 } from "../../appearanceFonts";
 import { AdvancedSettings } from "./AdvancedSettings";
 import { FormatOnSaveRow } from "./FormatOnSaveSetting";
+import { LanguageFeatureRows } from "./LanguageFeatureSettings";
 import { CodeFontPreview, PromptFontPreview, TerminalFontPreview } from "./SettingsFontPreviews";
 import { discoverInstalledFonts, FontFamilyPicker, useFontEnumeration } from "./FontFamilyPicker";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
@@ -344,6 +345,7 @@ export function TypographySection() {
       {showAdvanced ? <FontSettingsGroup /> : <SimpleFontRows />}
       <WordWrapRow />
       <FormatOnSaveRow />
+      <LanguageFeatureRows />
       <AdvancedSettings
         targetIds={[searchableSetting("separate-fonts").id, searchableSetting("font-smoothing").id]}
       >

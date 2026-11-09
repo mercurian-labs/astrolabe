@@ -57,7 +57,7 @@ same commands, and all three kinds of trigger (Shortcut, Menu keys, Alias) live 
   `n`/`p`/`t`/`a`/`r` next/previous/show/all/restore change, `b` compare with HEAD or since this
   turn, `o` go to symbol, `.`/`,` next/previous problem, `m`/`h`/`i` completions, hover,
   signature help, `g` Go to code (`d` definition, `c` declaration, `t` type definition, `i`
-  implementation, `r` references), `e` rename, `z` undo rename, `=` format, `q` code actions,
+  implementation, `r` references, `h`/`H` incoming/outgoing calls, `s` symbol in project), `e` rename, `z` undo rename, `=` format, `q` code actions,
   `v` Show problems, `x`/`k`/`}`/`{` results-tab moves, then editing (`c` comment, `d` duplicate,
   `j` join, `s` sort, `u`/`l` case, `w` wrap, `[`/`]` fold all). Rows with nothing to act on
   are faint with their own reason ("No editor to find in", "No changes here", "No turn changed

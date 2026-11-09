@@ -459,6 +459,36 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["formatter prettier language server code repository file save mod+s"],
   },
   {
+    id: "inlay-hints",
+    title: "Inlay hints",
+    to: "/settings/appearance",
+    searchTerms: ["type parameter names language server code repository file editor inline"],
+  },
+  {
+    id: "inline-diagnostics",
+    title: "Inline diagnostics",
+    to: "/settings/appearance",
+    searchTerms: ["errors problems warnings end of line message language server code editor"],
+  },
+  {
+    id: "semantic-tokens",
+    title: "Semantic colours",
+    to: "/settings/appearance",
+    searchTerms: ["semantic tokens highlighting syntax language server code editor"],
+  },
+  {
+    id: "code-lens",
+    title: "Code lens",
+    to: "/settings/appearance",
+    searchTerms: ["references implementations above lines language server code editor"],
+  },
+  {
+    id: "run-markers",
+    title: "Run markers",
+    to: "/settings/appearance",
+    searchTerms: ["run test tests gutter play terminal main entry point code editor"],
+  },
+  {
     id: "composer-context",
     title: "Composer context",
     to: "/settings/appearance",
@@ -1148,6 +1178,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Code index",
     to: "/settings/projects",
     searchTerms: ["index symbols definitions imports skipped paths rebuild local graph repository"],
+  },
+  {
+    id: "project-language-servers",
+    title: "Language servers",
+    to: "/settings/projects",
+    searchTerms: [
+      "lsp language server python rust go java jdtls json css scss less html yaml bash shell dockerfile toml lua markdown zig swift ruby php c# csharp kotlin elixir dart c c++ cpp clangd gopls rust-analyzer basedpyright pyright typescript diagnostics completion compile_commands virtualenv venv trust trusted revoke restricted add custom own server binary arguments environment initialization options configuration turn off disable order primary",
+    ],
   },
   {
     id: "project-actions",

@@ -1,6 +1,6 @@
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { assert, it } from "@effect/vitest";
+import { assert, describe, it } from "@effect/vitest";
 import {
   DEFAULT_TERMINAL_ID,
   type TerminalAttachStreamEvent,
@@ -201,6 +201,22 @@ class GatedPtyAdapter extends FakePtyAdapter {
     );
   }
 }
+
+describe("terminalShellFamily", () => {
+  it.effect("reads the family from what the terminal would start", () =>
+    Effect.gen(function* () {
+      expect(yield* TerminalManager.terminalShellFamily("darwin", { SHELL: "/bin/zsh" })).toBe(
+        "posix",
+      );
+      expect(yield* TerminalManager.terminalShellFamily("linux", {})).toBe("posix");
+      expect(yield* TerminalManager.terminalShellFamily("linux", { SHELL: "/opt/bin/fish" })).toBe(
+        "fish",
+      );
+      // No Windows here to hold PowerShell, which is the case that ends at cmd.
+      expect(yield* TerminalManager.terminalShellFamily("win32", {})).toBe("cmd");
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+});
 
 function openInput(overrides: Partial<TerminalOpenInput> = {}): TerminalOpenInput {
   return {
@@ -940,6 +956,48 @@ it.layer(
         expect(ptyAdapter.processes[0]!.killed).toBe(false);
         yield* manager.close({ threadId: "thread-1" });
       }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("types pasted text as text, bracketed only for a shell that asked", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager();
+      yield* manager.open(openInput());
+      const process = ptyAdapter.processes[0]!;
+      const input = { threadId: "thread-1", terminalId: DEFAULT_TERMINAL_ID };
+      const pasted = (data: string) => manager.write({ ...input, data, paste: true });
+      const output = (data: string) =>
+        Effect.gen(function* () {
+          const seen = yield* Deferred.make<void>();
+          const stop = yield* manager.subscribe((event) =>
+            event.type === "output"
+              ? Deferred.succeed(seen, undefined).pipe(Effect.asVoid)
+              : Effect.void,
+          );
+          process.emitData(data);
+          yield* Deferred.await(seen);
+          stop();
+        });
+
+      // bash 3.2, PowerShell and cmd never ask, and would read the markers as keys.
+      yield* pasted("echo a\u0015rm\tb\u001b[201~");
+      yield* output("\u001b[?2004h% ");
+      yield* pasted("echo b\u001b[201~; rm");
+      yield* output("\u001b[?2004l\r\n");
+      yield* pasted("echo c");
+      // Split across chunks, as a pty may.
+      yield* output("\u001b[?20");
+      yield* output("04h% ");
+      yield* pasted("echo d");
+      yield* manager.write({ ...input, data: "\r" });
+
+      expect(process.writes).toEqual([
+        "echo armb[201~",
+        "\u001b[200~echo b[201~; rm\u001b[201~",
+        "echo c",
+        "\u001b[200~echo d\u001b[201~",
+        "\r",
+      ]);
+    }).pipe(Effect.scoped),
   );
 
   it.effect("keeps terminals that get input or output while closeIdle checks them", () =>

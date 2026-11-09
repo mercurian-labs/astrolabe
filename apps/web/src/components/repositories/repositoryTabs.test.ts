@@ -81,6 +81,25 @@ describe("Repositories tab keys", () => {
       },
       { kind: "problems", environmentId, projectId, cwd: "/tmp/wt" },
       { kind: "locations", environmentId, projectId, cwd: "/tmp/wt", id: "refs-1" },
+      { kind: "language-server-logs", environmentId, cwd: "/tmp/w:t", server: "rust-analyzer" },
+      {
+        kind: "run",
+        environmentId,
+        cwd: "/tmp/w:t",
+        directory: "",
+        path: "src/a:b.test.ts",
+        name: "adds: two",
+        command: "npx vitest run 'src/a:b.test.ts' -t 'adds: two'",
+      },
+      {
+        kind: "run",
+        environmentId,
+        cwd: "/tmp/w",
+        directory: "crates/core",
+        path: "crates/core/src/lib.rs",
+        name: "tests::adds",
+        command: "cargo test tests::adds",
+      },
     ];
     for (const tab of tabs) expect(parseRepositoryTabKey(repositoryTabKey(tab))).toEqual(tab);
   });
@@ -93,6 +112,7 @@ describe("Repositories tab keys", () => {
     expect(parseRepositoryTabKey("repo-diff:a:b:c:working-tree~main")).toBeNull();
     expect(parseRepositoryTabKey("repo-graph:a:b")).toBeNull();
     expect(parseRepositoryTabKey("repo-graph:a:b:c:d:e")).toBeNull();
+    expect(parseRepositoryTabKey("repo-lsp-logs:a:b:perl")).toBeNull();
   });
 
   it("keep a following graph and a pinned one apart", () => {
