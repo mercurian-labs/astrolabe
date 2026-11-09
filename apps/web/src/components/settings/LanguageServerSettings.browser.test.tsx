@@ -69,7 +69,7 @@ const check = (patch: Partial<LanguageServerCheck>): LanguageServerCheck => ({
 const RUFF = check({
   server: "ruff",
   name: "Ruff 0.17.4",
-  companion: { active: true, reason: "Runs on every Python file." },
+  companion: { active: true, reason: "Active: runs on every Python file." },
 });
 const EMPTY = { servers: {}, order: {} };
 

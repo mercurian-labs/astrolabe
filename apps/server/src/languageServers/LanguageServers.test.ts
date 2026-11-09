@@ -2233,7 +2233,7 @@ describe("LanguageServers with companions on a file", () => {
       );
       expect(yield* companionOf("eslint")).toEqual({
         active: true,
-        reason: "Found eslint in package.json.",
+        reason: "Active: found eslint in package.json.",
       });
       yield* service.restart({ cwd: checkout.cwd, server: "typescript" });
       yield* statuses((list) => list.some((status) => status.server === "eslint"));

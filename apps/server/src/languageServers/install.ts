@@ -830,10 +830,11 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
   ) {
     const activation = spec.activation;
     if (activation === undefined) {
-      return { active: true, reason: `Runs on every ${spec.languages} file.` };
+      return { active: true, reason: `Active: runs on every ${spec.languages} file.` };
     }
     for (const file of activation.files) {
-      if (yield* exists(path.join(cwd, file))) return { active: true, reason: `Found ${file}.` };
+      if (yield* exists(path.join(cwd, file)))
+        return { active: true, reason: `Active: found ${file}.` };
     }
     const manifest = (yield* readJson(path.join(cwd, "package.json"))) as Record<
       string,
@@ -844,7 +845,7 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
         const packages = manifest?.[section];
         return typeof packages === "object" && packages !== null && name in packages;
       });
-      if (declared) return { active: true, reason: `Found ${name} in package.json.` };
+      if (declared) return { active: true, reason: `Active: found ${name} in package.json.` };
     }
     const wanted = activation.packages.join(" or ");
     return {
