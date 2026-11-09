@@ -169,6 +169,12 @@ function Entry({
               </MenuItem>
             </>
           ) : null}
+          {file.openSettings ? (
+            <>
+              <MenuSeparator />
+              <MenuItem onClick={file.openSettings}>Language server settings</MenuItem>
+            </>
+          ) : null}
         </MenuPopup>
       </Menu>
       {nudge ? (
