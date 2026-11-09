@@ -49,6 +49,7 @@ import {
   pullRequestOverrideAfterAction,
   reusePullRequestEntries,
   settlePullRequestOverrides,
+  comparePullRequestsByRecency,
   largestPullRequestReadCount,
 } from "./pullRequestList.logic";
 import {
@@ -74,6 +75,9 @@ import {
   type PullRequestsSearch,
 } from "./usePullRequestListView";
 import { pullRequestGroups, pullRequestListEntryId } from "./pullRequestListGroups.logic";
+import { useChangeRequestKind } from "../changeRequests/changeRequestKind";
+import { isHostedPullRequest } from "../wiki/wiki.logic";
+import { useHostedPullRequestKeys } from "../wiki/wikiEnvironment";
 import { PullRequestListEmptyState } from "./PullRequestListEmptyState";
 import { PullRequestListGhost } from "./PullRequestGhosts";
 import type { PullRequestRowTarget } from "./PullRequestRow";
@@ -548,7 +552,7 @@ export function PullRequestsPage() {
       const held = new Set(ordered.entries.map(pullRequestEntryKey));
       const arrived = answered.entries.filter((entry) => !held.has(pullRequestEntryKey(entry)));
       const appended = rankPullRequestMatches(
-        arrived.toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
+        arrived.toSorted(comparePullRequestsByRecency),
         sentParsed.text,
       );
       setOrdered({ key: filterKey, source: answered, entries: [...ordered.entries, ...appended] });
@@ -661,8 +665,14 @@ export function PullRequestsPage() {
   );
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const changeRequestKind = useChangeRequestKind();
+  // Astrolabe: where the wiki changes list beside these, a host wiki's change shows once, there.
+  const hostedKeys = useHostedPullRequestKeys(
+    changeRequestKind === "all" && search.host === undefined && scopedProjectId === undefined,
+  );
   const { entries, groups, entriesByStatsKey, heldPullRequestsBySurface } = pullRequestGroups({
     known: ordered?.key === filterKey ? ordered.entries : (listData?.entries ?? []),
+    hidden: hostedKeys.size === 0 ? undefined : (entry) => isHostedPullRequest(hostedKeys, entry),
     providers: baselineQuery.data?.providers ?? listData?.providers ?? [],
     viewers,
     involvement: search.involvement,

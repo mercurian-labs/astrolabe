@@ -1,35 +1,45 @@
-import type { WikiEditorCommand, WikiEditorEvent } from "@mercurian/wiki-editor/protocol";
-import {
-  StackActions,
-  usePreventRemove,
-  useNavigation,
-  type StaticScreenProps,
-} from "@react-navigation/native";
+import type {
+  WikiEditorCommand,
+  WikiEditorEmbeddedFile,
+  WikiEditorEvent,
+} from "@mercurian/wiki-editor/protocol";
+import { StackActions, useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { assetUrlStateFromResult } from "@t3tools/client-runtime/state/assets";
 import {
-  describeWikiFailure,
+  documentFile,
+  documentTitle,
+  exactWikiPath,
+  filesHoldDocument,
+  isCanvasName,
+  draftMovedTo,
+  isSettledChangeRequest,
   isTurnRunning,
-  queuedSaveStep,
-  type QueuedWikiSave,
+  wikiDocumentScope,
+  wikiDraft,
+  NO_NOTE_FROM_RELATIVE_LINK,
+  wikiDocumentFilesWithDraft,
+  wikiLinkOpens,
+  wikiTerms,
 } from "@t3tools/client-runtime/wikiLogic";
-import {
-  isAtomCommandInterrupted,
-  squashAtomCommandFailure,
-} from "@t3tools/client-runtime/state/runtime";
+import { linkFiles } from "@mercurian/wiki/resolve-link";
 import type { EnvironmentId, ThreadId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Linking, Pressable, View } from "react-native";
+
+import * as Dialog from "../../components/ui/Dialog";
+import { useWikiPlacement } from "./wikiPreferences";
+import { Linking, View } from "react-native";
 
 import { LoadingScreen } from "../../components/LoadingScreen";
-import { AppText as Text } from "../../components/ui/AppText";
-import * as Dialog from "../../components/ui/Dialog";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { Toolbar } from "../../components/ui/Toolbar";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
+import { assetEnvironment } from "../../state/assets";
 import { useThreadShell } from "../../state/entities";
 import { useEnvironmentQuery } from "../../state/query";
-import { useAtomCommand } from "../../state/use-atom-command";
+import { usePreparedConnection } from "../../state/session";
+import { useAtomQueryRunner } from "../../state/use-atom-query-runner";
 import { wikiEnvironment } from "../../state/wiki";
 import {
   isSkillMapFile,
@@ -38,11 +48,23 @@ import {
   wikiDocumentSubtitle,
 } from "./document/wikiDocument.logic";
 import { useEditorTheme } from "./document/useEditorTheme";
-import { WikiBaseQueries, WikiNoteReads, type WikiBaseAnswer } from "./document/WikiBaseQueries";
+import {
+  WikiBaseQueries,
+  WikiFileReads,
+  WikiNoteReads,
+  type WikiBaseAnswer,
+  type WikiNoteReadsProps,
+} from "./document/WikiBaseQueries";
+import { WikiDraftBar } from "./document/WikiDraftBar";
 import { WikiEditorWebView, type WikiEditorHandle } from "./document/WikiEditorWebView";
-import { WikiSaveSheet, type WikiSaveTarget } from "./document/WikiSaveSheet";
+import { WikiBelowHeader } from "./document/WikiBelowHeader";
+import { WikiNotice } from "./document/WikiNotice";
+import { useWikiAutosave, useWikiAutosaveCommand, wikiSaveLabel } from "./document/useWikiAutosave";
 import { WikiBaseScreen } from "./WikiBaseScreen";
+import { WikiCanvasScreen } from "./WikiCanvasScreen";
 import type { WikiDocumentParams } from "./wikiRoutes";
+
+const QUIET_MINT = { reportFailure: false, reportDefect: false, refresh: true };
 
 /** Whether the change request's thread is mid-turn, and the run it is in. */
 function useChangeRequestTurn(environmentId: EnvironmentId, threadId: ThreadId | null | undefined) {
@@ -53,68 +75,92 @@ function useChangeRequestTurn(environmentId: EnvironmentId, threadId: ThreadId |
   return { running, runId: running ? (shell?.latestRun?.runId ?? null) : null };
 }
 
-/** A wiki document: a note, or a `.base` file opened by its file name, as on web. */
+/** A wiki document: a note, or a `.base` or `.canvas` file opened by its file name, as on web. */
 export function WikiDocumentRouteScreen({ route }: StaticScreenProps<WikiDocumentParams>) {
-  return isWikiBaseFile(route.params.name) ? (
-    <WikiBaseScreen params={route.params} />
+  // A link from before wikis had folders holds a note's bare name.
+  const params = { ...route.params, name: documentFile(route.params.name) };
+  if (isCanvasName(params.name)) return <WikiCanvasScreen params={params} />;
+  return isWikiBaseFile(params.name) ? (
+    <WikiBaseScreen params={params} />
   ) : (
-    <WikiNoteScreen params={route.params} />
+    <WikiNoteScreen params={params} />
   );
 }
 
 /**
- * One wiki note, read first; Edit turns the page into the editor and edits stay on the phone
- * until saved to a change request. Inside a change request, an agent's amendments land live beside
- * the person's unsaved edits, and a save while the agent is mid-turn waits for the turn to end.
- * Links open the next document on top, read from the same place.
+ * One wiki note, read first; Edit turns the page into the editor. Edits save by themselves, to the
+ * change request the route names, else the person's draft. Inside a change request, an agent's
+ * amendments land live beside what hasn't saved yet, and saves wait for its turn to end. Links open
+ * the next document on top, read from the same place.
  */
 function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
   const navigation = useNavigation();
   const environmentId = params.environmentId as EnvironmentId;
   const wikiId = params.wikiId as WikiId;
-  const name = params.name;
-  const changeRequestId = params.changeRequestId as WikiChangeRequestId | undefined;
-  const scope = changeRequestId === undefined ? {} : { changeRequestId };
+  const requested = params.name;
+  const title = documentTitle(requested);
+  const routeChangeRequestId = params.changeRequestId as WikiChangeRequestId | undefined;
 
-  const note = useEnvironmentQuery(
-    wikiEnvironment.note({ environmentId, input: { wikiId, name, ...scope } }),
-  );
-  const index = useEnvironmentQuery(
-    wikiEnvironment.index({ environmentId, input: { wikiId, ...scope } }),
-  );
   const wikis = useEnvironmentQuery(wikiEnvironment.list({ environmentId, input: {} }));
   const changeRequests = useEnvironmentQuery(
     wikiEnvironment.changeRequests({ environmentId, input: { wikiId } }),
   );
-  const openChangeRequests = useMemo(
-    () =>
-      (changeRequests.data?.changeRequests ?? []).filter(
-        (changeRequest) => changeRequest.status === "open",
-      ),
-    [changeRequests.data],
+  const all = changeRequests.data?.changeRequests;
+  const draft = wikiDraft(all);
+  const placement = useWikiPlacement(environmentId);
+  const movedTo = routeChangeRequestId === undefined ? draftMovedTo(draft, requested) : undefined;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a move landed elsewhere reaches the native route from here
+  useEffect(() => {
+    if (movedTo !== undefined) navigation.setParams({ name: movedTo });
+  }, [movedTo, navigation]);
+  const changeRequestId = wikiDocumentScope({
+    tabChangeRequestId: routeChangeRequestId,
+    draft,
+    file: requested,
+  });
+  const scope = changeRequestId === undefined ? {} : { changeRequestId };
+  // Waits for the list to say whether a draft holds this, or a draft's document would first draw
+  // from main and then seem to change.
+  const located = changeRequests.data !== null || changeRequests.error !== null;
+  const note = useEnvironmentQuery(
+    located
+      ? wikiEnvironment.note({
+          environmentId,
+          input: { wikiId, name: exactWikiPath(requested), ...scope },
+        })
+      : null,
+  );
+  const index = useEnvironmentQuery(
+    wikiEnvironment.index({ environmentId, input: { wikiId, ...scope } }),
   );
   const wiki = wikis.data?.wikis.find((entry) => entry.wikiId === wikiId) ?? null;
-  const viewing = openChangeRequests.find(
-    (changeRequest) => changeRequest.changeRequestId === changeRequestId,
+  const viewing = all?.find((changeRequest) => changeRequest.changeRequestId === changeRequestId);
+  const settled = isSettledChangeRequest(viewing);
+  const viewingTurn = useChangeRequestTurn(
+    environmentId,
+    viewing?.status === "open" ? viewing.threadId : null,
   );
-  const viewingTurn = useChangeRequestTurn(environmentId, viewing?.threadId);
-  const file = note.data?.file ?? null;
-  const readOnly = file !== null && isSkillMapFile(file);
-  const unwritten = note.data !== null && !note.data.exists && !readOnly;
+  // A first save moves the read from main to the draft; the note stays on screen across it.
+  const [lastNote, setLastNote] = useState(note.data);
+  if (note.data !== null && note.data !== lastNote) setLastNote(note.data);
+  const data = note.data ?? lastNote;
+  const file = data?.file ?? null;
+  const canEdit = useAtomValue(wikiEnvironment.autosave.permissionAtom(environmentId));
+  const readOnly = (file !== null && isSkillMapFile(file)) || settled || !canEdit;
+  const unwritten = data !== null && !data.exists && !readOnly;
 
   const editor = useRef<WikiEditorHandle>(null);
   const theme = useEditorTheme();
   // Null until the person picks: a document not written yet opens ready to write.
   const [chosenMode, setMode] = useState<"read" | "edit" | null>(null);
   const mode = readOnly ? "read" : (chosenMode ?? (unwritten ? "edit" : "read"));
-  const [state, setState] = useState({ dirty: false, changedUnderneath: false });
-  const [saving, setSaving] = useState(false);
+  const [changedUnderneath, setChangedUnderneath] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
-  const [queued, setQueued] = useState<QueuedWikiSave | null>(null);
 
   // What the page shows: sent on every new version, theme and mode, and resent from scratch
   // whenever the page (re)loads.
   const incoming = note.data?.source ?? null;
+  const incomingCommit = note.data?.commit;
   const live = changeRequestId !== undefined;
   const receive = useMemo<WikiEditorCommand | null>(
     () =>
@@ -128,8 +174,9 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
                 ? wikiDocumentAuthor({ changeRequest: viewing, file, runId: viewingTurn.runId })
                 : null,
             turnRunning: viewingTurn.running,
+            commit: incomingCommit,
           },
-    [incoming, live, file, viewing, viewingTurn.runId, viewingTurn.running],
+    [incoming, incomingCommit, live, file, viewing, viewingTurn.runId, viewingTurn.running],
   );
   const shown = useRef({ receive, theme, mode });
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the latest command, theme and mode for the initial commands a reloaded web view reads
@@ -157,11 +204,13 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
     editor.current?.send({ type: "mode", mode });
   }, [mode]);
 
-  // The buffer's text, asked of the page when saving.
-  const textRequests = useRef(new Map<number, (text: string) => void>());
+  // The buffer's text and the commit it agrees with, asked of the page when saving.
+  const textRequests = useRef(
+    new Map<number, (read: { text: string; commit: string | undefined }) => void>(),
+  );
   const nextRequest = useRef(1);
   const requestText = () =>
-    new Promise<string>((resolve) => {
+    new Promise<{ text: string; commit: string | undefined }>((resolve) => {
       const requestId = nextRequest.current++;
       textRequests.current.set(requestId, resolve);
       editor.current?.send({ type: "requestText", requestId });
@@ -177,22 +226,75 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
   }, []);
 
   const linkTypes = index.data?.linkTypes;
+  const outsideDraft = changeRequestId === undefined ? draft : null;
+  const documents = useMemo(
+    () => (index.data ? wikiDocumentFilesWithDraft(index.data, outsideDraft) : null),
+    [index.data, outsideDraft],
+  );
+  const linkedFiles = useMemo(() => (documents ? linkFiles(documents) : null), [documents]);
+  const linkingFile = data?.file ?? null;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the wiki's types cross into the editor's web view, outside React
   useEffect(() => {
-    if (linkTypes) editor.current?.send({ type: "linkTypes", types: linkTypes });
-  }, [linkTypes]);
+    if (!linkTypes || documents === null) return;
+    editor.current?.send({
+      type: "linkTypes",
+      types: linkTypes,
+      files: documents,
+      ...(linkingFile === null ? {} : { from: linkingFile }),
+    });
+  }, [linkTypes, documents, linkingFile]);
 
   // The notes the page's link previews show, read here, as the blocks are.
   const [previewNames, setPreviewNames] = useState<ReadonlyArray<string>>([]);
-  const onNoteRead = useCallback((name: string, source: string | null) => {
-    editor.current?.send({ type: "noteRead", name, source });
+  const onNoteRead = useCallback<WikiNoteReadsProps["onRead"]>((name, source, link) => {
+    editor.current?.send({ type: "noteRead", name, source, link });
   }, []);
+
+  // The canvases the note embeds, read here, and kept so a reloaded page gets them at once.
+  const [embeddedPaths, setEmbeddedPaths] = useState<ReadonlyArray<string>>([]);
+  const embeddedFiles = useRef(new Map<string, WikiEditorEmbeddedFile>());
+  const onFileRead = useCallback((path: string, read: WikiEditorEmbeddedFile) => {
+    embeddedFiles.current.set(path, read);
+    editor.current?.send({ type: "fileRead", path, file: read });
+  }, []);
+
+  const mintUrl = useAtomQueryRunner(assetEnvironment.createUrl, QUIET_MINT);
+  const connection = usePreparedConnection(environmentId);
+  const httpBaseUrl = connection._tag === "Some" ? connection.value.httpBaseUrl : null;
+  /** An image the note embeds: found from the note, at the commit it reads. */
+  const answerAsset = async (path: string) => {
+    const revision = data?.commit;
+    if (revision === undefined) return;
+    const result = await mintUrl({
+      environmentId,
+      input: {
+        resource: { _tag: "wiki-file", wikiId, commit: revision, path, from: file ?? requested },
+      },
+    });
+    const state = assetUrlStateFromResult(result, httpBaseUrl);
+    editor.current?.send({
+      type: "assetRead",
+      path,
+      revision,
+      url: state._tag === "Success" ? state.url : null,
+      expiresAt: state._tag === "Success" ? state.expiresAt : 0,
+    });
+  };
 
   const onEvent = (event: WikiEditorEvent) => {
     switch (event.type) {
       case "readNote":
         setPreviewNames((names) => (names.includes(event.name) ? names : [...names, event.name]));
         return;
+      case "readAsset":
+        void answerAsset(event.path);
+        return;
+      case "readFile": {
+        const known = embeddedFiles.current.get(event.path);
+        if (known) editor.current?.send({ type: "fileRead", path: event.path, file: known });
+        setEmbeddedPaths((paths) => (paths.includes(event.path) ? paths : [...paths, event.path]));
+        return;
+      }
       case "queryBase": {
         const known = baseAnswers.current.get(event.source);
         if (known) editor.current?.send({ type: "baseResult", source: event.source, ...known });
@@ -202,23 +304,39 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
         return;
       }
       case "state":
-        setState({ dirty: event.dirty, changedUnderneath: event.changedUnderneath });
+        setChangedUnderneath(event.changedUnderneath);
         return;
-      case "openNote":
+      case "edited":
+        autosave.edited();
+        return;
+      case "openNote": {
+        const name = wikiLinkOpens(
+          index.data,
+          event.name,
+          event.from ?? file ?? requested,
+          placement,
+        );
+        if (name === null) {
+          Dialog.alert("No note made", NO_NOTE_FROM_RELATIVE_LINK);
+          return;
+        }
         navigation.dispatch(
           StackActions.push("WikiDocument", {
             environmentId: params.environmentId,
             wikiId: params.wikiId,
-            name: event.name,
-            ...(changeRequestId === undefined ? {} : { changeRequestId }),
+            name,
+            ...(routeChangeRequestId === undefined
+              ? {}
+              : { changeRequestId: routeChangeRequestId }),
           }),
         );
         return;
+      }
       case "openUrl":
         void Linking.openURL(event.href).catch(() => undefined);
         return;
       case "text":
-        textRequests.current.get(event.requestId)?.(event.text);
+        textRequests.current.get(event.requestId)?.({ text: event.text, commit: event.commit });
         textRequests.current.delete(event.requestId);
         return;
       case "ready":
@@ -230,123 +348,76 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
     }
   };
 
-  const canAmend = useAtomValue(wikiEnvironment.amend.permissionAtom(environmentId));
-  const amend = useAtomCommand(wikiEnvironment.amend, { reportFailure: false });
-  /** Commits the buffer as it stands now; the failure's message, or null on success. */
-  const commit = async (target: WikiSaveTarget, message: string): Promise<string | null> => {
-    if (file === null) return "The document isn't loaded yet.";
-    const text = await requestText();
-    const result = await amend({
-      environmentId,
-      input: { wikiId, message, changes: { [file]: text }, ...target },
-    });
-    if (result._tag !== "Success") {
-      return isAtomCommandInterrupted(result)
-        ? "The save was cancelled."
-        : describeWikiFailure(squashAtomCommandFailure(result));
-    }
-    editor.current?.send({ type: "markSaved", text });
-    setMode("read");
-    const savedTo = result.value.changeRequest.changeRequestId;
-    // Saved from main, the document now reads inside the change request it was saved to.
-    if (savedTo !== changeRequestId) navigation.setParams({ changeRequestId: savedTo });
-    return null;
-  };
-
-  // A save queued behind a running turn commits once that turn ends.
-  const queuedChange = openChangeRequests.find(
-    (changeRequest) => changeRequest.changeRequestId === queued?.changeRequestId,
-  );
-  const queuedTurn = useChangeRequestTurn(environmentId, queuedChange?.threadId);
-  const committing = useRef(false);
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- commits the queued save through the server once the change request's turn stops running
-  useEffect(() => {
-    const step = queuedSaveStep({
-      queued,
-      turnRunning: queuedTurn.running,
-      committing: committing.current,
-    });
-    if (step !== "commit" || queued === null) return;
-    committing.current = true;
-    void commit({ changeRequestId: queued.changeRequestId }, queued.message).then((failure) => {
-      committing.current = false;
-      setQueued(null);
-      if (failure) Dialog.alert("Couldn't save the document", failure);
-    });
+  const send = useWikiAutosaveCommand();
+  const { autosave, status } = useWikiAutosave({
+    subject: title,
+    save: async () => {
+      if (file === null) return { ok: true };
+      const { text, commit } = await requestText();
+      const outcome = await send({
+        environmentId,
+        input: {
+          wikiId,
+          ...(routeChangeRequestId === undefined ? {} : { changeRequestId: routeChangeRequestId }),
+          document: file,
+          write: {
+            kind: "text",
+            file,
+            text,
+            ...(commit === undefined ? {} : { readAt: commit }),
+          },
+        },
+      });
+      if (!outcome.ok) return outcome;
+      editor.current?.send({
+        type: "markSaved",
+        text,
+        ...(outcome.value.commit === null ? {} : { commit: outcome.value.commit }),
+      });
+      return { ok: true };
+    },
   });
-
-  // Leaving with unsaved edits asks first.
-  usePreventRemove(state.dirty && queued === null, ({ data }) => {
-    Dialog.confirm({
-      title: "Discard your edits?",
-      message: `Your unsaved edits to ${name} will be lost.`,
-      cancelText: "Keep editing",
-      confirmText: "Discard",
-      destructive: true,
-      onConfirm: () => navigation.dispatch(data.action),
-    });
-  });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a running turn holds the autosave store, which lives outside React
+  useEffect(() => autosave.setHeld(viewingTurn.running), [autosave, viewingTurn.running]);
 
   const subtitle = wikiDocumentSubtitle({
     wikiName: wiki?.name ?? null,
+    file: requested,
     changeRequest: viewing ?? null,
     readsChangeRequest: changeRequestId !== undefined,
+    noun: wikiTerms(wiki).singular,
     agentWorking: viewingTurn.running,
+    saving: wikiSaveLabel(status),
   });
 
   const header = (
     <NativeStackScreenOptions
-      options={{ title: name, unstable_headerSubtitle: subtitle }}
-      optionsVersion={`${subtitle}|${mode}|${state.dirty}|${queued !== null}|${readOnly}`}
+      options={{ title, unstable_headerSubtitle: subtitle }}
+      optionsVersion={`${subtitle}|${mode}|${readOnly}`}
     />
   );
   const toolbar =
-    note.data === null ? null : (
+    data === null || readOnly ? null : (
       // Direct children only: the toolbar reads its items by component, not through fragments.
       <Toolbar placement="right">
-        {queued !== null ? (
-          <Toolbar.Button
-            label="Cancel save"
-            accessibilityLabel="Cancel the save waiting for the agent's turn"
-            onPress={() => setQueued(null)}
-          />
-        ) : null}
-        {queued === null && state.dirty ? (
-          <Toolbar.Menu icon="ellipsis" accessibilityLabel="Document actions" title={name}>
-            <Toolbar.MenuAction
-              icon="arrow.uturn.backward"
-              destructive
-              onPress={() => editor.current?.send({ type: "discard" })}
-            >
-              <Toolbar.Label>Discard edits</Toolbar.Label>
-            </Toolbar.MenuAction>
-          </Toolbar.Menu>
-        ) : null}
-        {queued === null && state.dirty ? (
-          <Toolbar.Button
-            label="Save"
-            variant="done"
-            accessibilityLabel="Save to a change request"
-            onPress={() => setSaving(true)}
-          />
-        ) : null}
-        {queued === null && !state.dirty && !readOnly ? (
-          <Toolbar.Button
-            label={mode === "read" ? "Edit" : "Done"}
-            variant={mode === "edit" ? "done" : "plain"}
-            accessibilityLabel={mode === "read" ? "Edit the document" : "Stop editing"}
-            onPress={() => setMode(mode === "read" ? "edit" : "read")}
-          />
-        ) : null}
+        <Toolbar.Button
+          label={mode === "read" ? "Edit" : "Done"}
+          variant={mode === "edit" ? "done" : "plain"}
+          accessibilityLabel={mode === "read" ? "Edit the document" : "Stop editing"}
+          onPress={() => {
+            setMode(mode === "read" ? "edit" : "read");
+            if (mode === "edit") void autosave.flush();
+          }}
+        />
       </Toolbar>
     );
 
-  if (note.data === null) {
+  if (data === null) {
     return (
       <View className="flex-1 bg-screen">
         {header}
         {note.error !== null ? (
-          <EmptyState title={`Couldn't open ${name}`} detail={note.error} />
+          <EmptyState title={`Couldn't open ${title}`} detail={note.error} />
         ) : (
           <LoadingScreen message="Opening the document…" />
         )}
@@ -358,26 +429,53 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
     <View className="flex-1 bg-screen">
       {header}
       {toolbar}
-      {pageError !== null ? (
-        <Notice text={`This document couldn't be shown: ${pageError}`} />
-      ) : queued !== null ? (
-        <Notice text="Your edit saves when the agent's turn ends." />
-      ) : state.changedUnderneath ? (
-        <Notice
-          text="This document changed while you were editing. Your edits are kept."
-          action="Load new version"
-          onAction={() => editor.current?.send({ type: "loadChanged" })}
-        />
-      ) : !note.data.exists ? (
-        <Notice text={`No document is called ${name} yet. Write it, then save it.`} />
-      ) : null}
+      <WikiBelowHeader>
+        {routeChangeRequestId === undefined || viewing?.draft ? (
+          draft !== null ? (
+            <WikiDraftBar
+              environmentId={environmentId}
+              draft={draft}
+              changeRequests={all ?? []}
+              flush={autosave.flush}
+              drop={autosave.cancel}
+              onLanded={(id, files) => {
+                // The document on screen follows where its edits went.
+                if (filesHoldDocument(files, requested)) {
+                  navigation.setParams({ changeRequestId: id });
+                }
+              }}
+            />
+          ) : null
+        ) : null}
+        {pageError !== null ? (
+          <WikiNotice text={`This document couldn't be shown: ${pageError}`} />
+        ) : status.kind === "failed" ? (
+          <WikiNotice
+            text={`Your edits aren't saved. ${status.message}${status.retrying ? " Still trying." : ""}`}
+            action="Try again"
+            onAction={autosave.retry}
+          />
+        ) : status.kind === "waiting-for-turn" ? (
+          <WikiNotice text="Your edit saves when the agent's turn ends." />
+        ) : changedUnderneath ? (
+          <WikiNotice
+            text="This document changed while you were editing. Your edits are kept, and they save over it unless you load the new version."
+            action="Load new version"
+            onAction={() => editor.current?.send({ type: "loadChanged" })}
+          />
+        ) : !data.exists ? (
+          <WikiNotice
+            text={`No document is called ${title} yet. Write it, and it saves by itself.`}
+          />
+        ) : null}
+      </WikiBelowHeader>
       <WikiEditorWebView ref={editor} onEvent={onEvent} initialCommands={initialCommands} />
       <WikiBaseQueries
         sources={baseSources}
         environmentId={environmentId}
         wikiId={wikiId}
         changeRequestId={changeRequestId}
-        note={note.data.name}
+        note={data.name}
         onAnswer={onBaseAnswer}
       />
       <WikiNoteReads
@@ -385,47 +483,19 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
         environmentId={environmentId}
         wikiId={wikiId}
         changeRequestId={changeRequestId}
+        draft={draft}
+        files={linkedFiles}
+        from={data.file}
         onRead={onNoteRead}
       />
-      {saving ? (
-        <WikiSaveSheet
-          noteName={name}
-          openChangeRequests={openChangeRequests}
-          viewing={changeRequestId}
-          canSave={canAmend}
-          // Only the turn of the change request read here is followed; saving into another
-          // one goes straight in.
-          turnRunning={(id) => id === changeRequestId && viewingTurn.running}
-          onClose={() => setSaving(false)}
-          onSave={async (target, message) => {
-            const failure = await commit(target, message);
-            if (failure === null) setSaving(false);
-            return failure;
-          }}
-          onQueue={(id, message) => {
-            setQueued({ changeRequestId: id, message });
-            setSaving(false);
-          }}
-        />
-      ) : null}
-    </View>
-  );
-}
-
-/** A line above the document about its state, with an optional action. */
-function Notice(props: {
-  readonly text: string;
-  readonly action?: string;
-  readonly onAction?: () => void;
-}) {
-  return (
-    <View className="flex-row items-center gap-3 border-b border-border-subtle bg-subtle px-4 py-2.5">
-      <Text className="flex-1 text-sm text-foreground-muted">{props.text}</Text>
-      {props.action ? (
-        <Pressable accessibilityRole="button" onPress={props.onAction} hitSlop={8}>
-          <Text className="text-sm font-t3-medium text-primary">{props.action}</Text>
-        </Pressable>
-      ) : null}
+      <WikiFileReads
+        paths={embeddedPaths}
+        environmentId={environmentId}
+        wikiId={wikiId}
+        changeRequestId={changeRequestId}
+        from={data.file}
+        onRead={onFileRead}
+      />
     </View>
   );
 }

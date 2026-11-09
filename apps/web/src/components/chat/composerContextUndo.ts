@@ -2,7 +2,7 @@ import type {
   EnvironmentContextRecord,
   PreviewAnnotationPayload,
   ThreadContextRecord,
-  WikiNoteContextRecord,
+  WikiContextRecord,
 } from "@t3tools/contracts";
 import { useEffect, useState } from "react";
 
@@ -25,7 +25,7 @@ export interface RetainedContextPayloads extends RetainedAttachmentContextPayloa
   terminals: Map<string, TerminalContextDraft>;
   reviewComments: Map<string, ReviewCommentContext>;
   threads: Map<string, ThreadContextRecord>;
-  wikiNotes: Map<string, WikiNoteContextRecord>;
+  wikiContexts: Map<string, WikiContextRecord>;
   environments: Map<string, EnvironmentContextRecord>;
 }
 
@@ -34,7 +34,7 @@ function createRetainedContextPayloads(): RetainedContextPayloads {
     terminals: new Map(),
     reviewComments: new Map(),
     threads: new Map(),
-    wikiNotes: new Map(),
+    wikiContexts: new Map(),
     environments: new Map(),
     files: new Map(),
     previewAnnotations: new Map(),

@@ -1,12 +1,23 @@
 import { autocompletion, type CompletionContext } from "@codemirror/autocomplete";
 import { StateEffect, StateField, type EditorState, type Extension } from "@codemirror/state";
-import { EditorView, hoverTooltip, showTooltip, type Tooltip } from "@codemirror/view";
+import {
+  Decoration,
+  EditorView,
+  hoverTooltip,
+  showTooltip,
+  ViewPlugin,
+  type DecorationSet,
+  type Tooltip,
+  type ViewUpdate,
+} from "@codemirror/view";
+import { wikilinksBetween } from "@mercurian/editor/markdown";
 import { displayRuns, frontmatterEnd, key, links, typedLinks } from "@mercurian/wiki/links";
+import { resolveLink, type WikiLinkFiles } from "@mercurian/wiki/resolve-link";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { linkText } from "./baseCells";
-import { wikilinkNoteName } from "./incoming";
+import { ambiguousLink, wikilinkNoteName } from "./incoming";
 
 export { displayRuns as wikilinkDisplay };
 
@@ -16,8 +27,25 @@ export interface WikiLinkPeek {
   readonly types: ReadonlyArray<string>;
 }
 
+/** A document a `[[` can complete to: `label` lists it, `apply` is what the link writes. */
+export interface WikiLinkOption {
+  readonly label: string;
+  readonly apply: string;
+}
+
+/** What a note's links search: its wiki's files, from the note's own place. */
+export interface WikiLinkScope {
+  readonly files: WikiLinkFiles;
+  readonly from: string | null;
+}
+
 export interface WikiLinkToolsHost {
   readonly linkTypes: () => ReadonlyArray<string>;
+  readonly linkOptions?: () => ReadonlyArray<WikiLinkOption>;
+  /** Without one, two links are the same document only when they spell it alike. */
+  readonly linkScope?: () => WikiLinkScope | null;
+  /** Calls back when `linkScope` answers differently; returns what stops that. */
+  readonly watchScope?: (listener: () => void) => () => void;
   /** Fills `element` with a link's preview; returns what takes it down. */
   readonly drawPreview: (link: WikiLinkPeek, element: HTMLElement) => () => void;
 }
@@ -64,11 +92,20 @@ function linkAt(view: EditorView, pos: number) {
   return null;
 }
 
-function peekOf(state: EditorState, target: string): WikiLinkPeek | null {
+export function peekOf(
+  state: EditorState,
+  target: string,
+  scope: WikiLinkScope | null,
+): WikiLinkPeek | null {
   const name = wikilinkNoteName(target);
   if (name === null) return null;
-  const typed = typedLinks(state.doc.toString()).find((link) => key(link.target) === key(name));
-  return { name, types: typed?.types ?? [] };
+  const landed = (text: string) =>
+    (scope === null ? null : resolveLink(text, scope.from, scope.files).file) ?? key(text);
+  const wanted = landed(name);
+  const types = typedLinks(state.doc.toString()).flatMap((link) =>
+    landed(link.target) === wanted ? link.types : [],
+  );
+  return { name, types: [...new Set(types)] };
 }
 
 const openPress = StateEffect.define<Tooltip | null>();
@@ -81,7 +118,56 @@ const pressed = StateField.define<Tooltip | null>({
   provide: (field) => showTooltip.from(field),
 });
 
+const scopeMoved = StateEffect.define<null>();
+const MISSING = Decoration.mark({ class: "cm-wiki-link-missing" });
+
+/** A name with a file's extension: an attachment, which the scope's documents can't answer for. */
+export const namesAttachment = (target: string) =>
+  /\.[a-z][a-z0-9]*$/i.test(target) && !/\.(md|base|canvas)$/i.test(target);
+
+function missingLinks(view: EditorView, scope: WikiLinkScope | null): DecorationSet {
+  if (scope === null) return Decoration.none;
+  const marks = view.visibleRanges.flatMap(({ from, to }) =>
+    wikilinksBetween(view.state, from, to).flatMap((link) =>
+      namesAttachment(link.target) ||
+      resolveLink(link.target, scope.from, scope.files).file !== null
+        ? []
+        : [MISSING.range(link.from, link.to)],
+    ),
+  );
+  return Decoration.set(marks, true);
+}
+
+/** Marks a link that lands nowhere, drawn red as the links under a note are. */
+const missingLinkMarks = (host: WikiLinkToolsHost) =>
+  ViewPlugin.fromClass(
+    class {
+      decorations: DecorationSet;
+      stopWatching: () => void;
+      constructor(view: EditorView) {
+        this.decorations = missingLinks(view, host.linkScope?.() ?? null);
+        this.stopWatching =
+          host.watchScope?.(() => view.dispatch({ effects: scopeMoved.of(null) })) ?? (() => {});
+      }
+      update(update: ViewUpdate) {
+        const moved = update.transactions.some((each) =>
+          each.effects.some((effect) => effect.is(scopeMoved)),
+        );
+        if (moved || update.docChanged || update.viewportChanged) {
+          this.decorations = missingLinks(update.view, host.linkScope?.() ?? null);
+        }
+      }
+      destroy() {
+        this.stopWatching();
+      }
+    },
+    { decorations: (plugin) => plugin.decorations },
+  );
+
 const previewTheme = EditorView.baseTheme({
+  ".cm-wiki-link-missing, .cm-wiki-link-missing .cm-md-wikilink": {
+    color: "var(--destructive-foreground, #dc2626)",
+  },
   ".cm-tooltip:has(.cm-wiki-link-preview)": {
     border: "1px solid var(--atlas-md-border-color)",
     borderRadius: "8px",
@@ -109,6 +195,22 @@ const previewTheme = EditorView.baseTheme({
 });
 
 const typing = /\[\[[^\]\n|]+\|(?:[^\]\n]*\s)?@([\p{L}\p{N}_-]*)$/u;
+const linking = /\[\[([^\]\n|#]*)$/;
+
+/** The wiki's documents, where the caret is on a link's name. */
+export function nameSuggestions(
+  context: Pick<CompletionContext, "state" | "pos">,
+  options: ReadonlyArray<WikiLinkOption>,
+) {
+  const line = context.state.doc.lineAt(context.pos);
+  const match = linking.exec(line.text.slice(0, context.pos - line.from));
+  if (!match) return null;
+  return {
+    from: context.pos - (match[1]?.length ?? 0),
+    options: options.map((option) => ({ ...option })),
+    validFor: /^[^\]\n|#]*$/,
+  };
+}
 
 /** The wiki's types, where the caret is on an `@` word in a link's display text. */
 export function typeSuggestions(
@@ -131,7 +233,7 @@ export function typeSuggestions(
  */
 export function wikiLinkTools(host: WikiLinkToolsHost): Extension {
   const tooltip = (view: EditorView, from: number, to: number, target: string) => {
-    const link = peekOf(view.state, target);
+    const link = peekOf(view.state, target, host.linkScope?.() ?? null);
     if (link === null) return null;
     return {
       pos: from,
@@ -149,8 +251,13 @@ export function wikiLinkTools(host: WikiLinkToolsHost): Extension {
   return [
     previewTheme,
     pressed,
+    missingLinkMarks(host),
     autocompletion({
-      override: [(context) => typeSuggestions(context, host.linkTypes())],
+      override: [
+        (context) =>
+          typeSuggestions(context, host.linkTypes()) ??
+          nameSuggestions(context, host.linkOptions?.() ?? []),
+      ],
     }),
     hoverTooltip((view, pos) => {
       const found = linkAt(view, pos);
@@ -189,12 +296,20 @@ export function wikiLinkTools(host: WikiLinkToolsHost): Extension {
 export function useWikiLinkTools(
   linkTypes: ReadonlyArray<string>,
   render: (link: WikiLinkPeek) => ReactNode,
+  linkOptions: ReadonlyArray<WikiLinkOption> = [],
+  linkScope: WikiLinkScope | null = null,
 ) {
   const types = useRef(linkTypes);
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the latest types for the editor's completion source
+  const options = useRef(linkOptions);
+  const scope = useRef(linkScope);
+  const scopeWatchers = useRef(new Set<() => void>());
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the latest types, options and scope for the editor's completion source
   useLayoutEffect(() => {
     types.current = linkTypes;
-  }, [linkTypes]);
+    options.current = linkOptions;
+    scope.current = linkScope;
+    for (const watcher of scopeWatchers.current) watcher();
+  }, [linkTypes, linkOptions, linkScope]);
   const [open, setOpen] = useState<
     ReadonlyArray<{ id: number; link: WikiLinkPeek; element: HTMLElement }>
   >([]);
@@ -202,6 +317,12 @@ export function useWikiLinkTools(
     let next = 0;
     return {
       linkTypes: () => types.current,
+      linkOptions: () => options.current,
+      linkScope: () => scope.current,
+      watchScope: (listener) => {
+        scopeWatchers.current.add(listener);
+        return () => scopeWatchers.current.delete(listener);
+      },
       drawPreview: (link, element) => {
         const id = next++;
         setOpen((previews) => [...previews, { id, link, element }]);
@@ -220,12 +341,18 @@ export function useWikiLinkTools(
 export function WikiLinkPreview({
   link,
   source,
+  resolved,
 }: {
   readonly link: WikiLinkPeek;
   /** The note's text; null when it isn't written, undefined while it loads. */
   readonly source: string | null | undefined;
+  /** Where the link went, which says so when other files fit it too. */
+  readonly resolved?:
+    | { readonly file: string | null; readonly others: ReadonlyArray<string> }
+    | undefined;
 }) {
   const excerpt = typeof source === "string" ? noteExcerpt(source) : "";
+  const ambiguous = resolved === undefined ? undefined : ambiguousLink(resolved);
   return (
     <div className="cm-wiki-link-preview">
       <div className="cm-wiki-link-preview-name">{link.name}</div>
@@ -243,6 +370,7 @@ export function WikiLinkPreview({
           {source === null ? "Not written yet." : excerpt || "This note is empty."}
         </p>
       )}
+      {ambiguous === undefined ? null : <p className="cm-wiki-link-preview-text">{ambiguous}</p>}
     </div>
   );
 }

@@ -15,6 +15,7 @@ import * as PlatformError from "effect/PlatformError";
 import * as Queue from "effect/Queue";
 import * as Tracer from "effect/Tracer";
 import { HttpClient, HttpClientRequest, HttpRouter, HttpServerResponse } from "effect/http";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { ASSET_ROUTE_PREFIX } from "./assets/AssetAccess.ts";
 import { ATTACHMENT_UPLOAD_ROUTE_PREFIX } from "./assets/AttachmentUpload.ts";
 import { openMediaFile } from "./assets/MediaFile.ts";
@@ -29,7 +30,12 @@ import { ORCHESTRATION_PROTOCOL_HEADER } from "@t3tools/contracts";
 
 import * as ServerConfig from "./config.ts";
 
-import { assetResponseHeaders, assetFileResponse, downloadContentDisposition } from "./http.ts";
+import {
+  assetResponseHeaders,
+  assetFileResponse,
+  downloadContentDisposition,
+  wikiBlobResponse,
+} from "./http.ts";
 import * as ServerHttp from "./http.ts";
 
 describe("MCP app asset responses", () => {
@@ -494,6 +500,50 @@ it.layer(
       yield* Queue.take(closed);
       expect(active.size).toBe(0);
     }),
+  );
+});
+
+describe("wiki file assets", () => {
+  it.effect("serves a commit's bytes as they are, whole and by range", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-wiki-blob-" });
+      const git = (...args: ReadonlyArray<string>) =>
+        spawner.string(
+          ChildProcess.make("git", ["-c", "user.name=T", "-c", "user.email=t@t.test", ...args], {
+            cwd: root,
+          }),
+        );
+      const bytes = new Uint8Array([0x89, 0x50, 0x00, 0xff, 0xd8, 0x0a, 0xc3]);
+      yield* git("init", "--quiet");
+      yield* fs.makeDirectory(path.join(root, "pics"));
+      yield* fs.writeFile(path.join(root, "pics", "a.png"), bytes);
+      yield* git("add", ".");
+      yield* git("commit", "--quiet", "-m", "Picture");
+      const commit = (yield* git("rev-parse", "HEAD")).trim();
+      yield* fs.remove(path.join(root, "pics"), { recursive: true });
+
+      const asset = { root, commit, path: "pics/a.png" };
+      const body = (response: Response) =>
+        Effect.promise(() => response.arrayBuffer()).pipe(
+          Effect.map((buffer) => new Uint8Array(buffer)),
+        );
+      const whole = HttpServerResponse.toWeb(yield* wikiBlobResponse(asset));
+      expect(whole.status).toBe(200);
+      expect(whole.headers.get("content-type")).toBe("image/png");
+      expect(whole.headers.get("content-length")).toBe("7");
+      expect(yield* body(whole)).toEqual(bytes);
+
+      const part = HttpServerResponse.toWeb(yield* wikiBlobResponse(asset, "bytes=2-4"));
+      expect(part.status).toBe(206);
+      expect(part.headers.get("content-range")).toBe("bytes 2-4/7");
+      expect(yield* body(part)).toEqual(bytes.subarray(2, 5));
+
+      const past = HttpServerResponse.toWeb(yield* wikiBlobResponse(asset, "bytes=9-"));
+      expect(past.status).toBe(416);
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   );
 });
 

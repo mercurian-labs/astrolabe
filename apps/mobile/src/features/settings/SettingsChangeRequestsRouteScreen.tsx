@@ -43,7 +43,7 @@ const ROWS: ReadonlyArray<{
   {
     key: "references",
     label: "References",
-    subtitle: "Change requests and threads sharing an issue key join.",
+    subtitle: "Pull requests and threads sharing an issue key join.",
   },
   {
     key: "sameBranch",
@@ -53,7 +53,7 @@ const ROWS: ReadonlyArray<{
   {
     key: "agentSuggestions",
     label: "Agent suggestions",
-    subtitle: "An agent suggests change requests and threads for you to accept.",
+    subtitle: "An agent suggests pull requests and threads for you to accept.",
   },
   {
     key: "flagDocsBehind",

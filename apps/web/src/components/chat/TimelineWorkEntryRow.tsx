@@ -10,6 +10,8 @@ import {
   ORCHESTRATION_V2_WORKSPACE_PREPARATION_FAILURE_CODE,
   type EnvironmentId,
   ThreadId,
+  WikiChangeRequestId,
+  WikiId,
 } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { Link } from "@tanstack/react-router";
@@ -24,6 +26,7 @@ import {
   turnItemNeedsDetailFetch,
 } from "@t3tools/client-runtime/work-log/item-detail";
 import { claudeSkillInvocation } from "@t3tools/shared/toolActivity";
+import { wikiCanvasFromToolItem } from "@t3tools/shared/toolOutput";
 import { memo, use, useState, type KeyboardEvent } from "react";
 import {
   workEntryDisplayIndicatesToolFailure,
@@ -36,6 +39,7 @@ import { ChevronRightIcon, CircleAlertIcon, XIcon, RotateCcwIcon } from "lucide-
 import { Button, InlineButton } from "../ui/button";
 import { useAssetUrls } from "../../assets/assetUrls";
 import { useThreadShell } from "../../state/entities";
+import { useOpenWikiTab } from "../wiki/useOpenWiki";
 import {
   threadReadLabelPrefix,
   threadReadTargetId,
@@ -185,6 +189,12 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
     workEntry.projectedItem?.item.type === "notification"
       ? notificationChildThreadId(workEntry.projectedItem.item.source)
       : undefined;
+  // A guest page has no wikis to open it in.
+  const changedCanvas =
+    workEntry.projectedItem?.item.type === "dynamic_tool" && threadRef
+      ? wikiCanvasFromToolItem(workEntry.projectedItem.item)
+      : undefined;
+  const openWikiTab = useOpenWikiTab();
   const groupView = use(WorkGroupViewCtx);
   const [expanded, setExpanded] = useState(
     () => groupView?.state.expandedEntries.has(workEntry.id) ?? false,
@@ -209,7 +219,12 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
   if (failureItem?.type === "error" && failureItem.status === "failed") {
     const warning = failureItem.failure.class === "usage_limit";
     const resetAt = failureItem.failure.resetAt;
-    const resetTime = resetAt ? formatUpcomingTimestamp(resetAt, timestampFormat) : null;
+    // The reset time is the viewer's local time; naming the zone keeps it
+    // unambiguous. Both read the zone now, since the device's can change.
+    const timeZone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const resetTime = resetAt
+      ? `${formatUpcomingTimestamp(resetAt, timestampFormat, undefined, timeZone)} (${timeZone})`
+      : null;
     const label = warning
       ? `Usage limit reached.${resetTime ? ` Retry after ${resetTime}.` : ""}`
       : workEntry.label;
@@ -470,6 +485,24 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
             >
               Open chat
             </button>
+          ) : null}
+          {changedCanvas ? (
+            <InlineButton
+              aria-label={`Open ${changedCanvas.file}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                openWikiTab({
+                  kind: "note",
+                  environmentId: ctx.activeThreadEnvironmentId,
+                  wikiId: WikiId.make(changedCanvas.wikiId),
+                  file: changedCanvas.file,
+                  changeRequestId: WikiChangeRequestId.make(changedCanvas.changeRequestId),
+                });
+              }}
+              onKeyDown={stopRowToggle}
+            >
+              Open canvas
+            </InlineButton>
           ) : null}
           {notifiedSubagentThreadId ? (
             <InlineButton

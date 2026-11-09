@@ -1,7 +1,16 @@
+import { canvasFile, typedNoteFile, type WikiPlacement } from "@mercurian/wiki/placement";
+import { isHidden } from "@mercurian/wiki/resolve-link";
 import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";
+import type { WikiId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
-import { FilePenLineIcon, FilePlusIcon, FileTextIcon, TableIcon } from "lucide-react";
+import {
+  FilePenLineIcon,
+  FilePlusIcon,
+  FileTextIcon,
+  TableIcon,
+  WaypointsIcon,
+} from "lucide-react";
 
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { useState } from "react";
@@ -13,9 +22,10 @@ import { CommandPaletteContent } from "../CommandPaletteContent";
 import { CommandPaletteResults } from "../CommandPaletteResults";
 import { CommandDialog, CommandDialogPopup } from "../ui/command";
 import { isWikisPath } from "../sidebar/mainAppLocation";
-import { noteKey } from "./wiki.logic";
-import { useWikiOverviews } from "./wikiEnvironment";
-import { openWikiTab, showWikiTab } from "./wikiPanes";
+import { documentPath, noteKey, wikiTerms } from "./wiki.logic";
+import { useWikiOverviews, useWikiPlacement } from "./wikiEnvironment";
+import { openWikiTab, showWikiTab, useFocusedWikiTab } from "./wikiPanes";
+import { useWikiTreeView } from "./wikiTreeView";
 import { wikiScopeKey, wikiSidebarItems, type WikiDocumentItem, type WikiTab } from "./wikiTabs";
 
 const RESULT_LIMIT = 60;
@@ -32,6 +42,8 @@ export function WikiFinder({
   overviews,
   scope,
   mode,
+  startIn = "",
+  naming = "document",
   paneId,
   onPick,
 }: {
@@ -41,6 +53,10 @@ export function WikiFinder({
   /** The wiki the sidebar is filtered to, whose documents come first and where new ones go. */
   readonly scope: string | null;
   readonly mode: "find" | "new";
+  /** What the search starts holding: a folder, for a document that starts there. */
+  readonly startIn?: string;
+  /** A folder has no file of its own, so naming one names its first document. */
+  readonly naming?: "document" | "folder";
   /** The pane a picked document opens in; the focused one by default. */
   readonly paneId?: string;
   /** Astrolabe: where a pick goes instead of the Wikis area, as for a pane in another section. */
@@ -58,6 +74,8 @@ export function WikiFinder({
             overviews={overviews}
             scope={scope}
             mode={mode}
+            startIn={startIn}
+            naming={naming}
             onPick={(tab) => {
               onOpenChange(false);
               // An empty pane's finder fills that pane; elsewhere a pick shows in the focused
@@ -77,24 +95,45 @@ function WikiFinderContent({
   overviews,
   scope,
   mode,
+  startIn,
+  naming,
   onPick,
 }: {
   readonly overviews: ReadonlyArray<WikiOverview>;
   readonly scope: string | null;
   readonly mode: "find" | "new";
+  readonly startIn: string;
+  readonly naming: "document" | "folder";
   readonly onPick: (tab: WikiTab) => void;
 }) {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(startIn);
   const [highlighted, setHighlighted] = useState<string | null>(null);
-  const groups = finderGroups({ overviews, scope, mode, query, onPick });
+  const { showHidden } = useWikiTreeView();
+  const focused = useFocusedWikiTab();
+  const placement = useWikiPlacement(focused?.environmentId ?? overviews[0]?.environmentId ?? null);
+  const groups = finderGroups({
+    overviews,
+    scope,
+    mode,
+    query,
+    onPick,
+    showHidden,
+    placement,
+    from: focused?.kind === "note" ? focused : null,
+  });
   return (
     <CommandPaletteContent
       aria-label={mode === "new" ? "New document" : "Find or create a document"}
       autoHighlight="always"
       footerActionLabel="Open"
       inputProps={{
-        placeholder: mode === "new" ? "Name the new document…" : "Find or create a document…",
+        placeholder:
+          naming === "folder"
+            ? "Folder/first document: a folder starts with something in it…"
+            : mode === "new"
+              ? "Name the new document, or folder/name…"
+              : "Find or create a document…",
       }}
       mode="none"
       onItemHighlighted={(value) => setHighlighted(typeof value === "string" ? value : null)}
@@ -140,7 +179,7 @@ function documentRow(
     description: [
       multipleWikis ? document.wiki.name : null,
       document.editedAt ? `edited ${formatRelativeTimeLabel(document.editedAt)}` : null,
-      document.changes.length > 0 ? "in a change request" : null,
+      document.changes.length > 0 ? `in a ${wikiTerms(document.wiki).singular}` : null,
     ]
       .filter(Boolean)
       .join(" · "),
@@ -149,6 +188,8 @@ function documentRow(
         <FilePenLineIcon className={ITEM_ICON_CLASS} />
       ) : document.base ? (
         <TableIcon className={ITEM_ICON_CLASS} />
+      ) : document.canvas ? (
+        <WaypointsIcon className={ITEM_ICON_CLASS} />
       ) : (
         <FileTextIcon className={ITEM_ICON_CLASS} />
       ),
@@ -157,7 +198,7 @@ function documentRow(
         kind: "note",
         environmentId: document.environmentId,
         wikiId: document.wiki.wikiId,
-        name: document.name,
+        file: document.file,
         changeRequestId: undefined,
       }),
   };
@@ -172,12 +213,17 @@ export function useDocumentSearchRows(enabled: boolean): ReadonlyArray<CommandPa
   const { overviews } = useWikiOverviews(enabled);
   const navigate = useNavigate();
   const onWikis = useLocation({ select: (location) => isWikisPath(location.pathname) });
+  const { showHidden } = useWikiTreeView();
   const { documents } = wikiSidebarItems(overviews, null);
   const onPick = (tab: WikiTab) => {
     showWikiTab(tab);
     if (!onWikis) void navigate({ to: "/wikis" });
   };
-  return documents.map((document) => documentRow(document, overviews.length > 1, onPick));
+  return documents.flatMap((document) =>
+    showHidden || !isHidden(document.file)
+      ? [documentRow(document, overviews.length > 1, onPick)]
+      : [],
+  );
 }
 
 /**
@@ -190,8 +236,13 @@ export function finderGroups(input: {
   readonly mode: "find" | "new";
   readonly query: string;
   readonly onPick: (tab: WikiTab) => void;
+  readonly showHidden: boolean;
+  /** Where a new note lands. */
+  readonly placement: WikiPlacement;
+  /** The document in front, a new one lands beside. */
+  readonly from: { readonly wikiId: WikiId; readonly file: string } | null;
 }): CommandPaletteGroup[] {
-  const { overviews, scope, mode, query, onPick } = input;
+  const { overviews, scope, mode, query, onPick, showHidden, placement, from } = input;
   const needle = noteKey(query.trim());
   const multipleWikis = overviews.length > 1;
   const { changes, documents } = wikiSidebarItems(overviews, null);
@@ -200,6 +251,7 @@ export function finderGroups(input: {
     scope === null || wikiScopeKey(document.environmentId, document.wiki.wikiId) === scope ? 0 : 1;
 
   const documentItems: CommandPaletteActionItem[] = documents
+    .filter((document) => showHidden || !isHidden(document.file))
     .filter((document) => needle === "" || noteKey(document.name).includes(needle))
     .toSorted((a, b) => inScope(a) - inScope(b))
     .slice(0, RESULT_LIMIT)
@@ -233,30 +285,74 @@ export function finderGroups(input: {
           }));
 
   // A name no document has can be written, in the filtered wiki or any of them.
-  const name = query.trim();
-  const taken = documents.some((document) => noteKey(document.name) === needle);
+  // A folder and nothing after it names no document yet.
+  const name = query.trim().endsWith("/") ? "" : query.trim();
+  // A name in one wiki leaves it free in the others.
+  const taken = (overview: WikiOverview, key: string) =>
+    documents.some(
+      (document) =>
+        document.environmentId === overview.environmentId &&
+        document.wiki.wikiId === overview.wiki.wikiId &&
+        noteKey(document.name) === key,
+    );
+  const placed = (overview: WikiOverview) =>
+    typedNoteFile(
+      name,
+      from?.wikiId === overview.wiki.wikiId ? from.file : null,
+      placement,
+      documents.flatMap((document) =>
+        document.wiki.wikiId === overview.wiki.wikiId ? [document.file] : [],
+      ),
+    );
+  const targets = overviews.filter(
+    (overview) =>
+      scope === null || wikiScopeKey(overview.environmentId, overview.wiki.wikiId) === scope,
+  );
   const writeItems: CommandPaletteActionItem[] =
-    name === "" || taken
+    name === ""
       ? []
-      : overviews
-          .filter(
-            (overview) =>
-              scope === null ||
-              wikiScopeKey(overview.environmentId, overview.wiki.wikiId) === scope,
-          )
+      : targets.flatMap((overview): CommandPaletteActionItem[] => {
+          const file = placed(overview);
+          if (file === null || taken(overview, needle)) return [];
+          return [
+            {
+              kind: "action",
+              value: `wiki-finder:write:${overview.environmentId}:${overview.wiki.wikiId}`,
+              searchTerms: [name, query],
+              title: `Write “${documentPath(file)}”`,
+              description: multipleWikis ? `in ${overview.wiki.name}` : "",
+              icon: <FilePlusIcon className={ITEM_ICON_CLASS} />,
+              run: async () =>
+                onPick({
+                  kind: "note",
+                  environmentId: overview.environmentId,
+                  wikiId: overview.wiki.wikiId,
+                  file,
+                  changeRequestId: undefined,
+                }),
+            },
+          ];
+        });
+  // A canvas opens unwritten, as a note does, and its page offers to start it.
+  const canvasName = canvasFile(name);
+  const canvasItems: CommandPaletteActionItem[] =
+    canvasName === null
+      ? []
+      : targets
+          .filter((overview) => !taken(overview, noteKey(canvasName)))
           .map((overview) => ({
             kind: "action",
-            value: `wiki-finder:write:${overview.environmentId}:${overview.wiki.wikiId}`,
-            searchTerms: [name],
-            title: `Write “${name}”`,
+            value: `wiki-finder:canvas:${overview.environmentId}:${overview.wiki.wikiId}`,
+            searchTerms: [name, query, "canvas"],
+            title: `New canvas “${documentPath(canvasName)}”`,
             description: multipleWikis ? `in ${overview.wiki.name}` : "",
-            icon: <FilePlusIcon className={ITEM_ICON_CLASS} />,
+            icon: <WaypointsIcon className={ITEM_ICON_CLASS} />,
             run: async () =>
               onPick({
                 kind: "note",
                 environmentId: overview.environmentId,
                 wikiId: overview.wiki.wikiId,
-                name,
+                file: canvasName,
                 changeRequestId: undefined,
               }),
           }));
@@ -265,9 +361,9 @@ export function finderGroups(input: {
   const add = (value: string, label: string, items: CommandPaletteActionItem[]) => {
     if (items.length > 0) groups.push({ value, label, items });
   };
-  if (mode === "new") add("write", "New document", writeItems);
+  if (mode === "new") add("write", "New document", [...writeItems, ...canvasItems]);
   add("documents", "Documents", documentItems);
   add("changes", "Open changes", changeItems);
-  if (mode === "find") add("write", "New document", writeItems);
+  if (mode === "find") add("write", "New document", [...writeItems, ...canvasItems]);
   return groups;
 }

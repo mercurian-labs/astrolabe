@@ -24,7 +24,7 @@ const memberOf = Effect.fn("ChangeGroupToolkit.memberOf")(function* (memberKey: 
   if (member === null) {
     return yield* new OrchestratorMcpFailure({
       code: "invalid_request",
-      message: `"${memberKey}" names no change request or thread; use a key astrolabe_change_groups shows.`,
+      message: `"${memberKey}" names no pull request or thread; use a key astrolabe_change_groups shows.`,
     });
   }
   return member;

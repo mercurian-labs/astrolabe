@@ -6,7 +6,7 @@ import {
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import { LegendList, type LegendListRef } from "@legendapp/list/react-native";
 import { useNavigation } from "@react-navigation/native";
-import { use, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { use, useMemo, useRef, useState, type ReactNode } from "react";
 import { useAtomValue } from "@effect/atom-react";
 import {
   Keyboard,
@@ -39,6 +39,13 @@ import { usePullRequestListControls } from "./usePullRequestListControls";
 import { usePullRequestListActions } from "./usePullRequestListActions";
 import { useChangeRequestProjectFilter } from "../wikis/useChangeRequestProjectFilter";
 import { ChangeGroupsSection } from "../changeGroups/ChangeGroupsSection";
+import {
+  hostedPullRequestKeys,
+  hostedWikis,
+  isHostedPullRequest,
+} from "@t3tools/client-runtime/wikiLogic";
+import type { EnvironmentId } from "@t3tools/contracts";
+import { useWikiOverviews } from "../wikis/useWikiOverviews";
 import { WikiChangesSection } from "../wikis/WikiChangesSection";
 import {
   filterPullRequestList,
@@ -52,6 +59,7 @@ import {
 } from "./pullRequestList";
 import { useDebouncedValue } from "../../state/queries";
 import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
+import { useSearchScrollRestoration } from "../workspace/useSearchScrollRestoration";
 import { useSelectWorkspaceDetail } from "../workspace/useSelectWorkspaceDetail";
 
 const NO_ENTRIES: EnvironmentPullRequestListEntry[] = [];
@@ -123,21 +131,12 @@ export function PullRequestsScreen(
   const listRef = useRef<LegendListRef>(null);
   const tab = workspace.state.tabs.pullRequests;
   const [initialScrollOffset] = useState(() => workspace.getScrollOffset("pullRequests"));
-  // Cancelling search restores the offset recorded when search opened. The
-  // toolbar that cancels has no handle on this list, so the list scrolls itself
-  // once it sees the tab come back to resting.
-  const previousSearchMode = useRef(tab.searchMode);
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- scrolls the list to the offset saved when search opened once the tab returns to resting
-  useEffect(() => {
-    const restoringSearch =
-      previousSearchMode.current !== "resting" && tab.searchMode === "resting";
-    previousSearchMode.current = tab.searchMode;
-    if (restoringSearch)
-      void listRef.current?.scrollToOffset({
-        offset: tab.scrollOffset - (Platform.OS === "ios" ? insets.top : 0),
-        animated: false,
-      });
-  }, [tab.searchMode, tab.scrollOffset, insets.top]);
+  useSearchScrollRestoration(tab.searchMode, () => {
+    void listRef.current?.scrollToOffset({
+      offset: tab.scrollOffset - (Platform.OS === "ios" ? insets.top : 0),
+      animated: false,
+    });
+  });
   const maintainVisiblePosition = {
     data: tab.searchMode === "resting",
     shouldRestorePosition: () => workspace.getScrollOffset("pullRequests") > 0,
@@ -205,18 +204,27 @@ export function PullRequestsScreen(
   // Astrolabe: the project filter's kind: the wikis picked list only the wikis' change requests,
   // the repositories only the pull requests.
   const wikiSource = useChangeRequestProjectFilter();
-  const entries = useMemo(
-    () =>
-      filterPullRequestList(
-        result.entries,
-        controls,
-        result.data?.viewers ?? {},
-        query,
-        result.data.localSearchHosts,
-        new Set(connectedKey.split("\n")),
-      ),
-    [result.entries, controls, query, result.data, connectedKey],
+  // Astrolabe: where the wiki changes list above these, a host wiki's change shows once, there.
+  const wikiEnvironmentIds = useMemo(
+    () => (connectedKey === "" ? [] : (connectedKey.split("\n") as EnvironmentId[])),
+    [connectedKey],
   );
+  const { overviews: wikiOverviews } = useWikiOverviews(wikiEnvironmentIds);
+  const hostedSignature =
+    wikiSource.kind === "all" && !controls.projectId
+      ? [...hostedPullRequestKeys(hostedWikis(wikiOverviews))].join("\n")
+      : "";
+  const entries = useMemo(() => {
+    const hosted = new Set(hostedSignature.split("\n").filter(Boolean));
+    return filterPullRequestList(
+      result.entries,
+      controls,
+      result.data?.viewers ?? {},
+      query,
+      result.data.localSearchHosts,
+      new Set(connectedKey.split("\n")),
+    ).filter((entry) => !isHostedPullRequest(hosted, entry));
+  }, [result.entries, controls, query, result.data, connectedKey, hostedSignature]);
   const facets = pullRequestListFacets(result.entries);
   const [knownFacets, setKnownFacets] = useState({ environmentId, source: facets, ...facets });
   if (knownFacets.environmentId !== environmentId || knownFacets.source !== facets) {

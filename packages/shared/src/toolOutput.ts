@@ -32,6 +32,13 @@ interface ResultEnvelope {
   failed: boolean;
 }
 
+/** The canvas a wiki transform changed, for a link from its row to the board. */
+export interface WikiCanvasReference {
+  readonly wikiId: string;
+  readonly changeRequestId: string;
+  readonly file: string;
+}
+
 interface CompactToolOutput {
   isError?: true;
   threadId?: string;
@@ -41,8 +48,11 @@ interface CompactToolOutput {
   status?: "rolled_back";
   htmlRender?: HtmlRenderReference;
   [MCP_APP_OUTPUT_KEY]?: McpAppReference;
+  wikiCanvas?: WikiCanvasReference;
   thread?: { threadId: string };
   threads?: Array<{ threadId?: string; status?: "rolled_back" }>;
+  linkedCount?: number;
+  unlinkedCount?: number;
 }
 
 function readResult(value: unknown, budget: ResultReadBudget, depth = 0): ResultEnvelope {
@@ -108,6 +118,49 @@ function boundedId(value: unknown): string | undefined {
   return Array.from(value).join("");
 }
 
+/** From a wiki transform's result, or from an output already compacted. */
+function readWikiCanvas(data: Record<PropertyKey, unknown>): WikiCanvasReference | undefined {
+  const { canvas, changeRequest, wikiCanvas } = data;
+  const source = Predicate.isObject(wikiCanvas)
+    ? wikiCanvas
+    : Predicate.isObject(canvas) && Predicate.isObject(changeRequest)
+      ? { ...changeRequest, file: canvas.file }
+      : undefined;
+  if (source === undefined) return undefined;
+  const wikiId = boundedId(source.wikiId);
+  const changeRequestId = boundedId(source.changeRequestId);
+  const file = boundedId(source.file);
+  return wikiId === undefined || changeRequestId === undefined || file === undefined
+    ? undefined
+    : { wikiId, changeRequestId, file };
+}
+
+/** A tool's input as an object: parsed from JSON text, out of Cursor's args envelope, or as given. */
+export function toolArguments(input: unknown): unknown {
+  if (typeof input === "string") {
+    try {
+      return toolArguments(JSON.parse(input));
+    } catch {
+      return null;
+    }
+  }
+  if (Predicate.isObject(input) && typeof input.toolName === "string") {
+    if (Predicate.isObject(input.args)) return input.args;
+  }
+  return input;
+}
+
+/** What a tool returned, out of any provider's envelope; nothing for a failed call. */
+export function toolResultData(value: unknown): Record<PropertyKey, unknown> | undefined {
+  const budget: ResultReadBudget = {
+    remainingBytes: MAX_PARSED_BYTES,
+    remainingNodes: MAX_ENVELOPE_NODES,
+    exceeded: false,
+  };
+  const result = readResult(value, budget);
+  return result.failed || budget.exceeded ? undefined : result.data;
+}
+
 export function compactDynamicToolOutput(value: unknown): CompactToolOutput | undefined {
   const budget: ResultReadBudget = {
     remainingBytes: MAX_PARSED_BYTES,
@@ -123,10 +176,16 @@ export function compactDynamicToolOutput(value: unknown): CompactToolOutput | un
       if (id !== undefined) output[key] = id;
     }
     if (data.status === "rolled_back") output.status = "rolled_back";
+    for (const key of ["linkedCount", "unlinkedCount"] as const) {
+      const count = data[key];
+      if (typeof count === "number" && Number.isSafeInteger(count)) output[key] = count;
+    }
     const htmlRender = readHtmlRenderReference(data.htmlRender);
     if (htmlRender !== undefined) output.htmlRender = htmlRender;
     const mcpApp = readMcpAppReference(data[MCP_APP_OUTPUT_KEY]);
     if (mcpApp !== undefined) output[MCP_APP_OUTPUT_KEY] = mcpApp;
+    const wikiCanvas = readWikiCanvas(data);
+    if (wikiCanvas !== undefined) output.wikiCanvas = wikiCanvas;
     const nestedThreadId = Predicate.isObject(data.thread)
       ? boundedId(data.thread.threadId)
       : undefined;
@@ -183,6 +242,31 @@ export function htmlRenderFromToolItem(item: {
   if (resolveT3McpToolId(item.toolName) !== HTML_RENDER_TOOL_NAME) return undefined;
   const output = compactDynamicToolOutput(item.output);
   return output?.isError ? undefined : output?.htmlRender;
+}
+
+/** The canvas a finished wiki transform changed; none for any other call or a failed one. */
+export function wikiCanvasFromToolItem(item: {
+  readonly toolName?: string | null | undefined;
+  readonly output?: unknown;
+}): WikiCanvasReference | undefined {
+  if (resolveT3McpToolId(item.toolName) !== "astrolabe_wiki_transform") return undefined;
+  const output = compactDynamicToolOutput(item.output);
+  return output?.isError ? undefined : output?.wikiCanvas;
+}
+
+/** The thread-owned file `preview_recording_stop` stored for the agent. */
+export function previewRecordingIdFromToolItem(item: {
+  readonly toolName: string | null | undefined;
+  readonly output?: unknown;
+}): string | undefined {
+  if (resolveT3McpToolId(item.toolName) !== "preview_recording_stop") return undefined;
+  const budget: ResultReadBudget = {
+    remainingBytes: MAX_PARSED_BYTES,
+    remainingNodes: MAX_ENVELOPE_NODES,
+    exceeded: false,
+  };
+  const result = readResult(item.output, budget);
+  return result.failed || budget.exceeded ? undefined : boundedId(result.data?.id);
 }
 
 /** Accept app references only when server and tool match the item, so tools cannot impersonate another app source. */

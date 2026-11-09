@@ -14,10 +14,11 @@ import type {
   WikiQueryResult,
 } from "@t3tools/contracts";
 import { useBlocker } from "@tanstack/react-router";
+import { WIKI_BASE_AUTOSAVE_DELAY_MS } from "@t3tools/client-runtime/wikiAutosave";
 import DOMPurify from "dompurify";
 import type { LucideIcon } from "lucide-react";
 import { TriangleAlertIcon } from "lucide-react";
-import { lazy, Suspense, useEffect, useId, useState } from "react";
+import { lazy, Suspense, useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import { useAssetUrlState } from "~/assets/assetUrls";
 import { useTheme } from "~/hooks/useTheme";
@@ -40,29 +41,46 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
-import { describeWikiFailure, wikiDocumentName } from "./wiki.logic";
+import {
+  describeWikiFailure,
+  documentPath,
+  documentTitle,
+  isDocumentFile,
+  isSettledChangeRequest,
+} from "./wiki.logic";
 import {
   isEditableNote,
   isNoteProperty,
   newNoteProperties,
-  withEdit,
+  withUnsentEdit,
 } from "@t3tools/client-runtime/wikiBaseEdits";
+import {
+  holdsEdits,
+  useChangeRequestTurn,
+  useWikiAutosave,
+  WikiSaveFailure,
+  WikiSaveStatus,
+} from "./wikiAutosave";
 import { ColumnMenu, WikiBaseToolbar } from "./WikiBaseToolbar";
-import { useWikiCommand } from "./wikiEnvironment";
-import { SaveToChangeRequestDialog, type SaveTarget } from "./WikiSaveDialog";
+import { useWikiAutosaveCommand } from "./wikiEnvironment";
+import type { WikiDraftEdits } from "./WikiNoteView";
 
 const WikiBaseMap = lazy(() => import("./WikiBaseMap"));
 
-/** A base by name (a `.base` file, or a note's first block), or a block's source in `note`. */
+/**
+ * A base by name (a `.base` file, or a note's first block), as `note` writes it when one embeds
+ * it, or a block's source in `note`.
+ */
 export type WikiBaseSource =
-  | { readonly base: string }
+  | { readonly base: string; readonly note?: string }
   | { readonly source: string; readonly note: string };
 
 type Row = WikiQueryResult["rows"][number];
 
-/** How a row's own name opens: a wiki document by name, any other file as a file. */
+/** How a row's own name opens: a wiki document as one, any other file as a file. */
 interface RowOpeners {
-  readonly onOpenNote: (name: string) => void;
+  /** Follows a link, or opens a file; `from` is the file a cell's link is written in. */
+  readonly onOpenNote: (target: string, from?: string) => void;
   /** Absent where files can't open; such rows show their name as text. */
   readonly onOpenFile?: ((file: string) => void) | undefined;
 }
@@ -71,6 +89,10 @@ interface RowOpeners {
 interface BaseEditing {
   readonly file: string;
   readonly edits: ReadonlyArray<WikiBaseEdit>;
+  /** The commit the last save landed: reads from before it would show the edits undone. */
+  readonly savedCommit: string | null;
+  /** Whether what the edits leave can run; one that can't waits to be fixed, unsaved. */
+  readonly onRuns: (runs: boolean) => void;
   /** The view the page shows, null for the base's first. */
   readonly view: string | null;
   readonly onPickView: (view: string) => void;
@@ -152,13 +174,13 @@ function webHost({
   readonly result: WikiQueryResult;
   readonly dark: boolean;
   readonly openRow: (row: Row) => void;
-  readonly onOpenNote: (name: string) => void;
+  readonly onOpenNote: RowOpeners["onOpenNote"];
   readonly canOpenFiles: boolean;
   readonly editing: BaseEditing | undefined;
 }): BaseLayoutHost {
   const groupProperty = result.settings?.groupBy?.property ?? result.groupBy?.id;
   return {
-    canOpenRow: (row) => wikiDocumentName(row.file) !== null || canOpenFiles,
+    canOpenRow: (row) => isDocumentFile(row.file) || canOpenFiles,
     openRow,
     openLink: onOpenNote,
     renderImage: (image, className) =>
@@ -226,7 +248,7 @@ function webHost({
 
 /**
  * A base's view, drawn as Obsidian draws its layout. Every row opens its file; with `editing`,
- * cells of notes at the top of the wiki edit in place, a board's cards move between groups, and
+ * cells of notes edit in place, a board's cards move between groups, and
  * column headings sort, summarize, rename and hide.
  */
 export function WikiBaseResults({
@@ -246,8 +268,7 @@ export function WikiBaseResults({
   const wiki = overviews?.find((overview) => overview.wiki.wikiId === wikiId)?.wiki;
   const { resolvedTheme } = useTheme();
   const openRow = (row: Row) => {
-    const document = wikiDocumentName(row.file);
-    if (document !== null) onOpenNote(document);
+    if (isDocumentFile(row.file)) onOpenNote(row.file);
     else onOpenFile?.(row.file);
   };
   const host = webHost({
@@ -305,9 +326,20 @@ export function WikiBase({
   );
   // An edit keeps the last view on screen until the new one lands.
   const [lastResult, setLastResult] = useState(query.data);
-  if (query.data !== null && query.data !== lastResult) setLastResult(query.data);
+  const savedCommit = editing?.savedCommit ?? null;
+  const [saved, setSaved] = useState({ commit: savedCommit, before: lastResult?.commit ?? null });
+  if (saved.commit !== savedCommit) {
+    setSaved({ commit: savedCommit, before: lastResult?.commit ?? null });
+  }
+  // Saved edits leave the overlay here, and a read from before them would flash them undone.
+  const current = query.data?.commit === saved.before ? null : query.data;
+  if (current !== null && current !== lastResult) setLastResult(current);
   // An edit that can't run keeps the toolbar and last view, so it can be undone from there.
-  const result = query.data ?? (query.error === null || editing ? lastResult : null);
+  const result = current ?? (query.error === null || editing ? lastResult : null);
+  const reportRuns = editing?.onRuns;
+  const runs = query.error === null;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- tells the page's autosave store, outside React, to wait for edits that can't run
+  useEffect(() => reportRuns?.(runs), [reportRuns, runs]);
   if (result === null) {
     return query.error !== null ? (
       <Alert variant="warning">
@@ -431,41 +463,40 @@ function NewNoteDialog({
   );
 }
 
-/** The view each base tab shows, so saving, which rekeys the tab, stays on it. */
+/** The view each base tab shows, so a change that rekeys the tab stays on it. */
 const openViews = new Map<string, string>();
-
-const madeView = (edit: WikiBaseEdit) =>
-  edit.kind === "add-view" || (edit.kind === "view" && edit.name !== undefined);
-
-const editCount = (count: number) =>
-  count === 1 ? "1 unsaved change" : `${count} unsaved changes`;
 
 /**
  * A `.base` file opened in its own tab. Its view edits in place, as in Obsidian: the view's
- * settings, its notes' properties, new notes. Edits show at once and stay unsaved until they
- * are saved to a change request, as a note's are; main changes only when one merges.
+ * settings, its notes' properties, new notes. Edits show at once and save by themselves, to the
+ * change request the tab is in, else the person's draft; main changes only when one merges.
  */
 export function WikiBasePage({
   environmentId,
   wikiId,
   file,
   changeRequestId,
+  savesTo,
+  changeRequests,
   parent,
-  openChangeRequests,
+  renderDraftPill,
   onOpenNote,
   onOpenFile,
-  onSaved,
   registerUnsaved,
 }: {
   readonly environmentId: EnvironmentId;
   readonly wikiId: WikiId;
   readonly file: string;
+  /** The change request the base reads from; none reads main. */
   readonly changeRequestId: WikiChangeRequestId | undefined;
+  /** The change request the tab is in; none saves to the draft. */
+  readonly savesTo: WikiChangeRequestId | undefined;
+  readonly changeRequests: ReadonlyArray<WikiChangeRequest>;
   /** Where the base is read from, as the tab header names it. */
   readonly parent: string;
-  readonly openChangeRequests: ReadonlyArray<WikiChangeRequest>;
-  readonly onSaved: (changeRequestId: WikiChangeRequestId) => void;
-  readonly registerUnsaved?: (isUnsaved: () => boolean) => () => void;
+  /** The draft's pill in the header's place for `parent`, when there's a draft. */
+  readonly renderDraftPill?: (edits: WikiDraftEdits) => ReactNode;
+  readonly registerUnsaved?: (isUnsaved: () => boolean, save: () => Promise<boolean>) => () => void;
 } & RowOpeners) {
   const [edits, setEdits] = useState<ReadonlyArray<WikiBaseEdit>>([]);
   const viewKey = `${wikiId}/${file}`;
@@ -475,44 +506,86 @@ export function WikiBasePage({
     if (name === null) openViews.delete(viewKey);
     else openViews.set(viewKey, name);
   };
-  const [saving, setSaving] = useState(false);
   const [creating, setCreating] = useState<Readonly<Record<string, WikiBaseCell>> | null>(null);
-  const canEdit = useAtomValue(wikiEnvironment.transform.permissionAtom(environmentId));
-  const transform = useWikiCommand(wikiEnvironment.transform, "Couldn't save the base");
-  const editable = canEdit && /^[^/]+\.base$/.test(file);
-  const dirty = edits.length > 0;
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- closing the tab asks whether edits are unsaved
-  useEffect(() => registerUnsaved?.(() => dirty), [registerUnsaved, dirty]);
+  const [savedCommit, setSavedCommit] = useState<string | null>(null);
+  const canEdit = useAtomValue(wikiEnvironment.autosave.permissionAtom(environmentId));
+  const viewingChange = changeRequests.find(
+    (changeRequest) => changeRequest.changeRequestId === changeRequestId,
+  );
+  const settled = isSettledChangeRequest(viewingChange);
+  const turn = useChangeRequestTurn(
+    environmentId,
+    viewingChange?.status === "open" ? viewingChange.threadId : null,
+  );
+  const send = useWikiAutosaveCommand();
+  // How many edits are on their way; those can't merge with a new one any more.
+  const sent = useRef(0);
+  const { autosave, status } = useWikiAutosave({
+    subject: documentTitle(file),
+    delayMs: WIKI_BASE_AUTOSAVE_DELAY_MS,
+    save: async () => {
+      const batch = edits;
+      if (batch.length === 0) return { ok: true };
+      sent.current = batch.length;
+      const outcome = await send({
+        environmentId,
+        input: {
+          wikiId,
+          ...(savesTo === undefined ? {} : { changeRequestId: savesTo }),
+          document: file,
+          write: { kind: "transform", transform: { kind: "base-edits", edits: [...batch] } },
+        },
+      });
+      sent.current = 0;
+      if (!outcome.ok) return outcome;
+      setSavedCommit(outcome.value.commit);
+      setEdits((current) => current.slice(batch.length));
+      return { ok: true };
+    },
+  });
+  const [runs, setRuns] = useState(true);
+  const editable = canEdit && !settled;
+  const held = turn.running || !runs;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a running turn, or edits that can't run, hold the autosave store, which lives outside React
+  useEffect(() => autosave.setHeld(held), [autosave, held]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- closing the tab asks whether edits are held back
+  useEffect(
+    () => registerUnsaved?.(() => holdsEdits(autosave.getStatus()), autosave.flush),
+    [autosave, registerUnsaved],
+  );
   useBlocker({
-    disabled: !dirty,
-    enableBeforeUnload: () => dirty,
+    disabled: !holdsEdits(status),
+    enableBeforeUnload: () => holdsEdits(autosave.getStatus()),
     shouldBlockFn: async () => {
+      if (!holdsEdits(autosave.getStatus())) return false;
       const leave = await ensureLocalApi().dialogs.confirm(
-        `Leave ${file.replace(/\.base$/, "")}? Your unsaved changes will be lost.`,
+        `Leave ${documentTitle(file)}? Your unsaved changes will be lost.`,
         { variant: "destructive" },
       );
+      if (leave) autosave.cancel();
       return !leave;
     },
   });
-  const save = async (target: SaveTarget, message: string): Promise<string | null> => {
-    const outcome = await transform({
-      environmentId,
-      input: { wikiId, message, transform: { kind: "base-edits", edits: [...edits] }, ...target },
-    });
-    if (!outcome.ok) return outcome.message ?? "The save was cancelled.";
-    setEdits([]);
-    onSaved(outcome.value.changeRequest.changeRequestId);
-    return null;
+  const addEdit = (edit: WikiBaseEdit) => {
+    const frozen = sent.current;
+    setEdits((current) => withUnsentEdit(current, frozen, edit));
+    autosave.edited();
   };
 
   const editing: BaseEditing | undefined = editable
     ? {
         file,
         edits,
+        savedCommit,
+        onRuns: setRuns,
         view,
         onPickView: pickView,
-        onEdit: (edit) => setEdits((current) => withEdit(current, edit)),
-        onUndo: () => setEdits((current) => current.slice(0, -1)),
+        onEdit: addEdit,
+        onUndo: () => {
+          if (edits.length <= sent.current) return;
+          if (edits.length === 1) autosave.cancel();
+          setEdits((current) => current.slice(0, -1));
+        },
         onNew: (filters, group) => setCreating(newNoteProperties(filters, group)),
       }
     : undefined;
@@ -520,30 +593,26 @@ export function WikiBasePage({
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <TabHeader.Root>
-        <TabHeader.Title label="Base" parent={parent}>
-          {file.replace(/\.base$/, "")}
+        <TabHeader.Title
+          label="Base"
+          parent={parent}
+          parentControl={renderDraftPill?.({
+            flush: autosave.flush,
+            drop: () => {
+              setEdits([]);
+              autosave.cancel();
+            },
+          })}
+        >
+          {documentPath(file)}
         </TabHeader.Title>
         {!editable ? <TabHeader.Status>Base · read only</TabHeader.Status> : null}
-        {dirty ? (
-          <TabHeader.Actions>
-            <TabHeader.Status>{editCount(edits.length)}</TabHeader.Status>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                // A view the edits made or renamed goes with them.
-                if (edits.some(madeView)) pickView(null);
-                setEdits([]);
-              }}
-            >
-              Discard
-            </Button>
-            <Button size="sm" onClick={() => setSaving(true)}>
-              Save to change request
-            </Button>
-          </TabHeader.Actions>
-        ) : null}
+        <WikiSaveStatus
+          status={status}
+          waiting={turn.running ? "Saves when the turn ends" : "Saves once this runs"}
+        />
       </TabHeader.Root>
+      <WikiSaveFailure status={status} autosave={autosave} />
       <div className="topbar-scroll-fade scrollbar-gutter-both min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-6 pt-6 pb-12">
           <WikiBase
@@ -557,28 +626,13 @@ export function WikiBasePage({
           />
         </div>
       </div>
-      {saving ? (
-        <SaveToChangeRequestDialog
-          environmentId={environmentId}
-          subject={file.replace(/\.base$/, "")}
-          openChangeRequests={openChangeRequests}
-          viewing={changeRequestId}
-          onClose={() => setSaving(false)}
-          onSave={async (target, message) => {
-            const error = await save(target, message);
-            if (error === null) setSaving(false);
-            return error;
-          }}
-        />
-      ) : null}
       {creating !== null ? (
         <NewNoteDialog
           onClose={() => setCreating(null)}
           onCreate={(name) => {
             setCreating(null);
-            setEdits((current) =>
-              withEdit(current, { kind: "create", file: `${name}.md`, properties: creating }),
-            );
+            const folder = file.slice(0, file.lastIndexOf("/") + 1);
+            addEdit({ kind: "create", file: `${folder}${name}.md`, properties: creating });
           }}
         />
       ) : null}

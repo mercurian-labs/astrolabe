@@ -1,49 +1,73 @@
 import type { WikiEditorCommand, WikiEditorEvent } from "@mercurian/wiki-editor/protocol";
-import { StackActions, useNavigation, usePreventRemove } from "@react-navigation/native";
+import { StackActions, useNavigation } from "@react-navigation/native";
+import { WIKI_BASE_AUTOSAVE_DELAY_MS } from "@t3tools/client-runtime/wikiAutosave";
+import { withUnsentEdit } from "@t3tools/client-runtime/wikiBaseEdits";
 import {
-  isAtomCommandInterrupted,
-  squashAtomCommandFailure,
-} from "@t3tools/client-runtime/state/runtime";
-import { withEdit } from "@t3tools/client-runtime/wikiBaseEdits";
-import { describeWikiFailure } from "@t3tools/client-runtime/wikiLogic";
+  documentTitle,
+  filesHoldDocument,
+  isSettledChangeRequest,
+  wikiDocumentScope,
+  wikiDraft,
+  NO_NOTE_FROM_RELATIVE_LINK,
+  wikiLinkOpens,
+  wikiTerms,
+} from "@t3tools/client-runtime/wikiLogic";
 import type { EnvironmentId, WikiBaseEdit, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Linking, View } from "react-native";
 
 import * as Dialog from "../../components/ui/Dialog";
+import { useWikiPlacement } from "./wikiPreferences";
+import { Linking, View } from "react-native";
+
 import { Toolbar } from "../../components/ui/Toolbar";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { useEnvironmentQuery } from "../../state/query";
-import { useAtomCommand } from "../../state/use-atom-command";
 import { wikiEnvironment } from "../../state/wiki";
 import { useEditorTheme } from "./document/useEditorTheme";
-import { wikiBaseTitle, wikiDocumentSubtitle } from "./document/wikiDocument.logic";
+import { wikiDocumentSubtitle } from "./document/wikiDocument.logic";
 import type { WikiBaseAnswer } from "./document/WikiBaseQueries";
+import { WikiDraftBar } from "./document/WikiDraftBar";
 import { WikiEditorWebView, type WikiEditorHandle } from "./document/WikiEditorWebView";
-import { WikiSaveSheet, type WikiSaveTarget } from "./document/WikiSaveSheet";
+import { WikiBelowHeader } from "./document/WikiBelowHeader";
+import { WikiNotice } from "./document/WikiNotice";
+import { useWikiAutosave, useWikiAutosaveCommand, wikiSaveLabel } from "./document/useWikiAutosave";
 import type { WikiDocumentParams } from "./wikiRoutes";
 
 /**
- * A `.base` file on its own: the editor page draws its view as it draws a ```base block in a
- * note, and the header's View menu picks among the base's views. A row's note opens on top, read
- * from the same place. A note's cell edits in place, and a board's card moves with its picker;
- * the edits show at once and stay unsaved until saved to a change request.
+ * A `.base` file on its own, drawn by the editor page as a ```base block in a note is, with the
+ * header's View menu picking among its views. A note's cell edits in place, and a board's card
+ * moves with its picker; edits show at once and save by themselves, to the change request the
+ * route names, else the person's draft.
  */
 export function WikiBaseScreen({ params }: { readonly params: WikiDocumentParams }) {
   const navigation = useNavigation();
   const environmentId = params.environmentId as EnvironmentId;
   const wikiId = params.wikiId as WikiId;
   const file = params.name;
-  const changeRequestId = params.changeRequestId as WikiChangeRequestId | undefined;
+  const placement = useWikiPlacement(environmentId);
+  const routeChangeRequestId = params.changeRequestId as WikiChangeRequestId | undefined;
+  const changeRequests = useEnvironmentQuery(
+    wikiEnvironment.changeRequests({ environmentId, input: { wikiId } }),
+  );
+  const all = changeRequests.data?.changeRequests;
+  const draft = wikiDraft(all);
+  const changeRequestId = wikiDocumentScope({
+    tabChangeRequestId: routeChangeRequestId,
+    draft,
+    file,
+  });
   const scope = changeRequestId === undefined ? {} : { changeRequestId };
 
+  const index = useEnvironmentQuery(
+    wikiEnvironment.index({ environmentId, input: { wikiId, ...scope } }),
+  );
   const [view, setView] = useState<string | null>(null);
   const [edits, setEdits] = useState<ReadonlyArray<WikiBaseEdit>>([]);
-  const [saving, setSaving] = useState(false);
-  const canEdit = useAtomValue(wikiEnvironment.transform.permissionAtom(environmentId));
-  const transform = useAtomCommand(wikiEnvironment.transform, { reportFailure: false });
-  const editable = canEdit && /^[^/]+\.base$/.test(file);
+  const [savedCommit, setSavedCommit] = useState<string | null>(null);
+  const canEdit = useAtomValue(wikiEnvironment.autosave.permissionAtom(environmentId));
+  const viewing = all?.find((entry) => entry.changeRequestId === changeRequestId) ?? null;
+  const editable = canEdit && !isSettledChangeRequest(viewing ?? undefined);
   const query = useEnvironmentQuery(
     wikiEnvironment.query({
       environmentId,
@@ -57,19 +81,48 @@ export function WikiBaseScreen({ params }: { readonly params: WikiDocumentParams
     }),
   );
   const wikis = useEnvironmentQuery(wikiEnvironment.list({ environmentId, input: {} }));
-  const changeRequests = useEnvironmentQuery(
-    wikiEnvironment.changeRequests({ environmentId, input: { wikiId } }),
-  );
   const wiki = wikis.data?.wikis.find((entry) => entry.wikiId === wikiId) ?? null;
-  const viewing =
-    changeRequests.data?.changeRequests.find(
-      (changeRequest) => changeRequest.changeRequestId === changeRequestId,
-    ) ?? null;
 
   // A view switch keeps the last view, and the View menu, until the next one lands.
   const [lastResult, setLastResult] = useState(query.data);
-  if (query.data !== null && query.data !== lastResult) setLastResult(query.data);
-  const result = query.data ?? lastResult;
+  const [saved, setSaved] = useState({ commit: savedCommit, before: lastResult?.commit ?? null });
+  if (saved.commit !== savedCommit) {
+    setSaved({ commit: savedCommit, before: lastResult?.commit ?? null });
+  }
+  // Saved edits leave the overlay here, and a read from before them would flash them undone.
+  const current = query.data?.commit === saved.before ? null : query.data;
+  if (current !== null && current !== lastResult) setLastResult(current);
+  const result = current ?? lastResult;
+
+  const send = useWikiAutosaveCommand();
+  // How many edits are on their way; those can't merge with a new one any more.
+  const sent = useRef(0);
+  const { autosave, status } = useWikiAutosave({
+    subject: documentTitle(file),
+    delayMs: WIKI_BASE_AUTOSAVE_DELAY_MS,
+    save: async () => {
+      const batch = edits;
+      if (batch.length === 0) return { ok: true };
+      sent.current = batch.length;
+      const outcome = await send({
+        environmentId,
+        input: {
+          wikiId,
+          ...(routeChangeRequestId === undefined ? {} : { changeRequestId: routeChangeRequestId }),
+          document: file,
+          write: { kind: "transform", transform: { kind: "base-edits", edits: [...batch] } },
+        },
+      });
+      sent.current = 0;
+      if (!outcome.ok) return outcome;
+      setSavedCommit(outcome.value.commit);
+      setEdits((waiting) => waiting.slice(batch.length));
+      return { ok: true };
+    },
+  });
+  const held = query.error !== null;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- edits that can't run hold the autosave store, which lives outside React
+  useEffect(() => autosave.setHeld(held), [autosave, held]);
 
   const editor = useRef<WikiEditorHandle>(null);
   const theme = useEditorTheme();
@@ -111,156 +164,109 @@ export function WikiBaseScreen({ params }: { readonly params: WikiDocumentParams
           editor.current?.send({ type: "baseResult", source: file, ...shown.current.answer });
         }
         return;
-      case "openNote":
+      case "openNote": {
+        const name = wikiLinkOpens(index.data, event.name, event.from ?? file, placement);
+        if (name === null) {
+          Dialog.alert("No note made", NO_NOTE_FROM_RELATIVE_LINK);
+          return;
+        }
         navigation.dispatch(
           StackActions.push("WikiDocument", {
             environmentId: params.environmentId,
             wikiId: params.wikiId,
-            name: event.name,
+            name,
             ...scope,
           }),
         );
         return;
+      }
       case "openUrl":
         void Linking.openURL(event.href).catch(() => undefined);
         return;
-      case "editBase":
-        setEdits((current) =>
-          withEdit(current, {
+      case "editBase": {
+        const frozen = sent.current;
+        setEdits((waiting) =>
+          withUnsentEdit(waiting, frozen, {
             kind: "property",
             file: event.file,
             property: event.property,
             value: event.value,
           }),
         );
+        autosave.edited();
         return;
+      }
       case "error":
         console.warn("The wiki editor page failed:", event.message);
         return;
-      case "ready":
-      case "state":
-      case "text":
-      case "readNote":
+      default:
         return;
     }
   };
-
-  /** Lands the edits as one amendment; the failure's message, or null on success. */
-  const save = async (target: WikiSaveTarget, message: string): Promise<string | null> => {
-    const outcome = await transform({
-      environmentId,
-      input: { wikiId, message, transform: { kind: "base-edits", edits: [...edits] }, ...target },
-    });
-    if (outcome._tag !== "Success") {
-      return isAtomCommandInterrupted(outcome)
-        ? "The save was cancelled."
-        : describeWikiFailure(squashAtomCommandFailure(outcome));
-    }
-    setEdits([]);
-    const savedTo = outcome.value.changeRequest.changeRequestId;
-    // Saved from main, the base now reads inside the change request it was saved to.
-    if (savedTo !== changeRequestId) navigation.setParams({ changeRequestId: savedTo });
-    return null;
-  };
-
-  // Leaving with unsaved edits asks first.
-  usePreventRemove(edits.length > 0, ({ data }) => {
-    Dialog.confirm({
-      title: "Discard your changes?",
-      message: `Your unsaved changes to ${wikiBaseTitle(file)} will be lost.`,
-      cancelText: "Keep editing",
-      confirmText: "Discard",
-      destructive: true,
-      onConfirm: () => navigation.dispatch(data.action),
-    });
-  });
 
   const subtitle = [
     wikiDocumentSubtitle({
       wikiName: wiki?.name ?? null,
+      file: file,
       changeRequest: viewing,
       readsChangeRequest: changeRequestId !== undefined,
+      noun: wikiTerms(wiki).singular,
       agentWorking: false,
+      saving: wikiSaveLabel(status),
     }),
-    edits.length
-      ? edits.length === 1
-        ? "1 unsaved change"
-        : `${edits.length} unsaved changes`
-      : editable
-        ? "Base"
-        : "Base · read only",
+    editable ? "Base" : "Base · read only",
   ].join(" · ");
-  const openChangeRequests = (changeRequests.data?.changeRequests ?? []).filter(
-    (changeRequest) => changeRequest.status === "open",
-  );
   const views = result?.views ?? [];
-  const current = result?.view.name ?? null;
+  const shownView = result?.view.name ?? null;
 
   return (
     <View className="flex-1 bg-screen">
       <NativeStackScreenOptions
-        options={{ title: wikiBaseTitle(file), unstable_headerSubtitle: subtitle }}
-        optionsVersion={`${subtitle}|${views.join("\n")}|${current}`}
+        options={{ title: documentTitle(file), unstable_headerSubtitle: subtitle }}
+        optionsVersion={`${subtitle}|${views.join("\n")}|${shownView}`}
       />
-      {views.length > 1 || edits.length > 0 ? (
+      {views.length > 1 ? (
         // Direct children only: the toolbar reads its items by component, not through fragments.
         <Toolbar placement="right">
-          {views.length > 1 ? (
-            <Toolbar.Menu icon="rectangle.stack" accessibilityLabel="View" title="View">
-              {views.map((name) => (
-                <Toolbar.MenuAction
-                  key={name}
-                  isOn={name === current}
-                  onPress={() => setView(name)}
-                >
-                  <Toolbar.Label>{name}</Toolbar.Label>
-                </Toolbar.MenuAction>
-              ))}
-            </Toolbar.Menu>
-          ) : null}
-          {edits.length > 0 ? (
-            <Toolbar.Menu
-              icon="ellipsis"
-              accessibilityLabel="Base actions"
-              title={wikiBaseTitle(file)}
-            >
+          <Toolbar.Menu icon="rectangle.stack" accessibilityLabel="View" title="View">
+            {views.map((name) => (
               <Toolbar.MenuAction
-                icon="arrow.uturn.backward"
-                destructive
-                onPress={() => setEdits([])}
+                key={name}
+                isOn={name === shownView}
+                onPress={() => setView(name)}
               >
-                <Toolbar.Label>Discard changes</Toolbar.Label>
+                <Toolbar.Label>{name}</Toolbar.Label>
               </Toolbar.MenuAction>
-            </Toolbar.Menu>
-          ) : null}
-          {edits.length > 0 ? (
-            <Toolbar.Button
-              label="Save"
-              variant="done"
-              accessibilityLabel="Save to a change request"
-              onPress={() => setSaving(true)}
-            />
-          ) : null}
+            ))}
+          </Toolbar.Menu>
         </Toolbar>
       ) : null}
+      <WikiBelowHeader>
+        {draft !== null && (routeChangeRequestId === undefined || viewing?.draft) ? (
+          <WikiDraftBar
+            environmentId={environmentId}
+            draft={draft}
+            changeRequests={all ?? []}
+            flush={autosave.flush}
+            drop={() => {
+              setEdits([]);
+              autosave.cancel();
+            }}
+            onLanded={(id, files) => {
+              // The document on screen follows where its edits went.
+              if (filesHoldDocument(files, file)) navigation.setParams({ changeRequestId: id });
+            }}
+          />
+        ) : null}
+        {status.kind === "failed" ? (
+          <WikiNotice
+            text={`Your changes aren't saved. ${status.message}${status.retrying ? " Still trying." : ""}`}
+            action="Try again"
+            onAction={autosave.retry}
+          />
+        ) : null}
+      </WikiBelowHeader>
       <WikiEditorWebView ref={editor} onEvent={onEvent} initialCommands={initialCommands} />
-      {saving ? (
-        <WikiSaveSheet
-          noteName={wikiBaseTitle(file)}
-          openChangeRequests={openChangeRequests}
-          viewing={changeRequestId}
-          canSave={canEdit}
-          // Edits land on whatever the head holds when saved, so a running turn needn't wait.
-          turnRunning={() => false}
-          onClose={() => setSaving(false)}
-          onSave={async (target, message) => {
-            const failure = await save(target, message);
-            if (failure === null) setSaving(false);
-            return failure;
-          }}
-          onQueue={() => setSaving(false)}
-        />
-      ) : null}
     </View>
   );
 }

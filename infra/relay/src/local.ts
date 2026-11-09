@@ -49,6 +49,7 @@ export const layerManagedEndpoints = ManagedEndpointProvider.layer.pipe(
         get: (tunnelId) => tunnelError("get", { tunnelId }),
         list: () => Effect.succeed({ result: [] }),
         create: (request) => tunnelError("create", { tunnelName: request.name }),
+        getConfiguration: (tunnelId) => tunnelError("get-configuration", { tunnelId }),
         putConfiguration: (tunnelId) => tunnelError("put-configuration", { tunnelId }),
         getToken: (tunnelId) => tunnelError("get-token", { tunnelId }),
         delete: (tunnelId) => tunnelError("delete", { tunnelId }),

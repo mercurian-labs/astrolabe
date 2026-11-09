@@ -45,7 +45,7 @@ import {
   ComboboxTrigger,
 } from "../ui/combobox";
 import { MenuItem } from "../ui/menu";
-import { wikiDocumentName } from "./wiki.logic";
+import { isCanvasName, isDocumentFile, wikiTerms } from "./wiki.logic";
 import { showWikiTab, wikiPanes } from "./wikiPanes";
 import { changeRequestBranch, parseWikiTabKey, type WikiTab } from "./wikiTabs";
 
@@ -87,12 +87,15 @@ export function WikiWorktreeSections({
   overview,
   focused,
   hidden,
+  showHidden,
   renderRows,
 }: {
   readonly overview: WikiOverview;
   readonly focused: WikiTab | null;
   /** Worktree keys the filter hides; the focused tab's shows anyway, marked. */
   readonly hidden: ReadonlyArray<string>;
+  /** Whether files and folders starting with a dot show, here as in the document tree. */
+  readonly showHidden: boolean;
   /** A worktree's documents: the main line's notes, or those its change request touches. */
   readonly renderRows: (
     worktree: ProjectWorktree,
@@ -147,21 +150,17 @@ export function WikiWorktreeSections({
   }
   const expanded = (worktree: ProjectWorktree) =>
     chosen.get(worktree.path) ?? (worktree.isMain || worktree.path === active?.path);
-  const selectedPath =
-    focusedHere?.kind === "note"
-      ? (overview.index?.notes.find((note) => note.name === focusedHere.name)?.file ??
-        `${focusedHere.name}.md`)
-      : null;
+  const selectedPath = focusedHere?.kind === "note" ? focusedHere.file : null;
   const openFile = (worktree: ProjectWorktree, file: string) => {
     const changeRequestId = changeRequestOf(worktree.branch) ?? undefined;
     const onMainLine = worktree.isMain || worktree.branch === wiki.mainBranch;
-    const name = /\.md$/i.test(file) ? wikiDocumentName(file) : null;
-    if (name !== null && (onMainLine || changeRequestId !== undefined)) {
+    const opens = (/\.md$/i.test(file) || isCanvasName(file)) && isDocumentFile(file);
+    if (opens && (onMainLine || changeRequestId !== undefined)) {
       showWikiTab({
         kind: "note",
         environmentId: overview.environmentId,
         wikiId: wiki.wikiId,
-        name,
+        file,
         changeRequestId,
       });
       return;
@@ -248,7 +247,7 @@ export function WikiWorktreeSections({
                   }}
                 >
                   <SaveIcon />
-                  Save edits to the change request
+                  {`Save edits to the ${wikiTerms(wiki).singular}`}
                 </MenuItem>
               ) : null
             }
@@ -265,6 +264,7 @@ export function WikiWorktreeSections({
             projectName={`${wiki.name} · ${label}`}
             selectedPath={worktree.path === focusedWorktree?.path ? selectedPath : null}
             onOpenFile={(file) => openFile(worktree, file)}
+            hideDotFiles={!showHidden}
           />
         ) : null}
       </Fragment>
@@ -295,8 +295,9 @@ export function WikiWorktreePicker({ overview }: { readonly overview: WikiOvervi
   const openBranch = useOpenBranch();
   const openChangeRequest = useAtomCommand(wikiEnvironment.openChangeRequest);
   const target = worktreesOfWiki(overview);
+  const terms = wikiTerms(overview.wiki);
   const changeRequests = (overview.changeRequests ?? []).filter(
-    (changeRequest) => changeRequest.status === "open",
+    (changeRequest) => changeRequest.status === "open" && !changeRequest.draft,
   );
   const needle = query.trim().toLowerCase();
   const shown = changeRequests.filter((changeRequest) =>
@@ -325,18 +326,18 @@ export function WikiWorktreePicker({ overview }: { readonly overview: WikiOvervi
       }}
     >
       <ComboboxTrigger
-        render={<SidebarHeaderIconButton label="Work on a change request in a worktree" />}
+        render={<SidebarHeaderIconButton label={`Work on a ${terms.singular} in a worktree`} />}
       >
         <GitBranchPlusIcon className="size-4" />
       </ComboboxTrigger>
       <ComboboxPopup align="end" className="min-w-56 max-w-[min(18rem,var(--available-width))]">
         <ComboboxSearchInput
-          aria-label="Find or name a change request"
-          placeholder="Find or name a change request..."
+          aria-label={`Find or name a ${terms.singular}`}
+          placeholder={`Find or name a ${terms.singular}...`}
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
-        <ComboboxEmpty>No open change requests.</ComboboxEmpty>
+        <ComboboxEmpty>{`No open ${terms.plural}.`}</ComboboxEmpty>
         <ComboboxList>
           {(item: (typeof shown)[number]) => (
             <ComboboxItem key={item.changeRequestId} hideIndicator value={item}>
@@ -358,7 +359,7 @@ export function WikiWorktreePicker({ overview }: { readonly overview: WikiOvervi
                 if (opened._tag === "Success") await placeIn(opened.value.changeRequestId);
               }}
             >
-              {`New change request “${title}” in a worktree`}
+              {`New ${terms.singular} “${title}” in a worktree`}
             </SidebarPickerAction>
           </SidebarPickerFooter>
         ) : null}

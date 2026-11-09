@@ -9,7 +9,8 @@ const merged = (base: string, ours: string, theirs: string) => {
 
 describe("markdown merge", () => {
   it("tokens round-trip the exact text", () => {
-    const text = "# Title\n\nFirst. Second!  Third?\nNext line\n\n\n- item\n- item two\nNo newline";
+    const text =
+      "# Title\n\nFirst. Second!  Third?\nNext line\n\nSee v1.2 and a.md here. Done\n\n\n- item\n- item two\nNo newline";
     expect(paragraphs(text).join("")).toBe(text);
     for (const block of paragraphs(text)) expect(sentences(block).join("")).toBe(block);
   });
@@ -27,6 +28,14 @@ describe("markdown merge", () => {
     const theirs = "Alpha is first. Beta is second. Gamma comes last.\n";
     expect(merged(base, ours, theirs)).toBe(
       "Alpha comes first. Beta is second. Gamma comes last.\n",
+    );
+  });
+
+  it("merges neighbouring sentences, and an addition after a sentence the other side changed", () => {
+    expect(merged("One. Two.\n", "Uno. Two.\n", "One. Two. Three.\n")).toBe("Uno. Two. Three.\n");
+    expect(merged("One. Two.", "One. Dos.", "One. Two. Three.")).toBe("One. Dos. Three.");
+    expect(merged("See v1.2 here. Two.\n", "See v1.3 here. Two.\n", "See v1.2 here. Dos.\n")).toBe(
+      "See v1.3 here. Dos.\n",
     );
   });
 
@@ -50,6 +59,34 @@ describe("markdown merge", () => {
     expect(
       merged(base, "One.\n\nThree.\n\nFour.\n", "One.\n\nTwo.\n\nThree.\n\nFour, edited.\n"),
     ).toBe("One.\n\nThree.\n\nFour, edited.\n");
+  });
+
+  it("keeps a sentence added after one the other side changed, as a person merging would", () => {
+    const base = "# Onboarding\n\nFirst day notes.\n\nBack to [[Home]].\n";
+    const added = "# Onboarding\n\nFirst day notes. Bring a pen.\n\nBack to [[Home]].\n";
+    const changed =
+      "# Onboarding\n\nFirst day notes include a check. Bring a notebook.\n\nBack to [[Home]].\n";
+    const both =
+      "# Onboarding\n\nFirst day notes include a check. Bring a notebook. Bring a pen.\n\nBack to [[Home]].\n";
+    expect(merged(base, added, changed)).toBe(both);
+    expect(merged(base, changed, added)).toBe(both);
+    // A change that already took the addition takes it once.
+    expect(merged(base, added, both)).toBe(both);
+    expect(merged("One.\n", "Zero.\n\nOne.\n", "One, edited.\n")).toBe("Zero.\n\nOne, edited.\n");
+  });
+
+  it("adds to a paragraph whose file lost its last newline, and takes one addition spaced two ways once", () => {
+    const head = "# Home\n\nOne. Middle stays. Last.";
+    // An editor dropped the newline main keeps; main changed two sentences.
+    expect(
+      merged(
+        `${head}\n`,
+        `${head} Added. More.`,
+        "# Home\n\nOne. Middle, on main. Last, on main.\n",
+      ),
+    ).toBe("# Home\n\nOne. Middle, on main. Last, on main. Added. More.");
+    // The same sentence added on both sides, after a newline on one of them.
+    expect(merged(`${head}\n`, `${head} Added.`, `${head}\n Added.`)).toBe(`${head} Added.`);
   });
 
   it("treats changes to touching paragraphs as a conflict, as diff3 and git do", () => {

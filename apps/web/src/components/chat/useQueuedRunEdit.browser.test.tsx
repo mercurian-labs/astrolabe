@@ -170,7 +170,7 @@ const savedContent = (prompt: string) => ({
   reviewComments: [],
   previewAnnotations: [],
   threadContexts: [],
-  wikiNotes: [],
+  wikiContexts: [],
   environmentContexts: [],
 });
 

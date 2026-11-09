@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import {
@@ -35,7 +36,7 @@ const layerServices = Layer.mergeAll(
   GitVcsDriver.layer.pipe(
     Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-change-signals-" })),
     Layer.provideMerge(VcsProcess.layer),
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
   ),
   ProjectionStore.layer.pipe(Layer.provideMerge(SqlitePersistence.layerMemory)),
 );

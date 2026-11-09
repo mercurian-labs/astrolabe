@@ -7,6 +7,7 @@ import {
   sendableUpdates,
 } from "@codemirror/collab";
 import { ChangeSet, EditorState, Text } from "@codemirror/state";
+import * as EffectNodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
 import type {
@@ -128,7 +129,7 @@ const layerFor = (
     ),
     Layer.provide(layerKnownWorkspaces),
     Layer.provideMerge(ServerConfig.ServerConfig.layerTest(process.cwd(), { prefix: "t3-lsp-" })),
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, EffectNodeCrypto.layer)),
     Layer.provide(
       Layer.succeed(
         FileSystem.WatchBackend,

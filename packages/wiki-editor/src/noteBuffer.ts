@@ -113,6 +113,12 @@ export class WikiNoteBuffer {
   /** The file text after the agent peer's last write, or as loaded: its next write's diff base. */
   private agentBase = "";
   private pending: string | null = null;
+  private pendingAt: string | null = null;
+  /** The commit whose text this buffer has taken in, which a whole-file save is measured from. */
+  private readAt: string | null = null;
+  /** What this buffer saved since a read last caught up: a late read of one is only our echo. */
+  private readonly ownVersions = new Set<string>();
+  private readonly editListeners = new Set<() => void>();
   private snapshot: WikiNoteBufferSnapshot = {
     session: null,
     dirty: false,
@@ -129,6 +135,19 @@ export class WikiNoteBuffer {
 
   readonly getSnapshot = () => this.snapshot;
 
+  /** Tells `listener` of each edit of the person's, outside any render. */
+  readonly onEdit = (listener: () => void) => {
+    this.editListeners.add(listener);
+    return () => {
+      this.editListeners.delete(listener);
+    };
+  };
+
+  /** The commit the buffer last took in; null until a read says. */
+  version(): string | null {
+    return this.readAt;
+  }
+
   /** The buffer's text now. */
   current(): string {
     return this.loaded?.session.text.toString() ?? this.baseline;
@@ -136,18 +155,29 @@ export class WikiNoteBuffer {
 
   /**
    * A fresh read of the note. With `author`, a version that differs from the agent peer's last
-   * write is that author's amendment and lands live; without, it reloads or waits.
+   * write is that author's amendment and lands live; without, it reloads or waits. `commit` is
+   * where the read came from.
    */
-  receive(incoming: string, author: WikiNoteAuthor | null = null) {
+  receive(incoming: string, author: WikiNoteAuthor | null = null, commit: string | null = null) {
     if (this.loaded === null) {
       this.reset(incoming);
+      this.readAt = commit;
       return;
     }
+    if (incoming === this.baseline) this.ownVersions.clear();
+    else if (this.ownVersions.has(incoming)) return;
     if (author !== null) {
       this.applyLive(incoming, author);
+      this.readAt = commit;
       return;
     }
-    switch (resolveIncomingNote({ baseline: this.baseline, buffer: this.current(), incoming })) {
+    const action = resolveIncomingNote({
+      baseline: this.baseline,
+      buffer: this.current(),
+      incoming,
+    });
+    if (action !== "conflict") this.readAt = commit;
+    switch (action) {
       case "keep":
         this.pending = null;
         this.publish();
@@ -163,6 +193,7 @@ export class WikiNoteBuffer {
         return;
       case "conflict":
         this.pending = incoming;
+        this.pendingAt = commit;
         this.publish();
         return;
     }
@@ -178,7 +209,9 @@ export class WikiNoteBuffer {
 
   /** Drops the edits for the version that changed underneath them. */
   loadChanged() {
-    if (this.pending !== null) this.reset(this.pending);
+    if (this.pending === null) return;
+    this.readAt = this.pendingAt;
+    this.reset(this.pending);
   }
 
   /** Drops the edits for the text the buffer was loaded from. */
@@ -186,10 +219,13 @@ export class WikiNoteBuffer {
     this.reset(this.pending ?? this.baseline);
   }
 
-  /** `text` is now saved: it is what the next read should bring back. */
-  markSaved(text: string) {
+  /** `text` is now saved, at `commit`: it is what the next read should bring back. */
+  markSaved(text: string, commit: string | null = this.readAt) {
+    this.ownVersions.add(this.baseline);
+    this.ownVersions.add(text);
     this.baseline = text;
     this.agentBase = text;
+    this.readAt = commit;
     if (this.pending === text) this.pending = null;
     this.publish();
   }
@@ -201,6 +237,8 @@ export class WikiNoteBuffer {
     this.baseline = "";
     this.agentBase = "";
     this.pending = null;
+    this.readAt = null;
+    this.ownVersions.clear();
     this.publish();
   }
 
@@ -235,6 +273,10 @@ export class WikiNoteBuffer {
     this.pending = null;
     const loaded = load(source);
     loaded.session.text.observe(() => this.publish());
+    loaded.session.doc.on("update", (_update: Uint8Array, origin: unknown) => {
+      if (origin === RELAYED) return;
+      for (const listener of this.editListeners) listener();
+    });
     this.loaded = loaded;
     this.publish();
   }

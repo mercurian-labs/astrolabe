@@ -120,7 +120,7 @@ export function useComposerContextImport(input: {
     (store) => store.addPreviewAnnotation,
   );
   const addComposerDraftThreadContexts = useComposerDraftStore((store) => store.addThreadContexts);
-  const addComposerDraftWikiNotes = useComposerDraftStore((store) => store.addWikiNotes);
+  const addComposerDraftWikiContexts = useComposerDraftStore((store) => store.addWikiContexts);
   const addComposerDraftEnvironmentContexts = useComposerDraftStore(
     (store) => store.addEnvironmentContexts,
   );
@@ -408,7 +408,14 @@ export function useComposerContextImport(input: {
         case "wiki-note": {
           // Its wiki lives on the server it was copied from.
           if (sourceEnvironmentId !== null && sourceEnvironmentId !== environmentId) break;
-          addComposerDraftWikiNotes(composerDraftTarget, [record]);
+          addComposerDraftWikiContexts(composerDraftTarget, [record]);
+          rewritten.set(record.contextId, record.contextId);
+          break;
+        }
+        case "canvas": {
+          // Its thread lives on the server it was copied from.
+          if (sourceEnvironmentId !== null && sourceEnvironmentId !== environmentId) break;
+          addComposerDraftWikiContexts(composerDraftTarget, [record]);
           rewritten.set(record.contextId, record.contextId);
           break;
         }

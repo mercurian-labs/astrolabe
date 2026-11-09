@@ -38,7 +38,7 @@ import {
 import { isNetworkPath } from "@t3tools/shared/path";
 import { MAX_TOOL_OUTPUT_IMAGE_BASE64_LENGTH, toolOutputImages } from "@t3tools/shared/toolOutput";
 import * as Clock from "effect/Clock";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
 import * as Effect from "effect/Effect";
 import * as Hex from "effect/encoding/Hex";
 import * as FileSystem from "effect/FileSystem";
@@ -109,6 +109,14 @@ const PREVIEW_ASSET_EXTENSIONS = new Set([
 ]);
 
 const AssetClaimsSchema = Schema.Union([
+  Schema.Struct({
+    version: Schema.Literal(1),
+    kind: Schema.Literal("wiki-blob"),
+    root: Schema.String,
+    commit: Schema.String,
+    path: Schema.String,
+    expiresAt: Schema.Number,
+  }),
   Schema.Struct({
     version: Schema.Literal(1),
     kind: Schema.Literal("workspace-file"),
@@ -185,6 +193,12 @@ const decodeAssetClaims = Schema.decodeUnknownOption(AssetClaimsJson);
 const encodeAssetClaims = Schema.encodeSync(AssetClaimsJson);
 
 export type ResolvedAsset =
+  | {
+      readonly kind: "wiki-blob";
+      readonly root: string;
+      readonly commit: string;
+      readonly path: string;
+    }
   | {
       readonly kind: "file";
       readonly path: string;
@@ -537,6 +551,8 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
   readonly resource: AssetResource;
   readonly workspaceRoot?: string;
   readonly projectFaviconPath?: string;
+  /** Where a `wiki-file` was found: the wiki service checks it exists at that commit. */
+  readonly wikiBlob?: { readonly root: string; readonly commit: string; readonly path: string };
   /** Where a cloned project's checkout stands, while the clone tracker still knows it. */
   readonly projectCheckout?: "pending" | "cloned";
 }) {
@@ -551,6 +567,20 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
   let fileRevision: string | undefined;
 
   switch (input.resource._tag) {
+    case "wiki-file": {
+      const extension = path.extname(input.resource.path);
+      if (
+        input.wikiBlob === undefined ||
+        hostPreviewMimeTypeFromExtension(extension) === null ||
+        /^\.html?$/i.test(extension)
+      ) {
+        return yield* new AssetPreviewTypeValidationError({ resource: input.resource });
+      }
+      claims = { version: 1, kind: "wiki-blob", ...input.wikiBlob, expiresAt };
+      fileName = path.basename(input.resource.path);
+      fileRevision = input.wikiBlob.commit;
+      break;
+    }
     case "media-file": {
       let requestedPath = expandHomePath(input.resource.path, yield* HostProcess.HomeDirectory);
       if (!path.isAbsolute(requestedPath)) {
@@ -774,7 +804,7 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
               expiresAt,
             };
       if (sourceFaviconPath && canonicalFaviconPath) {
-        const crypto = yield* Crypto.Crypto;
+        const digest = yield* Digest.Digest;
         const faviconBytes = yield* fileSystem.readFile(canonicalFaviconPath).pipe(
           Effect.mapError(
             (cause) =>
@@ -784,7 +814,7 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
               }),
           ),
         );
-        const revision = yield* crypto.digest("SHA-256", faviconBytes).pipe(
+        const revision = yield* digest.digest(Digest.sha256, faviconBytes).pipe(
           Effect.map(Hex.encode),
           Effect.mapError(
             (cause) =>
@@ -899,6 +929,15 @@ export const resolveAsset = Effect.fn("AssetAccess.resolveAsset")(function* (
 
   const claims = decodeClaims(encodedPayload);
   if (!claims || claims.expiresAt <= (yield* Clock.currentTimeMillis)) return null;
+
+  if (claims.kind === "wiki-blob") {
+    return {
+      kind: "wiki-blob",
+      root: claims.root,
+      commit: claims.commit,
+      path: claims.path,
+    } satisfies ResolvedAsset;
+  }
 
   if (claims.kind === "attachment") {
     const config = yield* ServerConfig.ServerConfig;

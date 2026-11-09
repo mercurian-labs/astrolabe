@@ -83,7 +83,7 @@ export type ChangeGroupThreadReason =
 export const CHANGE_GROUP_THREAD_REASON_LABELS: Readonly<Record<ChangeGroupThreadReason, string>> =
   {
     root: "Started the group",
-    opened: "Opened a change request",
+    opened: "Opened a pull request",
     fork: "A fork",
     coordinator: "A coordinator's child",
     "same-branch": "Same branch",

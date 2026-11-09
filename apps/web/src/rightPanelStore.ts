@@ -22,12 +22,14 @@ const RIGHT_PANEL_KINDS = [
   "pull-request",
   "pull-requests",
   "graph",
+  "canvas",
   "lineage",
   "side-chat",
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
-export type PullRequestDetailTab = "summary" | "guide" | "timeline" | "code";
+/** Astrolabe: `wiki` is a host wiki's reading of its own pull request. */
+export type PullRequestDetailTab = "summary" | "wiki" | "guide" | "timeline" | "code";
 
 export interface DeviceTabTarget {
   hostId: string;
@@ -79,6 +81,7 @@ export type RightPanelSurface =
     }
   | { id: "pull-requests"; kind: "pull-requests" }
   | { id: "graph"; kind: "graph" }
+  | { id: "canvas"; kind: "canvas" }
   | { id: "lineage"; kind: "lineage" }
   | { id: `side-chat:${string}`; kind: "side-chat"; threadId: ThreadId };
 
@@ -170,6 +173,8 @@ interface RightPanelStoreState {
   activateTerminal: (ref: ScopedThreadRef, surfaceId: string, terminalId: string) => void;
   closeTerminal: (ref: ScopedThreadRef, surfaceId: string, terminalId: string) => void;
   activateSurface: (ref: ScopedThreadRef, surfaceId: string) => void;
+  /** Agent-driven activation. Not a user action, so it does not move keyboard focus. */
+  revealSurface: (ref: ScopedThreadRef, surfaceId: string) => void;
   closeSurface: (ref: ScopedThreadRef, surfaceId: string) => void;
   /**
    * Astrolabe: shows `surface` in `surfaceId`'s place, in front, in one change, so the panes put
@@ -227,6 +232,8 @@ const singletonSurface = (
       return { id: "pull-requests", kind };
     case "graph":
       return { id: "graph", kind };
+    case "canvas":
+      return { id: "canvas", kind };
     case "lineage":
       return { id: "lineage", kind };
     case "device":
@@ -464,6 +471,11 @@ const userActionOnThread = (
       }
     : {}),
 });
+
+const activated = (current: ThreadRightPanelState, surfaceId: string): ThreadRightPanelState =>
+  current.surfaces.some((surface) => surface.id === surfaceId)
+    ? { ...current, isOpen: true, activeSurfaceId: surfaceId }
+    : current;
 
 const closeAction = (
   state: RightPanelStoreState,
@@ -942,11 +954,11 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
         ),
       activateSurface: (ref, surfaceId) =>
         set((state) =>
-          userAction(state, scopedThreadKey(ref), (current) =>
-            current.surfaces.some((surface) => surface.id === surfaceId)
-              ? { ...current, isOpen: true, activeSurfaceId: surfaceId }
-              : current,
-          ),
+          userAction(state, scopedThreadKey(ref), (current) => activated(current, surfaceId)),
+        ),
+      revealSurface: (ref, surfaceId) =>
+        set((state) =>
+          automaticUpdate(state, scopedThreadKey(ref), (current) => activated(current, surfaceId)),
         ),
       replaceSurface: (ref, surfaceId, surface) =>
         set((state) =>

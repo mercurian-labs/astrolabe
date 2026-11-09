@@ -41,6 +41,7 @@ export const RPC_REQUIRED_SCOPES = {
   ...CLIENT_GUARDED_RPC_SCOPES,
   [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: AuthOrchestrationOperateScope,
   [ORCHESTRATION_V2_WS_METHODS.getWorkflowScript]: AuthOrchestrationReadScope,
+  [ORCHESTRATION_V2_WS_METHODS.getNativeChildWork]: AuthOrchestrationReadScope,
   [ORCHESTRATION_V2_WS_METHODS.stopWorkflow]: AuthOrchestrationOperateScope,
   [ORCHESTRATION_V2_WS_METHODS.forceStopThread]: AuthOrchestrationOperateScope,
   [ORCHESTRATION_V2_WS_METHODS.getTurnDiff]: AuthOrchestrationReadScope,
@@ -139,6 +140,9 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.wikiIndex]: AuthFilesystemReadScope,
   [WS_METHODS.wikiReadNote]: AuthFilesystemReadScope,
   [WS_METHODS.wikiQuery]: AuthFilesystemReadScope,
+  [WS_METHODS.wikiReadFiles]: AuthFilesystemReadScope,
+  [WS_METHODS.wikiListFiles]: AuthFilesystemReadScope,
+  [WS_METHODS.wikiCodeStatus]: AuthFilesystemReadScope,
   [WS_METHODS.wikiChangeRequestsList]: AuthFilesystemReadScope,
   [WS_METHODS.wikiChangeRequestsGet]: AuthFilesystemReadScope,
   // Astrolabe: opening a document reads the file; edits come from CLIENT_GUARDED_RPC_SCOPES.
@@ -295,7 +299,8 @@ const requiredScopesForRpcCall = (
     return [
       resource._tag === "workspace-file" ||
       resource._tag === "media-file" ||
-      resource._tag === "draft-workspace-file"
+      resource._tag === "draft-workspace-file" ||
+      resource._tag === "wiki-file"
         ? AuthFilesystemReadScope
         : AuthOrchestrationReadScope,
     ];

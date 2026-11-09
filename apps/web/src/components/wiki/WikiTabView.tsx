@@ -1,14 +1,18 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import type {
-  EnvironmentId,
-  ScopedThreadRef,
-  WikiChangeRequestId,
-  WikiId,
-} from "@t3tools/contracts";
-import { FilePenLineIcon, FileTextIcon, SquareDashed, TableIcon } from "lucide-react";
+import type { EnvironmentId, ScopedThreadRef, WikiChangeRequest, WikiId } from "@t3tools/contracts";
+import {
+  FilePenLineIcon,
+  FileTextIcon,
+  SquareDashed,
+  TableIcon,
+  WaypointsIcon,
+} from "lucide-react";
+import { lazy, Suspense, useEffect, useSyncExternalStore } from "react";
 import { useAtomValue } from "@effect/atom-react";
 import { ensureLocalApi } from "~/localApi";
+import { allTabs, type Arrangement } from "~/panes/arrangement";
 import type { PaneTabLabel } from "~/panes/panesHost";
+import { workspace } from "~/panes/workspace";
 import { useListedProjectWorktrees } from "~/state/worktrees";
 import { useEnvironmentQuery } from "~/state/query";
 import { wikiEnvironment } from "~/state/wiki";
@@ -17,17 +21,40 @@ import { useNumberWhenOpened } from "../repositories/worktreeNumbering";
 import { WorktreeNumber } from "../repositories/WorktreeNumber";
 import type { FullPullRequestTarget } from "../pullRequest/pullRequestTabs";
 import { repositoryTabKey } from "../repositories/repositoryTabs";
+import { Empty } from "../ui/empty";
+import { Spinner } from "../ui/spinner";
+import { toastManager } from "../ui/toast";
 import { WikiBasePage } from "./WikiBaseView";
 import { WikiChangeRequestView } from "./WikiChangeRequestView";
-import { WikiNoteView } from "./WikiNoteView";
+import {
+  documentFile,
+  documentTitle,
+  documentTitleAmong,
+  draftMovedTo,
+  filesHoldDocument,
+  NO_NOTE_FROM_RELATIVE_LINK,
+  wikiDocumentScope,
+  wikiDraft,
+  wikiLinkOpens,
+  wikiTerms,
+} from "./wiki.logic";
+import { useWikiPlacement, useWikiTerms } from "./wikiEnvironment";
+import { WikiDraftPill } from "./WikiDraftPill";
+import { WikiNoteView, type WikiDraftEdits } from "./WikiNoteView";
 import { hasUnsavedEdits, registerUnsavedCheck } from "~/panes/unsavedEdits";
 import {
   changeRequestBranch,
   isBaseTab,
+  isCanvasTab,
   parseWikiTabKey,
   wikiTabKey,
   type WikiTab,
 } from "./wikiTabs";
+
+const NO_CHANGE_REQUESTS: ReadonlyArray<WikiChangeRequest> = [];
+
+// The board brings the Markdown parser; a wiki with no canvas open shouldn't load it.
+const WikiCanvasPage = lazy(() => import("./WikiCanvasView"));
 
 /** The worktree holding a change request's branch, for a tab in a change request; else null. */
 function useChangeRequestWorktree(tab: WikiTab | null) {
@@ -85,7 +112,7 @@ function useChangeRequests(environmentId: EnvironmentId, wikiId: WikiId) {
   const list = useEnvironmentQuery(
     wikiEnvironment.changeRequests({ environmentId, input: { wikiId } }),
   );
-  return list.data?.changeRequests ?? null;
+  return { changeRequests: list.data?.changeRequests ?? null, failed: list.error !== null };
 }
 
 function NoteTab({
@@ -97,56 +124,141 @@ function NoteTab({
   readonly tab: Extract<WikiTab, { kind: "note" }>;
   readonly nav: WikiTabNav;
 }) {
-  const all = useChangeRequests(tab.environmentId, tab.wikiId);
+  const { changeRequests: all, failed } = useChangeRequests(tab.environmentId, tab.wikiId);
   const overviews = useAtomValue(wikiEnvironment.overview(tab.environmentId));
+  const wiki = overviews?.find((overview) => overview.wiki.wikiId === tab.wikiId)?.wiki;
   const { target, holder } = useChangeRequestWorktree(tab);
   // A change request's document is something opened in its worktree.
   useNumberWhenOpened(target, holder);
-  const openChangeRequests = (all ?? []).filter((changeRequest) => changeRequest.status === "open");
-  const registerUnsaved = (check: () => boolean) => registerUnsavedCheck(tabKey, check);
+  const registerUnsaved = (check: () => boolean, save: () => Promise<boolean>) =>
+    registerUnsavedCheck(tabKey, check, save);
+  const changeRequest = all?.find((entry) => entry.changeRequestId === tab.changeRequestId);
+  const draft = wikiDraft(all);
+  const movedTo = tab.changeRequestId === undefined ? draftMovedTo(draft, tab.file) : undefined;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a move made on another device reaches the panes store from here
+  useEffect(() => {
+    if (movedTo !== undefined)
+      nav.replace(tabKey, wikiTabKey({ ...tab, file: movedTo }), { rekey: true });
+  }, [movedTo, nav, tab, tabKey]);
+  const scope = wikiDocumentScope({
+    tabChangeRequestId: tab.changeRequestId,
+    draft,
+    file: tab.file,
+  });
+  const index = useEnvironmentQuery(
+    wikiEnvironment.index({
+      environmentId: tab.environmentId,
+      input: { wikiId: tab.wikiId, ...(scope === undefined ? {} : { changeRequestId: scope }) },
+    }),
+  );
+  // A link opens in place, as in Obsidian, unless that would drop unsaved edits.
+  const openDocument = (file: string) => {
+    const next = wikiTabKey({ ...tab, file });
+    if (hasUnsavedEdits(tabKey)) nav.open(next);
+    else nav.replace(tabKey, next);
+  };
+  const placement = useWikiPlacement(tab.environmentId);
+  const openLink = (target: string, from?: string) => {
+    const file = wikiLinkOpens(index.data, target, from ?? tab.file, placement);
+    if (file !== null) openDocument(file);
+    else toastManager.add({ type: "warning", title: NO_NOTE_FROM_RELATIVE_LINK });
+  };
+  const parent =
+    tab.changeRequestId === undefined
+      ? "Main"
+      : (changeRequest?.title ?? `A ${wikiTerms(wiki).singular}`);
+  const renderDraftPill = (edits?: WikiDraftEdits) => {
+    // A tab inside a change request stays there; only main, or the draft itself, is its pill's.
+    const shown = tab.changeRequestId === undefined ? draft : changeRequest?.draft ? draft : null;
+    if (shown === null) return null;
+    return (
+      <WikiDraftPill
+        environmentId={tab.environmentId}
+        draft={shown}
+        changeRequests={all ?? NO_CHANGE_REQUESTS}
+        {...(edits ?? {})}
+        onOpen={() =>
+          nav.open(
+            wikiTabKey({
+              kind: "change-request",
+              environmentId: tab.environmentId,
+              wikiId: tab.wikiId,
+              changeRequestId: shown.changeRequestId,
+            }),
+          )
+        }
+        onLanded={(changeRequestId, files) => {
+          // The document on screen follows where its edits went.
+          if (!filesHoldDocument(files, tab.file)) return;
+          nav.replace(tabKey, wikiTabKey({ ...tab, changeRequestId }), { rekey: true });
+        }}
+      />
+    );
+  };
+  // A file that is no wiki document opens as a file, on the line the tab reads.
+  const branch =
+    tab.changeRequestId === undefined
+      ? overviews?.find((overview) => overview.wiki.wikiId === tab.wikiId)?.wiki.mainBranch
+      : changeRequestBranch(tab.changeRequestId);
+  const openFile =
+    branch === undefined
+      ? undefined
+      : (path: string) =>
+          nav.open(
+            repositoryTabKey({
+              kind: "file",
+              environmentId: tab.environmentId,
+              wikiId: tab.wikiId,
+              checkout: { branch },
+              path,
+            }),
+          );
+  // Waits for the list to say whether a draft holds this, or a draft's document would first draw
+  // from main and then seem to change.
+  if (all === null && !failed) {
+    return (
+      <Empty>
+        <Spinner size="md" tone="muted" />
+      </Empty>
+    );
+  }
+  if (isCanvasTab(tab)) {
+    return (
+      <Suspense fallback={null}>
+        <WikiCanvasPage
+          key={tabKey}
+          tabKey={tabKey}
+          environmentId={tab.environmentId}
+          wikiId={tab.wikiId}
+          file={tab.file}
+          changeRequestId={scope}
+          cardsFrom={draft?.changeRequestId}
+          savesTo={tab.changeRequestId}
+          parent={parent}
+          renderDraftPill={renderDraftPill}
+          registerUnsaved={registerUnsaved}
+          onOpenNote={openDocument}
+          onOpenFile={openFile}
+          onOpenTab={nav.open}
+          onOpenInNewTab={(file) => nav.open(wikiTabKey({ ...tab, file }))}
+        />
+      </Suspense>
+    );
+  }
   if (isBaseTab(tab)) {
-    const changeRequest = all?.find((entry) => entry.changeRequestId === tab.changeRequestId);
-    // A row that is no wiki document opens as a file, on the line the base reads.
-    const branch =
-      tab.changeRequestId === undefined
-        ? overviews?.find((overview) => overview.wiki.wikiId === tab.wikiId)?.wiki.mainBranch
-        : changeRequestBranch(tab.changeRequestId);
     return (
       <WikiBasePage
         environmentId={tab.environmentId}
         wikiId={tab.wikiId}
-        file={tab.name}
-        changeRequestId={tab.changeRequestId}
-        parent={
-          tab.changeRequestId === undefined ? "Main" : (changeRequest?.title ?? "A change request")
-        }
-        openChangeRequests={openChangeRequests}
+        file={tab.file}
+        changeRequestId={scope}
+        savesTo={tab.changeRequestId}
+        changeRequests={all ?? NO_CHANGE_REQUESTS}
+        parent={parent}
+        renderDraftPill={renderDraftPill}
         registerUnsaved={registerUnsaved}
-        onSaved={(savedTo: WikiChangeRequestId) => {
-          // Saved from main, the base now reads inside the change request it was saved to.
-          if (savedTo !== tab.changeRequestId) {
-            nav.replace(tabKey, wikiTabKey({ ...tab, changeRequestId: savedTo }), { rekey: true });
-          }
-        }}
-        onOpenNote={(name) => {
-          const next = wikiTabKey({ ...tab, name });
-          if (hasUnsavedEdits(tabKey)) nav.open(next);
-          else nav.replace(tabKey, next);
-        }}
-        onOpenFile={
-          branch === undefined
-            ? undefined
-            : (path) =>
-                nav.open(
-                  repositoryTabKey({
-                    kind: "file",
-                    environmentId: tab.environmentId,
-                    wikiId: tab.wikiId,
-                    checkout: { branch },
-                    path,
-                  }),
-                )
-        }
+        onOpenNote={openLink}
+        onOpenFile={openFile}
       />
     );
   }
@@ -154,21 +266,13 @@ function NoteTab({
     <WikiNoteView
       environmentId={tab.environmentId}
       wikiId={tab.wikiId}
-      name={tab.name}
-      changeRequestId={tab.changeRequestId}
-      openChangeRequests={openChangeRequests}
-      onOpenNote={(name) => {
-        const next = wikiTabKey({ ...tab, name });
-        // A link opens in place, as in Obsidian, unless that would drop unsaved edits.
-        if (hasUnsavedEdits(tabKey)) nav.open(next);
-        else nav.replace(tabKey, next);
-      }}
-      onSaved={(savedTo: WikiChangeRequestId) => {
-        // Saved from main, the note now reads inside the change request it was saved to.
-        if (savedTo !== tab.changeRequestId) {
-          nav.replace(tabKey, wikiTabKey({ ...tab, changeRequestId: savedTo }), { rekey: true });
-        }
-      }}
+      file={tab.file}
+      changeRequestId={scope}
+      savesTo={tab.changeRequestId}
+      changeRequests={all ?? NO_CHANGE_REQUESTS}
+      location={parent}
+      renderDraftPill={renderDraftPill}
+      onOpenNote={openLink}
       registerUnsaved={registerUnsaved}
     />
   );
@@ -181,26 +285,24 @@ function ChangeRequestTab({
   readonly tab: Extract<WikiTab, { kind: "change-request" }>;
   readonly nav: WikiTabNav;
 }) {
-  const all = useChangeRequests(tab.environmentId, tab.wikiId);
-  const status = all?.find((entry) => entry.changeRequestId === tab.changeRequestId)?.status;
   const { openThread, openPullRequest } = nav;
   return (
     <WikiChangeRequestView
       environmentId={tab.environmentId}
       wikiId={tab.wikiId}
       changeRequestId={tab.changeRequestId}
-      onOpenNote={(name) =>
-        // An open change request's files read inside it; a merged or closed one's from main.
+      onOpenNote={(file) =>
         nav.open(
           wikiTabKey({
             kind: "note",
             environmentId: tab.environmentId,
             wikiId: tab.wikiId,
-            name,
-            changeRequestId: status === "open" ? tab.changeRequestId : undefined,
+            file: documentFile(file),
+            changeRequestId: tab.changeRequestId,
           }),
         )
       }
+      onOpenTab={nav.open}
       {...(openPullRequest ? { onOpenPullRequest: openPullRequest } : {})}
       {...(openThread
         ? {
@@ -211,13 +313,34 @@ function ChangeRequestTab({
   );
 }
 
+const noteFilesOpen = new WeakMap<Arrangement, ReadonlyArray<string>>();
+
+/** The documents open in tabs, read once per arrangement however many tabs ask. */
+function openNoteFiles() {
+  const arrangement = workspace.arrangement();
+  let files = noteFilesOpen.get(arrangement);
+  if (files === undefined) {
+    files = allTabs(arrangement).flatMap((key) => {
+      const tab = parseWikiTabKey(key);
+      return tab?.kind === "note" ? [tab.file] : [];
+    });
+    noteFilesOpen.set(arrangement, files);
+  }
+  return files;
+}
+
 /**
  * A tab's title and icon, a note's name or a change request's title, with the number of the
- * worktree holding its change request.
+ * worktree holding its change request. Tabs of one name read apart by their folders.
  */
 export function useWikiTabLabel(tabKey: string): PaneTabLabel {
   const tab = parseWikiTabKey(tabKey);
+  const noteFile = tab?.kind === "note" ? tab.file : null;
+  const noteTitle = useSyncExternalStore(workspace.store.subscribe, () =>
+    noteFile === null ? "" : documentTitleAmong(noteFile, openNoteFiles()),
+  );
   const { holder } = useChangeRequestWorktree(tab);
+  const terms = useWikiTerms(tab?.environmentId, tab?.wikiId);
   const trailing = holder?.number ? { trailing: <WorktreeNumber number={holder.number} /> } : {};
   const changeRequests = useEnvironmentQuery(
     tab?.kind === "change-request"
@@ -229,15 +352,25 @@ export function useWikiTabLabel(tabKey: string): PaneTabLabel {
   );
   if (!tab) return { title: "New tab", icon: <SquareDashed className="size-3 shrink-0" /> };
   if (tab.kind === "note") {
+    if (isCanvasTab(tab)) {
+      return {
+        title: noteTitle,
+        tooltip: tab.file,
+        icon: <WaypointsIcon className="size-3.5 shrink-0" />,
+        ...trailing,
+      };
+    }
     if (isBaseTab(tab)) {
       return {
-        title: tab.name.replace(/\.base$/, ""),
+        title: noteTitle,
+        tooltip: tab.file,
         icon: <TableIcon className="size-3.5 shrink-0" />,
         ...trailing,
       };
     }
     return {
-      title: tab.name,
+      title: noteTitle,
+      tooltip: tab.file,
       icon:
         tab.changeRequestId === undefined ? (
           <FileTextIcon className="size-3.5 shrink-0" />
@@ -250,7 +383,7 @@ export function useWikiTabLabel(tabKey: string): PaneTabLabel {
   const title =
     changeRequests.data?.changeRequests.find(
       (entry) => entry.changeRequestId === tab.changeRequestId,
-    )?.title ?? "Change request";
+    )?.title ?? terms.Singular;
   return {
     title,
     icon: <PullRequestGlyph.pullRequest className="size-3.5 shrink-0" />,
@@ -267,7 +400,7 @@ export function closeAskingFirst(tabKey: string, close: () => void) {
   const tab = parseWikiTabKey(tabKey);
   void ensureLocalApi()
     .dialogs.confirm(
-      `Close ${tab?.kind === "note" ? tab.name : "this tab"}? Your unsaved edits will be lost.`,
+      `Close ${tab?.kind === "note" ? documentTitle(tab.file) : "this tab"}? Your unsaved edits will be lost.`,
       { variant: "destructive" },
     )
     .then((confirmed) => {

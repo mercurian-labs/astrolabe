@@ -28,6 +28,7 @@ import {
 } from "effect/http";
 import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 import { OtlpTracer, OtlpSerialization } from "effect/observability";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import * as ServerConfig from "./config.ts";
 import { ASSET_ROUTE_PREFIX, readMcpAppHtml, resolveAsset } from "./assets/AssetAccess.ts";
@@ -54,6 +55,7 @@ import {
   browserApiCorsAllowedMethods,
   DESKTOP_RENDERER_ORIGINS,
 } from "./httpCors.ts";
+import { requestUrl } from "./requestUrl.ts";
 
 const OTLP_TRACES_PROXY_PATH = "/api/observability/v1/traces";
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "::1", "localhost"]);
@@ -249,6 +251,58 @@ export const assetFileResponse = Effect.fn("assetFileResponse")(function* (
   return yield* HttpServerResponse.file(asset.path, { status, offset, bytesToRead, headers });
 });
 
+/**
+ * A file as a commit holds it, from git's own stream: a checkout has no copy of what exists only
+ * in a change request. Seeking starts the read again, which a blob that never changes allows.
+ */
+export const wikiBlobResponse = Effect.fn("wikiBlobResponse")(function* (
+  asset: { readonly root: string; readonly commit: string; readonly path: string },
+  rangeHeader?: string,
+  ifRangeHeader?: string,
+  method: "GET" | "HEAD" = "GET",
+) {
+  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  const headers = assetResponseHeaders(asset.path);
+  const git = (...args: ReadonlyArray<string>) =>
+    ChildProcess.make("git", args, { cwd: asset.root, stdin: "ignore", stderr: "ignore" });
+  const spec = `${asset.commit}:${asset.path}`;
+  const size = BigInt((yield* spawner.string(git("cat-file", "-s", spec))).trim());
+  headers["Accept-Ranges"] = "bytes";
+  headers["Content-Type"] ??= Option.getOrElse(
+    Mime.getType(asset.path),
+    () => "application/octet-stream",
+  );
+  const range =
+    method === "GET" && rangeHeader && ifRangeHeader === undefined
+      ? assetByteRange(rangeHeader, size)
+      : null;
+  if (range?._tag === "Unsatisfiable") {
+    return HttpServerResponse.empty({
+      status: 416,
+      headers: { ...headers, "Content-Range": `bytes */${size}` },
+    });
+  }
+  const first = range?._tag === "Range" ? Number(range.offset) : 0;
+  const length = range?._tag === "Range" ? Number(range.bytesToRead) : Number(size);
+  headers["Content-Length"] = String(length);
+  if (range?._tag === "Range") headers["Content-Range"] = range.contentRange;
+  const status = range?._tag === "Range" ? 206 : 200;
+  if (method === "HEAD" || length === 0) return HttpServerResponse.empty({ status, headers });
+  let read = 0;
+  const body = Stream.unwrap(
+    spawner.spawn(git("cat-file", "blob", spec)).pipe(Effect.map((process) => process.stdout)),
+  ).pipe(
+    Stream.map((chunk) => {
+      const from = Math.max(first - read, 0);
+      const to = Math.max(from, Math.min(first + length - read, chunk.length));
+      read += chunk.length;
+      return chunk.subarray(from, to);
+    }),
+    Stream.takeUntil(() => read >= first + length),
+  );
+  return HttpServerResponse.stream(body, { status, headers });
+});
+
 export const layerHttpCompression = HttpRouter.middleware(HttpMiddleware.compression(), {
   global: true,
 });
@@ -407,7 +461,7 @@ export const layerAssetRoute = HttpRouter.add(
   `${ASSET_ROUTE_PREFIX}/*`,
   Effect.gen(function* () {
     const request = yield* HttpServerRequest.HttpServerRequest;
-    const url = HttpServerRequest.toURL(request);
+    const url = requestUrl(request);
     if (Option.isNone(url)) {
       return HttpServerResponse.text("Bad Request", { status: 400 });
     }
@@ -430,6 +484,19 @@ export const layerAssetRoute = HttpRouter.add(
         contentType: asset.mimeType,
         headers: { "cache-control": "private, max-age=3600", "x-content-type-options": "nosniff" },
       });
+    }
+    if (asset.kind === "wiki-blob") {
+      return yield* wikiBlobResponse(
+        asset,
+        request.method === "GET" ? request.headers.range : undefined,
+        request.headers["if-range"],
+        request.method === "HEAD" ? "HEAD" : "GET",
+      ).pipe(
+        Effect.tapError((cause) =>
+          Effect.logWarning("Failed to read a wiki file.", { path: asset.path, cause }),
+        ),
+        Effect.orElseSucceed(() => HttpServerResponse.text("Not Found", { status: 404 })),
+      );
     }
     if (asset.kind === "source-control-media") {
       return yield* sourceControlMediaResponse(asset, request.headers).pipe(
@@ -465,7 +532,7 @@ export const layerAttachmentUploadRoute = HttpRouter.add(
   `${ATTACHMENT_UPLOAD_ROUTE_PREFIX}/*`,
   Effect.gen(function* () {
     const request = yield* HttpServerRequest.HttpServerRequest;
-    const url = HttpServerRequest.toURL(request);
+    const url = requestUrl(request);
     if (Option.isNone(url)) {
       return HttpServerResponse.text("Bad Request", { status: 400 });
     }
@@ -566,7 +633,7 @@ const streamStaticFile = (file: FileSystem.File, size: bigint) =>
 const handleStaticAndDevRequest = Effect.fn("handleStaticAndDevRequest")(
   function* (immutableBuildAssets: ReadonlySet<string>) {
     const request = yield* HttpServerRequest.HttpServerRequest;
-    const url = HttpServerRequest.toURL(request);
+    const url = requestUrl(request);
 
     if (Option.isNone(url)) {
       return HttpServerResponse.text("Bad Request", { status: 400 });

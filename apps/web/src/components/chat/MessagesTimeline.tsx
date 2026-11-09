@@ -121,6 +121,7 @@ import {
   AssistantTimelineRow,
   AssistantMetaTimelineRow,
   ProposedPlanTimelineRow,
+  CanvasTimelineRow,
   HtmlRenderTimelineRow,
   McpAppTimelineRow,
 } from "./TimelineAssistantRows";
@@ -473,13 +474,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
   const normalizedFindQuery = findQuery.trim();
   const findActive = findExpanded;
 
-  const disclosurePinsEndRef = useRef(false);
-  const pinDisclosureToEnd = () => {
-    if (!disclosurePinsEndRef.current) return;
-    const element = listRef.current?.getScrollableNode();
-    if (element) element.scrollTop = element.scrollHeight;
-  };
-
   const scheduleDisclosureSettle = () => {
     if (disclosureSettleFrameRef.current !== null) {
       cancelAnimationFrame(disclosureSettleFrameRef.current);
@@ -488,10 +482,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
       cancelAnimationFrame(disclosureSettleSecondFrameRef.current);
     }
     disclosureSettleFrameRef.current = requestAnimationFrame(() => {
-      pinDisclosureToEnd();
       disclosureSettleSecondFrameRef.current = requestAnimationFrame(() => {
-        pinDisclosureToEnd();
-        disclosurePinsEndRef.current = false;
         disclosureAnchorKeyRef.current = null;
         setDisclosureToggleSettling(false);
         disclosureSettleFrameRef.current = null;
@@ -502,13 +493,11 @@ const ConversationTimeline = memo(function ConversationTimeline({
 
   const suspendEndScrollMaintenanceForDisclosure = (anchorKey: string) => {
     disclosureAnchorKeyRef.current = anchorKey;
-    disclosurePinsEndRef.current = resolveTimelineIsAtEnd(listRef.current?.getState()) === true;
     setDisclosureToggleSettling(true);
     scheduleDisclosureSettle();
   };
 
   const shouldRestoreVisibleContentPosition = (row: MessagesTimelineRow) => {
-    if (disclosurePinsEndRef.current) return false;
     const disclosureAnchorKey = disclosureAnchorKeyRef.current;
     return disclosureAnchorKey === null || row.id === disclosureAnchorKey;
   };
@@ -964,8 +953,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   };
 
   const handleItemSizeChanged = () => {
-    if (disclosurePinsEndRef.current) {
-      queueMicrotask(pinDisclosureToEnd);
+    if (disclosureAnchorKeyRef.current !== null) {
       scheduleDisclosureSettle();
     }
     scheduleMinimapRefresh();
@@ -1470,6 +1458,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
                   row.kind === "event" ||
                   row.kind === "attempt-fold" ||
                   row.kind === "html-render" ||
+                  row.kind === "canvas" ||
                   row.kind === "mcp-app"
                 ? "pb-2"
                 : "pb-4",
@@ -1519,6 +1508,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       {row.kind === "assistant-meta" ? <AssistantMetaTimelineRow row={row} /> : null}
       {row.kind === "proposed-plan" ? <ProposedPlanTimelineRow row={row} /> : null}
       {row.kind === "html-render" ? <HtmlRenderTimelineRow row={row} /> : null}
+      {row.kind === "canvas" ? <CanvasTimelineRow row={row} /> : null}
       {row.kind === "mcp-app" ? <McpAppTimelineRow row={row} /> : null}
       {row.kind === "working" ? <WorkingTimelineRow row={row} /> : null}
       {row.kind === "worktree-setup" ? <WorktreeSetupTimelineRow row={row} /> : null}

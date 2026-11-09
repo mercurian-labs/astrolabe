@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { definition } from "./definition.ts";
 
+const SHA = "a".repeat(40);
 const parse = (url: string) => definition.parseChangeRequestUrl(new URL(url));
 
 describe("Bitbucket change request URLs", () => {
@@ -64,5 +65,23 @@ describe("Bitbucket remotes", () => {
       "Bitbucket Self-Hosted",
     );
     expect(recognize("https://notbitbucket.example.com/workspace/repo.git")).toBeNull();
+  });
+});
+
+describe("Bitbucket file URLs", () => {
+  const base = { host: "bitbucket.org", repository: "acme/web" };
+  it.each([
+    [
+      { path: "src/a.ts", lines: [10, 20] },
+      `https://bitbucket.org/acme/web/src/${SHA}/src/a.ts#lines-10:20`,
+    ],
+  ] as const)("links %j", (file, url) => {
+    expect(definition.fileUrl({ ...base, sha: SHA, ...file })).toBe(url);
+  });
+
+  it("has none on a self-hosted server", () => {
+    expect(
+      definition.fileUrl({ ...base, sha: SHA, path: "a.ts", host: "bitbucket.acme.test" }),
+    ).toBeNull();
   });
 });

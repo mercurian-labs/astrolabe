@@ -1,5 +1,7 @@
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { afterEach, assert, expect, it, vi } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import { ChildProcessSpawner } from "effect/process";
 
@@ -16,6 +18,7 @@ const layer = it.layer(
         execute: mockedExecute,
       }),
     ),
+    Layer.provide(NodeServices.layer),
   ),
 );
 
@@ -276,6 +279,40 @@ layer("AzureDevOpsPullRequestCli.layer", (it) => {
         "--output",
         "json",
       ]);
+    }),
+  );
+
+  it.effect("posts a comment as a thread on the pull request", () =>
+    Effect.gen(function* () {
+      let sent = "";
+      mockedExecute.mockImplementationOnce((input) =>
+        FileSystem.FileSystem.pipe(
+          Effect.flatMap((fileSystem) =>
+            fileSystem.readFileString(input.args[input.args.indexOf("--in-file") + 1]!),
+          ),
+          Effect.map((content) => {
+            sent = content;
+            return output("{}");
+          }),
+          Effect.provide(NodeServices.layer),
+          Effect.orDie,
+        ),
+      );
+      const cli = yield* AzureDevOpsPullRequestCli.AzureDevOpsPullRequestCli;
+
+      yield* cli.addComment({
+        cwd: "/w",
+        location: { project: "Handbook", repository: "wiki", organization: "acme" } as never,
+        number: 7,
+        body: "Looks right to me.",
+      });
+
+      const args = argsOfCall(0);
+      assert.strictEqual(args[args.indexOf("--http-method") + 1], "POST");
+      assert.strictEqual(args[args.indexOf("--resource") + 1], "pullRequestThreads");
+      expect(args).toContain("pullRequestId=7");
+      expect(sent).toContain('"content":"Looks right to me."');
+      expect(sent).toContain('"commentType":1');
     }),
   );
 

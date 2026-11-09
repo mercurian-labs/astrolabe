@@ -5,6 +5,7 @@ import {
   MAX_TOOL_OUTPUT_IMAGES,
   toolOutputImages,
   toolOutputIndicatesFailure,
+  wikiCanvasFromToolItem,
 } from "./toolOutput.ts";
 
 describe("compactDynamicToolOutput", () => {
@@ -29,11 +30,16 @@ describe("compactDynamicToolOutput", () => {
       scheduledTaskId: "scheduled-1",
       status: "failed",
       summary: "A child failed; the tool itself succeeded.",
+      unlinked: [{ repository: "acme/app", state: "merged", numbers: [1] }],
+      unlinkedCount: 1,
+      linkedCount: 2,
     };
     expect(compactDynamicToolOutput(output)).toEqual({
       thread: { threadId: "thread-1" },
       taskId: "task-1",
       scheduledTaskId: "scheduled-1",
+      linkedCount: 2,
+      unlinkedCount: 1,
     });
     expect(output.thread.messages).toEqual(["Private message"]);
   });
@@ -131,6 +137,35 @@ describe("compactDynamicToolOutput", () => {
     expect(compactDynamicToolOutput({ threadId: "known", body: "x".repeat(1_000_000) })).toEqual({
       threadId: "known",
     });
+  });
+});
+
+describe("wikiCanvasFromToolItem", () => {
+  const output = {
+    structuredContent: {
+      changeRequest: { changeRequestId: "cr-1", wikiId: "wiki-1", title: "Draw" },
+      commit: "abc",
+      canvas: { file: "Board.canvas", cards: { a: "0123456789abcdef" } },
+    },
+  };
+  const item = (overrides: object = {}) => ({
+    toolName: "mcp__t3-code__astrolabe_wiki_transform",
+    output,
+    ...overrides,
+  });
+  const reference = { wikiId: "wiki-1", changeRequestId: "cr-1", file: "Board.canvas" };
+
+  it("finds the canvas a transform changed, before and after the wire compacts it", () => {
+    expect(wikiCanvasFromToolItem(item())).toEqual(reference);
+    const compacted = compactDynamicToolOutput(output);
+    expect(wikiCanvasFromToolItem(item({ output: compacted }))).toEqual(reference);
+  });
+
+  it("finds nothing for another tool, another transform or a failure", () => {
+    expect(wikiCanvasFromToolItem(item({ toolName: "astrolabe_wiki_amend" }))).toBeUndefined();
+    const { canvas: _canvas, ...plain } = output.structuredContent;
+    expect(wikiCanvasFromToolItem(item({ output: { structuredContent: plain } }))).toBeUndefined();
+    expect(wikiCanvasFromToolItem(item({ output: { ...output, isError: true } }))).toBeUndefined();
   });
 });
 

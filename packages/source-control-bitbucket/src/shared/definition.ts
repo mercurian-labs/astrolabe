@@ -8,6 +8,7 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import {
   buildCommitUrl,
+  buildFileUrl,
   changeRequestUrlBelow,
   defineSourceControl,
   isChangeRequestInProjectRepository,
@@ -94,6 +95,13 @@ export const definition = defineSourceControl({
   parseChangeRequestUrl: (url) =>
     isBitbucketHost(url.hostname) ? parseChangeRequestPath(url, CHANGE_REQUEST_PATH) : null,
   commitUrl: (input) => buildCommitUrl(input, "commits"),
+  // Bitbucket Data Center's pages have other routes, and its version isn't known from a remote.
+  fileUrl: (input) =>
+    input.host === "bitbucket.org"
+      ? buildFileUrl(input, "src", (first, last) =>
+          first === last ? `lines-${first}` : `lines-${first}:${last}`,
+        )
+      : null,
   parseCommitUrl: (url) =>
     isBitbucketHost(url.hostname) ? parseCommitPath(url, COMMIT_PATH) : null,
   changeRequestUrlFromReferenceAutolink: () => null,

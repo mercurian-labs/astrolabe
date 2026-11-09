@@ -47,16 +47,16 @@ const MODE_OPTIONS: Record<SourceControlWritingStyleMode, { label: string; descr
   {
     repo_conventions: {
       label: "Repository conventions",
-      description: "In each project, matches recent change descriptions and change request titles.",
+      description: "In each project, matches recent change descriptions and pull request titles.",
     },
     conventional_commits: {
       label: "Conventional Commits",
-      description: "Use Conventional Commit prefixes and keep change request text concise.",
+      description: "Use Conventional Commit prefixes and keep pull request text concise.",
     },
     custom: {
       label: "Custom instructions",
       description:
-        "Use your instructions for change descriptions and change requests in every project.",
+        "Use your instructions for change descriptions and pull requests in every project.",
     },
   };
 
@@ -295,7 +295,7 @@ export function SourceControlWritingSettingsSection() {
         settingKeys={["reviewGuidesEnabled"]}
         mixed={mixedReviewGuidesEnabled}
         {...searchableSetting("review-guides")}
-        description="Adds a Guide tab to pull requests: an agent writes a tour of the change, stop by stop, with the calls a maintainer should make."
+        description="Add a Guide tab to pull requests. An agent explains the changes and points out decisions that need review."
         control={
           <Switch
             mixed={mixedReviewGuidesEnabled}
@@ -462,12 +462,12 @@ export function SourceControlWritingSettingsSection() {
           settingKeys={["sourceControlWritingStyle"]}
           mixed={templatesMixed}
           {...searchableSetting("follow-change-request-templates")}
-          description="Use the repository's template for change request descriptions when available."
+          description="Use the repository's template for pull request descriptions when available."
           resetAction={
             templatesMixed ||
             style.followChangeRequestTemplates !== defaults.followChangeRequestTemplates ? (
               <SettingResetButton
-                label="change request templates"
+                label="pull request templates"
                 onClick={() =>
                   updateSettings({
                     sourceControlWritingStyle: {
@@ -489,7 +489,7 @@ export function SourceControlWritingSettingsSection() {
                   },
                 })
               }
-              aria-label="Follow change request templates"
+              aria-label="Follow pull request templates"
             />
           }
         />
@@ -498,7 +498,7 @@ export function SourceControlWritingSettingsSection() {
           serverScoped
           settingKeys={["sourceControlWriterModelSelection"]}
           {...searchableSetting("source-control-writer-model")}
-          description="Model for source control text and branch or bookmark names. Off uses the environment's text generation model."
+          description="Model for source control text and branch or bookmark names. When disabled, use the text generation model configured for this environment."
           control={
             !hasServerTargets ? (
               <span className="text-sm text-muted-foreground">

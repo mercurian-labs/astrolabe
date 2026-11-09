@@ -254,6 +254,7 @@ import {
 import {
   ORCHESTRATION_V2_WS_METHODS,
   OrchestrationGetWorkflowScriptError,
+  OrchestrationV2GetNativeChildWorkError,
   OrchestrationV2StopWorkflowError,
   OrchestrationV2ForceStopThreadError,
   OrchestrationV2DispatchCommandError,
@@ -412,6 +413,8 @@ import { SecretRequestAnswerInput, SecretRequestError } from "./secretRequest.ts
 import {
   WikiAmendInput,
   WikiAmendResult,
+  WikiAutosaveInput,
+  WikiAutosaveResult,
   WikiChangeRequest,
   WikiChangeRequestDetail,
   WikiChangeRequestListInput,
@@ -426,8 +429,14 @@ import {
   WikiMergeResult,
   WikiNoteInput,
   WikiNoteResult,
+  WikiCodeStatusInput,
+  WikiCodeStatusResult,
   WikiQueryInput,
   WikiQueryResult,
+  WikiListFilesInput,
+  WikiListFilesResult,
+  WikiReadFilesInput,
+  WikiReadFilesResult,
   WikiReadScope,
   WikiRegisterInput,
   WikiRevertInput,
@@ -438,7 +447,12 @@ import {
   WikiSetProjectLinkInput,
   WikiSummary,
   WikiTarget,
+  WikiDraftMoveInput,
+  WikiMoveInput,
+  WikiDraftPromoteInput,
   WikiTransformInput,
+  WikiKeepCanvasInput,
+  WikiKeepCanvasResult,
 } from "./wiki.ts";
 import {
   CodeIndexError,
@@ -685,11 +699,19 @@ export const WS_METHODS = {
   wikiIndex: "wiki.index",
   wikiReadNote: "wiki.readNote",
   wikiQuery: "wiki.query",
+  wikiReadFiles: "wiki.readFiles",
+  wikiListFiles: "wiki.listFiles",
+  wikiCodeStatus: "wiki.codeStatus",
   wikiChangeRequestsList: "wiki.changeRequests.list",
   wikiChangeRequestsGet: "wiki.changeRequests.get",
   wikiChangeRequestsOpen: "wiki.changeRequests.open",
   wikiAmend: "wiki.amend",
   wikiTransform: "wiki.transform",
+  wikiKeepCanvas: "wiki.keepCanvas",
+  wikiAutosave: "wiki.autosave",
+  wikiDraftPromote: "wiki.draftPromote",
+  wikiDraftMove: "wiki.draftMove",
+  wikiMove: "wiki.move",
   wikiRevertAmendment: "wiki.revertAmendment",
   wikiSaveWorktree: "wiki.saveWorktree",
   wikiMerge: "wiki.merge",
@@ -698,6 +720,11 @@ export const WS_METHODS = {
   wikiSetMapBackgrounds: "wiki.setMapBackgrounds",
   wikiSetProjectLink: "wiki.setProjectLink",
   wikiPushMirror: "wiki.pushMirror",
+  wikiConnectHost: "wiki.connectHost",
+  wikiDisconnectHost: "wiki.disconnectHost",
+  wikiSyncHost: "wiki.syncHost",
+  wikiPublishChangeRequest: "wiki.publishChangeRequest",
+  wikiResolveConflicts: "wiki.resolveConflicts",
 
   // Astrolabe: open repository files, with the environment as their authority.
   documentsSubscribe: "documents.subscribe",
@@ -790,6 +817,7 @@ export const WS_METHODS = {
   sourceControlSignInCancel: "sourceControl.signInCancel",
   sourceControlAppAccess: "sourceControl.appAccess",
   sourceControlStarred: "sourceControl.starred",
+  sourceControlStar: "sourceControl.star",
   projectCloneStart: "projectClone.start",
   projectCloneCancel: "projectClone.cancel",
   projectCloneRetry: "projectClone.retry",
@@ -1465,6 +1493,13 @@ const WsSourceControlStarredRpc = Rpc.make(WS_METHODS.sourceControlStarred, {
   error: EnvironmentAuthorizationError,
 });
 
+// Stars the repository as the server's forge account. False when the forge refused or cannot star.
+const WsSourceControlStarRpc = Rpc.make(WS_METHODS.sourceControlStar, {
+  payload: SourceControlStarredInput,
+  success: Schema.Boolean,
+  error: EnvironmentAuthorizationError,
+});
+
 // Returns when the project exists and cloning starts; progress uses the subscription.
 const WsProjectCloneStartRpc = Rpc.make(WS_METHODS.projectCloneStart, {
   payload: ProjectCloneStartInput,
@@ -2096,6 +2131,15 @@ const WsOrchestrationV2GetWorkflowScriptRpc = Rpc.make(
   },
 );
 
+const WsOrchestrationV2GetNativeChildWorkRpc = Rpc.make(
+  ORCHESTRATION_V2_WS_METHODS.getNativeChildWork,
+  {
+    payload: OrchestrationV2RpcSchemas.getNativeChildWork.input,
+    success: OrchestrationV2RpcSchemas.getNativeChildWork.output,
+    error: Schema.Union([OrchestrationV2GetNativeChildWorkError, EnvironmentAuthorizationError]),
+  },
+);
+
 const WsOrchestrationV2GetTurnItemRpc = Rpc.make(ORCHESTRATION_V2_WS_METHODS.getTurnItem, {
   payload: OrchestrationV2RpcSchemas.getTurnItem.input,
   success: OrchestrationV2RpcSchemas.getTurnItem.output,
@@ -2228,6 +2272,24 @@ const WsWikiQueryRpc = Rpc.make(WS_METHODS.wikiQuery, {
   error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
 });
 
+const WsWikiListFilesRpc = Rpc.make(WS_METHODS.wikiListFiles, {
+  payload: WikiListFilesInput,
+  success: WikiListFilesResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiReadFilesRpc = Rpc.make(WS_METHODS.wikiReadFiles, {
+  payload: WikiReadFilesInput,
+  success: WikiReadFilesResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiCodeStatusRpc = Rpc.make(WS_METHODS.wikiCodeStatus, {
+  payload: WikiCodeStatusInput,
+  success: WikiCodeStatusResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
 const WsWikiChangeRequestsListRpc = Rpc.make(WS_METHODS.wikiChangeRequestsList, {
   payload: WikiChangeRequestListInput,
   success: WikiChangeRequestListResult,
@@ -2255,6 +2317,36 @@ const WsWikiAmendRpc = Rpc.make(WS_METHODS.wikiAmend, {
 const WsWikiTransformRpc = Rpc.make(WS_METHODS.wikiTransform, {
   payload: WikiTransformInput,
   success: WikiAmendResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiAutosaveRpc = Rpc.make(WS_METHODS.wikiAutosave, {
+  payload: WikiAutosaveInput,
+  success: WikiAutosaveResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiDraftPromoteRpc = Rpc.make(WS_METHODS.wikiDraftPromote, {
+  payload: WikiDraftPromoteInput,
+  success: WikiChangeRequest,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiDraftMoveRpc = Rpc.make(WS_METHODS.wikiDraftMove, {
+  payload: WikiDraftMoveInput,
+  success: WikiChangeRequest,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiMoveRpc = Rpc.make(WS_METHODS.wikiMove, {
+  payload: WikiMoveInput,
+  success: WikiAutosaveResult,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiKeepCanvasRpc = Rpc.make(WS_METHODS.wikiKeepCanvas, {
+  payload: WikiKeepCanvasInput,
+  success: WikiKeepCanvasResult,
   error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
 });
 
@@ -2303,6 +2395,36 @@ const WsWikiSetProjectLinkRpc = Rpc.make(WS_METHODS.wikiSetProjectLink, {
 const WsWikiPushMirrorRpc = Rpc.make(WS_METHODS.wikiPushMirror, {
   payload: WikiTarget,
   success: WikiSummary,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiConnectHostRpc = Rpc.make(WS_METHODS.wikiConnectHost, {
+  payload: WikiTarget,
+  success: WikiSummary,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiDisconnectHostRpc = Rpc.make(WS_METHODS.wikiDisconnectHost, {
+  payload: WikiTarget,
+  success: WikiSummary,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiSyncHostRpc = Rpc.make(WS_METHODS.wikiSyncHost, {
+  payload: WikiTarget,
+  success: WikiSummary,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiPublishChangeRequestRpc = Rpc.make(WS_METHODS.wikiPublishChangeRequest, {
+  payload: WikiChangeRequestTarget,
+  success: WikiChangeRequest,
+  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
+});
+
+const WsWikiResolveConflictsRpc = Rpc.make(WS_METHODS.wikiResolveConflicts, {
+  payload: WikiChangeRequestTarget,
+  success: WikiChangeRequest,
   error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
 });
 
@@ -2714,6 +2836,7 @@ export const WsUpstreamRpcGroup = RpcGroup.make(
   WsSourceControlSignInCancelRpc,
   WsSourceControlAppAccessRpc,
   WsSourceControlStarredRpc,
+  WsSourceControlStarRpc,
   WsProjectCloneStartRpc,
   WsProjectCloneCancelRpc,
   WsProjectCloneRetryRpc,
@@ -2795,6 +2918,7 @@ export const WsUpstreamRpcGroup = RpcGroup.make(
   WsSubscribeResourceTelemetryRpc,
   WsOrchestrationV2DispatchCommandRpc,
   WsOrchestrationV2GetWorkflowScriptRpc,
+  WsOrchestrationV2GetNativeChildWorkRpc,
   WsOrchestrationV2StopWorkflowRpc,
   WsOrchestrationV2ForceStopThreadRpc,
   WsOrchestrationV2GetTurnItemRpc,
@@ -2845,11 +2969,19 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsWikiIndexRpc,
   WsWikiReadNoteRpc,
   WsWikiQueryRpc,
+  WsWikiReadFilesRpc,
+  WsWikiListFilesRpc,
+  WsWikiCodeStatusRpc,
   WsWikiChangeRequestsListRpc,
   WsWikiChangeRequestsGetRpc,
   WsWikiChangeRequestsOpenRpc,
   WsWikiAmendRpc,
   WsWikiTransformRpc,
+  WsWikiAutosaveRpc,
+  WsWikiDraftPromoteRpc,
+  WsWikiDraftMoveRpc,
+  WsWikiMoveRpc,
+  WsWikiKeepCanvasRpc,
   WsWikiRevertAmendmentRpc,
   WsWikiSaveWorktreeRpc,
   WsWikiMergeRpc,
@@ -2858,6 +2990,11 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsWikiSetMapBackgroundsRpc,
   WsWikiSetProjectLinkRpc,
   WsWikiPushMirrorRpc,
+  WsWikiConnectHostRpc,
+  WsWikiDisconnectHostRpc,
+  WsWikiSyncHostRpc,
+  WsWikiPublishChangeRequestRpc,
+  WsWikiResolveConflictsRpc,
   WsDocumentsSubscribeRpc,
   WsDocumentsPushRpc,
   WsDocumentsSaveRpc,

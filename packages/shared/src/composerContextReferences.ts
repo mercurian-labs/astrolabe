@@ -1,5 +1,6 @@
 import {
   COMPOSER_CONTEXT_LABEL_MAX_CHARS,
+  type CanvasContextRecord,
   type ComposerContextId,
   type ComposerContextKind,
   type ComposerContextRecord,
@@ -8,7 +9,11 @@ import {
   type KnownComposerContextRecord,
   type ScopedThreadRef,
   type ThreadContextRecord,
+  type ThreadId,
+  type TurnItemId,
 } from "@t3tools/contracts";
+
+import { replaceThreadLinks, threadLinkCandidates } from "./threadLinks.ts";
 
 const CONTEXT_PROTOCOL = "t3-context:";
 const COMPOSER_CONTEXT_HREF_PREFIX = `${CONTEXT_PROTOCOL}//v1/`;
@@ -67,11 +72,15 @@ export function parseComposerContextHref(
 }
 
 export function sanitizeComposerContextLabel(label: string, kind: ComposerContextKind): string {
-  const cleaned = label
+  const normalized = label
     .replace(/[[\]\\\r\n]/g, " ")
     .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, COMPOSER_CONTEXT_LABEL_MAX_CHARS);
+    .trim();
+  let end = COMPOSER_CONTEXT_LABEL_MAX_CHARS;
+  const before = normalized.charCodeAt(end - 1);
+  const after = normalized.charCodeAt(end);
+  if (before >= 0xd800 && before <= 0xdbff && after >= 0xdc00 && after <= 0xdfff) end--;
+  const cleaned = normalized.slice(0, end);
   return cleaned.length > 0 ? cleaned : kind;
 }
 
@@ -87,6 +96,66 @@ export function threadContextRecord(ref: ScopedThreadRef, title: string): Thread
     threadId: ref.threadId,
     title: label,
   };
+}
+
+/** One record per board, so adding it again reuses the chip and keeps one comment. */
+export function canvasContextRecord(board: {
+  readonly threadId: ThreadId;
+  readonly itemId: TurnItemId;
+  readonly title: string;
+  readonly comment?: string | undefined;
+}): CanvasContextRecord {
+  const label = sanitizeComposerContextLabel(board.title, "canvas");
+  const comment = board.comment?.trim();
+  return {
+    version: 1,
+    kind: "canvas",
+    contextId: toKindScopedComposerContextId("canvas", `${board.threadId}/${board.itemId}`),
+    label,
+    threadId: board.threadId,
+    itemId: board.itemId,
+    title: label,
+    ...(comment ? { comment } : {}),
+  };
+}
+
+/**
+ * Turns pasted thread links into thread chip references. A record the copy carried names its
+ * chip, else the thread's title here, read by key, or the link's own label. `accept` gives the
+ * chip's id, or none to keep the link as written. A v1 link names no machine, so it stays a link.
+ */
+export function threadLinkContextReferences(
+  text: string,
+  copied: ReadonlyArray<ComposerContextRecord>,
+  title: (ref: ScopedThreadRef) => string | undefined,
+  accept: (record: ThreadContextRecord) => ComposerContextId | undefined = (record) =>
+    record.contextId,
+): { readonly text: string; readonly records: ReadonlyArray<ThreadContextRecord> } {
+  const records = new Map<ComposerContextId, ThreadContextRecord>();
+  const rewritten = replaceThreadLinks(text, (link, label) => {
+    if (link.environmentId === null) return undefined;
+    const candidates = threadLinkCandidates(link, link.environmentId);
+    const record =
+      copied.find(
+        (candidate): candidate is ThreadContextRecord =>
+          candidate.kind === "thread" &&
+          "threadId" in candidate &&
+          candidates.some(
+            (ref) =>
+              ref.environmentId === candidate.environmentId && ref.threadId === candidate.threadId,
+          ),
+      ) ??
+      candidates.flatMap((ref) => {
+        const known = title(ref);
+        return known === undefined ? [] : [threadContextRecord(ref, known)];
+      })[0] ??
+      threadContextRecord(candidates[0]!, label?.trim() || "Thread");
+    const contextId = accept(record);
+    if (contextId === undefined) return undefined;
+    records.set(record.contextId, record);
+    return formatComposerContextReference({ ...record, contextId });
+  });
+  return { text: rewritten, records: [...records.values()] };
 }
 
 export function formatComposerContextReference(reference: {
@@ -253,9 +322,10 @@ function formatComposerContextProviderPayload(record: KnownComposerContextRecord
         `attachmentId: ${record.attachmentId}`,
       ].join("\n");
     case "terminal": {
+      const lineCount = Math.max(0, record.lineEnd - record.lineStart + 1);
       const lines = record.text
         .split("\n")
-        .slice(0, record.lineEnd - record.lineStart + 1)
+        .slice(0, lineCount)
         .map((line, index) => `${record.lineStart + index} | ${line}`);
       return [`terminal: ${record.terminalLabel}`, ...lines].join("\n");
     }
@@ -288,7 +358,7 @@ function formatComposerContextProviderPayload(record: KnownComposerContextRecord
       ];
       if (record.text.trim()) lines.push("comment:", indent(record.text.trim()));
       if (record.diff.trim()) {
-        lines.push(`${record.fenceLanguage ?? "diff"}:`, indent(record.diff.trimEnd()));
+        lines.push(`${record.fenceLanguage ?? "diff"}:`, indent(record.diff.replace(/\n+$/, "")));
       }
       return lines.join("\n");
     }
@@ -315,6 +385,14 @@ function formatComposerContextProviderPayload(record: KnownComposerContextRecord
         `wikiId: ${record.wikiId}`,
         `note: ${record.name}`,
         "Read it with astrolabe_wiki_read(wiki=wikiId, name=note).",
+      ].join("\n");
+    case "canvas":
+      return [
+        `title: ${record.title}`,
+        `threadId: ${record.threadId}`,
+        `itemId: ${record.itemId}`,
+        ...(record.comment === undefined ? [] : [`comment: ${record.comment}`]),
+        "The user means this board, drawn in that thread by astrolabe_canvas_show. The comment is theirs. To save it into a wiki, call astrolabe_canvas_keep with these ids; never redraw it by hand.",
       ].join("\n");
   }
 }

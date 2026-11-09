@@ -116,6 +116,23 @@ export function createWikiEnvironmentAtoms<R, E>(
       tag: WS_METHODS.wikiQuery,
       refreshTrigger: ({ environmentId, input }) => wikiChange(environmentId, input.wikiId),
     }),
+    /** Files by path, any depth, at a commit; a board's canvas and the notes its cards show. */
+    files: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:wiki:files",
+      tag: WS_METHODS.wikiReadFiles,
+      refreshTrigger: ({ environmentId, input }) => wikiChange(environmentId, input.wikiId),
+    }),
+    /** Every file in a wiki's repository, for a board's pickers. */
+    fileList: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:wiki:file-list",
+      tag: WS_METHODS.wikiListFiles,
+      refreshTrigger: ({ environmentId, input }) => wikiChange(environmentId, input.wikiId),
+    }),
+    /** How code cards' files compare with their project's head. */
+    codeStatus: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:wiki:code-status",
+      tag: WS_METHODS.wikiCodeStatus,
+    }),
     changeRequests,
     changeRequest: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:wiki:change-request",
@@ -145,6 +162,26 @@ export function createWikiEnvironmentAtoms<R, E>(
     transform: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:wiki:transform",
       tag: WS_METHODS.wikiTransform,
+    }),
+    autosave: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:wiki:autosave",
+      tag: WS_METHODS.wikiAutosave,
+    }),
+    promoteDraft: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:wiki:draft:promote",
+      tag: WS_METHODS.wikiDraftPromote,
+    }),
+    moveDraft: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:wiki:draft:move",
+      tag: WS_METHODS.wikiDraftMove,
+    }),
+    move: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:wiki:move",
+      tag: WS_METHODS.wikiMove,
+    }),
+    keepCanvas: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:wiki:keep-canvas",
+      tag: WS_METHODS.wikiKeepCanvas,
     }),
     revertAmendment: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:wiki:revert-amendment",
@@ -177,6 +214,26 @@ export function createWikiEnvironmentAtoms<R, E>(
     pushMirror: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:wiki:mirror:push",
       tag: WS_METHODS.wikiPushMirror,
+    }),
+    connectHost: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:wiki:host:connect",
+      tag: WS_METHODS.wikiConnectHost,
+    }),
+    disconnectHost: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:wiki:host:disconnect",
+      tag: WS_METHODS.wikiDisconnectHost,
+    }),
+    syncHost: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:wiki:host:sync",
+      tag: WS_METHODS.wikiSyncHost,
+    }),
+    publishChangeRequest: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:wiki:change-request:publish",
+      tag: WS_METHODS.wikiPublishChangeRequest,
+    }),
+    resolveConflicts: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:wiki:change-request:resolve-conflicts",
+      tag: WS_METHODS.wikiResolveConflicts,
     }),
   };
 }

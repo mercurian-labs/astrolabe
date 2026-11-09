@@ -18,9 +18,12 @@ export interface WikiSearch {
 const searchString = (value: unknown, max = 300): string | undefined =>
   typeof value === "string" && value.trim() ? value.trim().slice(0, max) : undefined;
 
+/** A document's whole path, which can run far past a name. */
+const NOTE_PATH_LENGTH = 4096;
+
 export function parseWikiSearch(raw: Record<string, unknown>): WikiSearch {
   const environmentId = searchString(raw.environmentId);
-  const note = searchString(raw.note);
+  const note = searchString(raw.note, NOTE_PATH_LENGTH);
   const changeRequest = searchString(raw.changeRequest);
   return {
     ...(environmentId ? { environmentId: environmentId as EnvironmentId } : {}),
@@ -31,22 +34,50 @@ export function parseWikiSearch(raw: Record<string, unknown>): WikiSearch {
 
 // Shared with the mobile app.
 export {
+  changeRequestFiles,
+  filesHoldDocument,
+  documentFile,
+  documentPath,
   documentTitle,
-  wikiDocumentName,
+  documentTitleAmong,
+  draftDocuments,
+  draftLabel,
+  draftMovedTo,
+  exactWikiPath,
+  isCanvasName,
+  isDocumentFile,
+  isSettledChangeRequest,
+  resolveWikiLink,
+  wikiDocumentScope,
+  wikiDraft,
   noteKey,
+  NO_NOTE_FROM_RELATIVE_LINK,
+  wikiDocumentFiles,
+  wikiDocumentFilesWithDraft,
+  wikiLinkFile,
+  wikiLinkFiles,
+  wikiLinkOpens,
+  wikiLinkOptions,
   noteNameOfFile,
-  defaultSaveTarget,
   mergeBlockedReason,
+  mergeConflictAdvice,
   describeIndexError,
   describeWikiFailure,
   summarizeMirror,
+  summarizeHost,
+  hasUnpublishedWork,
+  hostedPullRequestKeys,
+  hostedWikis,
+  isHostedPullRequest,
+  isWikiConflict,
+  wikiPullRequestHost,
   PERSON_ACTOR,
   isTurnRunning,
   latestAmendmentFor,
   authorColor,
-  queuedSaveStep,
   type MirrorTone,
-  type QueuedWikiSave,
+  wikiMergeMethod,
+  wikiTerms,
 } from "@t3tools/client-runtime/wikiLogic";
 
 /** A map's tiles, picked as Obsidian does: the view's own, else a background, else the default. */

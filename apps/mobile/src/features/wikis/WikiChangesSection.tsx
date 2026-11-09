@@ -1,4 +1,5 @@
 import { useNavigation } from "@react-navigation/native";
+import { wikiTerms } from "@t3tools/client-runtime/wikiLogic";
 import {
   searchWikiListEntries,
   wikiListEntries,
@@ -73,10 +74,10 @@ export function WikiChangesSection({
     return (
       <Text className="px-4 py-6 text-center text-sm text-foreground-muted">
         {searching
-          ? "No change requests found"
+          ? "No pull requests found"
           : wiki
-            ? `No change requests in ${wiki.wiki.name} yet`
-            : "No wiki change requests yet"}
+            ? `No ${wikiTerms(wiki.wiki).plural} in ${wiki.wiki.name} yet`
+            : "No wiki pull requests yet"}
       </Text>
     );
   }
@@ -93,8 +94,8 @@ export function WikiChangesSection({
                 label={`Merged and closed · ${item.count}`}
                 expanded={item.expanded}
                 onToggle={() => setSettledExpanded((expanded) => !expanded)}
-                accessibilityLabel={`${item.count} merged and closed ${item.count === 1 ? "change request" : "change requests"}`}
-                accessibilityHint={`${item.expanded ? "Collapses" : "Expands"} the merged and closed change requests.`}
+                accessibilityLabel={`${item.count} merged and closed ${item.count === 1 ? "pull request" : "pull requests"}`}
+                accessibilityHint={`${item.expanded ? "Collapses" : "Expands"} the merged and closed pull requests.`}
               />
             );
           case "change":

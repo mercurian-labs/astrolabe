@@ -118,6 +118,7 @@ const signInWith = (input: Queue.Queue<Terminal.UserInput, Cause.Done>) => {
       Terminal.make({
         columns: Effect.succeed(80),
         rows: Effect.succeed(24),
+        size: Queue.unbounded<Terminal.Size, Cause.Done>(),
         readInput: Effect.succeed(Queue.asDequeue(input)),
         readLine: Effect.die("unexpected line input"),
         display: () => Effect.void,

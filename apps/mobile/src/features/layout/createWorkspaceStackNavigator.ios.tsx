@@ -28,6 +28,7 @@ import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { scopedThreadKey } from "../../lib/scopedEntities";
 import { WorkspaceTabsProvider, useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
 import { WorkspaceNativeTabs } from "../workspace/WorkspaceNativeTabs.ios";
+import { isCanvasName } from "@t3tools/client-runtime/wikiLogic";
 import { workspaceUsesColumns } from "../workspace/workspace-tabs-state";
 import { isSettingsRoute, settingsOpenIn } from "../settings/settings-navigation";
 import { workspaceRoutesOf } from "./workspace-overlay-routes";
@@ -66,6 +67,15 @@ import {
 } from "../../native/v5-workspace-context";
 
 type ViewProps = ComponentProps<typeof NativeStackView>;
+
+/** A board fills the screen, with its own bar where the tab bar would be. */
+const isBoardRoute = (route: { readonly name: string; readonly params?: object | undefined }) =>
+  route.name === "WikiCanvasReview" ||
+  (route.name === "WikiDocument" &&
+    route.params !== undefined &&
+    "name" in route.params &&
+    typeof route.params.name === "string" &&
+    isCanvasName(route.params.name));
 type Descriptor = ViewProps["descriptors"][string];
 type Route = ViewProps["state"]["routes"][number];
 
@@ -515,11 +525,12 @@ function WorkspaceStackView(props: ViewProps & { readonly nativeColumns: boolean
     render: () => (
       <WorkspaceNativeTabs
         hidden={
-          !workspacePage &&
-          projection.detail.length > 0 &&
-          !primaryVisible &&
-          !layout.usesSplitView &&
-          (metrics?.verticalBarEdge ?? "none") === "none"
+          isBoardRoute(visibleRoute) ||
+          (!workspacePage &&
+            projection.detail.length > 0 &&
+            !primaryVisible &&
+            !layout.usesSplitView &&
+            (metrics?.verticalBarEdge ?? "none") === "none")
         }
       >
         {props.nativeColumns && !workspacePage ? (

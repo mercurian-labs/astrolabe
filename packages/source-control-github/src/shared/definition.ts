@@ -1,6 +1,7 @@
 import { makeProviderSettingsSchema, SourceControlProviderKind } from "@t3tools/contracts";
 import {
   buildCommitUrl,
+  buildFileUrl,
   changeRequestUrlBelow,
   defineSourceControl,
   hostCredentialSettingsFields,
@@ -19,7 +20,7 @@ import { gitHubReferenceAutolinks } from "./referenceAutolinks.ts";
 
 const CHECKOUT_COMMAND = /^gh\s+pr\s+checkout\s+(.+)$/i;
 const CHANGE_REQUEST_REFERENCE =
-  /^https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/(\d+)(?:[/?#].*)?$/i;
+  /^https?:\/\/[^/?#\s]+\/[^/\s]+\/[^/\s]+\/pull\/(\d+)(?:[/?#].*)?$/i;
 
 // GitHub Enterprise Server runs on any hostname, so the `<owner>/<repo>/pull/<n>` route alone
 // identifies a GitHub pull request.
@@ -94,6 +95,12 @@ export const definition = defineSourceControl({
   },
   commitUrl: (input) =>
     isRepositoryPath(input.repository) ? buildCommitUrl(input, "commit") : null,
+  fileUrl: (input) =>
+    isRepositoryPath(input.repository)
+      ? buildFileUrl(input, "blob", (first, last) =>
+          first === last ? `L${first}` : `L${first}-L${last}`,
+        )
+      : null,
   // A known project's host can be any GitHub Enterprise Server name.
   parseCommitUrl: (url, known) =>
     known || isGitHubHost(url.hostname) ? parseCommitPath(url, COMMIT_PATH) : null,

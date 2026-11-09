@@ -1,6 +1,6 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { WikiChangeEntry, WikiDocumentEntry } from "@t3tools/client-runtime/wikiList";
-import { isTurnRunning } from "@t3tools/client-runtime/wikiLogic";
+import { isTurnRunning, wikiTerms } from "@t3tools/client-runtime/wikiLogic";
 import type { EnvironmentId, ThreadId, WikiSummary } from "@t3tools/contracts";
 import { memo, type ReactNode } from "react";
 import { View } from "react-native";
@@ -114,7 +114,7 @@ function WikiRowFrame(props: {
 
 /**
  * A document: its wiki and when it last changed, its name, and its links or open change. A base
- * reads its name without `.base`, over a table icon.
+ * or canvas reads its name without its extension, over its icon.
  */
 export const WikiDocumentRow = memo(function WikiDocumentRow(props: {
   readonly entry: WikiDocumentEntry;
@@ -124,6 +124,7 @@ export const WikiDocumentRow = memo(function WikiDocumentRow(props: {
   const { entry, onSelect } = props;
   const working = useAgentWorking(entry.environmentId, entry.changes[0]?.threadId);
   const footer = wikiDocumentFooter(entry);
+  const kind = entry.base ? "base" : entry.canvas ? "canvas" : null;
   return (
     <WikiRowFrame
       environmentId={entry.environmentId}
@@ -131,15 +132,21 @@ export const WikiDocumentRow = memo(function WikiDocumentRow(props: {
       timestamp={entry.editedAt}
       working={working}
       title={entry.title}
-      accessibilityLabel={`${entry.title}${entry.base ? ", base" : ""}, ${entry.wiki.name}`}
-      accessibilityHint={entry.base ? "Opens the base" : "Opens the document"}
+      accessibilityLabel={`${entry.title}${kind ? `, ${kind}` : ""}, ${entry.wiki.name}`}
+      accessibilityHint={`Opens the ${kind ?? "document"}`}
       showTrailingDivider={props.showTrailingDivider}
       onPress={() => onSelect(entry)}
       footer={
         <>
-          {footer.inChange || entry.base ? (
+          {footer.inChange || kind !== null ? (
             <SymbolView
-              name={footer.inChange ? "square.and.pencil" : "tablecells"}
+              name={
+                footer.inChange
+                  ? "square.and.pencil"
+                  : kind === "base"
+                    ? "tablecells"
+                    : "rectangle.3.group"
+              }
               size={11}
               tintColorClassName={ROW.mutedIconTintClassName}
               type="monochrome"
@@ -176,6 +183,7 @@ export const WikiChangeRow = memo(function WikiChangeRow(props: {
   const { changeRequest } = entry;
   const working = useAgentWorking(entry.environmentId, changeRequest.threadId);
   const footer = wikiChangeFooter(entry);
+  const noun = wikiTerms(entry.wiki).singular;
   return (
     <WikiRowFrame
       environmentId={entry.environmentId}
@@ -183,8 +191,8 @@ export const WikiChangeRow = memo(function WikiChangeRow(props: {
       timestamp={changeRequest.updatedAt}
       working={working}
       title={changeRequest.title}
-      accessibilityLabel={`${changeRequest.title}, change request in ${entry.wiki.name}`}
-      accessibilityHint="Opens the change request"
+      accessibilityLabel={`${changeRequest.title}, ${noun} in ${entry.wiki.name}`}
+      accessibilityHint={`Opens the ${noun}`}
       showTrailingDivider={props.showTrailingDivider}
       onPress={() => onSelect(entry)}
       footer={

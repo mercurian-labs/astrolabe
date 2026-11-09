@@ -39,6 +39,81 @@ body {
   color: var(--foreground);
 }
 
+/* A canvas fills the web view, past the root's padding: it pans, the page doesn't scroll. */
+.canvas-page {
+  position: fixed;
+  inset: 0;
+}
+
+/* A finger, not a pointer: a file card's name is what a second tap opens. */
+.canvas-page .cv-card-label {
+  padding-top: 12px;
+}
+
+.canvas-open {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 8px 12px;
+}
+
+/* `![[Board.canvas]]` in a note: a static picture of the board. */
+.canvas-embed {
+  display: block;
+  width: 100%;
+  padding: 0;
+  margin: 8px 0;
+  overflow: hidden;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.canvas-embed-title {
+  display: block;
+  padding: 4px 12px;
+  overflow: hidden;
+  font-size: 13px;
+  color: var(--muted-foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+
+.canvas-embed-body {
+  display: block;
+  height: 176px;
+  padding: 8px;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+
+/* Pele reads a diagram's colours through these, as the web app sets them. */
+.pele {
+  --pele-bg: var(--background);
+  --pele-fg: var(--foreground);
+  --pele-muted: var(--muted-foreground);
+  --pele-line: var(--muted-foreground);
+  --pele-surface: color-mix(in srgb, var(--foreground) 6%, var(--background));
+  --pele-surface-alt: color-mix(in srgb, var(--foreground) 10%, var(--background));
+  --pele-border: color-mix(in srgb, var(--foreground) 28%, transparent);
+  --pele-accent: var(--primary);
+  --pele-critical: #e5484d;
+}
+
+.mermaid-source {
+  margin: 0;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--muted-foreground);
+  white-space: pre-wrap;
+}
+
 /* A ```base block's view (see `BaseBlock.tsx`). */
 .base-view {
   display: flex;

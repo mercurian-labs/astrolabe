@@ -1,18 +1,24 @@
 import { describe, expect, it } from "vite-plus/test";
-import type { WikiChangeRequestId } from "@t3tools/contracts";
+import { SourceControlProviderKind } from "@t3tools/contracts";
 
 import {
   authorColor,
-  defaultSaveTarget,
   describeIndexError,
   describeWikiFailure,
+  hasUnpublishedWork,
+  hostedPullRequestKeys,
+  wikiMergeMethod,
+  wikiTerms,
+  isHostedPullRequest,
   isTurnRunning,
   latestAmendmentFor,
   mapTilesFor,
   mergeBlockedReason,
+  mergeConflictAdvice,
   parseWikiSearch,
-  queuedSaveStep,
+  summarizeHost,
   summarizeMirror,
+  wikiPullRequestHost,
 } from "./wiki.logic";
 
 describe("parseWikiSearch", () => {
@@ -27,17 +33,8 @@ describe("parseWikiSearch", () => {
       }),
     ).toEqual({ environmentId: "env-1", note: "Graph theory" });
     expect(parseWikiSearch({ changeRequest: "cr-1" })).toEqual({ changeRequest: "cr-1" });
-  });
-});
-
-describe("defaultSaveTarget", () => {
-  const open = [{ changeRequestId: "cr-1" as WikiChangeRequestId }];
-  it("saves into the open change request being viewed", () => {
-    expect(defaultSaveTarget(open, "cr-1" as WikiChangeRequestId)).toBe("cr-1");
-  });
-  it("opens a new one from main or from a change request that is no longer open", () => {
-    expect(defaultSaveTarget(open, undefined)).toBeNull();
-    expect(defaultSaveTarget(open, "cr-2" as WikiChangeRequestId)).toBeNull();
+    const note = `${"folder/".repeat(100)}Plan.md`;
+    expect(parseWikiSearch({ note }).note).toBe(note);
   });
 });
 
@@ -46,21 +43,35 @@ describe("mergeBlockedReason", () => {
     expect(
       mergeBlockedReason({
         canWrite: true,
-        preview: { status: "clean", conflicts: [], errors: [] },
+        preview: { status: "clean", conflicts: [], errors: [], canvases: [] },
       }),
     ).toBeNull();
     expect(
       mergeBlockedReason({
         canWrite: true,
-        preview: { status: "conflict", conflicts: ["A.md", "B.md"], errors: [] },
+        preview: { status: "conflict", conflicts: ["A.md", "B.md"], errors: [], canvases: [] },
       }),
     ).toBe("Conflicts with main in A.md, B.md.");
     expect(
       mergeBlockedReason({
         canWrite: false,
-        preview: { status: "clean", conflicts: [], errors: [] },
+        preview: { status: "clean", conflicts: [], errors: [], canvases: [] },
       }),
     ).toMatch(/permission/);
+  });
+});
+
+describe("mergeConflictAdvice", () => {
+  it("sends a canvas to its worktree, because an amendment can't write one", () => {
+    expect(mergeConflictAdvice(["A.md"], "computer", "pull request")).toContain("Amend");
+    expect(mergeConflictAdvice([], "computer", "pull request")).toContain("Amend");
+    const canvas = mergeConflictAdvice(["A.md", "Board.canvas"], "computer", "pull request");
+    expect(canvas).toContain("worktree");
+    expect(canvas).not.toContain("Amend");
+    expect(mergeConflictAdvice(["Board.canvas"], "phone", "pull request")).toContain(
+      "from the phone",
+    );
+    expect(mergeConflictAdvice(["A.md"], "phone", "pull request")).toContain("Amend");
   });
 });
 
@@ -89,6 +100,108 @@ describe("describeWikiFailure", () => {
     expect(describeWikiFailure({ _tag: "WikiError", reason: "invalid", message: "Bad name" })).toBe(
       "Bad name",
     );
+  });
+});
+
+describe("summarizeHost", () => {
+  const ago = () => "now";
+  const host = {
+    projectId: "project-1" as never,
+    remote: "origin",
+    lastSyncedAt: "2026-10-02T00:00:00.000Z",
+    lastSyncedCommit: "abc",
+    relation: "up-to-date" as const,
+    lastError: null,
+  };
+  it("puts what needs a person first", () => {
+    expect(summarizeHost(null, ago).tone).toBe("none");
+    expect(summarizeHost(undefined, ago).tone).toBe("none");
+    expect(summarizeHost({ ...host, lastSyncedAt: null, relation: null }, ago).tone).toBe(
+      "pending",
+    );
+    expect(summarizeHost(host, ago)).toEqual({ tone: "ok", label: "Synced now" });
+    expect(summarizeHost({ ...host, relation: "ahead" }, ago).tone).toBe("warning");
+    expect(summarizeHost({ ...host, relation: "behind", lastError: "edits" }, ago)).toEqual({
+      tone: "warning",
+      label: "Main is behind the host",
+    });
+    expect(summarizeHost({ ...host, relation: "diverged" }, ago).tone).toBe("error");
+    expect(summarizeHost({ ...host, lastError: "boom", relation: "ahead" }, ago).label).toBe(
+      "Sync failed",
+    );
+  });
+});
+
+describe("wikiTerms", () => {
+  it("says what the wiki's host says, and pull request with no host", () => {
+    expect(wikiTerms({ host: { kind: SourceControlProviderKind.make("gitlab") } }).Plural).toBe(
+      "Merge requests",
+    );
+    expect(wikiTerms({ host: { kind: SourceControlProviderKind.make("forgejo") } }).singular).toBe(
+      "pull request",
+    );
+    expect(wikiTerms({ host: null }).Singular).toBe("Pull request");
+    expect(wikiTerms(null).plural).toBe("pull requests");
+  });
+});
+
+describe("host wiki change requests", () => {
+  const changeRequest = (head: string, pushedHead: string | null, amendments = 1) =>
+    ({
+      status: "open",
+      head,
+      pushedHead,
+      amendments: Array.from({ length: amendments }),
+    }) as never;
+
+  it("calls work unpublished only when there is some and the host lacks it", () => {
+    expect(hasUnpublishedWork(changeRequest("a", null))).toBe(true);
+    expect(hasUnpublishedWork(changeRequest("b", "a"))).toBe(true);
+    expect(hasUnpublishedWork(changeRequest("a", "a"))).toBe(false);
+    expect(hasUnpublishedWork(changeRequest("a", null, 0))).toBe(false);
+  });
+
+  it("merges keeping each amendment its own commit, and squashes only as a last resort", () => {
+    expect(wikiMergeMethod(["squash", "rebase", "merge"])).toBe("merge");
+    expect(wikiMergeMethod(["squash", "rebase"])).toBe("rebase");
+    expect(wikiMergeMethod(["squash"])).toBe("squash");
+    expect(wikiMergeMethod([])).toBeUndefined();
+  });
+
+  it("matches a row by its project or its address, however the host spells either", () => {
+    const keys = hostedPullRequestKeys([
+      {
+        projectId: "project-1",
+        changeRequests: [
+          {
+            pullRequest: {
+              repository: "Acme/Handbook",
+              number: 4,
+              url: "https://dev.azure.com/Acme/Handbook/pull/4",
+            },
+          },
+          { pullRequest: null },
+          {},
+        ],
+      },
+    ]);
+    const row = (projectId: string, host: string, number: number) => ({
+      projectId,
+      host,
+      repository: "acme/handbook",
+      number,
+    });
+    // The same project, on a host spelled differently from the pull request's link.
+    expect(isHostedPullRequest(keys, row("project-1", "acme.visualstudio.com", 4))).toBe(true);
+    // Another checkout of the same repository.
+    expect(isHostedPullRequest(keys, row("project-2", "dev.azure.com", 4))).toBe(true);
+    expect(isHostedPullRequest(keys, row("project-1", "dev.azure.com", 5))).toBe(false);
+    expect(isHostedPullRequest(keys, row("project-2", "gitlab.example.com", 4))).toBe(false);
+  });
+
+  it("reads the host from a pull request's link", () => {
+    expect(wikiPullRequestHost("https://GitHub.com/acme/handbook/pull/4")).toBe("github.com");
+    expect(wikiPullRequestHost("not a link")).toBeNull();
   });
 });
 
@@ -149,13 +262,6 @@ describe("live authors and queued saves", () => {
     expect(isTurnRunning("idle")).toBe(false);
     expect(isTurnRunning("completed")).toBe(false);
     expect(isTurnRunning(undefined)).toBe(false);
-  });
-  it("waits while the turn runs and commits once it ends, once", () => {
-    const queued = { changeRequestId: "cr-1" as WikiChangeRequestId, message: "Edit" };
-    expect(queuedSaveStep({ queued, turnRunning: true, committing: false })).toBe("wait");
-    expect(queuedSaveStep({ queued, turnRunning: false, committing: false })).toBe("commit");
-    expect(queuedSaveStep({ queued, turnRunning: false, committing: true })).toBe("idle");
-    expect(queuedSaveStep({ queued: null, turnRunning: false, committing: false })).toBe("idle");
   });
 });
 

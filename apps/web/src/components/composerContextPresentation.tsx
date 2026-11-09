@@ -5,6 +5,8 @@ import type {
   EnvironmentContextRecord,
   PreviewAnnotationPayload,
   ThreadContextRecord,
+  CanvasContextRecord,
+  WikiContextRecord,
   WikiNoteContextRecord,
 } from "@t3tools/contracts";
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
@@ -40,6 +42,7 @@ import { ComposerPendingTerminalContextChip } from "./chat/ComposerPendingTermin
 import { EnvironmentContextChip } from "./EnvironmentContextChip";
 import { ThreadContextChip } from "./ThreadContextChip";
 import { WikiNoteContextChip } from "./WikiNoteContextChip";
+import { CanvasContextChip } from "./chat/CanvasContextChip";
 import { useLinkedEnvironments } from "~/state/peerLinks";
 import {
   createContextPresentationRegistry,
@@ -69,6 +72,7 @@ export type ComposerDraftContextRecord =
   | { kind: "file"; record: ComposerFileAttachment; upload?: AttachmentUploadState | undefined }
   | { kind: "thread"; record: ThreadContextRecord }
   | { kind: "wiki-note"; record: WikiNoteContextRecord }
+  | { kind: "canvas"; record: CanvasContextRecord }
   | { kind: "environment"; record: EnvironmentContextRecord };
 
 export interface ComposerContextActions {
@@ -79,6 +83,8 @@ export interface ComposerContextActions {
   openFile: (fileId: string) => void;
   openMention: (path: string) => void;
   openPullRequest: (event: MouseEvent<HTMLElement>, url: string) => void;
+  openCanvas: (itemId: CanvasContextRecord["itemId"]) => void;
+  commentOnCanvas: (contextId: CanvasContextRecord["contextId"], comment: string) => void;
 }
 
 export const ComposerContextActionsContext = createContext<ComposerContextActions>({
@@ -88,6 +94,8 @@ export const ComposerContextActionsContext = createContext<ComposerContextAction
   openFile: () => {},
   openMention: () => {},
   openPullRequest: () => {},
+  openCanvas: () => {},
+  commentOnCanvas: () => {},
 });
 
 export type ComposerDraftContextRecords = ReadonlyMap<string, ComposerDraftContextRecord>;
@@ -108,7 +116,7 @@ export function composerContextRecordsFromDraft(input: {
   reviewComments?: ReadonlyArray<ReviewCommentContext>;
   previewAnnotations?: ReadonlyArray<PreviewAnnotationPayload>;
   threadContexts?: ReadonlyArray<ThreadContextRecord>;
-  wikiNotes?: ReadonlyArray<WikiNoteContextRecord>;
+  wikiContexts?: ReadonlyArray<WikiContextRecord>;
   environmentContexts?: ReadonlyArray<EnvironmentContextRecord>;
   images?: ReadonlyArray<ComposerImageAttachment>;
   files?: ReadonlyArray<ComposerFileAttachment>;
@@ -146,8 +154,11 @@ export function composerContextRecordsFromDraft(input: {
   for (const record of input.threadContexts ?? []) {
     records.set(record.contextId, { kind: "thread", record });
   }
-  for (const record of input.wikiNotes ?? []) {
-    records.set(record.contextId, { kind: "wiki-note", record });
+  for (const record of input.wikiContexts ?? []) {
+    records.set(
+      record.contextId,
+      record.kind === "canvas" ? { kind: "canvas", record } : { kind: "wiki-note", record },
+    );
   }
   for (const record of input.environmentContexts ?? []) {
     records.set(record.contextId, { kind: "environment", record });
@@ -371,6 +382,18 @@ function ComposerWikiNoteContextChip(props: { record: WikiNoteContextRecord }) {
   return <WikiNoteContextChip record={props.record} environmentId={environmentId} />;
 }
 
+function ComposerCanvasContextChip(props: { record: CanvasContextRecord }) {
+  const { record } = props;
+  const { openCanvas, commentOnCanvas } = use(ComposerContextActionsContext);
+  return (
+    <CanvasContextChip
+      record={record}
+      onOpen={() => openCanvas(record.itemId)}
+      onComment={(comment) => commentOnCanvas(record.contextId, comment)}
+    />
+  );
+}
+
 function UnresolvedContextChip(props: { label: string }) {
   return (
     <UnresolvedChip
@@ -397,6 +420,7 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
     "preview-annotation",
     "thread",
     "wiki-note",
+    "canvas",
     "environment",
   ],
   handlers: [
@@ -500,6 +524,16 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
       render: (entry, context) =>
         entry.kind === "wiki-note" ? (
           <ComposerWikiNoteContextChip record={entry.record} />
+        ) : (
+          <UnresolvedContextChip label={context.label} />
+        ),
+    },
+    {
+      kind: "canvas",
+      canRender: (entry) => entry.kind === "canvas",
+      render: (entry, context) =>
+        entry.kind === "canvas" ? (
+          <ComposerCanvasContextChip record={entry.record} />
         ) : (
           <UnresolvedContextChip label={context.label} />
         ),

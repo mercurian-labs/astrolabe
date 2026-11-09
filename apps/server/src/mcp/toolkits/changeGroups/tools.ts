@@ -22,7 +22,7 @@ const shared = {
 };
 
 const RULES =
-  "A change group is the change requests in different projects that are one effort: a repository's pull requests and the wiki change requests documenting them, plus the threads working on it. A thread's own change requests, a coordinator's children's, and a fork's join its group on their own; so do threads on its pull requests' branches and threads naming its issue key. People add, take out, and accept suggestions on top. A change request is in one group; a thread can be in several. Each member is reviewed and merged in its own place.";
+  "A change group is the pull requests in different projects that are one effort: a repository's and the wiki's documenting them, plus the threads working on it. A thread's own pull requests, a coordinator's children's, and a fork's join its group on their own; so do threads on its pull requests' branches and threads naming its issue key. People add, take out, and accept suggestions on top. A pull request is in one group; a thread can be in several. Each member is reviewed and merged in its own place.";
 
 const groupId = TrimmedNonEmptyString.annotate({
   description:
@@ -30,7 +30,7 @@ const groupId = TrimmedNonEmptyString.annotate({
 });
 const memberKey = TrimmedNonEmptyString.annotate({
   description:
-    "A change request's or a thread's key, as astrolabe_change_groups shows it: `pr:<host>/<owner>/<repo>#<number>`, `wiki:<wikiId>/<changeRequestId>`, or `thread:<threadId>`.",
+    "A pull request's or a thread's key, as astrolabe_change_groups shows it: `pr:<host>/<owner>/<repo>#<number>`, `wiki:<wikiId>/<changeRequestId>`, or `thread:<threadId>`.",
 });
 
 export const ChangeGroupSummary = Schema.Struct({
@@ -81,7 +81,7 @@ const ChangeGroupsTool = Tool.make("astrolabe_change_groups", {
 const ChangeGroupSuggestTool = Tool.make("astrolabe_change_group_suggest", {
   ...shared,
   description:
-    "Suggest a change request or a thread for a group, with one sentence on why it is part of the same effort. A person accepts or dismisses it; a dismissed suggestion is not suggested again.",
+    "Suggest a pull request or a thread for a group, with one sentence on why it is part of the same effort. A person accepts or dismisses it; a dismissed suggestion is not suggested again.",
   parameters: Schema.Struct({
     groupId,
     memberKey,
@@ -95,7 +95,7 @@ const ChangeGroupSuggestTool = Tool.make("astrolabe_change_group_suggest", {
 const ChangeGroupUpdateTool = Tool.make("astrolabe_change_group_update", {
   ...shared,
   description:
-    "Add a change request or a thread to a group, or take one out, as a coordinator builds its group on purpose. Prefer astrolabe_change_group_suggest when the person should decide.",
+    "Add a pull request or a thread to a group, or take one out, as a coordinator builds its group on purpose. Prefer astrolabe_change_group_suggest when the person should decide.",
   parameters: Schema.Struct({
     groupId,
     action: Schema.Literals(["add", "remove"]),

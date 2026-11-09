@@ -7,6 +7,7 @@ import type {
 import type { PullRequestTabStatusSeed } from "~/components/RightPanelTabs";
 import { pullRequestSurfaceId } from "~/rightPanelStore";
 import {
+  comparePullRequestsByRecency,
   filterPullRequestsByInvolvement,
   groupPullRequestsByInvolvement,
   matchesPullRequestFilters,
@@ -36,6 +37,7 @@ export function pullRequestGroups({
   authored,
   reviewing,
   partitionsWanted,
+  hidden,
 }: {
   known: ReadonlyArray<EnvironmentPullRequestEntry>;
   providers: PullRequestListResult["providers"];
@@ -50,13 +52,19 @@ export function pullRequestGroups({
   authored: ReadonlyArray<EnvironmentPullRequestEntry> | undefined;
   reviewing: ReadonlyArray<EnvironmentPullRequestEntry> | undefined;
   partitionsWanted: boolean;
+  /** Astrolabe: rows another list on the page already shows, left out of every group. */
+  hidden?: ((entry: EnvironmentPullRequestEntry) => boolean) | undefined;
 }) {
   const searchingHosts = new Set(
     providers.flatMap((provider) => (provider.searchesOnHost ? [provider.host] : [])),
   );
 
   const entries = (() => {
-    const involvementEntries = filterPullRequestsByInvolvement(known, viewers, involvement);
+    const involvementEntries = filterPullRequestsByInvolvement(
+      hidden === undefined ? known : known.filter((entry) => !hidden(entry)),
+      viewers,
+      involvement,
+    );
     // Host text searches cover fields absent from rows, so do not narrow their matches locally.
     // Filter text locally while results are pending or when the host has no text search.
     const narrowedEntries = hasLocalFilters
@@ -65,9 +73,7 @@ export function pullRequestGroups({
         )
       : involvementEntries;
     if (text.length === 0) {
-      return narrowedEntries.toSorted((left, right) =>
-        right.updatedAt.localeCompare(left.updatedAt),
-      );
+      return narrowedEntries.toSorted(comparePullRequestsByRecency);
     }
     return narrowedEntries.filter(
       (entry) =>
@@ -91,10 +97,17 @@ export function pullRequestGroups({
       return groupPullRequestsByInvolvement(entries, viewers);
     }
     const narrow = (rows: ReadonlyArray<EnvironmentPullRequestEntry> | undefined) =>
-      rows === undefined || !hasLocalFilters
+      rows === undefined || (!hasLocalFilters && hidden === undefined)
         ? rows
-        : rows.filter((entry) =>
-            matchesPullRequestFilters(entry, localFilters, pullRequestEntryViewer(entry, viewers)),
+        : rows.filter(
+            (entry) =>
+              hidden?.(entry) !== true &&
+              (!hasLocalFilters ||
+                matchesPullRequestFilters(
+                  entry,
+                  localFilters,
+                  pullRequestEntryViewer(entry, viewers),
+                )),
           );
     const narrowedAuthored = narrow(partitionsWanted ? (authored ?? held?.authored) : undefined);
     const narrowedReviewing = narrow(partitionsWanted ? (reviewing ?? held?.reviewing) : undefined);

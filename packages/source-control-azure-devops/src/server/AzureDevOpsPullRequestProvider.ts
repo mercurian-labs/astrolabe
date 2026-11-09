@@ -45,7 +45,7 @@ export const LOCATION_CACHE_CAPACITY = 128;
 
 const CAPABILITIES: PullRequestCapabilities = {
   diff: true,
-  comment: false,
+  comment: true,
   actions: [...definition.changeRequestActions],
   // Azure has no rebase strategy.
   mergeMethods: ["merge", "squash"],
@@ -567,7 +567,27 @@ export const make = Effect.gen(function* () {
         })
         .pipe(Effect.mapError(fail("setReviewerRequest"))),
 
-    comment: () => unsupported("comment"),
+    comment: (input) =>
+      cli.getPullRequest({ cwd: input.cwd, number: input.number }).pipe(
+        Effect.flatMap((pullRequest) =>
+          pullRequest.location === null
+            ? Effect.fail(
+                new AzureDevOpsPullRequestCli.AzureDevOpsPullRequestReadError({
+                  command: "az",
+                  cwd: input.cwd,
+                  operation: "comment",
+                  cause: new Error("The pull request's repository could not be located."),
+                }),
+              )
+            : cli.addComment({
+                cwd: input.cwd,
+                location: pullRequest.location,
+                number: input.number,
+                body: input.body,
+              }),
+        ),
+        Effect.mapError(fail("comment")),
+      ),
 
     submitReview: () => unsupported("submitReview"),
 

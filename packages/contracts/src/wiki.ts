@@ -5,10 +5,14 @@ import * as SchemaGetter from "effect/SchemaGetter";
 import {
   IsoDateTime,
   NonNegativeInt,
+  PositiveInt,
   ProjectId,
   ThreadId,
   TrimmedNonEmptyString,
+  TurnItemId,
 } from "./baseSchemas.ts";
+import { SourceControlProviderKind } from "./sourceControl.ts";
+import { WikiCanvasAgentTransform, WikiCanvasTransform } from "./canvas.ts";
 
 /** Astrolabe: local wikis. A wiki is a git repository of linked markdown notes. */
 export const WikiId = TrimmedNonEmptyString.pipe(Schema.brand("WikiId"));
@@ -45,6 +49,38 @@ export const WikiMirrorStatus = Schema.Struct({
 });
 export type WikiMirrorStatus = typeof WikiMirrorStatus.Type;
 
+/** How the wiki's main line stands against the host's, as of the last sync. */
+export const WikiHostRelation = Schema.Literals(["up-to-date", "behind", "ahead", "diverged"]);
+export type WikiHostRelation = typeof WikiHostRelation.Type;
+
+/**
+ * A host wiki's main line lives on a git host, reached through one of its folder's remotes.
+ * The backing project is what pull requests are read and merged through.
+ */
+export const WikiHostStatus = Schema.Struct({
+  projectId: ProjectId,
+  remote: TrimmedNonEmptyString,
+  /** Which host this is, so the wiki can call its reviews what the host does. */
+  kind: Schema.optionalKey(SourceControlProviderKind),
+  lastSyncedAt: Schema.NullOr(IsoDateTime),
+  lastSyncedCommit: Schema.NullOr(Schema.String),
+  relation: Schema.NullOr(WikiHostRelation),
+  lastError: Schema.NullOr(Schema.String),
+  /** What stopped one change request following the host; the wiki itself syncs fine. */
+  changeRequestIssue: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  /** Whether connecting made the backing project, so disconnecting can take it away again. */
+  createdProject: Schema.optionalKey(Schema.Boolean),
+});
+export type WikiHostStatus = typeof WikiHostStatus.Type;
+
+/** The pull request that is a host wiki's change request. */
+export const WikiPullRequestLink = Schema.Struct({
+  repository: TrimmedNonEmptyString,
+  number: PositiveInt,
+  url: TrimmedNonEmptyString,
+});
+export type WikiPullRequestLink = typeof WikiPullRequestLink.Type;
+
 /**
  * Tiles a wiki's maps can draw on. Their addresses can carry access tokens, so they stay on the
  * server: never in the wiki's files, its mirror, or what agents read.
@@ -75,6 +111,8 @@ const WikiSummaryFields = {
   /** The repositories this wiki is linked to; their threads are told it holds their plans. */
   projectIds: Schema.Array(ProjectId),
   mirror: Schema.NullOr(WikiMirrorStatus),
+  /** Absent from an older server, which has no host wikis. */
+  host: Schema.optionalKey(Schema.NullOr(WikiHostStatus)),
   /** The first is what maps draw on. Absent from an older server and from agents' list. */
   mapBackgrounds: Schema.optionalKey(Schema.Array(WikiMapBackground)),
   openChangeRequests: NonNegativeInt,
@@ -158,6 +196,14 @@ export const WikiBaseSummary = Schema.Struct({
   editedAt: Schema.optional(IsoDateTime),
 });
 
+/** A `.canvas` file: a board of cards, in Obsidian's format. */
+export const WikiCanvasSummary = Schema.Struct({
+  file: Schema.String,
+  outgoing: NonNegativeInt,
+  incoming: NonNegativeInt,
+  editedAt: Schema.optional(IsoDateTime),
+});
+
 /** Reads come from a change request's head when one is named, else from the main line. */
 export const WikiReadScope = Schema.Struct({
   wikiId: WikiId,
@@ -172,12 +218,13 @@ export const WikiIndexResult = Schema.Struct({
   wikiId: WikiId,
   commit: Schema.String,
   notes: Schema.Array(WikiNoteSummary),
-  /** Every note-to-note link, by note name, so a client can draw the wiki's graph. */
+  /** Every link between documents, by name, so a client can draw the wiki's graph. */
   links: Schema.Array(WikiLinkEdge),
   /** Every `@` type the wiki's links use; what suggests one, never a list of allowed types. */
   linkTypes: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   maps: Schema.Array(WikiMapSummary),
   bases: Schema.Array(WikiBaseSummary).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+  canvases: Schema.Array(WikiCanvasSummary).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   unresolved: Schema.Array(WikiUnresolved),
   errors: Schema.Array(WikiIndexError),
 });
@@ -185,6 +232,7 @@ export type WikiIndexResult = typeof WikiIndexResult.Type;
 
 export const WikiNoteInput = Schema.Struct({
   wikiId: WikiId,
+  /** A path from the root; a bare name searches as a link does. */
   name: TrimmedNonEmptyString,
   changeRequestId: Schema.optional(WikiChangeRequestId),
 });
@@ -200,8 +248,86 @@ export const WikiNoteResult = Schema.Struct({
   source: Schema.String,
   outgoing: Schema.Array(Schema.String),
   incoming: Schema.Array(Schema.String),
+  /** Names here that matched several documents; absent when none did. */
+  ambiguous: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        target: Schema.String,
+        file: Schema.String,
+        others: Schema.Array(Schema.String),
+      }),
+    ),
+  ),
 });
 export type WikiNoteResult = typeof WikiNoteResult.Type;
+
+const WIKI_READ_FILES_MAX = 64;
+
+/** Files by path, any depth, at a commit: `commit` when named, else as other reads choose. */
+export const WikiReadFilesInput = Schema.Struct({
+  wikiId: WikiId,
+  changeRequestId: Schema.optional(WikiChangeRequestId),
+  commit: Schema.optional(TrimmedNonEmptyString),
+  paths: Schema.Array(TrimmedNonEmptyString).check(Schema.isMaxLength(WIKI_READ_FILES_MAX)),
+  /** The file these paths are written in, which a bare name is searched from. */
+  from: Schema.optional(TrimmedNonEmptyString),
+});
+export type WikiReadFilesInput = typeof WikiReadFilesInput.Type;
+
+/** Every file a wiki's repository holds at a commit, any depth, hidden folders left out. */
+export const WikiListFilesInput = Schema.Struct({
+  wikiId: WikiId,
+  changeRequestId: Schema.optional(WikiChangeRequestId),
+  commit: Schema.optional(TrimmedNonEmptyString),
+});
+export type WikiListFilesInput = typeof WikiListFilesInput.Type;
+
+export const WikiListFilesResult = Schema.Struct({
+  commit: Schema.String,
+  files: Schema.Array(Schema.Struct({ file: Schema.String, size: NonNegativeInt })),
+});
+export type WikiListFilesResult = typeof WikiListFilesResult.Type;
+
+export const WikiFileRead = Schema.Struct({
+  /** As asked for. A path differing only by case still finds its file, as a wiki's links do. */
+  path: Schema.String,
+  exists: Schema.Boolean,
+  /** The path as the repository holds it. */
+  file: Schema.String,
+  size: NonNegativeInt,
+  /** Null for a file that isn't text, or is too large to read here. */
+  text: Schema.NullOr(Schema.String),
+});
+export type WikiFileRead = typeof WikiFileRead.Type;
+
+export const WikiReadFilesResult = Schema.Struct({
+  commit: Schema.String,
+  files: Schema.Array(WikiFileRead),
+});
+export type WikiReadFilesResult = typeof WikiReadFilesResult.Type;
+
+/** Code a card cites, pinned to a commit, as asked about at a project's head. */
+export const WikiCodeReference = Schema.Struct({
+  repository: TrimmedNonEmptyString,
+  commit: TrimmedNonEmptyString,
+  path: TrimmedNonEmptyString,
+});
+export type WikiCodeReference = typeof WikiCodeReference.Type;
+
+export const WikiCodeStatusInput = Schema.Struct({
+  references: Schema.Array(WikiCodeReference).check(Schema.isMaxLength(WIKI_READ_FILES_MAX)),
+});
+export type WikiCodeStatusInput = typeof WikiCodeStatusInput.Type;
+
+/** How a project's head compares; `unknown` with no such project, or not this commit. */
+export const WikiCodeStatus = Schema.Literals(["current", "changed", "gone", "unknown"]);
+export type WikiCodeStatus = typeof WikiCodeStatus.Type;
+
+export const WikiCodeStatusResult = Schema.Struct({
+  /** One per reference, in order. */
+  statuses: Schema.Array(WikiCodeStatus),
+});
+export type WikiCodeStatusResult = typeof WikiCodeStatusResult.Type;
 
 /**
  * Runs one view of a base: a `.base` file or a note's first ```base block, named by `base`,
@@ -324,7 +450,6 @@ export type WikiBaseDisplay = typeof WikiBaseDisplay.Type;
 /**
  * An edit made from a base's view, applied by the server over whatever it reads or saves to: a
  * `.base` file's views, formulas and display names, a note's frontmatter property, or a new note.
- * Only files at the top of the wiki can be edited.
  */
 export const WikiBaseEdit = Schema.Union([
   Schema.Struct({
@@ -450,6 +575,8 @@ export const WikiAmendmentSummary = Schema.Struct({
   files: Schema.Array(Schema.String),
   /** The commit this amendment reverts, when it is a revert. */
   reverts: Schema.NullOr(Schema.String),
+  /** The document a person's autosave was editing; later saves of it can replace this one. */
+  autosave: Schema.optional(Schema.String),
 });
 export type WikiAmendmentSummary = typeof WikiAmendmentSummary.Type;
 
@@ -458,6 +585,8 @@ export const WikiChangeRequest = Schema.Struct({
   wikiId: WikiId,
   title: TrimmedNonEmptyString,
   status: WikiChangeRequestStatus,
+  /** A person's autosaved edits, unnamed so far and listed apart. Only its author sees one. */
+  draft: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   branch: Schema.String,
   /** The main-line commit the change request started from. */
   base: Schema.String,
@@ -468,6 +597,14 @@ export const WikiChangeRequest = Schema.Struct({
   updatedAt: IsoDateTime,
   mergedCommit: Schema.NullOr(Schema.String),
   amendments: Schema.Array(WikiAmendmentSummary),
+  /** On a host wiki, once opened. Absent from an older server. */
+  pullRequest: Schema.optionalKey(Schema.NullOr(WikiPullRequestLink)),
+  /** The head the host last received; differing from `head` means work not yet published. */
+  pushedHead: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  /** The files that differ from the base now, which a later amendment can have put back. */
+  files: Schema.Array(Schema.String),
+  /** Which of `files` are one file moved, both paths listed there. */
+  moves: Schema.optional(Schema.Array(Schema.Struct({ from: Schema.String, to: Schema.String }))),
 });
 export type WikiChangeRequest = typeof WikiChangeRequest.Type;
 
@@ -495,14 +632,24 @@ export const WikiFileChange = Schema.Struct({
   before: Schema.NullOr(Schema.String),
   /** The file at the change request's head; null when the change request deletes it. */
   after: Schema.NullOr(Schema.String),
+  /** The path it had on the base, when it moved. */
+  movedFrom: Schema.optional(Schema.String),
 });
 export type WikiFileChange = typeof WikiFileChange.Type;
+
+/** What merging one canvas settled by itself, or what stops it, said for a person. */
+export const WikiCanvasMergeNotes = Schema.Struct({
+  file: Schema.String,
+  notes: Schema.Array(Schema.String),
+});
+export type WikiCanvasMergeNotes = typeof WikiCanvasMergeNotes.Type;
 
 export const WikiMergePreview = Schema.Struct({
   status: Schema.Literals(["clean", "conflict", "up-to-date"]),
   conflicts: Schema.Array(Schema.String),
   /** Index errors standing on the merged result. */
   errors: Schema.Array(WikiIndexError),
+  canvases: Schema.Array(WikiCanvasMergeNotes).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
 });
 export type WikiMergePreview = typeof WikiMergePreview.Type;
 
@@ -535,11 +682,18 @@ export const WikiAmendInput = Schema.Struct({
 });
 export type WikiAmendInput = typeof WikiAmendInput.Type;
 
+// Plain strings where a description must reach an agent; the planner trims them.
 const WikiMechanicalTransforms = [
   Schema.Struct({
     kind: Schema.Literal("rename"),
-    from: TrimmedNonEmptyString,
-    to: TrimmedNonEmptyString,
+    from: Schema.NonEmptyString.annotate({ description: "The document's or folder's path." }),
+    to: Schema.NonEmptyString.annotate({
+      description:
+        "Where it goes: area/Name is a path from the root, /Name the root, a bare Name stays in its folder.",
+    }),
+    folder: Schema.optional(
+      Schema.Boolean.annotate({ description: "true: from is a folder, moved with all it holds." }),
+    ),
   }),
   Schema.Struct({
     kind: Schema.Literal("edge-add"),
@@ -555,6 +709,7 @@ const WikiMechanicalTransforms = [
   Schema.Struct({
     kind: Schema.Literal("fill"),
     map: TrimmedNonEmptyString,
+    /** The red link as written, which is the new note's path from the root. */
     name: TrimmedNonEmptyString,
     content: Schema.String,
     edge: WikiEdge,
@@ -569,12 +724,22 @@ const WikiMechanicalTransforms = [
 ] as const;
 
 /** The transforms an agent applies; it writes a base's YAML whole instead of editing its view. */
-export const WikiAgentTransform = Schema.Union(WikiMechanicalTransforms);
+export const WikiAgentTransform = Schema.Union([
+  ...WikiMechanicalTransforms,
+  WikiCanvasAgentTransform,
+]);
 
 export const WikiTransform = Schema.Union([
   ...WikiMechanicalTransforms,
   /** Edits made from a base's view, landed on the change request's head as one amendment. */
   Schema.Struct({ kind: Schema.Literal("base-edits"), edits: Schema.Array(WikiBaseEdit) }),
+  /** A new canvas: empty, or holding `source`, whose coordinates are already decided. */
+  Schema.Struct({
+    kind: Schema.Literal("canvas-create"),
+    file: TrimmedNonEmptyString,
+    source: Schema.optional(Schema.String),
+  }),
+  WikiCanvasTransform,
 ]);
 export type WikiTransform = typeof WikiTransform.Type;
 
@@ -587,8 +752,110 @@ export const WikiAmendResult = Schema.Struct({
   amendment: Schema.String,
   /** Index errors standing after the amendment, stale map edges included. */
   errors: Schema.Array(WikiIndexError),
+  /** What a revert's merge settled by itself in canvases: it has no preview to say so. */
+  canvases: Schema.optional(Schema.Array(WikiCanvasMergeNotes)),
+  /** What a canvas transform did: the id each `ref` got, and what it couldn't do as asked. */
+  canvas: Schema.optional(
+    Schema.Struct({
+      file: Schema.String,
+      cards: Schema.Record(Schema.String, Schema.String),
+      notes: Schema.optional(Schema.Array(Schema.String)),
+    }),
+  ),
 });
 export type WikiAmendResult = typeof WikiAmendResult.Type;
+
+/** About 32 MiB of bytes: an attachment travels in one message. */
+const WIKI_ATTACHMENT_MAX_BASE64 = 44_000_000;
+
+/** What one autosave writes: a note's whole text, or a transform replayed on the head. */
+export const WikiAutosaveWrite = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("text"),
+    file: TrimmedNonEmptyString,
+    text: Schema.String,
+    /** The commit this text last agreed with, so a write from another device isn't overwritten. */
+    readAt: Schema.optional(Schema.String),
+  }),
+  Schema.Struct({ kind: Schema.Literal("transform"), transform: WikiTransform }),
+  /** A file a board shows, such as a pasted image, beside the wiki's documents. */
+  Schema.Struct({
+    kind: Schema.Literal("attachment"),
+    /** Where it should land. The write takes ` 1`, ` 2` when that's taken: see the result. */
+    file: TrimmedNonEmptyString,
+    base64: Schema.String.check(Schema.isMaxLength(WIKI_ATTACHMENT_MAX_BASE64)),
+  }),
+]);
+export type WikiAutosaveWrite = typeof WikiAutosaveWrite.Type;
+
+export const WikiAutosaveInput = Schema.Struct({
+  wikiId: WikiId,
+  /** The change request being edited; without one, the edit lands in the person's draft. */
+  changeRequestId: Schema.optional(WikiChangeRequestId),
+  /** The document being edited: what names the amendment, and what later saves replace. */
+  document: TrimmedNonEmptyString,
+  write: WikiAutosaveWrite,
+});
+export type WikiAutosaveInput = typeof WikiAutosaveInput.Type;
+
+export const WikiAutosaveResult = Schema.Struct({
+  /** Where the edit went; null when it changed nothing and no draft existed to hold it. */
+  changeRequest: Schema.NullOr(WikiChangeRequest),
+  /** The commit now holding the document; null as above. */
+  commit: Schema.NullOr(Schema.String),
+  /** The path an attachment landed at, which only the write could settle. */
+  attachment: Schema.optional(Schema.String),
+});
+export type WikiAutosaveResult = typeof WikiAutosaveResult.Type;
+
+export const WikiMoveInput = Schema.Struct({
+  wikiId: WikiId,
+  /** The change request being edited; without one, the move lands in the person's draft. */
+  changeRequestId: Schema.optional(WikiChangeRequestId),
+  /** A document's path, or a folder's when `folder`. */
+  from: TrimmedNonEmptyString,
+  /** The path from the root. A document's may leave off its extension. */
+  to: TrimmedNonEmptyString,
+  folder: Schema.optional(Schema.Boolean),
+});
+export type WikiMoveInput = typeof WikiMoveInput.Type;
+
+export const WikiDraftPromoteInput = Schema.Struct({
+  wikiId: WikiId,
+  changeRequestId: WikiChangeRequestId,
+  title: TrimmedNonEmptyString,
+});
+export type WikiDraftPromoteInput = typeof WikiDraftPromoteInput.Type;
+
+export const WikiDraftMoveInput = Schema.Struct({
+  wikiId: WikiId,
+  changeRequestId: WikiChangeRequestId,
+  to: WikiChangeRequestId,
+  /** The files to move; without them, everything the draft changes. */
+  files: Schema.optional(Schema.Array(Schema.String)),
+});
+export type WikiDraftMoveInput = typeof WikiDraftMoveInput.Type;
+
+/** A board drawn in a thread, saved into a wiki as a change request. */
+export const WikiKeepCanvasInput = Schema.Struct({
+  wikiId: WikiId,
+  threadId: ThreadId,
+  /** The `astrolabe_canvas_show` call that drew it. */
+  itemId: TurnItemId,
+  /** Its path from the wiki's root, with or without `.canvas`. */
+  name: TrimmedNonEmptyString,
+  /** What the person said about it, which becomes the amendment's message. */
+  comment: Schema.optional(TrimmedNonEmptyString),
+});
+export type WikiKeepCanvasInput = typeof WikiKeepCanvasInput.Type;
+
+export const WikiKeepCanvasResult = Schema.Struct({
+  changeRequest: WikiChangeRequest,
+  file: Schema.String,
+  /** What a person should know about how its code cards landed. */
+  notes: Schema.Array(Schema.String),
+});
+export type WikiKeepCanvasResult = typeof WikiKeepCanvasResult.Type;
 
 export const WikiRevertInput = Schema.Struct({
   wikiId: WikiId,

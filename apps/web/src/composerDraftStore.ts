@@ -20,7 +20,7 @@ import {
   type PreviewAnnotationPayload,
   RuntimeMode,
   ThreadContextRecord,
-  WikiNoteContextRecord,
+  WikiContextRecord,
   EnvironmentContextRecord,
   type ServerProvider,
   type ScopedProjectRef,
@@ -43,6 +43,7 @@ import { DeepMutable } from "effect/Types";
 import {
   createModelSelection,
   draftModelPickMatchesThread,
+  normalizeCustomModelSlug,
   normalizeModelSlug,
 } from "@t3tools/shared/model";
 import { AsyncResult, Atom, type AtomRegistry } from "effect/reactivity";
@@ -54,7 +55,11 @@ import type {
 import { waitForDraftHeroTransition } from "./components/chat/draftHeroTransition";
 import { getLocalStorageItem } from "./hooks/useLocalStorage";
 import { readThreadPreviewState } from "./previewStateStore";
-import { resolveAppModelSelection, resolveAppModelSelectionForInstance } from "./modelSelection";
+import {
+  readInstanceCustomModels,
+  resolveAppModelSelection,
+  resolveAppModelSelectionForInstance,
+} from "./modelSelection";
 import {
   DEFAULT_INTERACTION_MODE,
   DEFAULT_RUNTIME_MODE,
@@ -82,7 +87,7 @@ import {
   reviewCommentContextReference,
   terminalContextReference,
   threadContextReference,
-  wikiNoteContextReference,
+  wikiContextReference,
   environmentContextReference,
 } from "./lib/composerContextRecords";
 import { create } from "zustand";
@@ -103,7 +108,7 @@ const isRuntimeMode = Schema.is(RuntimeMode);
 const isProviderDriverKind = Schema.is(ProviderDriverKind);
 const isReviewCommentContext = Schema.is(ReviewCommentContextSchema);
 const isThreadContextRecord = Schema.is(ThreadContextRecord);
-const isWikiNoteContextRecord = Schema.is(WikiNoteContextRecord);
+const isWikiContextRecord = Schema.is(WikiContextRecord);
 const isEnvironmentContextRecord = Schema.is(EnvironmentContextRecord);
 const isSnapShotSource = Schema.is(SnapShotSource);
 const isPreviewAnnotationPayload = Schema.is(PreviewAnnotationPayloadSchema);
@@ -245,7 +250,8 @@ const PersistedComposerThreadDraftState = Schema.Struct({
   previewAnnotations: Schema.optionalKey(Schema.Array(PreviewAnnotationPayloadSchema)),
   reviewComments: Schema.optionalKey(Schema.Array(ReviewCommentContextSchema)),
   threadContexts: Schema.optionalKey(Schema.Array(ThreadContextRecord)),
-  wikiNotes: Schema.optionalKey(Schema.Array(WikiNoteContextRecord)),
+  // Named for the only kind it held at first, so drafts already saved still load.
+  wikiNotes: Schema.optionalKey(Schema.Array(WikiContextRecord)),
   environmentContexts: Schema.optionalKey(Schema.Array(EnvironmentContextRecord)),
   modelSelectionByProvider: Schema.optionalKey(Schema.Record(ProviderInstanceId, ModelSelection)),
   activeProvider: Schema.optionalKey(Schema.NullOr(ProviderInstanceId)),
@@ -370,7 +376,7 @@ export interface ComposerThreadDraftState {
   previewAnnotations: PreviewAnnotationPayload[];
   reviewComments: ReviewCommentContext[];
   threadContexts: ThreadContextRecord[];
-  wikiNotes: WikiNoteContextRecord[];
+  wikiContexts: WikiContextRecord[];
   environmentContexts: EnvironmentContextRecord[];
   modelSelectionByProvider: Partial<Record<ProviderInstanceId, ModelSelection>>;
   activeProvider: ProviderInstanceId | null;
@@ -394,7 +400,7 @@ export function composerDraftHasUserContent(
     draft.previewAnnotations.length > 0 ||
     draft.reviewComments.length > 0 ||
     draft.threadContexts.length > 0 ||
-    draft.wikiNotes.length > 0 ||
+    draft.wikiContexts.length > 0 ||
     draft.environmentContexts.length > 0
   );
 }
@@ -612,13 +618,13 @@ interface ComposerDraftStoreState {
     records: ReadonlyArray<ThreadContextRecord>,
   ) => void;
   /** Adds records without touching the prompt; the caller places their references. */
-  addWikiNotes: (
+  addWikiContexts: (
     threadRef: ComposerThreadTarget,
-    records: ReadonlyArray<WikiNoteContextRecord>,
+    records: ReadonlyArray<WikiContextRecord>,
   ) => void;
-  setWikiNotes: (
+  setWikiContexts: (
     threadRef: ComposerThreadTarget,
-    records: ReadonlyArray<WikiNoteContextRecord>,
+    records: ReadonlyArray<WikiContextRecord>,
   ) => void;
   /** Mentions machines as context; already-mentioned machines are skipped. */
   addEnvironmentContexts: (
@@ -738,7 +744,7 @@ const EMPTY_TERMINAL_CONTEXTS: TerminalContextDraft[] = [];
 const EMPTY_PREVIEW_ANNOTATIONS: PreviewAnnotationPayload[] = [];
 const EMPTY_REVIEW_COMMENTS: ReviewCommentContext[] = [];
 const EMPTY_THREAD_CONTEXTS: ThreadContextRecord[] = [];
-const EMPTY_WIKI_NOTES: WikiNoteContextRecord[] = [];
+const EMPTY_WIKI_CONTEXTS: WikiContextRecord[] = [];
 const EMPTY_ENVIRONMENT_CONTEXTS: EnvironmentContextRecord[] = [];
 Object.freeze(EMPTY_IMAGES);
 Object.freeze(EMPTY_FILES);
@@ -747,7 +753,7 @@ Object.freeze(EMPTY_PERSISTED_ATTACHMENTS);
 Object.freeze(EMPTY_PREVIEW_ANNOTATIONS);
 Object.freeze(EMPTY_REVIEW_COMMENTS);
 Object.freeze(EMPTY_THREAD_CONTEXTS);
-Object.freeze(EMPTY_WIKI_NOTES);
+Object.freeze(EMPTY_WIKI_CONTEXTS);
 Object.freeze(EMPTY_ENVIRONMENT_CONTEXTS);
 const EMPTY_MODEL_SELECTION_BY_PROVIDER: Partial<Record<ProviderDriverKind, ModelSelection>> =
   Object.freeze({});
@@ -766,7 +772,7 @@ const EMPTY_THREAD_DRAFT = Object.freeze<ComposerThreadDraftState>({
   previewAnnotations: EMPTY_PREVIEW_ANNOTATIONS,
   reviewComments: EMPTY_REVIEW_COMMENTS,
   threadContexts: EMPTY_THREAD_CONTEXTS,
-  wikiNotes: EMPTY_WIKI_NOTES,
+  wikiContexts: EMPTY_WIKI_CONTEXTS,
   environmentContexts: EMPTY_ENVIRONMENT_CONTEXTS,
   modelSelectionByProvider: EMPTY_MODEL_SELECTION_BY_PROVIDER,
   activeProvider: null,
@@ -785,7 +791,7 @@ function createEmptyThreadDraft(): ComposerThreadDraftState {
     previewAnnotations: [],
     reviewComments: [],
     threadContexts: [],
-    wikiNotes: [],
+    wikiContexts: [],
     environmentContexts: [],
     modelSelectionByProvider: {},
     activeProvider: null,
@@ -892,7 +898,7 @@ function shouldRemoveDraft(draft: ComposerThreadDraftState): boolean {
     draft.previewAnnotations.length === 0 &&
     draft.reviewComments.length === 0 &&
     draft.threadContexts.length === 0 &&
-    draft.wikiNotes.length === 0 &&
+    draft.wikiContexts.length === 0 &&
     draft.environmentContexts.length === 0 &&
     Object.keys(draft.modelSelectionByProvider).length === 0 &&
     draft.activeProvider === null &&
@@ -1006,7 +1012,11 @@ function normalizeModelSelection(
   const driverKindHint =
     normalizeProviderDriverKind(candidate?.provider ?? legacy?.provider) ??
     ProviderDriverKind.make("codex");
-  const model = normalizeModelSlug(rawModel, driverKindHint);
+  // Instance-scoped picks are already resolved slugs; a custom slug can match a static alias.
+  const model =
+    candidate?.instanceId === undefined
+      ? normalizeModelSlug(rawModel, driverKindHint)
+      : normalizeCustomModelSlug(rawModel);
   if (!model) {
     return null;
   }
@@ -1148,8 +1158,8 @@ export function deriveEffectiveComposerModelState(input: {
   const instanceSelection = input.selectedInstanceId
     ? input.draft?.modelSelectionByProvider?.[input.selectedInstanceId]
     : undefined;
+  // Legacy driver-keyed drafts belong to the default instance.
   const legacySelection =
-    input.selectedProvider === "antigravity" &&
     input.selectedInstanceId &&
     input.selectedInstanceId !== defaultInstanceIdForDriver(input.selectedProvider)
       ? undefined
@@ -1208,6 +1218,7 @@ function withFallbackInstanceOptions(input: {
   readonly selectedProvider: ProviderDriverKind;
   readonly selectedInstanceId?: ProviderInstanceId | null | undefined;
   readonly requestedInstanceId?: ProviderInstanceId | null | undefined;
+  readonly settings: UnifiedSettings;
 }): ProviderOptionSelectionsByProvider | null {
   const { modelOptions, selectedInstanceId, requestedInstanceId } = input;
   if (
@@ -1220,16 +1231,26 @@ function withFallbackInstanceOptions(input: {
     return modelOptions;
   }
   const requestedOptions = modelOptions[requestedInstanceId];
-  const requestedDriver = input.providers.find(
+  const requestedProvider = input.providers.find(
     (provider) => provider.instanceId === requestedInstanceId,
-  )?.driver;
-  // The model of the selection the options came from, which can differ from the shown model's source.
+  );
   const requestedModel = input.optionSelections?.[requestedInstanceId]?.model;
-  if (
-    !requestedOptions ||
-    requestedDriver !== input.selectedProvider ||
-    requestedModel !== input.selectedModel
-  ) {
+  // Static aliases are shared across instances; exact custom slugs and catalog aliases are not.
+  const modelIdentity = (instanceId: ProviderInstanceId, model: string | undefined) => {
+    const isCustom =
+      input.providers
+        .find((provider) => provider.instanceId === instanceId)
+        ?.models.some((entry) => entry.slug === model && entry.isCustom) ||
+      readInstanceCustomModels(input.settings, instanceId, input.selectedProvider).some(
+        (entry) => entry.slug === model,
+      );
+    return isCustom ? model : normalizeModelSlug(model, input.selectedProvider);
+  };
+  const sameModel =
+    requestedModel === input.selectedModel ||
+    modelIdentity(requestedInstanceId, requestedModel) ===
+      modelIdentity(selectedInstanceId, input.selectedModel);
+  if (!requestedOptions || requestedProvider?.driver !== input.selectedProvider || !sameModel) {
     return modelOptions;
   }
   return { ...modelOptions, [selectedInstanceId]: requestedOptions };
@@ -1791,6 +1812,22 @@ function normalizePersistedDraftThreads(
   return { draftThreadsByThreadKey, logicalProjectDraftThreadKeyByLogicalProjectKey };
 }
 
+const decodePersistedModelSelection = Schema.decodeUnknownOption(ModelSelection);
+
+/** Storage v3-v5 wrote `provider` and object-shaped options; the schema upgrades both. */
+function normalizePersistedModelSelectionByProvider(
+  value: object,
+): Partial<Record<ProviderInstanceId, ModelSelection>> {
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([instanceId, selection]) =>
+      Option.match(decodePersistedModelSelection(selection), {
+        onNone: () => [],
+        onSome: (decoded) => [[instanceId, decoded] as const],
+      }),
+    ),
+  );
+}
+
 function normalizePersistedDraftsByThreadId(
   rawDraftMap: unknown,
   draftThreadsByThreadKey: PersistedComposerDraftStoreState["draftThreadsByThreadKey"],
@@ -1845,8 +1882,8 @@ function normalizePersistedDraftsByThreadId(
     const threadContexts = Array.isArray(draftCandidate.threadContexts)
       ? draftCandidate.threadContexts.filter(isThreadContextRecord)
       : [];
-    const wikiNotes = Array.isArray(draftCandidate.wikiNotes)
-      ? draftCandidate.wikiNotes.filter(isWikiNoteContextRecord)
+    const wikiContexts = Array.isArray(draftCandidate.wikiNotes)
+      ? draftCandidate.wikiNotes.filter(isWikiContextRecord)
       : [];
     const environmentContexts = Array.isArray(draftCandidate.environmentContexts)
       ? draftCandidate.environmentContexts.filter(isEnvironmentContextRecord)
@@ -1921,9 +1958,9 @@ function normalizePersistedDraftsByThreadId(
       draftCandidate.modelSelectionByProvider &&
       typeof draftCandidate.modelSelectionByProvider === "object"
     ) {
-      modelSelectionByProvider = draftCandidate.modelSelectionByProvider as Partial<
-        Record<ProviderInstanceId, ModelSelection>
-      >;
+      modelSelectionByProvider = normalizePersistedModelSelectionByProvider(
+        draftCandidate.modelSelectionByProvider,
+      );
       activeProvider = normalizeProviderInstanceId(draftCandidate.activeProvider);
       modelSelectionExplicit = draftCandidate.modelSelectionExplicit === true ? true : undefined;
     } else {
@@ -1967,7 +2004,7 @@ function normalizePersistedDraftsByThreadId(
       previewAnnotations.length === 0 &&
       reviewComments.length === 0 &&
       threadContexts.length === 0 &&
-      wikiNotes.length === 0 &&
+      wikiContexts.length === 0 &&
       environmentContexts.length === 0 &&
       !hasModelData &&
       !runtimeMode &&
@@ -1995,7 +2032,7 @@ function normalizePersistedDraftsByThreadId(
       ...(previewAnnotations.length > 0 ? { previewAnnotations } : {}),
       ...(reviewComments.length > 0 ? { reviewComments } : {}),
       ...(threadContexts.length > 0 ? { threadContexts } : {}),
-      ...(wikiNotes.length > 0 ? { wikiNotes } : {}),
+      ...(wikiContexts.length > 0 ? { wikiNotes: wikiContexts } : {}),
       ...(environmentContexts.length > 0 ? { environmentContexts } : {}),
       ...(hasModelData
         ? {
@@ -2101,7 +2138,7 @@ export function partializeComposerDraftStoreState(
       draft.previewAnnotations.length === 0 &&
       draft.reviewComments.length === 0 &&
       draft.threadContexts.length === 0 &&
-      draft.wikiNotes.length === 0 &&
+      draft.wikiContexts.length === 0 &&
       draft.environmentContexts.length === 0 &&
       !hasModelData &&
       draft.runtimeMode === null &&
@@ -2158,8 +2195,8 @@ export function partializeComposerDraftStoreState(
       ...(draft.threadContexts.length > 0
         ? { threadContexts: draft.threadContexts.map((record) => ({ ...record })) }
         : {}),
-      ...(draft.wikiNotes.length > 0
-        ? { wikiNotes: draft.wikiNotes.map((record) => ({ ...record })) }
+      ...(draft.wikiContexts.length > 0
+        ? { wikiNotes: draft.wikiContexts.map((record) => ({ ...record })) }
         : {}),
       ...(draft.environmentContexts.length > 0
         ? { environmentContexts: draft.environmentContexts.map((record) => ({ ...record })) }
@@ -2225,10 +2262,9 @@ function normalizeCurrentPersistedComposerDraftStoreState(
     normalizedPersistedState.stickyModelSelectionByProvider &&
     typeof normalizedPersistedState.stickyModelSelectionByProvider === "object"
   ) {
-    stickyModelSelectionByProvider =
-      normalizedPersistedState.stickyModelSelectionByProvider as Partial<
-        Record<ProviderInstanceId, ModelSelection>
-      >;
+    stickyModelSelectionByProvider = normalizePersistedModelSelectionByProvider(
+      normalizedPersistedState.stickyModelSelectionByProvider,
+    );
     stickyActiveProvider = normalizeProviderInstanceId(
       normalizedPersistedState.stickyActiveProvider,
     );
@@ -2423,7 +2459,7 @@ function toHydratedThreadDraft(
       ...(persistedDraft.reviewComments ?? []).map(reviewCommentContextReference),
       ...(persistedDraft.previewAnnotations ?? []).map(previewAnnotationContextReference),
       ...(persistedDraft.threadContexts ?? []).map(threadContextReference),
-      ...(persistedDraft.wikiNotes ?? []).map(wikiNoteContextReference),
+      ...(persistedDraft.wikiNotes ?? []).map(wikiContextReference),
       ...(persistedDraft.environmentContexts ?? []).map(environmentContextReference),
       ...files.map(fileContextReference),
     ]),
@@ -2440,7 +2476,7 @@ function toHydratedThreadDraft(
       persistedDraft.previewAnnotations?.map((annotation) => ({ ...annotation })) ?? [],
     reviewComments: persistedDraft.reviewComments?.map((comment) => ({ ...comment })) ?? [],
     threadContexts: persistedDraft.threadContexts?.map((record) => ({ ...record })) ?? [],
-    wikiNotes: persistedDraft.wikiNotes?.map((record) => ({ ...record })) ?? [],
+    wikiContexts: persistedDraft.wikiNotes?.map((record) => ({ ...record })) ?? [],
     environmentContexts: persistedDraft.environmentContexts?.map((record) => ({ ...record })) ?? [],
     modelSelectionByProvider,
     activeProvider,
@@ -3068,7 +3104,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
           }
           const instanceKey = options?.instanceId ?? defaultInstanceIdForDriver(normalizedProvider);
           const fallbackModel =
-            normalizeModelSlug(options?.model, normalizedProvider) ??
+            normalizeCustomModelSlug(options?.model) ??
             DEFAULT_MODEL_BY_PROVIDER[normalizedProvider] ??
             DEFAULT_MODEL;
           const providerOpts =
@@ -3100,8 +3136,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
                 nextStickyMap[instanceKey] ??
                 base.modelSelectionByProvider[instanceKey] ??
                 createModelSelection(instanceKey, fallbackModel);
-              const rememberedModel =
-                normalizeModelSlug(options?.model, normalizedProvider) ?? stickyBase.model;
+              const rememberedModel = normalizeCustomModelSlug(options?.model) ?? stickyBase.model;
               if (providerOpts) {
                 nextStickyMap[instanceKey] = createModelSelection(
                   instanceKey,
@@ -3891,12 +3926,12 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             return { draftsByThreadKey: nextDraftsByThreadKey };
           });
         },
-        addWikiNotes: (threadRef, records) => {
+        addWikiContexts: (threadRef, records) => {
           const threadKey = resolveComposerDraftKey(get(), threadRef);
           if (!threadKey) return;
           set((state) => {
             const existing = state.draftsByThreadKey[threadKey] ?? createEmptyThreadDraft();
-            const known = new Set(existing.wikiNotes.map((record) => record.contextId));
+            const known = new Set(existing.wikiContexts.map((record) => record.contextId));
             const accepted = records.filter((record) => {
               if (known.has(record.contextId)) return false;
               known.add(record.contextId);
@@ -3906,27 +3941,25 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             return {
               draftsByThreadKey: {
                 ...state.draftsByThreadKey,
-                [threadKey]: { ...existing, wikiNotes: [...existing.wikiNotes, ...accepted] },
+                [threadKey]: { ...existing, wikiContexts: [...existing.wikiContexts, ...accepted] },
               },
             };
           });
         },
-        setWikiNotes: (threadRef, records) => {
+        setWikiContexts: (threadRef, records) => {
           const threadKey = resolveComposerDraftKey(get(), threadRef);
           if (!threadKey) return;
-          const wikiNotes = records
-            .filter(isWikiNoteContextRecord)
-            .map((record) => ({ ...record }));
+          const wikiContexts = records.filter(isWikiContextRecord).map((record) => ({ ...record }));
           set((state) => {
             const existing = state.draftsByThreadKey[threadKey] ?? createEmptyThreadDraft();
-            const retainedIds = new Set(wikiNotes.map((record) => record.contextId));
+            const retainedIds = new Set(wikiContexts.map((record) => record.contextId));
             let prompt = existing.prompt;
-            for (const previous of existing.wikiNotes) {
+            for (const previous of existing.wikiContexts) {
               if (retainedIds.has(previous.contextId)) continue;
               prompt = removeInlineContextReference(prompt, previous.contextId).prompt;
             }
-            prompt = ensureInlineContextReferences(prompt, wikiNotes.map(wikiNoteContextReference));
-            const nextDraft = { ...existing, prompt, wikiNotes };
+            prompt = ensureInlineContextReferences(prompt, wikiContexts.map(wikiContextReference));
+            const nextDraft = { ...existing, prompt, wikiContexts };
             const nextDraftsByThreadKey = { ...state.draftsByThreadKey };
             if (shouldRemoveDraft(nextDraft)) delete nextDraftsByThreadKey[threadKey];
             else nextDraftsByThreadKey[threadKey] = nextDraft;
@@ -4096,7 +4129,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               previewAnnotations: [],
               reviewComments: [],
               threadContexts: [],
-              wikiNotes: [],
+              wikiContexts: [],
               environmentContexts: [],
             };
             const nextDraftsByThreadKey = { ...state.draftsByThreadKey };
@@ -4127,7 +4160,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
                 ...current.terminalContexts.map(terminalContextReference),
                 ...current.reviewComments.map(reviewCommentContextReference),
                 ...current.threadContexts.map(threadContextReference),
-                ...current.wikiNotes.map(wikiNoteContextReference),
+                ...current.wikiContexts.map(wikiContextReference),
                 ...current.environmentContexts.map(environmentContextReference),
                 ...current.previewAnnotations.map(previewAnnotationContextReference),
               ]),

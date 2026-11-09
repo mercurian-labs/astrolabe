@@ -620,6 +620,8 @@ function dropTargetAt(
 ): DropTarget | null {
   // Every tab of a pane dragged over that pane has nowhere to go.
   if (leaf.tabs.every((key) => item.keys.includes(key))) return null;
+  // Nor does what opens no tab, as a wiki's folder on its way to a board.
+  if (item.keys.length === 0 && item.place === undefined) return null;
   const rect = pane.getBoundingClientRect();
   const stripSize = pane.querySelector("[data-pane-strip]")?.getBoundingClientRect().height ?? 0;
   const zone = paneDropZone(
@@ -786,12 +788,23 @@ export const PaneView = memo(function PaneView({
   useEffect(() => {
     const pane = section.current;
     if (!pane) return;
+    // A sidebar's row dropped on an editable board goes on the board, not in a tab. A folder's
+    // has no tab to open, so only `keys` tells a row from a tab.
+    const forBoard = (event: globalThis.DragEvent, item: { readonly keys: readonly string[] }) =>
+      item.keys.length === 0 &&
+      event.target instanceof Element &&
+      event.target.closest("[data-takes-documents]") !== null;
     const onDragEnter = (event: globalThis.DragEvent) => {
-      if (currentDrag()) event.stopPropagation();
+      const item = currentDrag();
+      if (item && !forBoard(event, item)) event.stopPropagation();
     };
     const onDragOver = (event: globalThis.DragEvent) => {
       const item = currentDrag();
       if (!item) return;
+      if (forBoard(event, item)) {
+        if (latest.current.target) setTarget(null);
+        return;
+      }
       event.stopPropagation();
       const next = dropTargetAt(
         pane,
@@ -814,7 +827,7 @@ export const PaneView = memo(function PaneView({
     };
     const onDrop = (event: globalThis.DragEvent) => {
       const item = currentDrag();
-      if (!item) return;
+      if (!item || forBoard(event, item)) return;
       event.stopPropagation();
       const { leaf: current } = latest.current;
       const drop = dropTargetAt(

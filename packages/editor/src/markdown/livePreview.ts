@@ -25,7 +25,7 @@ import { manuallyUnfolded } from "./unfolded.ts";
 import { previewBaseTheme } from "./theme.ts";
 import { revealAtomicNodes } from "../collab/reveal.ts";
 
-export type { CodeBlockRenderer, LivePreviewOptions, PreviewRange } from "./config.ts";
+export type { CodeBlockRenderer, EmbedSource, LivePreviewOptions, PreviewRange } from "./config.ts";
 export { previewExclusions } from "./config.ts";
 export { continueMarkup, markdownCommands, type MarkdownCommand } from "./keymap.ts";
 export {
@@ -52,6 +52,8 @@ export {
   sortRowsAscending,
   sortRowsDescending,
 } from "./tableCommands.ts";
+
+export { wikilinksBetween } from "./wikilinks.ts";
 
 /**
  * The Markdown live preview: the parser with Obsidian syntax, decorations that hide

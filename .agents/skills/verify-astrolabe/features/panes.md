@@ -3,13 +3,13 @@
 Agents, Wikis, Projects and Changes share one set of panes (`panes/workspace.ts`,
 `panes/WorkspaceView.tsx`, rendered by `routes/_chat.tsx` for thread and draft routes, `/` unless
 the panes hold only their starting empty tab, `/wikis`, `/repositories` and `/pull-requests`): chats,
-pull requests, change requests, change groups, files, diffs, local graphs, project search results,
+pull requests, pull requests, change groups, files, diffs, local graphs, project search results,
 problems and places (`repo-search:`, `repo-problems:`, `repo-locations:`), wiki notes and a thread's right-panel surfaces
 (Browser, Terminal, Files, Diff, Pull request, Linked pull requests, Device, Graph, Lineage, Side chat) are
 all tabs that split right or down. The sidebar section only decides what the sidebar lists. A
 thread's surfaces are tabs linked to its chat (`panes/linkedTabs.ts`): they show only while that
 chat is the one in front, and park, remembering where they stood, while another chat is. Nothing
-else links to a chat: chats, documents, wiki change requests, change groups, project files and
+else links to a chat: chats, documents, wiki pull requests, change groups, project files and
 diffs stand on their own (a change group's **Open as a tab group** still links to the group, and
 a following local graph to its file). There
 is no right-panel frame: `ChatRightPanel` renders `panes/LinkedPanel.tsx`, which lends the panes
@@ -126,13 +126,13 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   the owner's name (or `N linked tabs follow this tab`) on hover. Each owner on screen takes
   the next ink in reading order (`--link-ink-1..4`, the first is `--primary`). No motion.
 - **Change groups**: **Open as a tab group** in a group's tab opens its threads after the chat
-  in front and links the rest (the group's tab, its change requests, its pull requests named
+  in front and links the rest (the group's tab, its pull requests, its pull requests named
   in full) to the group (`owners[key] = change-group:<env>:<id>`), shown while the front chat
   is one of the group's threads and parked otherwise. Beside a chat outside the group they
   stand on their own, together in one new pane beside it. The groups' threads reach the panes through `GroupsSync`.
 - **Tab groups** (`panes/tabGroups.tsx`, runs from `panes/tabGroupRuns.ts`): in any
   strip, a change
-  group's run of tabs (its chats, wiki change requests and own tab, pull requests
+  group's run of tabs (its chats, wiki pull requests and own tab, pull requests
   matched by repository#number, and Projects file, changes and graph tabs keyed by a branch
   its threads ever worked on, main/master/develop/trunk excepted; folder-keyed tabs, such as
   the main checkout's, join none) is headed by a marker,

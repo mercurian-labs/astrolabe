@@ -62,6 +62,25 @@ export function cliReleaseDownloadBaseUrl(
   return base ? `${base.replace(/\/+$/, "")}/v${version}` : null;
 }
 
+/** `segments` added to `baseUrl`'s path, keeping its query, such as a signed mirror URL's token. */
+export function releaseAssetUrl(baseUrl: string, ...segments: ReadonlyArray<string>): string {
+  const url = new URL(baseUrl);
+  url.pathname = [url.pathname.replace(/\/+$/, ""), ...segments.map(encodeURIComponent)].join("/");
+  return url.toString();
+}
+
+/** A file of release `version`, from `baseUrl` laid out as GitHub's release downloads; null with no source. */
+export function cliReleaseAssetUrl(
+  version: string,
+  fileName: string,
+  baseUrl?: string | undefined,
+  repository = CLI_RELEASE_REPOSITORY,
+): string | null {
+  const releasesPage = cliReleasesPageUrl(repository);
+  const base = baseUrl?.trim() || (releasesPage && `${releasesPage}/download`);
+  return base ? releaseAssetUrl(base, `v${version}`, fileName) : null;
+}
+
 export function parseChecksums(text: string): ReadonlyMap<string, string> {
   const checksums = new Map<string, string>();
   for (const line of text.split(/\r?\n/)) {
@@ -96,6 +115,21 @@ export function crossesReleaseTrack(fromVersion: string, toVersion: string): boo
 /** The desktop update track a build belongs to. Preview builds have no feed and read as Stable. */
 export function desktopUpdateChannelOf(version: string): "latest" | "nightly" {
   return cliReleaseChannelOf(version) === "nightly" ? "nightly" : "latest";
+}
+
+/**
+ * The update feed file a desktop app on this platform reads, which an update mirror publishes at
+ * its root beside the release's CLI archives.
+ */
+export function updateFeedFileName(
+  channel: "latest" | "nightly",
+  platform: NodeJS.Platform,
+  arch: string,
+): string {
+  if (platform === "darwin") return `${channel}-mac.yml`;
+  if (platform === "linux")
+    return arch === "arm64" ? `${channel}-linux-arm64.yml` : `${channel}-linux.yml`;
+  return `${channel}.yml`;
 }
 
 /** Whether a track switch may install `found` after its database check cleared `checked`: any build

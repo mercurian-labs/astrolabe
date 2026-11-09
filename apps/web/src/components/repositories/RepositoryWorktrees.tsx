@@ -335,6 +335,7 @@ export function WorktreeFiles({
   selectedPath,
   onOpenFile,
   fileMenuActions,
+  hideDotFiles,
 }: {
   readonly owner: WorktreeOwner;
   readonly worktree: ProjectWorktree;
@@ -342,6 +343,7 @@ export function WorktreeFiles({
   readonly selectedPath: string | null;
   readonly onOpenFile: (path: string) => void;
   readonly fileMenuActions?: ReadonlyArray<FileMenuAction>;
+  readonly hideDotFiles?: boolean;
 }) {
   const watch = useWorktreeWatch(owner, worktree.path);
   const changedFiles = useWorktreeChangedFiles(owner, worktree.path);
@@ -355,6 +357,7 @@ export function WorktreeFiles({
         selectedPathRevealId={0}
         onOpenFile={onOpenFile}
         {...(fileMenuActions ? { fileMenuActions } : {})}
+        {...(hideDotFiles === undefined ? {} : { hideDotFiles })}
         workspaceMutationId={
           watch?.unwatched ? `${worktree.head}:${changedFiles}` : String(watch?.listings ?? 0)
         }

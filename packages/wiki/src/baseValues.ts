@@ -46,6 +46,8 @@ export interface LinkValue {
   /** The target as written: a name or path, with any `#heading`. */
   readonly path: string;
   readonly display?: string;
+  /** The file it's written in, which a bare name is searched from; none searches from the root. */
+  readonly from?: string;
 }
 export interface UrlValue {
   readonly kind: "url";
@@ -389,17 +391,17 @@ export function linkOfText(text: string): LinkValue | undefined {
 }
 
 /** A frontmatter value as the language sees it: a lone `[[link]]` is a link, a date a date. */
-export function fromProperty(raw: unknown): BaseValue {
+export function fromProperty(raw: unknown, from?: string): BaseValue {
   if (raw === null || raw === undefined) return null;
   if (typeof raw === "boolean" || typeof raw === "number") return raw;
   if (typeof raw === "string") {
     const link = linkOfText(raw);
-    if (link) return link;
+    if (link) return from === undefined ? link : { ...link, from };
     const time = parseDate(raw);
     return time === undefined ? raw : { kind: "date", time, text: raw };
   }
   if (raw instanceof Date) return { kind: "date", time: raw.getTime() };
-  if (Array.isArray(raw)) return raw.map(fromProperty);
+  if (Array.isArray(raw)) return raw.map((item) => fromProperty(item, from));
   if (typeof raw === "object") return { kind: "object", entries: raw as Record<string, unknown> };
   return String(raw);
 }
@@ -461,21 +463,29 @@ export function truthy(value: BaseValue): boolean {
 }
 
 /** Resolves link text to a file, as the wiki's corpus does; supplied by whoever evaluates. */
-export type Resolve = (path: string) => BaseDoc | undefined;
+export type Resolve = (path: string, from?: string) => BaseDoc | undefined;
 
 const fileName = (path: string): string => path.slice(path.lastIndexOf("/") + 1);
 const stripHeading = (path: string): string => (path.split("#")[0] ?? "").trim();
 
-/** Which file a value names, so links, files and names compare: the file, or the bare name. */
-export function identity(value: BaseValue, resolve: Resolve): string | undefined {
+/**
+ * Which file a value names, so links, files and names compare: the file, or the path written.
+ * Text is a link written in `textFrom`.
+ */
+export function identity(
+  value: BaseValue,
+  resolve: Resolve,
+  textFrom?: string,
+): string | undefined {
   if (tagged(value, "file") || tagged(value, "this")) return `file:${key(value.doc.file)}`;
   let path: string | undefined;
-  if (tagged(value, "link")) path = value.path;
+  let from = textFrom;
+  if (tagged(value, "link")) ({ path, from } = value);
   else if (typeof value === "string") path = linkOfText(value)?.path ?? value;
   if (path === undefined) return undefined;
   const target = stripHeading(path);
-  const doc = resolve(target);
-  return doc ? `file:${key(doc.file)}` : `name:${key(fileName(target).replace(/\.md$/i, ""))}`;
+  const doc = resolve(target, from);
+  return doc ? `file:${key(doc.file)}` : `name:${key(target.replace(/\.md$/i, ""))}`;
 }
 
 const isFileLike = (value: BaseValue): boolean =>

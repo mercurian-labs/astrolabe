@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import {
@@ -10,6 +11,7 @@ import {
   type ServerSettings,
 } from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
+import type * as Digest from "effect/crypto/Digest";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -90,7 +92,11 @@ interface Harness {
    */
   readonly restart: (
     registering: Deferred.Deferred<void>,
-  ) => Effect.Effect<CodeIndex.CodeIndex["Service"], never, NodeServices.NodeServices>;
+  ) => Effect.Effect<
+    CodeIndex.CodeIndex["Service"],
+    never,
+    NodeServices.NodeServices | Digest.Digest
+  >;
   /** Hold the next delete job until `release` runs; `held` waits until it is held. */
   readonly holdNextDelete: Effect.Effect<{
     readonly held: Effect.Effect<void>;
@@ -107,7 +113,9 @@ const withIndex = <A, E>(
     /** The project's folder inside the repository; its top level by default. */
     readonly project?: string;
   },
-  body: (harness: Harness) => Effect.Effect<A, E, Scope.Scope | NodeServices.NodeServices>,
+  body: (
+    harness: Harness,
+  ) => Effect.Effect<A, E, Scope.Scope | NodeServices.NodeServices | Digest.Digest>,
 ) =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
@@ -216,7 +224,7 @@ const withIndex = <A, E>(
         };
       }),
     });
-  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer));
+  }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)));
 
 /** Wait for the project's index to reach a state, from the status stream. */
 const reach = (index: CodeIndex.CodeIndex["Service"], state: CodeIndexState) =>

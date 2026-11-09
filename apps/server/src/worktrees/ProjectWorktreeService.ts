@@ -30,7 +30,7 @@ import * as HostProcess from "@t3tools/shared/HostProcess";
 import { fromJsonStringPretty } from "@t3tools/shared/schemaJson";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -222,7 +222,7 @@ const make = Effect.gen(function* () {
   const watcher = yield* WorkspaceWatcher.WorkspaceWatcher;
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
   const isManagedWorktreePath = yield* makeIsManagedWorktreePath;
   const keptPath = path.join(config.stateDir, "worktree-keep.json");
   const keptCache = yield* Ref.make<KeptStore | undefined>(undefined);
@@ -603,7 +603,7 @@ const make = Effect.gen(function* () {
       return yield* fail(
         "The worktree location must be an absolute folder on this machine. Change it in Settings → Worktrees.",
       );
-    const suffix = (yield* crypto.randomUUIDv4().pipe(Effect.orDie)).slice(0, 8);
+    const suffix = (yield* random.uuidV4()).slice(0, 8);
     return path.join(parent, path.basename(path.resolve(root)), `t3-${suffix}`);
   });
 

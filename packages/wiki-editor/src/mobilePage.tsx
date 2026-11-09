@@ -6,8 +6,11 @@ import { createRoot } from "react-dom/client";
 
 import type { BaseCellValue } from "./baseCells";
 import { BaseBlock } from "./BaseBlock";
+import { wikiEmbeds } from "./incoming";
 import { createWikiEditorPage, type WikiEditorPage } from "./mobilePageController";
 import { WikiLinkPreview, type WikiLinkPeek } from "./linkTools";
+import { MobileCanvas, MobileCanvasEmbed } from "./mobileCanvas";
+import { MobileMermaid } from "./MobileMermaid";
 import { WikiNoteEditor } from "./NoteEditor";
 import { parseWikiEditorCommand, WIKI_EDITOR_RECEIVE, type WikiEditorEvent } from "./protocol";
 
@@ -25,7 +28,8 @@ declare global {
 
 const post = (event: WikiEditorEvent) =>
   window.ReactNativeWebView?.postMessage(JSON.stringify(event));
-const openNote = (name: string) => post({ type: "openNote", name });
+const openNote = (name: string, from?: string) =>
+  post({ type: "openNote", name, ...(from === undefined ? {} : { from }) });
 
 function LinkPreview({
   page,
@@ -38,12 +42,12 @@ function LinkPreview({
     (listener) => page.watchNote(link.name, listener),
     () => page.getNote(link.name),
   );
-  return <WikiLinkPreview link={link} source={source} />;
+  return <WikiLinkPreview link={link} source={source} resolved={page.getNoteLink(link.name)} />;
 }
 
 function Page({ page }: { readonly page: WikiEditorPage }) {
   const { session } = useSyncExternalStore(page.buffer.subscribe, page.buffer.getSnapshot);
-  const { mode, base, baseEditable, theme, linkTypes } = useSyncExternalStore(
+  const { mode, base, baseEditable, canvas, theme, linkTypes, linkScope } = useSyncExternalStore(
     page.subscribe,
     page.getState,
   );
@@ -57,6 +61,9 @@ function Page({ page }: { readonly page: WikiEditorPage }) {
     root.style.colorScheme = theme.appearance;
     root.dataset.appearance = theme.appearance;
   }, [theme]);
+  if (canvas !== null) {
+    return <MobileCanvas page={page} data={canvas} post={post} />;
+  }
   if (base !== null) {
     return (
       <BaseBlock
@@ -81,6 +88,7 @@ function Page({ page }: { readonly page: WikiEditorPage }) {
       readOnly={mode === "read"}
       onOpenNote={openNote}
       linkTypes={linkTypes}
+      linkScope={linkScope}
       renderLinkPreview={(link) => <LinkPreview page={page} link={link} />}
       onOpenUrl={(href) => post({ type: "openUrl", href })}
       renderBase={(source) => (
@@ -91,11 +99,17 @@ function Page({ page }: { readonly page: WikiEditorPage }) {
           onOpenUrl={(href) => post({ type: "openUrl", href })}
         />
       )}
+      renderCanvasEmbed={(target) => (
+        <MobileCanvasEmbed page={page} target={target} onOpen={openNote} />
+      )}
+      renderMermaid={(source) => <MobileMermaid source={source} />}
+      resolveEmbed={resolveEmbed}
     />
   );
 }
 
 const page = createWikiEditorPage(post);
+const resolveEmbed = wikiEmbeds(page.assetAddress);
 window[WIKI_EDITOR_RECEIVE] = (raw) => {
   const command = parseWikiEditorCommand(raw);
   if (command) page.handle(command);

@@ -3,12 +3,14 @@ import {
   type PullRequestReviewVerdict,
   type RepositoryIdentity,
   secretSetting,
+  SettingsSecretValue,
   SourceControlProviderKind,
   type SourceControlProviderInfo,
   TrimmedNonEmptyString,
   TrimmedString,
 } from "@t3tools/contracts";
 import { normalizeGitRemoteUrl, parseGitRemoteRepository } from "@t3tools/shared/git";
+import { userlessScpRemoteHost } from "@t3tools/shared/sourceControl";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
@@ -39,6 +41,12 @@ export interface CommitLink {
 
 export interface CommitUrlInput extends Omit<ChangeRequestUrlInput, "number"> {
   readonly sha: string;
+}
+
+/** A file at a commit, with the lines cited, first to last. */
+export interface FileUrlInput extends CommitUrlInput {
+  readonly path: string;
+  readonly lines?: readonly [number, number] | undefined;
 }
 
 export interface ChangeRequestTerminology {
@@ -101,6 +109,8 @@ export interface SourceControlMediaUrl {
   readonly fileName: string;
   /** Set when the URL alone says what the media is, as an extensionless upload can. */
   readonly kind?: "image" | "video";
+  /** Set when the bytes behind `fetchUrl` can never change, so a client may cache them by it. */
+  readonly immutable?: true;
 }
 
 export interface ReferenceAutolink {
@@ -212,7 +222,7 @@ export const hostCredentialSettingsFields = {
     Schema.withDecodingDefault(Effect.succeed({})),
     Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
   ),
-  tokens: Schema.Record(SourceControlHostName, TrimmedString).pipe(
+  tokens: Schema.Record(SourceControlHostName, SettingsSecretValue).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
     secretSetting,
     Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
@@ -250,6 +260,8 @@ export interface SourceControlDefinition {
   readonly defaultCloneTransport: "https" | "ssh";
   readonly changeRequestUrl: (input: ChangeRequestUrlInput) => string | null;
   readonly commitUrl?: (input: CommitUrlInput) => string | null;
+  /** Where a browser reads a file at a commit. Null when this host or server has no such page. */
+  readonly fileUrl: (input: FileUrlInput) => string | null;
   /** `known` is set when the caller already knows this host serves the URL's repository. */
   readonly parseCommitUrl?: (url: URL, known: boolean) => CommitLink | null;
   /** Null when the URL is not one of this host's change requests. */
@@ -387,6 +399,19 @@ export function buildCommitUrl(
   }
 }
 
+/** `route` holds the commit and then the file, as `<route>/<sha>/<path>`; `anchor` marks the lines. */
+export function buildFileUrl(
+  input: FileUrlInput,
+  route: string,
+  anchor?: (first: number, last: number) => string,
+): string | null {
+  const commit = buildCommitUrl(input, route);
+  if (commit === null) return null;
+  const path = input.path.split("/").map(encodeURIComponent).join("/");
+  const hash = input.lines === undefined ? "" : anchor?.(input.lines[0], input.lines[1]);
+  return `${commit}/${path}${hash ? `#${hash}` : ""}`;
+}
+
 /**
  * Reads a change request from `url` with `route`, whose first group is the repository path and
  * second the number.
@@ -495,7 +520,7 @@ export function parseGitRemoteHost(remoteUrl: string): GitRemoteHost | null {
   const trimmed = remoteUrl.trim();
   if (trimmed.length === 0) return null;
   let host: string;
-  const scpHost = SCP_REMOTE.exec(trimmed)?.[1];
+  const scpHost = SCP_REMOTE.exec(trimmed)?.[1] ?? userlessScpRemoteHost(trimmed);
   if (scpHost) {
     host = scpHost.toLowerCase();
   } else {
@@ -548,10 +573,10 @@ export const UNKNOWN_SOURCE_CONTROL_CLIENT: SourceControlDefinition = {
   pickerLabel: "source control",
   icon: null,
   changeRequest: {
-    shortLabel: "change request",
-    shortLabelWithArticle: "a change request",
-    singular: "change request",
-    plural: "change requests",
+    shortLabel: "PR",
+    shortLabelWithArticle: "a PR",
+    singular: "pull request",
+    plural: "pull requests",
   },
   repositoryPathHint: "URL",
   publicHost: null,
@@ -560,6 +585,7 @@ export const UNKNOWN_SOURCE_CONTROL_CLIENT: SourceControlDefinition = {
   newRepositoryOwner: () => null,
   defaultCloneTransport: "ssh",
   changeRequestUrl: () => null,
+  fileUrl: () => null,
   parseChangeRequestUrl: () => null,
   changeRequestUrlFromReferenceAutolink: () => null,
   changeRequestActions: new Set(),

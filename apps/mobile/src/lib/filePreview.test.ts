@@ -80,6 +80,10 @@ vi.mock("react-native", () => ({
   useWindowDimensions: () => ({ width: 390, height: 844, fontScale: 1 }),
   Text: ({ children }: { children?: ReactNode }) => createElement("span", null, children),
   AppState: { currentState: "active", addEventListener: () => ({ remove() {} }) },
+  AccessibilityInfo: {
+    isReduceMotionEnabled: async () => true,
+    addEventListener: () => ({ remove() {} }),
+  },
   View: ({ children }: { children?: ReactNode }) => createElement("div", null, children),
   Pressable: (props: {
     children?: ReactNode;
@@ -127,6 +131,11 @@ vi.mock("expo-video", () => ({
   VideoView: () => null,
 }));
 vi.mock("../components/VideoThumbnailImage", () => ({ VideoThumbnailImage: () => null }));
+vi.mock("../features/threads/ThreadCanvas", () => ({
+  canvasRowHeight: () => 0,
+  ThreadCanvas: () => null,
+  ThreadWikiCanvas: () => null,
+}));
 vi.mock("../components/ui/AppActivityIndicator", () => ({ AppActivityIndicator: () => null }));
 vi.mock("../components/MediaActionsMenu", () => ({
   MediaActionsMenu: ({ children }: { children?: ReactNode }) => children,
@@ -214,6 +223,7 @@ vi.mock("react-native-reanimated", () => {
   return {
     default: { View: ({ children }: { children?: ReactNode }) => children },
     FadeIn: transition,
+    FadeInDown: transition,
     FadeInUp: transition,
   };
 });
@@ -268,7 +278,7 @@ vi.mock("./openExternalUrl", () => ({}));
 vi.mock("./attachmentDownload", () => ({}));
 vi.mock("./uuid", () => ({}));
 vi.mock("../features/threads/thread-context-divider", () => ({}));
-vi.mock("../features/threads/thread-handoff-row", () => ({}));
+vi.mock("../features/threads/thread-handoff-row", () => ({ ThreadModelSwitchDivider: () => null }));
 vi.mock("../features/threads/ThreadGuestShareBar", () => ({ useThreadGuestShare: () => null }));
 vi.mock("../features/threads/SecretRequestCard", () => ({}));
 vi.mock("../features/threads/LinkRequestCard", () => ({ LinkRequestCard: () => null }));

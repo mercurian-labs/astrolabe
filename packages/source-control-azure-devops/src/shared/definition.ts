@@ -15,7 +15,7 @@ const CHANGE_REQUEST_PATH = /^\/((?:[^/]+\/)*_git\/[^/]+)\/pullrequest\/(\d+)(?:
 const COMMIT_PATH = /^\/((?:[^/]+\/)*_git\/[^/]+)\/commit\/([0-9a-f]+)\/?$/iu;
 const CHECKOUT_COMMAND = /^az\s+repos\s+pr\s+checkout\s+(.+)$/i;
 const CHANGE_REQUEST_REFERENCE =
-  /^https:\/\/(?:dev\.azure\.com\/[^/\s]+\/[^/\s]+|[^/\s]+\.visualstudio\.com\/[^/\s]+)\/_git\/[^/\s]+\/pullrequest\/(\d+)(?:[/?#].*)?$/i;
+  /^https:\/\/(?:dev\.azure\.com\/[^/\s]+\/[^/\s]+|[^/\s]+\.visualstudio\.com\/(?:DefaultCollection\/)?[^/\s]+)\/_git\/[^/\s]+\/pullrequest\/(\d+)(?:[/?#].*)?$/i;
 
 /**
  * Azure alone addresses one repository under two names that share no part: `ssh.dev.azure.com` and
@@ -95,6 +95,25 @@ export const definition = defineSourceControl({
     const key = `${input.host}/${input.repository}`.toLowerCase();
     const [host = input.host, ...path] = (canonicalRepositoryKey(key) ?? key).split("/");
     return buildCommitUrl({ ...input, host, repository: path.join("/") }, "commit");
+  },
+  // A file is a query on the repository's page, not a path below it.
+  fileUrl: (input) => {
+    const key = `${input.host}/${input.repository}`.toLowerCase();
+    const [host = input.host, ...path] = (canonicalRepositoryKey(key) ?? key).split("/");
+    const commit = buildCommitUrl({ ...input, host, repository: path.join("/") }, "commit");
+    if (commit === null) return null;
+    const url = new URL(commit);
+    url.pathname = url.pathname.replace(/\/commit\/[0-9a-f]+$/u, "");
+    url.searchParams.set("path", `/${input.path}`);
+    url.searchParams.set("version", `GC${input.sha.toLowerCase()}`);
+    if (input.lines !== undefined) {
+      url.searchParams.set("line", String(input.lines[0]));
+      url.searchParams.set("lineEnd", String(input.lines[1] + 1));
+      url.searchParams.set("lineStartColumn", "1");
+      url.searchParams.set("lineEndColumn", "1");
+      url.searchParams.set("lineStyle", "plain");
+    }
+    return url.toString();
   },
   parseCommitUrl: (url) => parseCommitPath(url, COMMIT_PATH),
   // Servers on different ports are different servers, so a port stays in the link.

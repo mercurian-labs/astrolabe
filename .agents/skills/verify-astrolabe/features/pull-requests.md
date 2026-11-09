@@ -1,4 +1,4 @@
-# Changes (pull requests and wiki change requests)
+# Changes (pull requests and wiki pull requests)
 
 Astrolabe's section after Agents, Wikis and Projects: every pull request on the
 connected git hosts, listed in its own sidebar and opened as tabs of the panes every
@@ -25,7 +25,7 @@ thread's own Pull request tab. Shown only when a connected server reports
   pane's tab in front (`showChangeRequestTab`), Option-click a new tab, Cmd/Shift
   select, drag places them; a pull request row over a wiki change replaces it, and
   Back/Forward walk across both kinds. Hidden when a project or a single host is picked.
-- **A wiki change request's pull requests** (`client-runtime/src/wikiPullRequests.ts`):
+- **A wiki pull request's pull requests** (`client-runtime/src/wikiPullRequests.ts`):
   its view lists the writing thread's pull requests (`ul[aria-label='Pull requests']`,
   state per row, **Open** shows one beside it as a tab, or as the thread's own Pull
   request surface). One merged → an info alert
@@ -35,11 +35,11 @@ thread's own Pull request tab. Shown only when a connected server reports
 - **Mobile**: the tab reads "Changes"; a "Wiki changes · N" section (open rows,
   a folded "Merged and closed · N" shelf, then a "Pull requests" rule) sits above the pull
   requests (`features/wikis/WikiChangesSection.tsx`); the Wikis tab's first row "Open
-  changes · N" (`button "N open changes"`) switches to it. A wiki change request's screen
+  changes · N" (`button "N open changes"`) switches to it. A wiki pull request's screen
   lists its thread's pull requests (`#N · State`, tap opens the review), the merge/close
   prompt, and Merge into main's dialog names an unmerged one. No kind switch on mobile.
   Walk on an iPhone with agent-device; rows are buttons named
-  `<title>, change request in <wiki>`.
+  `<title>, pull request in <wiki>`.
 - **Change groups** (`components/changeRequests/groups/`, `@t3tools/shared/changeGroups`,
   server `changeGroups/ChangeGroupService.ts`, decisions in `<state>/change-groups.json`, every
   branch a thread was on in `<state>/thread-branches.json`):
@@ -55,7 +55,7 @@ thread's own Pull request tab. Shown only when a connected server reports
   breadcrumb']` reading `Changes / <title>`, the state as quiet status) whose icon buttons are
   **Ask to update the docs** / **Draft the docs**, **Ask for suggestions** (when
   agent suggestions are on; messages the root thread to use `astrolabe_change_group_suggest`),
-  **Add a change request**, **Add a thread** and **Open as a tab group**; below it the counts,
+  **Add a pull request**, **Add a thread** and **Open as a tab group**; below it the counts,
   `switch "Merge with the code"`, Suggested rows (✓ / ✕, threads too), Code /
   Documentation rows (each opens beside) and a **Threads** section (each `button "Open <title>"`
   with its reason and Working / Settled / Idle; `workspace.openChat`: comes forward if open, else
@@ -105,7 +105,7 @@ thread's own Pull request tab. Shown only when a connected server reports
   `preview_evaluate` needs a reload. A project is the list's `projectId` scope; choosing All
   afterwards drops `projectId` but keeps `environmentId` in the URL. Projects (all or one)
   hides Wiki changes; Wikis (all or one) hides the pull requests, Sort and Filters, and an
-  empty wiki says `No change requests in <wiki> yet` (with no wikis at all, "No wiki change
+  empty wiki says `No pull requests in <wiki> yet` (with no wikis at all, "No wiki change
   requests yet"). With only wikis, "All wikis" is the kind All, so Sort, Filters and the
   pull requests stay. Change groups follow the filter on web: Projects keeps groups with a
   pull request, one project only its threads' groups, Wikis only wiki change-request members. The Agents filter (`projects/useThreadsFilter.ts`, `Filter threads`; see
@@ -198,7 +198,7 @@ thread's own Pull request tab. Shown only when a connected server reports
 
 The **Changes** icon in the icon rail (between Projects and Usage), the
 keyboard menu's `g p`, **Open pull requests** in the Command Palette (type "pull
-requests"; "change requests" finds Open wikis and Settings › Changes instead), or
+requests", which also finds Open wikis and Settings › Changes), or
 a pull request link in a conversation. Each lands on the last list filters (localStorage
 `t3.pullRequests.preferences`, written only when a list control changes).
 
@@ -232,7 +232,7 @@ Save a screenshot of the section.
   Submit review, Comment, reactions, title/description edits, reviewer and label
   pickers, Update branch and Link to thread all write. Open menus to read them, then
   Escape. Hold Shift only to read the quick actions.
-- The URL keeps the last pull request while a wiki change request or other foreign tab
+- The URL keeps the last pull request while a wiki pull request or other foreign tab
   is focused (it follows only pull requests).
 - A real link test needs a thread with a linked pull request that wrote a wiki change:
   add a scratch folder as a project, start a Claude thread there, ask it to amend a note

@@ -35,7 +35,7 @@ const runCommand = Effect.fn("runCommand")(function* (command: ChildProcess.Stan
   if (exitCode !== 0) {
     return yield* new ServerCliCommandExitError({
       command: command.command,
-      args: command.args,
+      args: command.args.map(String),
       cwd: command.options.cwd,
       exitCode,
     });
@@ -151,7 +151,7 @@ const buildExeCmd = Command.make(
       if (linuxArm64) {
         yield* injectLinuxArm64Sea({
           bundlePath,
-          outputPath: path.join(serverDir, "dist-exe/t3"),
+          outputPath: path.join(serverDir, "dist-exe/astrolabe"),
           nodeVersion: rootPackageJson.engines.node,
           verbose: config.verbose,
         });

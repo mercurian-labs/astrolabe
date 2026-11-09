@@ -1,3 +1,4 @@
+import { CanvasPanel } from "../canvas/CanvasPanel";
 import type {
   EditorId,
   EnvironmentId,
@@ -88,7 +89,7 @@ export function RightPanelSurfaceContent(props: {
   readonly files: RightPanelFileProps;
   readonly sideChatParentPanel: SideChatParentPanel;
 }) {
-  const { surface, threadRef, visible } = props;
+  const { surface, threadRef, visible, onCloseSurface } = props;
   const covered = useLiveSurfaceCovered();
   if (surface === null) return null;
   // The shared panes show several surfaces at once; only the active one answers shortcuts.
@@ -187,6 +188,8 @@ export function RightPanelSurfaceContent(props: {
           <GraphPanel threadRef={threadRef} />
         </Suspense>
       );
+    case "canvas":
+      return <CanvasPanel threadRef={threadRef} />;
     case "lineage":
       return (
         <Suspense fallback={null}>
@@ -205,7 +208,7 @@ export function RightPanelSurfaceContent(props: {
           parentRef={threadRef}
           threadId={surface.threadId}
           parentPanel={props.sideChatParentPanel}
-          onClose={() => props.onCloseSurface(surface)}
+          onClose={() => onCloseSurface(surface)}
         />
       );
     case "device":
@@ -218,7 +221,7 @@ export function RightPanelSurfaceContent(props: {
             surface={surface}
             visible={visible}
             onDismissSetup={() => {
-              props.onCloseSurface(surface);
+              onCloseSurface(surface);
               useRightPanelStore.getState().show(threadRef);
             }}
           />

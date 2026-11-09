@@ -16,6 +16,7 @@ import {
   getNewProjectPublishTarget,
   getNewProjectPublishTargets,
   getNewProjectRepository,
+  githubIncompleteOwnerRepositoryMessage,
   normalizePastedCloneUrl,
   addProjectRemoteSourceLabel,
   addProjectRemoteSourcePathHint,
@@ -32,6 +33,7 @@ import {
   createBrowseNavigationCoordinator,
   filterFilesystemBrowseEntries,
   getFilesystemBrowsePath,
+  getFilesystemBrowseTabCompletion,
 } from "@t3tools/client-runtime/state/filesystem";
 import {
   isAtomCommandInterrupted,
@@ -74,6 +76,8 @@ import {
   SquarePenIcon,
   TextSearchIcon,
   UserPlusIcon,
+  WaypointsIcon,
+  FilePenLineIcon,
 } from "lucide-react";
 import { openThreadFind } from "./chat/threadFindStore";
 import {
@@ -105,10 +109,12 @@ import {
 import { useClientSettings } from "../hooks/useSettings";
 import { useStableCallback } from "../hooks/useStableCallback";
 import { readLocalApi } from "../localApi";
+import { configuredHostedAppUrl } from "../hostedPairing";
 import { desktopLocalBackendId } from "../connection/desktopLocal";
 import { filesystemEnvironment, useFilesystemReadAccess } from "../state/filesystem";
 import { projectEnvironment } from "../state/projects";
 import { useEnvironmentQuery } from "../state/query";
+import { wikiEnvironment } from "../state/wiki";
 import { serverEnvironment } from "../state/server";
 import { threadEnvironment } from "../state/threads";
 import { readEnvironmentScope, useEnvironmentScope } from "~/state/session";
@@ -127,7 +133,16 @@ import {
   useEnvironments,
   usePrimaryEnvironmentId,
 } from "../state/environments";
-import { useProjects, useServerConfigs, useThreadShells, waitForProject } from "../state/entities";
+import {
+  useAnyEnvironmentHiding,
+  useHiddenThreadKeys,
+  useEnvironmentThreadRefs,
+  useProjects,
+  useServerConfigs,
+  useVisibleThreadShells,
+  waitForProject,
+} from "../state/entities";
+import { visibleLinkedThreads } from "@t3tools/client-runtime/state/threads";
 import { resolveThreadActionProjectRef, startNewThreadFromContext } from "../lib/chatThreadActions";
 import {
   appendBrowsePathSegment,
@@ -142,6 +157,7 @@ import {
   resolveProjectPathForDispatch,
 } from "@t3tools/client-runtime/state/projects";
 import { openCommandPalette } from "../commandPaletteBus";
+import { resolvePastedPath } from "@t3tools/shared/path";
 import {
   dispatchCommandPalette,
   getCommandPaletteReturnFocus,
@@ -203,6 +219,7 @@ import {
   type SearchOverlayMode,
 } from "./CommandPalette.logic";
 import { resolveEnvironmentOptionLabel } from "./BranchToolbar.logic";
+import { isSidebarHiddenThread } from "./Sidebar.logic";
 import { CommandPaletteContent } from "./CommandPaletteContent";
 import {
   selectCommandPaletteClientSettings,
@@ -259,7 +276,15 @@ import { readPullRequestListPreferences } from "~/components/pullRequest/pullReq
 import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
 import { threadRecentUse } from "@t3tools/shared/paletteSearch";
 // Astrolabe: the palette as Vim's ex line, and Search finding wiki documents.
+import { showChangeRequestTab } from "~/components/pullRequest/pullRequestWorkspace";
+import { wikiDraft } from "~/components/wiki/wiki.logic";
+import type { CanvasBoardCommand } from "@mercurian/wiki-editor/canvas-board";
+import { wikiCanvasBoard } from "~/components/wiki/wikiCanvasBoards";
 import { useDocumentSearchRows } from "~/components/wiki/WikiFinder";
+import { requestWikiMove, WikiMoveDialog } from "~/components/wiki/WikiMoveDialog";
+import { useFocusedWikiTab } from "~/components/wiki/wikiPanes";
+import { isCanvasTab, wikiTabKey } from "~/components/wiki/wikiTabs";
+import { appCommandsSlot } from "~/whichKey/handles";
 import { useAddWiki } from "~/components/wiki/useAddWiki";
 import {
   useWikiLinkStep,
@@ -334,6 +359,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
           openChildSearch={openChildSearch}
           initialContext={state.restoredSearch}
         />
+        <WikiMoveDialog />
       </CommandDialog>
     </ComposerHandleContext>
   );
@@ -449,6 +475,11 @@ function OpenCommandPaletteDialog(props: {
       },
   );
   const linkedThreadSearch = initialSearch.linkedThreadSearch;
+  // Rows were captured when the palette opened; drop any hidden since then.
+  const hiddenKeys = useHiddenThreadKeys();
+  const linkedEnvironmentId = linkedThreadSearch?.linkedThreads?.environmentId ?? null;
+  const hidingAnywhere = useAnyEnvironmentHiding();
+  const linkedThreadRefs = useEnvironmentThreadRefs(linkedEnvironmentId);
   const [searchState, dispatchSearch] = useReducer(reduceCommandPaletteSearchState, null, () => {
     const view = props.initialContext ? null : openIntentView(props.openIntent);
     return view
@@ -528,16 +559,28 @@ function OpenCommandPaletteDialog(props: {
           pullRequests: activeThread?.pullRequests,
           linkedPullRequestUrl:
             activeThread?.linkedPullRequest?.url ?? activeThread?.branchPullRequest?.url ?? null,
+          hostedAppUrl: configuredHostedAppUrl(),
         });
   const copyActiveThreadReference = async () => {
     if (activeThreadReferenceCopyTarget === null) return;
     await copyThreadReference(activeThreadReferenceCopyTarget);
   };
-  const threads = useThreadShells();
+  // Side chats and subagents open inside their parent, so opening a project never lands on one.
+  const threads = useVisibleThreadShells().filter((thread) => !isSidebarHiddenThread(thread));
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const providersByEnvironment = useEnvironmentProviders();
   const { changeThemeItem, changeAppearanceItem, themeEditorItem } = useCommandPaletteThemeItems();
   const currentView = viewStack.at(-1)?.view ?? null;
+  const focusedWikiTab = useFocusedWikiTab();
+  const focusedWikiChanges = useEnvironmentQuery(
+    focusedWikiTab === null
+      ? null
+      : wikiEnvironment.changeRequests({
+          environmentId: focusedWikiTab.environmentId,
+          input: { wikiId: focusedWikiTab.wikiId },
+        }),
+  );
+  const focusedWikiDraft = wikiDraft(focusedWikiChanges.data?.changeRequests);
   const threadSearchQuery = currentView === null && !isActionsOnly ? deferredQuery : "";
   const [browseGeneration, setBrowseGeneration] = useState(0);
   const [browseNavigation] = useState(createBrowseNavigationCoordinator);
@@ -690,11 +733,9 @@ function OpenCommandPaletteDialog(props: {
           addProjectCloneFlow.repository?.nameWithOwner ?? addProjectCloneFlow.remoteUrl,
         )
       : "";
-  const browsePath = getFilesystemBrowsePath(
-    query,
-    browseEnvironmentPlatform,
-    browseEnvironmentId !== null && !isRemoteProjectRepositoryStep && newProjectFlow === null,
-  );
+  const canBrowsePaths =
+    browseEnvironmentId !== null && !isRemoteProjectRepositoryStep && newProjectFlow === null;
+  const browsePath = getFilesystemBrowsePath(query, browseEnvironmentPlatform, canBrowsePaths);
   const isBrowsing = browsePath.isBrowsing;
   const browseDirectoryPath = browsePath.directoryPath;
   const paletteMode = getCommandPaletteMode({ currentView, isBrowsing });
@@ -971,7 +1012,7 @@ function OpenCommandPaletteDialog(props: {
   function handleQueryChange(nextQuery: string): void {
     browseNavigation.invalidate();
     clearTypedHighlight();
-    setQuery(nextQuery);
+    setQuery(canBrowsePaths ? resolvePastedPath(query, nextQuery) : nextQuery);
     if (nextQuery === "" && currentView?.initialQuery) {
       popView();
     }
@@ -1306,6 +1347,101 @@ function OpenCommandPaletteDialog(props: {
 
   const actionItems: Array<CommandPaletteActionItem | CommandPaletteSubmenuItem> = [];
 
+  // Astrolabe: a canvas's own command, while one is in front.
+  const canvasBoard =
+    focusedWikiTab !== null && isCanvasTab(focusedWikiTab)
+      ? wikiCanvasBoard(wikiTabKey(focusedWikiTab))
+      : undefined;
+  // Astrolabe: the document in front moves from here, as a tree row does by drag.
+  if (focusedWikiTab?.kind === "note") {
+    const { environmentId, wikiId, file } = focusedWikiTab;
+    actionItems.push({
+      kind: "action",
+      value: "action:wiki-move-document",
+      searchTerms: ["move document", "rename document", "folder"],
+      title: "Wiki: Move or rename this document",
+      icon: <FilePenLineIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        requestWikiMove({ environmentId, wikiId, from: file, folder: false, name: "the wiki" });
+      },
+    });
+  }
+  // Astrolabe: the way to the draft of the wiki in front, whose tab holds its ways out.
+  if (focusedWikiDraft !== null && focusedWikiTab !== null) {
+    const draftTab = wikiTabKey({
+      kind: "change-request",
+      environmentId: focusedWikiTab.environmentId,
+      wikiId: focusedWikiTab.wikiId,
+      changeRequestId: focusedWikiDraft.changeRequestId,
+    });
+    actionItems.push({
+      kind: "action",
+      value: "action:wiki-open-draft",
+      searchTerms: [
+        "draft",
+        "open draft",
+        "make pull request",
+        "make merge request",
+        "move draft",
+        "discard draft",
+      ],
+      title: "Wiki: Open your draft",
+      icon: <FilePenLineIcon className={ITEM_ICON_CLASS} />,
+      run: async () => showChangeRequestTab(draftTab, "new-tab"),
+    });
+  }
+  if (canvasBoard !== undefined && canvasBoard.groups.length > 0) {
+    actionItems.push({
+      kind: "submenu",
+      value: "action:canvas-jump-to-group",
+      searchTerms: ["canvas", "jump to group", "go to group"],
+      title: "Canvas: Jump to group",
+      icon: <WaypointsIcon className={ITEM_ICON_CLASS} />,
+      addonIcon: <WaypointsIcon className={ADDON_ICON_CLASS} />,
+      groups: [
+        {
+          value: "canvas-groups",
+          label: "Groups",
+          items: canvasBoard.groups.map((group) => ({
+            kind: "action",
+            value: `canvas-group:${group.id}`,
+            searchTerms: [group.label],
+            title: group.label,
+            icon: <WaypointsIcon className={ITEM_ICON_CLASS} />,
+            run: async () => canvasBoard.jumpToGroup(group.id),
+          })),
+        },
+      ],
+    });
+  }
+
+  if (canvasBoard !== undefined) {
+    const canvasAction = (command: CanvasBoardCommand, title: string, terms: string[]) =>
+      actionItems.push({
+        kind: "action",
+        value: `action:canvas-${command}`,
+        searchTerms: ["canvas", ...terms],
+        title: `Canvas: ${title}`,
+        icon: <WaypointsIcon className={ITEM_ICON_CLASS} />,
+        run: async () => canvasBoard.run(command),
+      });
+    canvasAction("export-image", "Export as image", ["export", "png", "image"]);
+    canvasAction("zoom-to-fit", "Zoom to fit", ["fit"]);
+    canvasAction("zoom-to-selection", "Zoom to selection", ["selection"]);
+    canvasAction("help", "Help", ["keys", "shortcuts"]);
+    if (canvasBoard.editable) {
+      canvasAction("add-card", "Add card", ["new card", "text"]);
+      canvasAction("add-note", "Add note from wiki", ["note", "file"]);
+      canvasAction("add-media", "Add media from wiki", ["image", "media"]);
+      canvasAction("add-web-page", "Add web page", ["link", "url"]);
+      canvasAction("create-group", "Create group", ["group"]);
+      canvasAction("convert-to-file", "Convert to file", ["convert", "note"]);
+      canvasAction("select-all", "Select all", ["select"]);
+      canvasAction("undo", "Undo", []);
+      canvasAction("redo", "Redo", []);
+    }
+  }
+
   if (projects.length > 0) {
     const activeProjectTitle =
       projectPickerEntries.find((entry) => entry.isPreferred)?.group.displayName ??
@@ -1573,6 +1709,14 @@ function OpenCommandPaletteDialog(props: {
   if (firstConnectedEnvironment) {
     actionItems.push({
       kind: "action",
+      value: "action:new-canvas",
+      searchTerms: ["new canvas", "canvas", "board", "whiteboard", "document"],
+      title: "New canvas",
+      icon: <WaypointsIcon className={ITEM_ICON_CLASS} />,
+      run: async () => appCommandsSlot.get()?.command("wiki.findDocument", null).run(),
+    });
+    actionItems.push({
+      kind: "action",
       value: "action:new-wiki",
       searchTerms: ["new wiki", "new project", "create", "empty", "notes"],
       title: "New wiki",
@@ -1692,7 +1836,15 @@ function OpenCommandPaletteDialog(props: {
   actionItems.push({
     kind: "action",
     value: "action:wikis",
-    searchTerms: ["wikis", "wiki", "notes", "knowledge", "skill map", "change requests"],
+    searchTerms: [
+      "wikis",
+      "wiki",
+      "notes",
+      "knowledge",
+      "skill map",
+      "pull requests",
+      "merge requests",
+    ],
     title: "Open wikis",
     icon: <BookOpenIcon className={ITEM_ICON_CLASS} />,
     run: async () => {
@@ -1879,6 +2031,13 @@ function OpenCommandPaletteDialog(props: {
       isLinkedThreadSearch && linkedThreadSearch?.linkedThreads
         ? buildLinkedThreadActionItems({
             ...linkedThreadSearch.linkedThreads,
+            threads: visibleLinkedThreads(
+              linkedThreadSearch.linkedThreads.threads,
+              linkedThreadSearch.linkedThreads.environmentId,
+              linkedThreadRefs,
+              hiddenKeys,
+              hidingAnywhere,
+            ),
             query: linkedThreadSearch.query,
             icon: <MessageSquareIcon className={ITEM_ICON_CLASS} />,
             runThread: async (thread) => {
@@ -2138,6 +2297,21 @@ function OpenCommandPaletteDialog(props: {
     if (addProjectCloneFlow.step === "repository") {
       const rawRepository = query.trim();
       if (rawRepository.length === 0 || isRemoteProjectLookingUp) {
+        return;
+      }
+
+      const incompleteOwnerMessage = githubIncompleteOwnerRepositoryMessage(
+        addProjectCloneFlow.source,
+        rawRepository,
+      );
+      if (incompleteOwnerMessage) {
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Repository name incomplete",
+            description: incompleteOwnerMessage,
+          }),
+        );
         return;
       }
 
@@ -2752,6 +2926,30 @@ function OpenCommandPaletteDialog(props: {
     }
 
     if (event.ctrlKey || event.shiftKey || event.altKey || event.metaKey) return;
+
+    if (event.key === "Tab" && isBrowsing && !relativePathNeedsActiveProject) {
+      if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+      (event as typeof event & { preventBaseUIHandler?: () => void }).preventBaseUIHandler?.();
+      event.preventDefault();
+      if (highlightedItemValue === "browse:up") {
+        void browseUp();
+        return;
+      }
+      const highlightedEntry = visibleBrowseEntries.find(
+        (entry) => `browse:${entry.fullPath}` === highlightedItemValue,
+      );
+      const completion = highlightedEntry
+        ? { name: highlightedEntry.name, isComplete: true }
+        : getFilesystemBrowseTabCompletion(visibleBrowseEntries, browsePath.filterQuery);
+      if (completion?.isComplete) {
+        void browseTo(completion.name);
+      } else if (completion && !pinnedCloneDirectoryName) {
+        setHighlightedItemValue(null);
+        setQuery(`${getBrowseDirectoryPath(query)}${completion.name}`);
+      }
+      return;
+    }
+
     const firstItemValue = autoHighlightsFirstRow ? resultRows.itemValues[0] : undefined;
     if (
       event.key === "ArrowDown" &&

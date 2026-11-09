@@ -59,6 +59,7 @@ import {
 } from "../../composer-logic";
 import { resolvePlanFollowUpSubmission } from "../../proposedPlan";
 import { type ChatMessage } from "../../types";
+import { recordPromptSent } from "../GitHubStarPrompt";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { newMessageId, newThreadId } from "~/lib/utils";
 import { useNewThreadHandler } from "../../hooks/useHandleNewThread";
@@ -354,7 +355,7 @@ export function useComposerSend(input: ComposerSendInput) {
   );
   const setComposerDraftReviewComments = useComposerDraftStore((store) => store.setReviewComments);
   const setComposerDraftThreadContexts = useComposerDraftStore((store) => store.setThreadContexts);
-  const setComposerDraftWikiNotes = useComposerDraftStore((store) => store.setWikiNotes);
+  const setComposerDraftWikiContexts = useComposerDraftStore((store) => store.setWikiContexts);
   const setComposerDraftEnvironmentContexts = useComposerDraftStore(
     (store) => store.setEnvironmentContexts,
   );
@@ -584,7 +585,7 @@ export function useComposerSend(input: ComposerSendInput) {
       previewAnnotations: sendContextPreviewAnnotations,
       reviewComments: composerReviewComments,
       threadContexts: composerThreadContexts,
-      wikiNotes: composerWikiNotes,
+      wikiContexts: composerWikiContexts,
       environmentContexts: composerEnvironmentContexts,
       selectedProvider: ctxSelectedProvider,
       selectedModel: ctxSelectedModel,
@@ -639,7 +640,7 @@ export function useComposerSend(input: ComposerSendInput) {
           reviewComments: composerReviewComments,
           previewAnnotations: composerPreviewAnnotations,
           threadContexts: composerThreadContexts,
-          wikiNotes: composerWikiNotes,
+          wikiContexts: composerWikiContexts,
           environmentContexts: composerEnvironmentContexts,
         },
         setThreadError,
@@ -659,7 +660,7 @@ export function useComposerSend(input: ComposerSendInput) {
         composerPreviewAnnotations.length +
         composerReviewComments.length +
         composerThreadContexts.length +
-        composerWikiNotes.length +
+        composerWikiContexts.length +
         composerEnvironmentContexts.length,
     });
     const feedbackCommand =
@@ -670,7 +671,7 @@ export function useComposerSend(input: ComposerSendInput) {
       composerPreviewAnnotations.length === 0 &&
       composerReviewComments.length === 0 &&
       composerThreadContexts.length === 0 &&
-      composerWikiNotes.length === 0 &&
+      composerWikiContexts.length === 0 &&
       composerEnvironmentContexts.length === 0
         ? parseCodexFeedbackCommand(trimmed)
         : null;
@@ -747,7 +748,7 @@ export function useComposerSend(input: ComposerSendInput) {
       const followUpReviewComments = [...composerReviewComments];
       const followUpPreviewAnnotations = [...composerPreviewAnnotations];
       const followUpThreadContexts = [...composerThreadContexts];
-      const followUpWikiNotes = [...composerWikiNotes];
+      const followUpWikiContexts = [...composerWikiContexts];
       const followUpEnvironmentContexts = [...composerEnvironmentContexts];
       promptRef.current = "";
       clearComposerDraftContent(composerDraftTarget);
@@ -759,14 +760,12 @@ export function useComposerSend(input: ComposerSendInput) {
           reviewComments: composerReviewComments,
           previewAnnotations: composerPreviewAnnotations,
           threadContexts: composerThreadContexts,
-          wikiNotes: composerWikiNotes,
+          wikiContexts: composerWikiContexts,
           environmentContexts: composerEnvironmentContexts,
         }),
         interactionMode: followUp.interactionMode,
       });
       if (!followUpSent) {
-        promptRef.current = followUpPromptSnapshot;
-        composerTerminalContextsRef.current = [...followUpTerminalContexts];
         restorePlanFollowUpComposer({
           snapshot: {
             prompt: followUpPromptSnapshot,
@@ -774,8 +773,16 @@ export function useComposerSend(input: ComposerSendInput) {
             reviewComments: followUpReviewComments,
             previewAnnotations: followUpPreviewAnnotations,
             threadContexts: followUpThreadContexts,
-            wikiNotes: followUpWikiNotes,
+            wikiContexts: followUpWikiContexts,
             environmentContexts: followUpEnvironmentContexts,
+          },
+          draftHasUserContent: composerDraftHasUserContent(
+            useComposerDraftStore.getState().getComposerDraft(composerDraftTarget),
+          ),
+          routeIsCurrent: currentRouteThreadKeyRef.current === routeThreadKey,
+          writeComposerRefs: (snapshot) => {
+            promptRef.current = snapshot.prompt;
+            composerTerminalContextsRef.current = [...snapshot.terminalContexts];
           },
           writePrompt: (prompt) => setComposerDraftPrompt(composerDraftTarget, prompt),
           writeTerminalContexts: (contexts) =>
@@ -786,7 +793,8 @@ export function useComposerSend(input: ComposerSendInput) {
             setComposerDraftPreviewAnnotations(composerDraftTarget, [...annotations]),
           writeThreadContexts: (records) =>
             setComposerDraftThreadContexts(composerDraftTarget, [...records]),
-          writeWikiNotes: (records) => setComposerDraftWikiNotes(composerDraftTarget, [...records]),
+          writeWikiContexts: (records) =>
+            setComposerDraftWikiContexts(composerDraftTarget, [...records]),
           writeEnvironmentContexts: (records) =>
             setComposerDraftEnvironmentContexts(composerDraftTarget, [...records]),
           resetCursor: (options) => composerRef.current?.resetCursorState(options),
@@ -807,7 +815,7 @@ export function useComposerSend(input: ComposerSendInput) {
       composerPreviewAnnotations.length === 0 &&
       composerReviewComments.length === 0 &&
       composerThreadContexts.length === 0 &&
-      composerWikiNotes.length === 0 &&
+      composerWikiContexts.length === 0 &&
       composerEnvironmentContexts.length === 0
         ? parseStandaloneComposerSlashCommand(trimmed)
         : null;
@@ -854,7 +862,7 @@ export function useComposerSend(input: ComposerSendInput) {
       previewAnnotations: composerPreviewAnnotations,
       reviewComments: composerReviewComments,
       threadContexts: composerThreadContexts,
-      wikiNotes: composerWikiNotes,
+      wikiContexts: composerWikiContexts,
       environmentContexts: composerEnvironmentContexts,
     });
     const {
@@ -864,7 +872,7 @@ export function useComposerSend(input: ComposerSendInput) {
       previewAnnotations: composerPreviewAnnotationsSnapshot,
       reviewComments: composerReviewCommentsSnapshot,
       threadContexts: composerThreadContextsSnapshot,
-      wikiNotes: composerWikiNotesSnapshot,
+      wikiContexts: composerWikiNotesSnapshot,
       environmentContexts: composerEnvironmentContextsSnapshot,
       messageText: messageTextForSend,
     } = sendSnapshot;
@@ -900,7 +908,7 @@ export function useComposerSend(input: ComposerSendInput) {
         reviewComments: composerReviewCommentsSnapshot,
         previewAnnotations: composerPreviewAnnotationsSnapshot,
         threadContexts: composerThreadContextsSnapshot,
-        wikiNotes: composerWikiNotesSnapshot,
+        wikiContexts: composerWikiNotesSnapshot,
         environmentContexts: composerEnvironmentContextsSnapshot,
         attachments: composerAttachmentsSnapshot.map((attachment, index) => ({
           attachment,
@@ -1441,6 +1449,7 @@ export function useComposerSend(input: ComposerSendInput) {
         ) {
           handleNewThreadInActiveProject();
         }
+        void recordPromptSent(environmentId);
       }
     }
 

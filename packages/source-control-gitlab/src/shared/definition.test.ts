@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { definition } from "./definition.ts";
 
+const SHA = "a".repeat(40);
 const parse = (url: string) => definition.parseChangeRequestUrl(new URL(url));
 
 describe("GitLab change request URLs", () => {
@@ -63,6 +64,22 @@ describe("GitLab change request URLs", () => {
     ).toBe("https://gitlab.com/group/sub/project/-/merge_requests/4");
     expect(
       definition.changeRequestUrl({
+        host: "gitlab.internal",
+        repository: "team/app",
+        number: 5,
+        remoteUrl: "http://gitlab.internal:8080/team/app.git",
+      }),
+    ).toBe("http://gitlab.internal:8080/team/app/-/merge_requests/5");
+    expect(
+      definition.changeRequestUrl({
+        host: "gitlab.internal",
+        repository: "team/app",
+        number: 5,
+        remoteUrl: "git@gitlab.internal:team/app.git",
+      }),
+    ).toBe("https://gitlab.internal/team/app/-/merge_requests/5");
+    expect(
+      definition.changeRequestUrl({
         host: "gitlab.com",
         repository: "group/sub/project",
         number: 4,
@@ -93,5 +110,17 @@ describe("GitLab remotes", () => {
 
   it("matches complete DNS labels only", () => {
     expect(recognize("https://notgitlab.example.com/group/repo.git")).toBeNull();
+  });
+});
+
+describe("GitLab file URLs", () => {
+  const base = { host: "gitlab.com", repository: "acme/team/web" };
+  it.each([
+    [
+      { path: "src/a.ts", lines: [10, 20] },
+      `https://gitlab.com/acme/team/web/-/blob/${SHA}/src/a.ts#L10-20`,
+    ],
+  ] as const)("links %j", (file, url) => {
+    expect(definition.fileUrl({ ...base, sha: SHA, ...file })).toBe(url);
   });
 });

@@ -27,9 +27,11 @@ export * from "./checkpointDiff.ts";
 export * from "./model.ts";
 export * from "./keybindings.ts";
 // Astrolabe
+export * from "./canvas.ts";
 export * from "./vimrc.ts";
 export * from "./server.ts";
 export * from "./settings.ts";
+export * from "./managedPolicy.ts";
 export * from "./git.ts";
 export * from "./vcs.ts";
 // Astrolabe
@@ -49,6 +51,7 @@ export * from "./peerLink.ts";
 export * from "./threadMetadataMcp.ts";
 export * from "./threadPullRequest.ts";
 export * from "./threadSearch.ts";
+export * from "./threadTags.ts";
 export * from "./threadTitle.ts";
 export * from "./t3ProjectFile.ts";
 export * from "./editor.ts";

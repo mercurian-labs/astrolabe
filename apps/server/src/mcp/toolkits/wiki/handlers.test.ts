@@ -66,12 +66,23 @@ const harness = (
 ) => {
   const calls: unknown[] = [];
   const layer = McpHttpServer.layerWikiToolkit.pipe(
-    Layer.provideMerge(McpServer.McpServer.layer),
+    Layer.provideMerge(McpHttpServer.layerInProcessMcpServer),
     Layer.provide(
       Layer.mergeAll(
         McpToolAccessTestkit.liveThreadsLayer,
         Layer.mock(WikiService.WikiService)({
           list: Effect.succeed(listed),
+          listFolder: (input) => {
+            calls.push(input);
+            return Effect.succeed({
+              commit: "4f1c2a9",
+              folder: "ops",
+              folders: [],
+              documents: ["ops/Retry policy.md"],
+              files: [],
+              truncated: false,
+            });
+          },
           query: (input) => {
             calls.push(input);
             return answer;
@@ -114,6 +125,18 @@ describe("astrolabe_wiki_list", () => {
       expect(result.isError).not.toBe(true);
       expect(JSON.stringify(result)).toContain("Plans");
       expect(JSON.stringify(result)).not.toContain("secret");
+    }),
+  );
+
+  it.effect("lists one folder of a named wiki from the calling thread's view of it", () =>
+    Effect.gen(function* () {
+      const tools = harness(Effect.succeed(rows));
+      const result = yield* tools.call({ wiki: " Plans ", folder: "ops" }, "astrolabe_wiki_list");
+      expect(result.isError).not.toBe(true);
+      expect(result.structuredContent).toMatchObject({
+        contents: { documents: ["ops/Retry policy.md"] },
+      });
+      expect(tools.calls).toEqual([{ wikiId: "Plans", folder: "ops", threadId }]);
     }),
   );
 });

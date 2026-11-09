@@ -36,6 +36,10 @@
       "types": "./src/markdown/livePreview.ts",
       "default": "./src/markdown/livePreview.ts"
     },
+    "./markdown/syntax": {
+      "types": "./src/markdown/syntax.ts",
+      "default": "./src/markdown/syntax.ts"
+    },
     "./markdown/theme.css": "./src/markdown/theme.css",
     "./markdown/katex.css": "./src/markdown/katex.css",
     "./code": {

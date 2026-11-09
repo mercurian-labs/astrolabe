@@ -1,0 +1,8 @@
+{
+	"nodes":[
+		{"id":"a","type":"text","text":"x","x":0,"y":0,"width":200,"height":60}
+	],
+	"edges":[
+		{"id":"e","fromNode":"a","toNode":"ghost"}
+	]
+}

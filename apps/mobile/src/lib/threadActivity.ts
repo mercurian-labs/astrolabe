@@ -65,11 +65,14 @@ import { claudeResumeCompactionAge } from "@t3tools/shared/claudeCompaction";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
 import { truncate } from "@t3tools/shared/String";
 import type { HtmlRenderReference } from "@t3tools/shared/htmlRender";
+import { canvasViewFromToolItem, type CanvasView } from "@t3tools/client-runtime/canvasViews";
 import type { McpAppReference } from "@t3tools/shared/mcpApp";
 import {
   compactDynamicToolOutput,
   htmlRenderFromToolItem,
   mcpAppFromToolItem,
+  wikiCanvasFromToolItem,
+  type WikiCanvasReference,
 } from "@t3tools/shared/toolOutput";
 import * as DateTime from "effect/DateTime";
 import {
@@ -178,6 +181,22 @@ type RawThreadFeedEntry =
       readonly render: HtmlRenderReference;
     }
   | {
+      readonly type: "canvas";
+      readonly id: string;
+      readonly createdAt: string;
+      readonly runId: RunId | null;
+      readonly sourceThreadId: ThreadId;
+      readonly itemId: TurnItemId;
+      readonly canvas: CanvasView;
+    }
+  | {
+      readonly type: "wiki-canvas";
+      readonly id: string;
+      readonly createdAt: string;
+      readonly runId: RunId | null;
+      readonly canvas: WikiCanvasReference;
+    }
+  | {
       readonly type: "mcp-app";
       readonly id: string;
       readonly createdAt: string;
@@ -195,7 +214,10 @@ export type ThreadFeedEntry = ThreadFeedEntryContent & {
 };
 
 type ThreadFeedEntryContent =
-  | Extract<RawThreadFeedEntry, { type: "message" | "html-render" | "mcp-app" }>
+  | Extract<
+      RawThreadFeedEntry,
+      { type: "message" | "html-render" | "canvas" | "wiki-canvas" | "mcp-app" }
+    >
   | {
       readonly type: "activity-group";
       readonly id: string;
@@ -733,7 +755,7 @@ function toWorkLogEntry(
     case "file_change":
       return {
         ...common,
-        changedFiles: [item.fileName],
+        changedFiles: item.changes?.map((change) => change.path) ?? [item.fileName],
         toolTitle: title ?? "File change",
         toolData: item,
       };
@@ -1101,6 +1123,8 @@ function deriveThreadFeedRunFolds(
         ? (entry.message.runId ?? runlessKey)
         : entry.type === "activity-group" ||
             entry.type === "html-render" ||
+            entry.type === "canvas" ||
+            entry.type === "wiki-canvas" ||
             entry.type === "mcp-app"
           ? (entry.runId ?? runlessKey)
           : null;
@@ -1154,6 +1178,8 @@ function deriveThreadFeedRunFolds(
           (entry) =>
             entry.id !== terminalAssistantId &&
             entry.type !== "html-render" &&
+            entry.type !== "canvas" &&
+            entry.type !== "wiki-canvas" &&
             entry.type !== "mcp-app" &&
             !(entry.type === "activity-group" && isContextCompactionActivityGroup(entry)) &&
             !(
@@ -1774,7 +1800,7 @@ function appendToolGroupRows(
             (activity.workEntry.detail?.trim() ?? "") !== "",
         )?.workEntry.detail
       : undefined;
-  const thought = latestThought ? liveThoughtLine(latestThought) : "";
+  const thought = latestThought ? compactWorkEntryText(liveThoughtLine(latestThought)) : "";
   const summary = live
     ? (expanded || thought) && latestActivity.workEntry.itemType === "reasoning"
       ? latestActivity.lifecycleStatus === "inProgress"
@@ -1872,9 +1898,8 @@ function appendToolGroupRows(
 function liveToolActivitySummary(activity: ThreadFeedActivity, presentTense: boolean): string {
   const status = liveActivityToolStatus(activity.lifecycleStatus, presentTense);
   if (activity.workEntry.itemType === "reasoning") {
-    return (
-      activity.workEntry.detail?.trim().replace(/\s+/g, " ") ||
-      (status === "inProgress" ? "Thinking" : "Thought")
+    return compactWorkEntryText(
+      activity.workEntry.detail?.trim() || (status === "inProgress" ? "Thinking" : "Thought"),
     );
   }
   const presentation = resolveWorkEntryToolPresentation({
@@ -1897,7 +1922,7 @@ function liveToolActivitySummary(activity: ThreadFeedActivity, presentTense: boo
               : "Ran";
     return `${verb} ${program ?? "command"}`;
   }
-  return activity.detail ?? activity.summary;
+  return compactWorkEntryText(activity.detail ?? activity.summary);
 }
 
 interface ThreadFeedBuild {
@@ -2096,6 +2121,39 @@ export function buildThreadFeed(
         createdAt,
         runId: item.runId,
         render,
+      };
+      projectedEntriesCache.set(row, { attemptId, entry });
+      entries.push(entry);
+      entryRows.push(index);
+      continue;
+    }
+    const canvas = item.type === "dynamic_tool" ? canvasViewFromToolItem(item) : undefined;
+    if (canvas) {
+      const entry: RawThreadFeedEntry = {
+        type: "canvas",
+        id: `canvas:${row.visibility}:${row.sourceThreadId}:${row.sourceItemId}`,
+        createdAt,
+        runId: item.runId,
+        sourceThreadId: row.sourceThreadId,
+        itemId: row.sourceItemId,
+        canvas,
+      };
+      projectedEntriesCache.set(row, { attemptId, entry });
+      entries.push(entry);
+      entryRows.push(index);
+      continue;
+    }
+    const changedCanvas =
+      item.type === "dynamic_tool" && item.status === "completed"
+        ? wikiCanvasFromToolItem(item)
+        : undefined;
+    if (changedCanvas) {
+      const entry: RawThreadFeedEntry = {
+        type: "wiki-canvas",
+        id: `wiki-canvas:${row.visibility}:${row.sourceThreadId}:${row.sourceItemId}`,
+        createdAt,
+        runId: item.runId,
+        canvas: changedCanvas,
       };
       projectedEntriesCache.set(row, { attemptId, entry });
       entries.push(entry);

@@ -1,0 +1,1063 @@
+/*
+ * A JSON Canvas board, for the web app and the phone's page alike: only tokens both define.
+ * No transitions: everything here is moved by the camera, frame by frame. The one animation
+ * plays once and ends, so nothing repaints at rest.
+ */
+.cv-board {
+  --cv-tint: var(--muted-foreground);
+  --cv-line: color-mix(in srgb, var(--foreground) 45%, transparent);
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--foreground);
+  contain: strict;
+}
+.cv-board[data-mode="free"] {
+  cursor: grab;
+  outline: none;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.cv-board[data-mode="free"]:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--ring, var(--primary));
+}
+.cv-board.cv-moving {
+  cursor: grabbing;
+}
+.cv-board.cv-moving .cv-world {
+  will-change: transform;
+}
+.cv-world {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  transform-origin: 0 0;
+}
+
+.cv-overview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  color: var(--muted-foreground);
+}
+.cv-overview[hidden] {
+  display: none;
+}
+
+.cv-card,
+.cv-group {
+  position: absolute;
+  box-sizing: border-box;
+  border-radius: 8px;
+  contain: layout style;
+}
+[data-color="1"] {
+  --cv-tint: #e5484d;
+}
+[data-color="2"] {
+  --cv-tint: #f76b15;
+}
+[data-color="3"] {
+  --cv-tint: #d6a100;
+}
+[data-color="4"] {
+  --cv-tint: #30a46c;
+}
+[data-color="5"] {
+  --cv-tint: #00a2c7;
+}
+[data-color="6"] {
+  --cv-tint: #8e4ec6;
+}
+.cv-card {
+  background: var(--background);
+  border: calc(1px * var(--cv-ui, 1)) solid var(--border);
+}
+.cv-card[data-selected],
+.cv-group[data-selected] {
+  outline: calc(2px * var(--cv-ui, 1)) solid var(--ring, var(--primary));
+}
+.cv-card[data-selected] {
+  z-index: 1;
+}
+.cv-card-content {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: inherit;
+}
+.cv-card-content[data-live] {
+  overflow: auto;
+}
+.cv-board[data-mode="free"] .cv-card-content[data-live] {
+  cursor: auto;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.cv-board[data-mode="fit"] .cv-card-content {
+  overflow: hidden;
+}
+/* What a review marks: the app's diff colours, with a word so colour isn't all that says it. */
+[data-mark="added"] {
+  --cv-mark: var(--diff-addition, var(--success, #30a46c));
+}
+[data-mark="removed"] {
+  --cv-mark: var(--diff-deletion, var(--destructive, #e5484d));
+}
+[data-mark="text"] {
+  --cv-mark: var(--warning, #d6a100);
+}
+[data-mark="restyled"] {
+  --cv-mark: var(--info, #00a2c7);
+}
+[data-mark="moved"] {
+  --cv-mark: var(--muted-foreground);
+}
+.cv-card[data-mark],
+.cv-group[data-mark] {
+  box-shadow: 0 0 0 calc(2px * var(--cv-ui, 1)) var(--cv-mark);
+}
+.cv-card[data-mark="moved"],
+.cv-group[data-mark="moved"] {
+  box-shadow: 0 0 0 calc(1px * var(--cv-ui, 1)) var(--cv-mark);
+}
+.cv-board .cv-card[data-mark="removed"],
+.cv-board .cv-group[data-mark="removed"] {
+  border-style: dashed;
+  box-shadow: none;
+  border-color: var(--cv-mark);
+}
+.cv-card[data-mark] .cv-card-label {
+  max-width: calc(100% - 56px * var(--cv-ui, 1));
+}
+.cv-card[data-mark="removed"] .cv-card-content {
+  opacity: 0.6;
+}
+.cv-mark {
+  position: absolute;
+  right: 0;
+  bottom: 100%;
+  padding-bottom: 2px;
+  font-size: calc(11px * var(--cv-ui, 1));
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--cv-mark);
+  pointer-events: none;
+}
+/* One highlight when a commit changes a card, on opacity alone; the mark is what stays. */
+.cv-flash {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 calc(3px * var(--cv-ui, 1)) var(--primary);
+  opacity: 0;
+  pointer-events: none;
+  animation: cv-flash 1.2s ease-out 1;
+}
+@keyframes cv-flash {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cv-flash {
+    animation: none;
+  }
+}
+/* Beneath a card's content until it's selected, the press lands on the board instead. */
+.cv-board[data-mode="free"] .cv-card-content:not([data-live]) > * {
+  pointer-events: none;
+}
+/* Above the grips around a selected card, which would otherwise take every press on the name. */
+.cv-card-label {
+  position: absolute;
+  z-index: 2;
+  bottom: 100%;
+  left: 0;
+  max-width: 100%;
+  padding-bottom: 2px;
+  overflow: hidden;
+  font-size: calc(12px * var(--cv-ui, 1));
+  line-height: 1.4;
+  color: var(--muted-foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cv-card-label[data-missing] {
+  color: var(--destructive, #e5484d);
+}
+.cv-card[data-color],
+.cv-card[style*="--cv-tint"] {
+  background: color-mix(in srgb, var(--cv-tint) 10%, var(--background));
+  border-color: color-mix(in srgb, var(--cv-tint) 55%, var(--border));
+}
+.cv-card-body {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  min-height: 100%;
+  padding: 8px 12px;
+  overflow-wrap: anywhere;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+}
+.cv-card-open {
+  cursor: pointer;
+}
+.cv-card-open:hover {
+  background: color-mix(in srgb, var(--foreground) 5%, transparent);
+}
+.cv-card-open:focus-visible {
+  outline: 2px solid var(--ring, var(--primary));
+  outline-offset: -2px;
+}
+.cv-code-path,
+.cv-link-url {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 18px;
+}
+.cv-code-folder,
+.cv-link-url {
+  color: var(--muted-foreground);
+}
+.cv-code-file {
+  display: block;
+  font-weight: 600;
+}
+.cv-code-stale {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--destructive, #e5484d);
+}
+.cv-code-stale[data-status="changed"] {
+  color: #b98900;
+}
+
+.cv-card-body > :first-child,
+.cv-card-body li > :first-child {
+  margin-top: 0;
+}
+.cv-card-body > :last-child,
+.cv-card-body li > :last-child {
+  margin-bottom: 0;
+}
+.cv-card-body p,
+.cv-card-body ul,
+.cv-card-body ol,
+.cv-card-body pre,
+.cv-card-body blockquote {
+  margin: 0 0 6px;
+}
+.cv-card-body ul,
+.cv-card-body ol {
+  padding-left: 18px;
+}
+.cv-card-body code,
+.cv-card-body pre {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.cv-card-body code {
+  padding: 1px 4px;
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+  border-radius: 4px;
+}
+.cv-card-body pre {
+  overflow: hidden;
+  white-space: pre-wrap;
+}
+.cv-card-body blockquote {
+  padding-left: 8px;
+  color: var(--muted-foreground);
+  border-left: 2px solid var(--border);
+}
+.cv-card-body a {
+  color: var(--primary);
+}
+.cv-card-body hr {
+  margin: 8px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+.cv-card-body mark {
+  color: inherit;
+  background: color-mix(in srgb, #d6a100 35%, transparent);
+}
+.cv-md-heading {
+  font-size: 16px;
+  font-weight: 600;
+}
+.cv-md-heading[data-level="1"] {
+  font-size: 18px;
+}
+
+.cv-md-paragraph {
+  margin: 0 0 6px;
+}
+.cv-card-body table {
+  margin: 0 0 6px;
+  font-size: 13px;
+  border-collapse: collapse;
+}
+.cv-card-body th,
+.cv-card-body td {
+  padding: 2px 6px;
+  text-align: left;
+  border: 1px solid var(--border);
+}
+.cv-card-body img {
+  max-width: 100%;
+}
+.cv-callout {
+  --cv-callout: var(--primary);
+  padding: 6px 10px;
+  margin: 0 0 6px;
+  background: color-mix(in srgb, var(--cv-callout) 10%, transparent);
+  border-left: 2px solid var(--cv-callout);
+  border-radius: 4px;
+}
+.cv-callout[data-callout="warning"],
+.cv-callout[data-callout="caution"] {
+  --cv-callout: #d6a100;
+}
+.cv-callout[data-callout="danger"],
+.cv-callout[data-callout="error"],
+.cv-callout[data-callout="bug"] {
+  --cv-callout: #e5484d;
+}
+.cv-callout[data-callout="tip"],
+.cv-callout[data-callout="success"] {
+  --cv-callout: #30a46c;
+}
+.cv-callout-title {
+  font-weight: 600;
+  text-transform: capitalize;
+}
+.cv-wikilink {
+  padding: 0;
+  font: inherit;
+  color: var(--primary);
+  cursor: pointer;
+  background: none;
+  border: 0;
+}
+span.cv-wikilink {
+  cursor: inherit;
+}
+.cv-wikilink[data-missing] {
+  opacity: 0.6;
+}
+.cv-tag {
+  padding: 0 6px;
+  font-size: 12px;
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  border-radius: 999px;
+}
+.cv-embed-name,
+.cv-muted {
+  color: var(--muted-foreground);
+}
+.cv-note-properties {
+  padding-bottom: 6px;
+  color: var(--muted-foreground);
+  border-bottom: 1px solid var(--border);
+}
+.cv-missing p {
+  color: var(--muted-foreground);
+}
+.cv-button {
+  padding: 2px 8px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--foreground);
+  cursor: pointer;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.cv-asset-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.cv-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--background);
+  border: 0;
+}
+.cv-asset-media {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.cv-simple-name {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  overflow: hidden;
+  font-size: calc(14px * var(--cv-ui, 1));
+  font-weight: 600;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.cv-simple-text {
+  display: flex;
+  flex-direction: column;
+  gap: 16%;
+  justify-content: center;
+  width: 40%;
+  height: 100%;
+  margin: 0 auto;
+}
+.cv-simple-text span {
+  display: block;
+  height: 4px;
+  background: var(--muted-foreground);
+  border-radius: 2px;
+  opacity: 0.5;
+}
+
+.cv-group {
+  background: color-mix(in srgb, var(--cv-tint) 6%, transparent);
+  border: calc(1px * var(--cv-ui, 1)) solid color-mix(in srgb, var(--cv-tint) 40%, transparent);
+}
+.cv-group-background {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  background-position: center;
+  background-size: cover;
+  opacity: 0.8;
+}
+.cv-group-background[data-style="ratio"] {
+  background-repeat: no-repeat;
+  background-size: contain;
+}
+.cv-group-background[data-style="repeat"] {
+  background-repeat: repeat;
+  background-size: auto;
+}
+.cv-group-label {
+  position: absolute;
+  z-index: 2;
+  bottom: 100%;
+  left: 0;
+  max-width: 100%;
+  padding-bottom: 2px;
+  overflow: hidden;
+  font-size: calc(16px * var(--cv-ui, 1));
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--muted-foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cv-board[data-mode="fit"] .cv-group-label {
+  top: 8px;
+  right: 12px;
+  bottom: auto;
+  left: 12px;
+  padding: 0;
+  font-size: 13px;
+}
+
+.cv-edges {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.cv-edge {
+  color: var(--cv-line);
+}
+.cv-edge[data-color],
+.cv-edge[style*="--cv-tint"] {
+  color: var(--cv-tint);
+}
+.cv-edge-line {
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: calc(1.5px * var(--cv-ui, 1));
+}
+.cv-edge-head {
+  fill: currentcolor;
+}
+.cv-edge[data-selected] .cv-edge-line {
+  stroke-width: calc(3px * var(--cv-ui, 1));
+}
+.cv-edge[data-mark] {
+  color: var(--cv-mark);
+}
+.cv-edge[data-mark="removed"] .cv-edge-line {
+  stroke-dasharray: calc(6px * var(--cv-ui, 1));
+}
+.cv-edge-label {
+  position: absolute;
+  max-width: 180px;
+  padding: 0 6px;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--muted-foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--background);
+  border-radius: 4px;
+  transform: translate(-50%, -50%);
+}
+.cv-board[data-simple] .cv-edge-label {
+  font-size: calc(12px * var(--cv-ui, 1));
+}
+
+.cv-minimap {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.cv-minimap-card {
+  fill: color-mix(in srgb, var(--foreground) 12%, transparent);
+  stroke: color-mix(in srgb, var(--foreground) 30%, transparent);
+  vector-effect: non-scaling-stroke;
+}
+.cv-minimap-card[data-group] {
+  fill: color-mix(in srgb, var(--foreground) 4%, transparent);
+}
+.cv-minimap-edge {
+  fill: none;
+  stroke: color-mix(in srgb, var(--foreground) 45%, transparent);
+  vector-effect: non-scaling-stroke;
+}
+.cv-minimap-label {
+  fill: var(--muted-foreground);
+}
+
+.cv-controls {
+  position: absolute;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cv-controls button {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 4px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--foreground);
+  cursor: pointer;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+/* Editing. Nothing here animates: what moves does so under the pointer. */
+.cv-board.cv-panning {
+  cursor: grab;
+}
+.cv-board[data-editable] {
+  cursor: default;
+  -webkit-touch-callout: none;
+}
+/* A press on a selected card drags it: reading its text is what a read-only board is for. */
+.cv-board[data-editable] .cv-card-content[data-live] {
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.cv-board[data-editable] .cv-card-editor {
+  user-select: text;
+  -webkit-user-select: text;
+}
+.cv-board[data-editable].cv-moving {
+  cursor: grabbing;
+}
+.cv-board[data-card-names="hover"] .cv-card-label {
+  opacity: 0;
+}
+.cv-board[data-card-names="hover"] .cv-card:hover .cv-card-label,
+.cv-board[data-card-names="hover"] .cv-card[data-selected] .cv-card-label {
+  opacity: 1;
+}
+.cv-board[data-card-names="never"] .cv-card-label {
+  display: none;
+}
+.cv-card[data-editing] {
+  z-index: 2;
+}
+.cv-card-editor {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: 8px 12px;
+  overflow: auto;
+  cursor: text;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.cv-card-editor .cm-editor .cm-content {
+  padding-bottom: 8px;
+}
+.cv-plain-editor {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  resize: none;
+  background: none;
+  border: 0;
+  outline: none;
+}
+.cv-label-editor {
+  z-index: 3;
+  box-sizing: border-box;
+  background: var(--background);
+  border: 1px solid var(--ring, var(--primary));
+  border-radius: 4px;
+  outline: none;
+}
+input.cv-label-editor {
+  right: auto;
+  width: 100%;
+  min-width: 120px;
+  color: var(--foreground);
+}
+textarea.cv-label-editor {
+  min-width: 140px;
+  min-height: 48px;
+  color: var(--foreground);
+  white-space: pre-wrap;
+  pointer-events: auto;
+  resize: none;
+}
+.cv-edge-label {
+  white-space: pre;
+  pointer-events: auto;
+}
+.cv-board:not([data-editable]) .cv-edge-label {
+  pointer-events: none;
+}
+
+.cv-handle {
+  --cv-grip: calc(8px * var(--cv-ui, 1));
+  position: absolute;
+  width: var(--cv-grip);
+  height: var(--cv-grip);
+  touch-action: none;
+}
+/* Outside the edge, as in Obsidian: on the card itself a press drags it. */
+.cv-handle[data-handle="n"],
+.cv-handle[data-handle="s"] {
+  left: 16px;
+  width: calc(100% - 32px);
+  cursor: ns-resize;
+}
+.cv-handle[data-handle="e"],
+.cv-handle[data-handle="w"] {
+  top: 16px;
+  height: calc(100% - 32px);
+  cursor: ew-resize;
+}
+.cv-handle[data-handle*="n"] {
+  top: calc(-1 * var(--cv-grip));
+}
+.cv-handle[data-handle*="s"] {
+  bottom: calc(-1 * var(--cv-grip));
+}
+.cv-handle[data-handle*="w"] {
+  left: calc(-1 * var(--cv-grip));
+}
+.cv-handle[data-handle*="e"] {
+  right: calc(-1 * var(--cv-grip));
+}
+.cv-handle[data-handle="n"] {
+  left: 16px;
+}
+.cv-handle[data-handle="s"] {
+  left: 16px;
+}
+.cv-handle[data-handle="ne"],
+.cv-handle[data-handle="sw"] {
+  cursor: nesw-resize;
+}
+.cv-handle[data-handle="nw"],
+.cv-handle[data-handle="se"] {
+  cursor: nwse-resize;
+}
+.cv-dot {
+  --cv-dot: calc(10px * var(--cv-ui, 1));
+  position: absolute;
+  z-index: 1;
+  box-sizing: border-box;
+  display: none;
+  width: var(--cv-dot);
+  height: var(--cv-dot);
+  cursor: crosshair;
+  background: var(--background);
+  border: calc(2px * var(--cv-ui, 1)) solid var(--ring, var(--primary));
+  border-radius: 50%;
+}
+.cv-card:hover > .cv-dot,
+[data-selected] > .cv-dot {
+  display: block;
+}
+.cv-moving .cv-dot,
+.cv-moving .cv-handle {
+  display: none;
+}
+.cv-dot[data-side="top"] {
+  top: calc(var(--cv-dot) * -0.5);
+  left: calc(50% - var(--cv-dot) / 2);
+}
+.cv-dot[data-side="bottom"] {
+  bottom: calc(var(--cv-dot) * -0.5);
+  left: calc(50% - var(--cv-dot) / 2);
+}
+.cv-dot[data-side="left"] {
+  top: calc(50% - var(--cv-dot) / 2);
+  left: calc(var(--cv-dot) * -0.5);
+}
+.cv-dot[data-side="right"] {
+  top: calc(50% - var(--cv-dot) / 2);
+  right: calc(var(--cv-dot) * -0.5);
+}
+/* A fingertip needs more than a pointer does; the card itself doesn't grow. */
+@media (pointer: coarse) {
+  .cv-handle {
+    --cv-grip: calc(22px * var(--cv-ui, 1));
+  }
+  .cv-dot {
+    --cv-dot: calc(18px * var(--cv-ui, 1));
+  }
+  .cv-dot::after {
+    position: absolute;
+    inset: -10px;
+    content: "";
+  }
+}
+.cv-edge-hit {
+  fill: none;
+  pointer-events: none;
+  stroke: transparent;
+  stroke-width: calc(12px * var(--cv-ui, 1));
+}
+.cv-board[data-editable] .cv-edge-hit {
+  cursor: pointer;
+  pointer-events: stroke;
+}
+@media (pointer: coarse) {
+  .cv-edge-hit {
+    stroke-width: calc(24px * var(--cv-ui, 1));
+  }
+}
+.cv-edge-draft {
+  fill: none;
+  stroke: var(--ring, var(--primary));
+  stroke-width: calc(2px * var(--cv-ui, 1));
+  stroke-dasharray: calc(6px * var(--cv-ui, 1));
+}
+.cv-marquee {
+  position: absolute;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--ring, var(--primary)) 12%, transparent);
+  border: 1px solid var(--ring, var(--primary));
+}
+.cv-hint {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  color: var(--muted-foreground);
+  text-align: center;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+.cv-hint p {
+  margin: 0;
+}
+
+.cv-chrome {
+  z-index: 10;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--popover-foreground, var(--foreground));
+  cursor: default;
+}
+.cv-chrome button,
+.cv-chrome input,
+.cv-chrome select {
+  font: inherit;
+  color: inherit;
+}
+.cv-toolbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  max-width: min(420px, calc(100% - 8px));
+  padding: 2px;
+  background: var(--popover, var(--background));
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.cv-moving .cv-toolbar {
+  visibility: hidden;
+}
+.cv-toolbar > button,
+.cv-bar button,
+.cv-toolbar-list button {
+  min-height: 28px;
+  padding: 0 8px;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  border-radius: 4px;
+}
+.cv-toolbar > button:hover,
+.cv-toolbar > button[aria-pressed="true"],
+.cv-bar button:hover,
+.cv-bar button[aria-pressed="true"],
+.cv-toolbar-list button:hover,
+.cv-menu button:hover,
+.cv-menu button:focus-visible,
+.cv-picker-list button:hover,
+.cv-picker-list button[aria-selected="true"] {
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+}
+.cv-toolbar-list {
+  display: flex;
+  flex-basis: 100%;
+  flex-direction: column;
+  max-height: 240px;
+  overflow: auto;
+}
+.cv-toolbar-list button {
+  text-align: left;
+}
+.cv-toolbar-list button[aria-checked="true"]::before {
+  content: "✓ ";
+}
+.cv-colors {
+  display: flex;
+  flex-basis: 100%;
+  gap: 4px;
+  align-items: center;
+  padding: 4px;
+}
+.cv-colors > button {
+  min-height: 24px;
+  padding: 0 6px;
+  cursor: pointer;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.cv-colors .cv-swatch {
+  width: 24px;
+  padding: 0;
+  background: var(--cv-tint);
+}
+.cv-colors > button[aria-pressed="true"] {
+  outline: 2px solid var(--ring, var(--primary));
+}
+.cv-colors input[type="color"] {
+  width: 28px;
+  height: 24px;
+  padding: 0;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.cv-bar {
+  position: absolute;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  left: 50%;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--popover, var(--background));
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  transform: translateX(-50%);
+  touch-action: none;
+}
+.cv-bar button {
+  cursor: grab;
+}
+.cv-controls button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+.cv-menu {
+  position: absolute;
+  z-index: 11;
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  max-height: calc(100% - 8px);
+  padding: 4px;
+  overflow: auto;
+  background: var(--popover, var(--background));
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.cv-menu button {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 8px 0 4px;
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+  background: none;
+  border: 0;
+  border-radius: 4px;
+}
+.cv-menu button[data-destructive] {
+  color: var(--destructive, #e5484d);
+}
+.cv-menu-check {
+  flex: none;
+  width: 16px;
+  text-align: center;
+}
+.cv-menu-separator {
+  width: 100%;
+  margin: 4px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+.cv-dialog {
+  position: absolute;
+  top: 56px;
+  left: 50%;
+  z-index: 12;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(420px, calc(100% - 16px));
+  max-height: calc(100% - 72px);
+  padding: 12px;
+  overflow: auto;
+  background: var(--popover, var(--background));
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  transform: translateX(-50%);
+}
+.cv-dialog label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cv-dialog label.cv-check {
+  flex-direction: row;
+  gap: 8px;
+  align-items: center;
+}
+.cv-dialog input:not([type]),
+.cv-dialog select {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 8px;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.cv-dialog p {
+  margin: 0;
+}
+.cv-dialog-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.cv-dialog-actions button,
+.cv-notice button {
+  min-height: 28px;
+  padding: 0 10px;
+  cursor: pointer;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.cv-picker-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+}
+.cv-picker-list button {
+  min-height: 28px;
+  padding: 2px 8px;
+  overflow-wrap: anywhere;
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  border-radius: 4px;
+}
+.cv-picker-hint {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.cv-help dl {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+.cv-help dl > div {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+.cv-help dd {
+  margin: 0;
+  color: var(--muted-foreground);
+  text-align: right;
+}
+.cv-notice {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  max-width: min(420px, calc(100% - 72px));
+  padding: 6px 8px;
+  background: var(--popover, var(--background));
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}

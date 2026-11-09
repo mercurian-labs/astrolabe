@@ -5,7 +5,7 @@ import {
   type AssistantCitation,
   type ServerProviderSkill,
 } from "@t3tools/contracts";
-import { ComposerContextId } from "@t3tools/contracts";
+import { ComposerContextId, DEFAULT_WIKI_LOCATION_SETTINGS } from "@t3tools/contracts";
 import {
   serializeAssistantCitation,
   withAssistantCitationComment,
@@ -832,6 +832,8 @@ describe("Vim mode", () => {
       command: () => ({ label: "", disabled: true, run: () => {} }),
       leaderLabel: "Space",
       actionItems: [],
+      showHidden: false,
+      placement: DEFAULT_WIKI_LOCATION_SETTINGS,
       setLine: () => {},
       threadItems: [],
       chatTabThreadIds: [],
