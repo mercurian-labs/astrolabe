@@ -13,7 +13,7 @@ import {
 import { useSearch } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
 import { ArrowDownIcon, ArrowUpIcon, ChevronRightIcon } from "lucide-react";
-import { type ChangeEvent, useContext, useId, useState } from "react";
+import { type ChangeEvent, useContext, useEffect, useId, useRef, useState } from "react";
 
 import { languageServersEnvironment } from "../../state/languageServers";
 import { useEnvironmentQuery } from "../../state/query";
@@ -468,6 +468,15 @@ export function LanguageServerProjectSettings({ members }: { members: ReadonlyAr
     });
   // Rows must not fold away under someone's eyes as a slower checkout answers.
   const arrived = checkouts.every(({ checks, failed }) => checks !== null || failed);
+  const shownAsked = useRef<string | undefined>(undefined);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- brings the row a file's header asked about into view, once the checks have drawn it
+  useEffect(() => {
+    if (!arrived || asked === undefined || shownAsked.current === asked) return;
+    shownAsked.current = asked;
+    document
+      .querySelector(`[data-language-server="${CSS.escape(asked)}"]`)
+      ?.scrollIntoView({ block: "center" });
+  }, [arrived, asked]);
   const allGroups = arrived ? languageGroups(servers) : [];
   const groups = allGroups.filter((group) => !group.every(untouched));
   const waitingGroups = allGroups.filter((group) => group.every(untouched));
@@ -489,6 +498,7 @@ export function LanguageServerProjectSettings({ members }: { members: ReadonlyAr
     group.map((server, index) => (
       <SettingsRow
         key={server.server}
+        data-language-server={server.server}
         title={server.companion === null ? server.languages : server.name}
         status={group.length > 1 && index === 0 ? "Runs first" : undefined}
         description={
