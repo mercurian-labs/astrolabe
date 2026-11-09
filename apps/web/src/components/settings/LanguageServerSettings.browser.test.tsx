@@ -47,6 +47,7 @@ vi.mock(import("../../state/use-atom-command"), async (original) => ({
 
 import { render } from "../../../test/render";
 import { LanguageServerProjectSettings } from "./LanguageServerSettings";
+import { SettingsPageContainer } from "./settingsLayout";
 import "~/index.css";
 
 const environmentId = EnvironmentId.make("env");
@@ -98,8 +99,10 @@ async function setup(
     return { _tag: "Success" };
   };
   const members = [{ environmentId, workspaceRoot: cwd, environmentLabel: null }];
+  const section = <LanguageServerProjectSettings members={members} />;
+  // Routed like the header's link: on the settings page, which handles its anchor.
   const screen = await render(
-    <LanguageServerProjectSettings members={members} />,
+    router === undefined ? section : <SettingsPageContainer>{section}</SettingsPageContainer>,
     router === undefined ? undefined : { router },
   );
   return { screen, changes };
@@ -132,7 +135,7 @@ it("keeps the server a file's header sent someone for out of the fold", async ()
     },
     {},
     true,
-    "/settings/projects?server=lua",
+    "/settings/projects?server=lua#project-language-servers",
   );
   await using _screen = screen;
   await expect.element(screen.getByText("Lua")).toBeVisible();
