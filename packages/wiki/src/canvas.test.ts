@@ -622,6 +622,44 @@ describe("placeCanvas", () => {
       );
     });
 
+    it("says where a card it brings in comes from: an earlier step, or its group on the map", () => {
+      const card = (id: string, x: number) => ({
+        id,
+        type: "text",
+        text: id,
+        x,
+        y: 0,
+        width: 100,
+        height: 60,
+      });
+      const data = canvasData({
+        nodes: [
+          { id: "g", type: "group", label: "Store", x: 1960, y: -40, width: 400, height: 140 },
+          card("a", 0),
+          card("b", 1000),
+          card("c", 2000),
+        ],
+        astrolabe: {
+          stories: [
+            {
+              title: "S",
+              steps: [
+                { note: "1", cards: ["a"] },
+                { note: "2", cards: ["b", "a", "c"] },
+              ],
+            },
+          ],
+        },
+      });
+      const second = canvasSteps(data)[1];
+      expect(
+        [...(second?.docked ?? new Map())].map(([id, each]) => [id, each.from, each.group]),
+      ).toEqual([
+        ["a", 0, undefined],
+        ["c", undefined, "Store"],
+      ]);
+    });
+
     it("keeps every card clear of the others", () => {
       const { nodes } = placeCanvas({
         cards: cards("a", "b", "c", "d", "e"),

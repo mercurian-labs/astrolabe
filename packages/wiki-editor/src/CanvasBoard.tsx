@@ -1082,10 +1082,12 @@ interface Shown {
   readonly simple: boolean;
 }
 
+/** Where a card a step brought in comes from; empty when it's only elsewhere on the board. */
 const dockedLabel = (step: CanvasStep | null, id: string) => {
-  if (step === null || !step.docked.has(id)) return undefined;
-  const from = step.docked.get(id)?.from;
-  return from === undefined ? "Earlier" : `From step ${from + 1}`;
+  const docked = step?.docked.get(id);
+  if (docked === undefined) return undefined;
+  if (docked.from !== undefined) return `From step ${docked.from + 1}`;
+  return docked.group === undefined ? "" : `From ${docked.group}`;
 };
 
 const NOTHING: Shown = { groups: [], cards: [], shapes: [], simple: false };

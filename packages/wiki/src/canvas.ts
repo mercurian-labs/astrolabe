@@ -5,7 +5,7 @@
  */
 
 export * from "./canvasPlace.ts";
-import { canvasArrowSides, canvasStepFrame } from "./canvasPlace.ts";
+import { canvasArrowSides, canvasStepFrame, insideGroup } from "./canvasPlace.ts";
 
 export type CanvasSide = "top" | "right" | "bottom" | "left";
 
@@ -135,12 +135,17 @@ export interface CanvasStep {
   readonly arrows: ReadonlySet<string>;
   /**
    * The step's cards that sit away from the rest, and where the step shows them: beside the frame,
-   * on the side they really are, so the camera stays close. With the step whose frame holds them,
-   * counting from 0.
+   * on the side they really are, so the camera stays close. With where they come from: the step
+   * whose frame holds them, counting from 0, else the labelled group they sit in.
    */
-  readonly docked: ReadonlyMap<string, CanvasBounds & { readonly from: number | undefined }>;
+  readonly docked: ReadonlyMap<string, CanvasDocked>;
   /** What the camera shows: the frame and the cards docked beside it. */
   readonly bounds: CanvasBounds;
+}
+
+export interface CanvasDocked extends CanvasBounds {
+  readonly from: number | undefined;
+  readonly group: string | undefined;
 }
 
 /** Room between a frame and a card docked beside it: clear of the frame's label. */
@@ -171,10 +176,24 @@ export function canvasSteps(data: CanvasData, story = 0): ReadonlyArray<CanvasSt
     const at = framed.findIndex((each) => each.inside.has(id));
     return at === -1 ? undefined : at;
   };
+  const groups = data.nodes.filter(
+    (node): node is CanvasGroupNode => node.type === "group" && node.label !== undefined,
+  );
+  // The innermost labelled group a card sits in.
+  const groupOf = (card: CanvasNode) => {
+    let found: CanvasGroupNode | undefined;
+    for (const group of groups) {
+      if (!insideGroup(group, card)) continue;
+      if (found === undefined || group.width * group.height < found.width * found.height) {
+        found = group;
+      }
+    }
+    return found?.label;
+  };
   return framed.flatMap(({ step, nodes, frame, inside }): CanvasStep[] => {
     if (frame === undefined) return [];
     let bounds = frame;
-    const docked = new Map<string, CanvasBounds & { readonly from: number | undefined }>();
+    const docked = new Map<string, CanvasDocked>();
     const along = { top: frame.x, bottom: frame.x, left: frame.y, right: frame.y };
     // Cards docked on one side keep the order they stand in on the board.
     const away = nodes
@@ -197,7 +216,7 @@ export function canvasSteps(data: CanvasData, story = 0): ReadonlyArray<CanvasSt
             };
       along[side] += (side === "top" || side === "bottom" ? width : height) + DOCK_SPACING;
       const rect = { ...spot, width, height };
-      docked.set(node.id, { ...rect, from: home(node.id) });
+      docked.set(node.id, { ...rect, from: home(node.id), group: groupOf(node) });
       bounds = unionBounds(bounds, rect);
     }
     const lit = new Set(nodes.map((node) => node.id));

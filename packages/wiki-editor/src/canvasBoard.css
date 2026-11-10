@@ -1126,7 +1126,12 @@ button.cv-step-number {
   background: var(--primary);
   color: var(--primary-foreground, var(--background));
 }
-/* A story's frame is drawn over the board, never picked: only its number takes a click. */
+/* A story's frame is a view over the board, not a region of it: an outline, never picked. */
 .cv-story-frame {
   pointer-events: none;
+  background: none;
+  border-style: dashed;
+}
+.cv-board[data-walking] .cv-story-frame[data-lit="true"] {
+  border-style: solid;
 }
