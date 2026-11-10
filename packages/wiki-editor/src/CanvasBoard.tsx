@@ -17,6 +17,7 @@ import {
   type CanvasMarks,
   type CanvasNode,
   type CanvasSide,
+  canvasSteps,
 } from "@mercurian/wiki/canvas";
 import { pastedFileName } from "@mercurian/wiki/placement";
 import {
@@ -753,6 +754,7 @@ const CardNode = memo(function CardNode({
   editing,
   editable,
   raised,
+  lit,
 }: {
   readonly node: Exclude<CanvasNode, CanvasGroupNode>;
   readonly selected: boolean;
@@ -766,6 +768,8 @@ const CardNode = memo(function CardNode({
   readonly editable: boolean;
   /** Where a click left it among the cards it overlaps, for this session. */
   readonly raised: number | undefined;
+  /** Whether the step being walked shows it; unset outside a walk. */
+  readonly lit: boolean | undefined;
 }) {
   const { mode } = useBoard();
   const { style, ...color } = colorProps(node.color);
@@ -779,6 +783,7 @@ const CardNode = memo(function CardNode({
       data-card-id={node.id}
       data-selected={selected || undefined}
       data-mark={mark}
+      data-lit={lit}
       data-editing={editing || undefined}
       style={{ ...position(node), ...style, ...(raised === undefined ? {} : { zIndex: raised }) }}
       {...color}
@@ -848,6 +853,9 @@ const GroupNode = memo(function GroupNode({
   editing,
   editable,
   onLabel,
+  step,
+  lit,
+  onStep,
 }: {
   readonly node: CanvasGroupNode;
   readonly selected: boolean;
@@ -857,6 +865,10 @@ const GroupNode = memo(function GroupNode({
   readonly editing: boolean;
   readonly editable: boolean;
   readonly onLabel: (id: string, label: string) => void;
+  /** Its place in the walk, counting from 0, when it's a frame. */
+  readonly step: number | undefined;
+  readonly lit: boolean | undefined;
+  readonly onStep: ((step: number) => void) | undefined;
 }) {
   const { host } = useBoard();
   const { style, ...color } = colorProps(node.color);
@@ -867,6 +879,8 @@ const GroupNode = memo(function GroupNode({
       data-card-id={node.id}
       data-selected={selected || undefined}
       data-mark={mark}
+      data-frame={step === undefined ? undefined : ""}
+      data-lit={lit}
       style={{ ...position(node), ...style }}
       {...color}
     >
@@ -881,8 +895,26 @@ const GroupNode = memo(function GroupNode({
           })}
       {editing ? (
         <GroupLabelEditor label={node.label ?? ""} onDone={(label) => onLabel(node.id, label)} />
-      ) : node.label === undefined ? null : (
-        <span className="cv-group-label">{node.label}</span>
+      ) : node.label === undefined && step === undefined ? null : (
+        <span className="cv-group-label">
+          {step === undefined ? null : onStep === undefined ? (
+            <span className="cv-step-number">{step + 1}</span>
+          ) : (
+            <button
+              type="button"
+              className="cv-step-number"
+              aria-label={`Show step ${step + 1}`}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                onStep(step);
+              }}
+            >
+              {step + 1}
+            </button>
+          )}
+          {node.label}
+        </span>
       )}
       {editable && selected ? <Dots /> : null}
       {editable && alone ? <Handles /> : null}
@@ -894,10 +926,12 @@ const EdgeNode = memo(function EdgeNode({
   shape,
   selected,
   mark,
+  lit,
 }: {
   readonly shape: CanvasEdgeShape;
   readonly selected: boolean;
   readonly mark: CanvasMark | undefined;
+  readonly lit: boolean | undefined;
 }) {
   const { edge, path, heads } = shape;
   const { style, ...color } = colorProps(edge.color);
@@ -907,6 +941,7 @@ const EdgeNode = memo(function EdgeNode({
       data-edge-id={edge.id}
       data-selected={selected || undefined}
       data-mark={mark}
+      data-lit={lit}
       style={style}
       {...color}
     >
@@ -922,12 +957,19 @@ const EdgeNode = memo(function EdgeNode({
 function EdgeLabel({
   edge,
   at,
+  lit,
 }: {
   readonly edge: CanvasEdge;
   readonly at: CanvasEdgeShape["labelAt"];
+  readonly lit: boolean | undefined;
 }) {
   return (
-    <span className="cv-edge-label" data-edge-label={edge.id} style={{ left: at.x, top: at.y }}>
+    <span
+      className="cv-edge-label"
+      data-edge-label={edge.id}
+      data-lit={lit}
+      style={{ left: at.x, top: at.y }}
+    >
       {edge.label}
     </span>
   );
@@ -1064,6 +1106,10 @@ class BoardLive {
   editing: CanvasEditing | null = null;
   openMenu: OpenMenu | null = null;
   readAt: string | undefined = undefined;
+  walkable = false;
+  /** The frame a free board's camera last moved to. */
+  walkedTo: string | null = null;
+  whole: CanvasBounds = { x: 0, y: 0, width: 0, height: 0 };
   openingCamera: CanvasCamera | null | undefined;
   onCamera: ((camera: CanvasCamera | null) => void) | undefined = undefined;
   onSettings: ((patch: Partial<CanvasBoardSettings>) => void) | undefined = undefined;
@@ -1185,6 +1231,8 @@ export function CanvasBoard({
   onReadOnly,
   settings = DEFAULT_SETTINGS,
   onSettings,
+  step = null,
+  onStep,
   ref,
 }: {
   readonly data: CanvasData;
@@ -1208,6 +1256,10 @@ export function CanvasBoard({
   readonly onReadOnly?: ((on: boolean) => void) | undefined;
   readonly settings?: CanvasBoardSettings;
   readonly onSettings?: ((patch: Partial<CanvasBoardSettings>) => void) | undefined;
+  /** The frame being walked, from 0, in `canvasSteps` order: the camera shows only it. */
+  readonly step?: number | null;
+  /** Asked to walk from a frame, as its number is clicked. */
+  readonly onStep?: ((step: number) => void) | undefined;
   readonly ref?: Ref<CanvasBoardHandle>;
 }) {
   const boardRef = useRef<HTMLDivElement>(null);
@@ -1222,7 +1274,14 @@ export function CanvasBoard({
   const editable = canvasDocument !== null && !readOnly && mode === "free";
   const [view] = useState(() => new CanvasView());
   const [live] = useState(() => new BoardLive(data, marks, openingCamera));
-  const bounds = useMemo(() => canvasBounds(data), [data]);
+  const steps = useMemo(() => canvasSteps(data), [data]);
+  const stepOf = useMemo(
+    () => new Map(steps.map((each, index) => [each.frame.id, index] as const)),
+    [steps],
+  );
+  const active = step === null ? null : (steps[step] ?? null);
+  const whole = useMemo(() => canvasBounds(data), [data]);
+  const bounds = active?.bounds ?? whole;
   const layout = useMemo(() => layoutOf(data, live.layout), [data, live]);
   const [shown, setShown] = useState(NOTHING);
   const [selection, setSelection] = useState<CanvasSelection>(NO_SELECTION);
@@ -1266,7 +1325,8 @@ export function CanvasBoard({
   }, [view, live]);
 
   const [show] = useState(() => (camera: CanvasCamera, width: number, height: number) => {
-    const window = cameraWindow(camera, width, height, CULL_MARGIN);
+    // A walk's camera moves are animated: what's about to come into view must already be there.
+    const window = live.walkable ? live.whole : cameraWindow(camera, width, height, CULL_MARGIN);
     const next = inView(live.layout, window, camera.zoom < live.settings.simpleZoom);
     const overview = next.simple && next.cards.length > OVERVIEW_CARDS;
     if (overview && overviewRef.current !== null) {
@@ -1535,13 +1595,21 @@ export function CanvasBoard({
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- new contents reach the view outside React, keeping a reader's camera where it was
   useLayoutEffect(() => {
-    live.update({ onCamera, layout, marks, bounds });
+    live.update({ onCamera, layout, marks, bounds, walkable: steps.length > 0, whole });
     reads.files.readFrom((paths) => host.readFiles?.(paths) ?? Promise.resolve([]));
     reads.code.readFrom(
       (keys) => host.readCodeStatus?.(keys.map(codeOfKey)) ?? Promise.resolve([]),
     );
     view.setBounds(bounds, mode === "fit");
-  }, [view, reads, host, layout, marks, bounds, mode, onCamera, live]);
+  }, [view, reads, host, layout, marks, bounds, whole, steps, mode, onCamera, live]);
+
+  const activeFrame = active?.frame.id ?? null;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a free board's camera is the reader's: only a change of step moves it, outside React
+  useLayoutEffect(() => {
+    if (mode !== "free" || live.walkedTo === activeFrame) return;
+    live.update({ walkedTo: activeFrame });
+    view.fit();
+  }, [activeFrame, mode, view, live]);
 
   // Changing a commit's cards catches the eye once; the marks are what stay. A board with no
   // revision never changes under its reader, and one being edited says which cards came from
@@ -1918,6 +1986,8 @@ export function CanvasBoard({
       data-editable={editable || undefined}
       data-takes-documents={(editable && mode === "free") || undefined}
       data-card-names={settings.cardNames}
+      data-walkable={steps.length > 0 || undefined}
+      data-walking={active !== null || undefined}
       role="group"
       aria-label={label}
       {...interactive}
@@ -1935,6 +2005,9 @@ export function CanvasBoard({
               editing={editing?.kind === "group" && editing.id === node.id}
               editable={editable}
               onLabel={finishGroupLabel}
+              step={stepOf.get(node.id)}
+              lit={active === null ? undefined : active.frame.id === node.id}
+              onStep={onStep}
             />
           ))}
           <svg className="cv-edges" aria-hidden="true" width="1" height="1">
@@ -1944,13 +2017,21 @@ export function CanvasBoard({
                 shape={shape}
                 selected={shape.edge.id === selection.arrow}
                 mark={marks.arrows[shape.edge.id]}
+                lit={active === null ? undefined : active.arrows.has(shape.edge.id)}
               />
             ))}
           </svg>
           {shown.shapes.flatMap(({ edge, labelAt }) =>
             edge.label === undefined || editedArrow?.edge.id === edge.id
               ? []
-              : [<EdgeLabel key={edge.id} edge={edge} at={labelAt} />],
+              : [
+                  <EdgeLabel
+                    key={edge.id}
+                    edge={edge}
+                    at={labelAt}
+                    lit={active === null ? undefined : active.arrows.has(edge.id)}
+                  />,
+                ],
           )}
           {editedArrow === undefined ? null : (
             <EdgeLabelEditor
@@ -1973,6 +2054,7 @@ export function CanvasBoard({
               }
               editable={editable}
               raised={raised.get(node.id)}
+              lit={active === null ? undefined : active.cards.has(node.id)}
             />
           ))}
         </div>

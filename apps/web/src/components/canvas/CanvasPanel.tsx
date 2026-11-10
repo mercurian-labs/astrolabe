@@ -1,10 +1,13 @@
 import { useAtomValue } from "@effect/atom-react";
+import type { CanvasView } from "@t3tools/client-runtime/canvasViews";
 import { type ScopedThreadRef, TurnItemId } from "@t3tools/contracts";
-import { Suspense } from "react";
+import { canvasSteps } from "@mercurian/wiki/canvas";
+import { Suspense, useState } from "react";
 
 import { canvasViewsAtom, canvasViewsKey } from "~/state/canvasViews";
 
 import { canvasHost, LazyCanvasBoard } from "./CanvasFrame";
+import { CanvasStepBar, onStepKey } from "./CanvasStepBar";
 import { KeepCanvasButton } from "./KeepCanvas";
 import { useThreadCanvasStore } from "./threadCanvasStore";
 
@@ -21,8 +24,23 @@ export function CanvasPanel({ threadRef }: { readonly threadRef: ScopedThreadRef
       </p>
     );
   }
+  return <CanvasPanelBoard key={view.id} view={view} threadRef={threadRef} />;
+}
+
+function CanvasPanelBoard({
+  view,
+  threadRef,
+}: {
+  readonly view: CanvasView & { readonly id: string };
+  readonly threadRef: ScopedThreadRef;
+}) {
+  const steps = canvasSteps(view.data);
+  const [step, setStep] = useState<number | null>(null);
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div
+      className="flex min-h-0 flex-1 flex-col"
+      onKeyDown={(event) => onStepKey(event, steps.length, step, setStep)}
+    >
       <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border pr-1 pl-3">
         <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{view.title}</p>
         <KeepCanvasButton
@@ -36,14 +54,16 @@ export function CanvasPanel({ threadRef }: { readonly threadRef: ScopedThreadRef
       <div className="min-h-0 flex-1">
         <Suspense fallback={null}>
           <LazyCanvasBoard
-            key={view.id}
             data={view.data}
             mode="free"
             host={canvasHost(threadRef)}
             label={view.title}
+            step={step}
+            onStep={setStep}
           />
         </Suspense>
       </div>
+      <CanvasStepBar steps={steps} step={step} onStep={setStep} />
     </div>
   );
 }

@@ -1,13 +1,14 @@
-import { canvasBounds, type CanvasCodeReference } from "@mercurian/wiki/canvas";
+import { canvasBounds, canvasSteps, type CanvasCodeReference } from "@mercurian/wiki/canvas";
 import type { CanvasView } from "@t3tools/client-runtime/canvasViews";
 import type { ScopedThreadRef, ThreadId, TurnItemId } from "@t3tools/contracts";
 import { Maximize2Icon } from "lucide-react";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useState } from "react";
 
 import { readLocalApi } from "~/localApi";
 import { useRightPanelStore } from "~/rightPanelStore";
 
 import { Button } from "../ui/button";
+import { CanvasStepBar, onStepKey } from "./CanvasStepBar";
 import { KeepCanvasButton } from "./KeepCanvas";
 import { showThreadCanvas } from "./threadCanvasStore";
 
@@ -52,8 +53,13 @@ export function CanvasFrame({
   readonly source: { readonly threadId: ThreadId; readonly itemId: TurnItemId };
 }) {
   const { width, height } = canvasBounds(view.data);
+  const steps = canvasSteps(view.data);
+  const [step, setStep] = useState<number | null>(null);
   return (
-    <figure className="m-0 overflow-hidden rounded-lg border border-border">
+    <figure
+      className="m-0 overflow-hidden rounded-lg border border-border"
+      onKeyDown={(event) => onStepKey(event, steps.length, step, setStep)}
+    >
       <figcaption className="flex h-8 items-center gap-2 border-b border-border pr-1 pl-3 text-xs text-muted-foreground">
         <span className="min-w-0 flex-1 truncate">{view.title}</span>
         {threadRef === null ? null : (
@@ -86,9 +92,12 @@ export function CanvasFrame({
             mode="fit"
             host={canvasHost(threadRef)}
             label={view.title}
+            step={step}
+            onStep={setStep}
           />
         </Suspense>
       </div>
+      <CanvasStepBar steps={steps} step={step} onStep={setStep} />
     </figure>
   );
 }

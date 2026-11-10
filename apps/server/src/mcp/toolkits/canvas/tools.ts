@@ -19,7 +19,7 @@ import * as McpInvocationContext from "../../McpInvocationContext.ts";
 
 const CanvasShowTool = Tool.make(CANVAS_SHOW_TOOL_NAME, {
   description:
-    "Draw a diagram of boxes and arrows in this thread: a flow, an architecture, dependencies. Send what is on it, never where: it is laid out for you. Shown above your reply; don't restate it. It stays in the thread unless the user keeps it. Charts, mockups, rich pages: `html_render`. The real code's structure: `astrolabe_code_graph_show`.",
+    "Draw a diagram of boxes and arrows in this thread: a flow, an architecture, dependencies. Send what is on it, never where: it is laid out for you. Explaining how something works, one stage after another: use `frames`, which the reader walks one at a time, each with its note. Shown above your reply; don't restate it. It stays in the thread unless the user keeps it. Charts, mockups, rich pages: `html_render`. The real code's structure: `astrolabe_code_graph_show`.",
   parameters: CanvasShowInput,
   success: CanvasShowResult,
   failure: OrchestratorMcpFailure,
