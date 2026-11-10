@@ -1,7 +1,7 @@
 import { canvasBounds, type CanvasCodeReference } from "@mercurian/wiki/canvas";
 import type { CanvasView } from "@t3tools/client-runtime/canvasViews";
 import type { ScopedThreadRef, ThreadId, TurnItemId } from "@t3tools/contracts";
-import { SquareArrowOutUpRightIcon } from "lucide-react";
+import { MessageSquarePlusIcon, SquareArrowOutUpRightIcon } from "lucide-react";
 import { lazy, Suspense } from "react";
 
 import { readLocalApi } from "~/localApi";
@@ -55,7 +55,7 @@ export function CanvasFrame({
   readonly source: { readonly threadId: ThreadId; readonly itemId: TurnItemId };
 }) {
   const { width, height } = canvasBounds(view.data);
-  const walk = useCanvasWalk(view, threadRef, source);
+  const walk = useCanvasWalk(view, threadRef === null ? null : source);
   return (
     <figure
       className="m-0 overflow-hidden rounded-lg border border-border"
@@ -63,6 +63,23 @@ export function CanvasFrame({
     >
       <figcaption className="flex h-8 items-center gap-2 border-b border-border pr-1 pl-3 text-xs text-muted-foreground">
         <span className="min-w-0 flex-1 truncate">{view.title}</span>
+        {walk.ask === undefined ? null : (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={walk.ask.label}
+                  onClick={walk.ask.run}
+                />
+              }
+            >
+              <MessageSquarePlusIcon />
+            </TooltipTrigger>
+            <TooltipPopup side="bottom">{walk.ask.label}</TooltipPopup>
+          </Tooltip>
+        )}
         {threadRef === null ? null : (
           <>
             <KeepCanvasButton

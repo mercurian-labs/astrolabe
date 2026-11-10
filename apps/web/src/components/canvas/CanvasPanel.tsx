@@ -1,7 +1,10 @@
 import { useAtomValue } from "@effect/atom-react";
 import type { CanvasView } from "@t3tools/client-runtime/canvasViews";
 import { type ScopedThreadRef, TurnItemId } from "@t3tools/contracts";
+import { MessageSquarePlusIcon } from "lucide-react";
 import { Suspense } from "react";
+
+import { TabHeader } from "~/panes/TabHeader";
 
 import { canvasViewsAtom, canvasViewsKey } from "~/state/canvasViews";
 
@@ -34,25 +37,30 @@ function CanvasPanelBoard({
   readonly view: CanvasView & { readonly id: string };
   readonly threadRef: ScopedThreadRef;
 }) {
-  const walk = useCanvasWalk(view, threadRef, {
-    threadId: threadRef.threadId,
-    itemId: TurnItemId.make(view.id),
-  });
+  const itemId = TurnItemId.make(view.id);
+  const walk = useCanvasWalk(view, { threadId: threadRef.threadId, itemId });
   return (
     <div
       className="flex min-h-0 flex-1 flex-col"
       onKeyDown={(event) => onStepKey(event, walk.steps.length, walk.step, walk.go)}
     >
-      <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border pr-1 pl-3">
-        <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{view.title}</p>
-        <KeepCanvasButton
-          environmentId={threadRef.environmentId}
-          threadId={threadRef.threadId}
-          itemId={TurnItemId.make(view.id)}
-          title={view.title}
-          size="xs"
-        />
-      </div>
+      <TabHeader.Root>
+        <TabHeader.Title label="Canvas">{view.title}</TabHeader.Title>
+        <TabHeader.Actions>
+          {walk.ask === undefined ? null : (
+            <TabHeader.Action label={walk.ask.label} onClick={walk.ask.run}>
+              <MessageSquarePlusIcon />
+            </TabHeader.Action>
+          )}
+          <KeepCanvasButton
+            environmentId={threadRef.environmentId}
+            threadId={threadRef.threadId}
+            itemId={itemId}
+            title={view.title}
+            size="icon-sm"
+          />
+        </TabHeader.Actions>
+      </TabHeader.Root>
       <div className="min-h-0 flex-1">
         <Suspense fallback={null}>
           <LazyCanvasBoard

@@ -73,35 +73,37 @@ describe("CanvasFrame", () => {
     expect(useThreadCanvasStore.getState().shownByThread[canvasViewsKey(threadRef)]).toBe("item-1");
   });
 
-  it("puts a board and its comment in the composer, or sends it from there", async () => {
+  it("asks about the whole board, or about the step on screen", async () => {
     const addCanvas = vi.fn(() => true);
+    const walked = {
+      title: "A walk",
+      data: placeCanvas({
+        cards: [
+          { id: "a", text: "First card" },
+          { id: "b", text: "Second card" },
+        ],
+        frames: [
+          { id: "one", note: "It starts here.", cards: ["a"] },
+          { id: "two", label: "Then", note: "It ends here.", cards: ["b"] },
+        ],
+      }),
+    };
     await using screen = await render(
       <ComposerHandleContext value={{ current: { addCanvas } as unknown as ChatComposerHandle }}>
-        <CanvasFrame id="item-1" view={view} threadRef={threadRef} source={source} />
+        <CanvasFrame id="item-1" view={walked} threadRef={threadRef} source={source} />
       </ComposerHandleContext>,
       { router: false }, // The frame reads no route.
     );
-    const keep = screen.getByRole("button", { name: `Keep ${view.title}` });
-    await userEvent.click(keep);
-    const comment = screen.getByRole("textbox", { name: "Comment on this canvas" });
-    await userEvent.fill(comment, "Save it");
-    await userEvent.keyboard("{Enter}");
-    expect(addCanvas).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({
-        kind: "canvas",
-        threadId: source.threadId,
-        itemId: source.itemId,
-        comment: "Save it",
-      }),
-      { send: false },
-    );
-    await expect.element(comment).not.toBeInTheDocument();
-
-    await userEvent.click(keep);
-    await userEvent.keyboard("{Meta>}{Enter}{/Meta}");
+    await userEvent.click(screen.getByRole("button", { name: "Ask about this canvas" }));
     expect(addCanvas).toHaveBeenLastCalledWith(
-      expect.not.objectContaining({ comment: expect.anything() }),
-      { send: true },
+      expect.not.objectContaining({ step: expect.anything() }),
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Walk through" }));
+    await userEvent.click(screen.getByRole("button", { name: "Next step" }));
+    await userEvent.click(screen.getByRole("button", { name: "Ask about step 2" }));
+    expect(addCanvas).toHaveBeenLastCalledWith(
+      expect.objectContaining({ itemId: source.itemId, step: "Step 2 of 2, Then: It ends here." }),
     );
   });
 
