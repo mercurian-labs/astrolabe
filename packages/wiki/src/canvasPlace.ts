@@ -46,6 +46,16 @@ export interface CanvasDrawing {
         readonly color?: string | undefined;
       }>
     | undefined;
+  /** How the board is laid out; chosen from what it holds when left out. */
+  readonly layout?:
+    | {
+        readonly kind?: CanvasLayoutKind | undefined;
+        /** Which way a flow or a tree runs. */
+        readonly direction?: "right" | "down" | undefined;
+        /** The card a radial board circles. */
+        readonly center?: string | undefined;
+      }
+    | undefined;
   /** Ways to tell the board, each walked a step at a time. A card can be in several steps. */
   readonly stories?:
     | ReadonlyArray<{
@@ -58,6 +68,13 @@ export interface CanvasDrawing {
       }>
     | undefined;
 }
+
+/**
+ * flow: steps and dependencies. lanes: who does what over time, a lane per group and a column per
+ * step. tree: a hierarchy. map: areas side by side, a group each. radial: one idea and its
+ * surroundings.
+ */
+export type CanvasLayoutKind = "flow" | "lanes" | "tree" | "map" | "radial";
 
 export const CANVAS_PRESETS: Readonly<Record<string, string>> = {
   red: "1",
@@ -115,6 +132,15 @@ function textHeight(text: string, width: number): number {
   }
   return height;
 }
+
+/** Room a group leaves around what it holds: its label above, padding on every side. */
+export const CANVAS_GROUP_INSET = {
+  top: GROUP_PADDING + GROUP_LABEL,
+  side: GROUP_PADDING,
+} as const;
+
+/** How big a card is drawn, by what it says. */
+export const canvasCardBox = (card: CanvasDrawing["cards"][number]) => cardBox(card);
 
 function cardBox(card: CanvasDrawing["cards"][number]): Box {
   const text = card.text ?? "";
@@ -286,6 +312,19 @@ export function canvasDrawingProblems(drawing: CanvasDrawing): string[] {
   for (const card of drawing.cards) unique(card.id);
   const groups = new Set((drawing.groups ?? []).map((group) => group.id));
   const cardIds = new Set(drawing.cards.map((card) => card.id));
+  const kind = drawing.layout?.kind;
+  if (kind === "lanes" && (drawing.groups ?? []).length === 0) {
+    problems.push("A `lanes` layout needs `groups`: each is a lane.");
+  }
+  if ((kind === "tree" || kind === "radial") && (drawing.groups ?? []).length > 0) {
+    problems.push(
+      `A \`${kind}\` layout draws no groups: leave them out, or use \`flow\` or \`map\`.`,
+    );
+  }
+  const center = drawing.layout?.center;
+  if (center !== undefined && !cardIds.has(center)) {
+    problems.push(`The layout's center names a card that isn't here: "${center}".`);
+  }
   for (const story of drawing.stories ?? []) {
     if (story.steps.length === 0) problems.push(`Story "${story.title}" needs a step.`);
     story.steps.forEach((step, index) => {
@@ -336,6 +375,48 @@ export function canvasDrawingProblems(drawing: CanvasDrawing): string[] {
  * Grouped cards and groups must name ids the drawing holds; arrows that don't are left out.
  */
 export function placeCanvas(drawing: CanvasDrawing): CanvasData {
+  const kind = canvasLayoutKind(drawing);
+  const first = drawing.stories?.[0];
+  if (kind === "lanes") return placeLanes(drawing);
+  if (kind === undefined && first !== undefined) return placeStory(drawing, first);
+  return placeMap(drawing);
+}
+
+/**
+ * The layout a board asks for, or the one its contents suggest: lanes for a story told across
+ * groups, a map for groups alone, a flow otherwise. None for a story with no groups, which lays
+ * out by its steps.
+ */
+export function canvasLayoutKind(drawing: CanvasDrawing): CanvasLayoutKind | undefined {
+  const asked = drawing.layout?.kind;
+  if (asked !== undefined) return asked;
+  const grouped = (drawing.groups ?? []).length > 0;
+  const told = (drawing.stories ?? []).length > 0;
+  if (told) return grouped ? "lanes" : undefined;
+  return grouped ? "map" : "flow";
+}
+
+/**
+ * A board from where its cards and groups go: groups beneath the cards, each arrow between the
+ * sides that face, and the drawing's stories. Anything without a place is left out.
+ */
+export function canvasFromRects(
+  drawing: CanvasDrawing,
+  rects: ReadonlyMap<string, CanvasBounds>,
+): CanvasData {
+  const groupNodes = (drawing.groups ?? []).flatMap((group): CanvasNode[] => {
+    const rect = rects.get(group.id);
+    if (rect === undefined) return [];
+    return [
+      {
+        type: "group",
+        id: group.id,
+        ...rect,
+        ...(group.label === undefined ? {} : { label: group.label }),
+        ...presetColor(group.color),
+      },
+    ];
+  });
   const stories: CanvasStory[] = (drawing.stories ?? []).map((story) => ({
     title: story.title,
     steps: story.steps.map((step) => ({
@@ -344,12 +425,97 @@ export function placeCanvas(drawing: CanvasDrawing): CanvasData {
       cards: step.cards,
     })),
   }));
-  const first = stories[0];
-  const board =
-    (drawing.groups ?? []).length === 0 && first !== undefined
-      ? placeStory(drawing, first)
-      : placeMap(drawing);
-  return stories.length === 0 ? board : { ...board, stories };
+  return {
+    nodes: [...groupNodes, ...cardNodesAt(drawing.cards, rects)],
+    edges: edgesAt(drawing.arrows ?? [], rects),
+    ...(stories.length === 0 ? {} : { stories }),
+  };
+}
+
+/** Room between lanes, so each reads as its own band. */
+const LANE_GAP = CROSS_GAP;
+
+/**
+ * Lanes: a band per group, top to bottom in the drawing's order, and a column per step of the
+ * first story, so a step's cards line up across the lanes it touches. Without a story, columns
+ * follow the arrows. Cards in no group share a last band with no label.
+ */
+function placeLanes(drawing: CanvasDrawing): CanvasData {
+  const cards = drawing.cards;
+  const boxOf = new Map(cards.map((card) => [card.id, cardBox(card)]));
+  const steps = drawing.stories?.[0]?.steps ?? [];
+  const column = new Map<string, number>();
+  if (steps.length > 0) {
+    steps.forEach((step, index) => {
+      for (const id of step.cards) if (boxOf.has(id) && !column.has(id)) column.set(id, index);
+    });
+    // A card no step names follows the cards that point at it, or waits in a last column.
+    const arrows = drawing.arrows ?? [];
+    for (let pass = 0; pass < cards.length; pass++) {
+      let moved = false;
+      for (const card of cards) {
+        if (column.has(card.id)) continue;
+        const after = arrows.flatMap((arrow) =>
+          arrow.to === card.id && column.has(arrow.from) ? [column.get(arrow.from)! + 1] : [],
+        );
+        if (after.length === 0) continue;
+        column.set(card.id, Math.max(...after));
+        moved = true;
+      }
+      if (!moved) break;
+    }
+    for (const card of cards) if (!column.has(card.id)) column.set(card.id, steps.length);
+  } else {
+    const boxes = [...boxOf.values()];
+    const links = (drawing.arrows ?? []).filter(
+      (arrow) => boxOf.has(arrow.from) && boxOf.has(arrow.to) && arrow.from !== arrow.to,
+    );
+    ranks(boxes, links).forEach((rank, index) => {
+      for (const box of rank) column.set(box.id, index);
+    });
+    for (const card of cards) if (!column.has(card.id)) column.set(card.id, 0);
+  }
+
+  const groupIds = new Set((drawing.groups ?? []).map((group) => group.id));
+  const laneOf = (card: CanvasDrawing["cards"][number]) =>
+    card.group !== undefined && groupIds.has(card.group) ? card.group : "";
+  const lanes = [...(drawing.groups ?? []).map((group) => group.id), ""];
+  const columns = Math.max(0, ...column.values()) + 1;
+  const width = Array.from({ length: columns }, () => 0);
+  for (const card of cards) {
+    const at = column.get(card.id) ?? 0;
+    width[at] = Math.max(width[at] ?? 0, boxOf.get(card.id)?.width ?? 0);
+  }
+  const left: number[] = [];
+  let x = GROUP_PADDING;
+  for (const each of width) {
+    left.push(x);
+    if (each > 0) x += each + RANK_GAP;
+  }
+  const right = x - RANK_GAP + GROUP_PADDING;
+
+  const rects = new Map<string, CanvasBounds>();
+  let y = 0;
+  for (const lane of lanes) {
+    const inLane = cards.filter((card) => laneOf(card) === lane);
+    if (inLane.length === 0 && lane === "") continue;
+    const top = y + GROUP_LABEL + GROUP_PADDING;
+    let tallest = 0;
+    for (let at = 0; at < columns; at++) {
+      let down = top;
+      for (const card of inLane.filter((each) => column.get(each.id) === at)) {
+        const box = boxOf.get(card.id);
+        if (box === undefined) continue;
+        rects.set(card.id, { x: left[at] ?? 0, y: down, width: box.width, height: box.height });
+        down += box.height + CROSS_GAP;
+      }
+      tallest = Math.max(tallest, down - CROSS_GAP - top);
+    }
+    const bottom = top + Math.max(tallest, GROUP_LABEL) + GROUP_PADDING;
+    if (lane !== "") rects.set(lane, { x: 0, y, width: right, height: bottom - y });
+    y = bottom + LANE_GAP;
+  }
+  return canvasFromRects(drawing, rects);
 }
 
 /** A board laid out by its arrows, with its groups as regions. */
@@ -421,23 +587,7 @@ function placeMap(drawing: CanvasDrawing): CanvasData {
     });
   }
 
-  const groupNodes = groups.flatMap((group): CanvasNode[] => {
-    const rect = rects.get(group.id);
-    if (rect === undefined) return [];
-    return [
-      {
-        type: "group",
-        id: group.id,
-        ...rect,
-        ...(group.label === undefined ? {} : { label: group.label }),
-        ...presetColor(group.color),
-      },
-    ];
-  });
-  return {
-    nodes: [...groupNodes, ...cardNodesAt(cards, rects)],
-    edges: edgesAt(arrows, rects),
-  };
+  return canvasFromRects(drawing, rects);
 }
 
 const presetColor = (name: string | undefined) =>
@@ -544,7 +694,10 @@ export function canvasStepFrame(cards: ReadonlyArray<CanvasNode>): {
  * first step that names it. When its first two steps sit side by side in a row, it goes between
  * them, so both frames stretch over it and overlap. Cards no step names go in a grid below.
  */
-function placeStory(drawing: CanvasDrawing, story: CanvasStory): CanvasData {
+function placeStory(
+  drawing: CanvasDrawing,
+  story: { readonly steps: ReadonlyArray<{ readonly cards: ReadonlyArray<string> }> },
+): CanvasData {
   const steps = story.steps;
   const cards = drawing.cards;
   const boxOf = new Map(cards.map((card) => [card.id, cardBox(card)]));
@@ -626,7 +779,7 @@ function placeStory(drawing: CanvasDrawing, story: CanvasStory): CanvasData {
     const next = rowsOf(perRow);
     if (miss(next) < miss(rects)) rects = next;
   }
-  return { nodes: cardNodesAt(cards, rects), edges: edgesAt(arrows, rects) };
+  return canvasFromRects(drawing, rects);
 }
 
 /** How `canvasPlace` measures what it can't: the sizes Obsidian gives a new card. */

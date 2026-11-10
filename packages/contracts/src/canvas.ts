@@ -81,6 +81,22 @@ export const CanvasShowStory = Schema.Struct({
 });
 export type CanvasShowStory = typeof CanvasShowStory.Type;
 
+export const CanvasShowLayout = Schema.Struct({
+  kind: Schema.optional(
+    Schema.Literals(["flow", "lanes", "tree", "map", "radial"]).annotate({
+      description:
+        "flow: steps and dependencies. lanes: who does what over time; groups are the lanes, a story's steps the columns. tree: a hierarchy. map: areas side by side; groups are the areas. radial: one idea and what surrounds it. Chosen for you when left out.",
+    }),
+  ),
+  direction: Schema.optional(
+    Schema.Literals(["right", "down"]).annotate({ description: "Which way a flow or tree runs." }),
+  ),
+  center: Schema.optional(
+    CardReference.annotate({ description: "The card a radial board circles." }),
+  ),
+});
+export type CanvasShowLayout = typeof CanvasShowLayout.Type;
+
 export const CanvasShowInput = Schema.Struct({
   title: Schema.NonEmptyString.annotate({ description: "A few words naming the diagram." }),
   cards: Schema.Array(CanvasShowCard)
@@ -88,6 +104,7 @@ export const CanvasShowInput = Schema.Struct({
     .annotate({ description: "Each needs text, url or path." }),
   arrows: Schema.optional(Schema.Array(CanvasShowArrow)),
   groups: Schema.optional(Schema.Array(CanvasShowGroup)),
+  layout: Schema.optional(CanvasShowLayout),
   stories: Schema.optional(
     Schema.Array(CanvasShowStory).annotate({
       description:

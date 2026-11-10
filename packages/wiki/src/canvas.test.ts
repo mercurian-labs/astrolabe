@@ -618,9 +618,60 @@ describe("placeCanvas", () => {
         groups: [{ id: "g", label: "G" }],
         arrows: [{ from: "a", to: "b" }],
       };
-      expect(positions(placeCanvas({ ...map, stories: [second] }))).toEqual(
-        positions(placeCanvas(map)),
+      expect(
+        positions(placeCanvas({ ...map, layout: { kind: "map" }, stories: [second] })),
+      ).toEqual(positions(placeCanvas(map)));
+    });
+
+    it("lays a story told across groups out in lanes, each step a column no card has to leave", () => {
+      const drawing: CanvasDrawing = {
+        cards: [
+          { id: "form", text: "Form", group: "browser" },
+          { id: "cookie", text: "Cookie", group: "browser" },
+          { id: "login", text: "POST /login", group: "server" },
+          { id: "check", text: "Check the hash", group: "server" },
+          { id: "users", text: "Users table", group: "store" },
+          { id: "sessions", text: "Sessions", group: "store" },
+        ],
+        groups: [
+          { id: "browser", label: "Browser" },
+          { id: "server", label: "API" },
+          { id: "store", label: "Storage" },
+        ],
+        arrows: [
+          { from: "form", to: "login" },
+          { from: "login", to: "users" },
+          { from: "check", to: "sessions" },
+          { from: "sessions", to: "cookie" },
+        ],
+        stories: [
+          story(
+            step("submit", "form", "login"),
+            step("find", "login", "users"),
+            step("check", "check", "users"),
+            step("session", "check", "sessions", "cookie"),
+          ),
+        ],
+      };
+      const board = placeCanvas(drawing);
+      const at = new Map(board.nodes.map((node) => [node.id, node]));
+      // Each lane is a band, top to bottom in order, holding its own cards.
+      const lanes = ["browser", "server", "store"].map((id) => at.get(id)!);
+      expect(lanes.map((lane) => lane.y)).toEqual(
+        lanes.map((lane) => lane.y).sort((a, b) => a - b),
       );
+      for (const card of drawing.cards)
+        expect(contains(at.get(card.group!)!, at.get(card.id)!)).toBe(true);
+      // Cards share the column of the first step that shows them.
+      expect(at.get("form")!.x).toBe(at.get("login")!.x);
+      expect(at.get("sessions")!.x).toBe(at.get("cookie")!.x);
+      expect(at.get("users")!.x).toBeGreaterThan(at.get("login")!.x);
+      expect(canvasSteps(board).map((each) => each.docked.size)).toEqual([0, 0, 0, 0]);
+      const cards = board.nodes.filter((node) => node.type !== "group");
+      for (const a of cards) {
+        for (const b of cards)
+          if (a.id !== b.id) expect(overlap(a, b), `${a.id} and ${b.id}`).toBe(false);
+      }
     });
 
     it("says where a card it brings in comes from: an earlier step, or its group on the map", () => {

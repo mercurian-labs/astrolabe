@@ -1,4 +1,4 @@
-import { canvasDocument, canvasDrawingProblems, placeCanvas } from "@mercurian/wiki/canvas";
+import { canvasDocument, canvasDrawingProblems } from "@mercurian/wiki/canvas";
 import {
   OrchestratorMcpFailure,
   ThreadId,
@@ -14,6 +14,7 @@ import * as Path from "effect/Path";
 import * as ProjectService from "../../../project/ProjectService.ts";
 import * as GitVcsDriver from "../../../vcs/GitVcsDriver.ts";
 import * as CanvasKeep from "../../../wiki/CanvasKeep.ts";
+import { layoutCanvas } from "../../../wiki/CanvasLayout.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import * as OrchestratorMcpService from "../../OrchestratorMcpService.ts";
@@ -78,14 +79,11 @@ export const layer = McpToolAccess.toLayer(CanvasToolkit, {
       const paths = input.cards.flatMap((card) => card.path ?? []);
       const code = paths.length > 0 ? yield* readCode(paths) : undefined;
       // Laid out once, here: the board never moves after, whatever the engine becomes.
+      const board = yield* layoutCanvas(input);
       const scope = yield* McpInvocationContext.McpInvocationContext;
       const service = yield* OrchestratorMcpService.OrchestratorMcpService;
       const canvasItemId = yield* service
-        .recordCanvas(scope, {
-          title: input.title,
-          document: canvasDocument(placeCanvas(input)),
-          code,
-        })
+        .recordCanvas(scope, { title: input.title, document: canvasDocument(board), code })
         .pipe(
           Effect.catch((error) =>
             Effect.logWarning("A canvas was shown without its layout recorded", {
