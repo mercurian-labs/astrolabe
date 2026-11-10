@@ -63,49 +63,51 @@ export function CanvasFrame({
     >
       <figcaption className="flex h-8 items-center gap-2 border-b border-border pr-1 pl-3 text-xs text-muted-foreground">
         <span className="min-w-0 flex-1 truncate">{view.title}</span>
-        {walk.ask === undefined ? null : (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-label={walk.ask.label}
-                  onClick={walk.ask.run}
-                />
-              }
-            >
-              <MessageSquarePlusIcon />
-            </TooltipTrigger>
-            <TooltipPopup side="bottom">{walk.ask.label}</TooltipPopup>
-          </Tooltip>
-        )}
-        {threadRef === null ? null : (
-          <>
-            <KeepCanvasButton
-              environmentId={threadRef.environmentId}
-              threadId={source.threadId}
-              itemId={source.itemId}
-              title={view.title}
-              size="icon-xs"
-            />
+        <div className="flex shrink-0 items-center gap-0.5">
+          {walk.ask === undefined ? null : (
             <Tooltip>
               <TooltipTrigger
                 render={
                   <Button
                     variant="ghost"
                     size="icon-xs"
-                    aria-label={`Open ${view.title} in a tab`}
-                    onClick={() => showThreadCanvas(threadRef, id)}
+                    aria-label={walk.ask.label}
+                    onClick={walk.ask.run}
                   />
                 }
               >
-                <SquareArrowOutUpRightIcon />
+                <MessageSquarePlusIcon />
               </TooltipTrigger>
-              <TooltipPopup side="bottom">Open in a tab</TooltipPopup>
+              <TooltipPopup side="bottom">{walk.ask.label}</TooltipPopup>
             </Tooltip>
-          </>
-        )}
+          )}
+          {threadRef === null ? null : (
+            <>
+              <KeepCanvasButton
+                environmentId={threadRef.environmentId}
+                threadId={source.threadId}
+                itemId={source.itemId}
+                title={view.title}
+                size="icon-xs"
+              />
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      aria-label={`Open ${view.title} in a tab`}
+                      onClick={() => showThreadCanvas(threadRef, id)}
+                    />
+                  }
+                >
+                  <SquareArrowOutUpRightIcon />
+                </TooltipTrigger>
+                <TooltipPopup side="bottom">Open in a tab</TooltipPopup>
+              </Tooltip>
+            </>
+          )}
+        </div>
       </figcaption>
       <div
         className="max-h-[520px] min-h-40 w-full"
