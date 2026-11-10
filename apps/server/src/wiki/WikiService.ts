@@ -163,8 +163,10 @@ import {
   locateBase,
   noteResult,
   orientResult,
+  searchFiles,
   type WikiLinksResult,
   type WikiOrientResult,
+  type WikiSearchResult,
 } from "./wikiViews.ts";
 
 /** A git command that exited non-zero; only ever the `cause` of a `WikiError`. */
@@ -206,6 +208,35 @@ export interface WikiReadTarget {
    * stand, unsaved edits and all, when it has one. A change request's detail lists them apart.
    */
   readonly checkout?: boolean | undefined;
+}
+
+/** The thread whose checkout of a wiki the fallback file tools work in. */
+export interface WikiCheckoutTarget {
+  readonly wikiId: WikiId;
+  readonly threadId?: ThreadId | undefined;
+}
+
+export interface WikiCheckoutReadResult {
+  /** Path from the checkout's root. */
+  readonly path: string;
+  readonly text: string;
+  readonly startLine: number;
+  readonly endLine: number;
+  readonly totalLines: number;
+}
+
+export interface WikiCheckoutWriteInput {
+  readonly wikiId: WikiId;
+  readonly path: string;
+  readonly content?: string | undefined;
+  readonly oldText?: string | undefined;
+  readonly newText?: string | undefined;
+  readonly delete?: boolean | undefined;
+}
+
+export interface WikiCheckoutWriteResult {
+  readonly path: string;
+  readonly change: "created" | "updated" | "deleted";
 }
 
 export class WikiService extends Context.Service<
@@ -310,6 +341,29 @@ export class WikiService extends Context.Service<
       input: WikiTransformInput,
       author: WikiAuthor,
     ) => Effect.Effect<WikiAmendResult | WikiCheckoutTransformResult, WikiError>;
+    /**
+     * A document in the thread's checkout of the wiki as it stands on disk, whole or lines
+     * `startLine` to `endLine`: for a session whose own file tools can't reach the checkout.
+     */
+    readonly checkoutRead: (
+      input: WikiCheckoutTarget & {
+        readonly path: string;
+        readonly startLine?: number | undefined;
+        readonly endLine?: number | undefined;
+      },
+    ) => Effect.Effect<WikiCheckoutReadResult, WikiError>;
+    /** Searches the paths and lines of the documents in the thread's checkout, unsaved edits included. */
+    readonly checkoutSearch: (
+      input: WikiCheckoutTarget & { readonly query: string },
+    ) => Effect.Effect<WikiSearchResult, WikiError>;
+    /**
+     * Writes a note or a base in the author's thread's checkout, uncommitted, for the turn's save
+     * to land: whole `content`, one exact `oldText` replaced by `newText`, or `delete`.
+     */
+    readonly checkoutWrite: (
+      input: WikiCheckoutWriteInput,
+      author: WikiAuthor,
+    ) => Effect.Effect<WikiCheckoutWriteResult, WikiError>;
     /**
      * A person's edit landing by itself: in the change request named, else the author's draft,
      * starting one on the first edit. Saves of one document in a run replace each other.
@@ -2829,6 +2883,169 @@ const make = Effect.gen(function* () {
       input.changeRequestId,
     );
 
+  /** The thread's checkout of the wiki, which the fallback file tools work in alone. */
+  const requireCheckout = Effect.fn("WikiService.requireCheckout")(function* (
+    wiki: WikiRecord,
+    threadId: ThreadId | null | undefined,
+  ) {
+    const folder =
+      threadId == null
+        ? null
+        : yield* threadCheckout(wiki, { wikiId: wiki.wikiId, threadId, checkout: true });
+    if (folder === null) {
+      return yield* new WikiError({
+        reason: "not-found",
+        message: `Your thread has no checkout of this ${wikiTerms(wiki).singular}.`,
+      });
+    }
+    return folder;
+  });
+
+  const outsideCheckout = (file: string) =>
+    new WikiError({
+      reason: "invalid",
+      message: `${file} is not a path inside the wiki: give one from its root, as in area/Name.md.`,
+    });
+
+  /** Where `file`, a wiki path, sits in a checkout. A link on disk leading out of it is refused. */
+  const checkoutFile = Effect.fn("WikiService.checkoutFile")(function* (
+    folder: string,
+    file: string,
+  ) {
+    const at = path.join(folder, file);
+    const root = yield* fileSystem
+      .realPath(folder)
+      .pipe(Effect.mapError(ioError("Could not read the checkout.")));
+    let probe = at;
+    while (
+      probe !== folder &&
+      !(yield* fileSystem.exists(probe).pipe(Effect.orElseSucceed(() => false)))
+    ) {
+      probe = path.dirname(probe);
+    }
+    const real = yield* fileSystem.realPath(probe).pipe(Effect.orElseSucceed(() => probe));
+    if (real !== root && !real.startsWith(`${root}${path.sep}`)) {
+      return yield* outsideCheckout(file);
+    }
+    return at;
+  });
+
+  const checkoutRead: WikiService["Service"]["checkoutRead"] = (input) =>
+    withWiki(input.wikiId, (wiki) =>
+      Effect.gen(function* () {
+        if (!isWikiPath(input.path)) return yield* outsideCheckout(input.path);
+        if (!isWikiDocument(input.path)) {
+          return yield* new WikiError({
+            reason: "invalid",
+            message: `${input.path} is not a note, base or canvas.`,
+          });
+        }
+        const folder = yield* requireCheckout(wiki, input.threadId);
+        const text = yield* fileSystem.readFileString(yield* checkoutFile(folder, input.path)).pipe(
+          Effect.mapError(
+            (cause) =>
+              new WikiError({
+                reason: "not-found",
+                message: `${input.path} is not in the wiki.`,
+                cause,
+              }),
+          ),
+        );
+        const lines = text.split("\n");
+        if (lines.at(-1) === "") lines.pop();
+        const startLine = Math.max(1, input.startLine ?? 1);
+        const endLine = Math.min(lines.length, input.endLine ?? lines.length);
+        return {
+          path: input.path,
+          text:
+            startLine === 1 && endLine === lines.length
+              ? text
+              : lines.slice(startLine - 1, endLine).join("\n"),
+          startLine,
+          endLine,
+          totalLines: lines.length,
+        };
+      }),
+    );
+
+  const checkoutSearch: WikiService["Service"]["checkoutSearch"] = (input) =>
+    withWiki(input.wikiId, (wiki) =>
+      Effect.gen(function* () {
+        const folder = yield* requireCheckout(wiki, input.threadId);
+        const { snapshot } = yield* checkoutSnapshot(wiki, folder);
+        return searchFiles(snapshot.files, input.query);
+      }),
+    );
+
+  const checkoutWrite: WikiService["Service"]["checkoutWrite"] = (input, author) =>
+    withWiki(input.wikiId, (wiki) =>
+      Effect.gen(function* () {
+        const file = input.path;
+        const refuse = (message: string) => new WikiError({ reason: "invalid", message });
+        if (!isWikiPath(file)) return yield* outsideCheckout(file);
+        if (isCanvasFile(file)) {
+          return yield* refuse("A canvas changes through a canvas transform, never its JSON.");
+        }
+        if (!isWikiDocument(file)) return yield* refuse(`${file} is not a note (.md) or a base.`);
+        const replacing = input.oldText !== undefined || input.newText !== undefined;
+        const modes = [input.content !== undefined, replacing, input.delete === true];
+        if (modes.filter(Boolean).length !== 1) {
+          return yield* refuse("Give one of content, oldText with newText, or delete.");
+        }
+        if (replacing && (input.oldText === undefined || input.newText === undefined)) {
+          return yield* refuse("oldText and newText go together.");
+        }
+        if (input.oldText === "") return yield* refuse("oldText cannot be empty.");
+        const folder = yield* requireCheckout(wiki, author.threadId);
+        return yield* locked(
+          wiki,
+          withWorkspaceLease(
+            folder,
+            Effect.gen(function* () {
+              const at = yield* checkoutFile(folder, file);
+              const existing = Option.getOrUndefined(
+                yield* fileSystem.readFileString(at).pipe(Effect.option),
+              );
+              const missing = new WikiError({
+                reason: "not-found",
+                message: `${file} is not in the wiki.`,
+              });
+              if (input.delete === true) {
+                if (existing === undefined) return yield* missing;
+                yield* fileSystem.remove(at);
+                return { path: file, change: "deleted" as const };
+              }
+              let next = input.content;
+              if (next === undefined) {
+                const oldText = input.oldText ?? "";
+                if (existing === undefined) return yield* missing;
+                const first = existing.indexOf(oldText);
+                if (first === -1) return yield* refuse(`oldText is not in ${file}.`);
+                if (existing.indexOf(oldText, first + 1) !== -1) {
+                  return yield* refuse(
+                    `oldText is in ${file} more than once: include more of the text around it.`,
+                  );
+                }
+                next = `${existing.slice(0, first)}${input.newText ?? ""}${existing.slice(first + oldText.length)}`;
+              }
+              yield* fileSystem.makeDirectory(path.dirname(at), { recursive: true });
+              yield* fileSystem.writeFileString(at, next);
+              return {
+                path: file,
+                change: existing === undefined ? "created" : "updated",
+              } as const;
+            }).pipe(
+              Effect.mapError((cause) =>
+                isWikiError(cause)
+                  ? cause
+                  : ioError("Could not write the note into the checkout.")(cause),
+              ),
+            ),
+          ),
+        );
+      }),
+    );
+
   const checkoutForThread: WikiService["Service"]["checkoutForThread"] = (input) =>
     withWiki(input.wikiId, (wiki) =>
       locked(
@@ -4387,6 +4604,9 @@ const make = Effect.gen(function* () {
     amend,
     transform,
     transformCheckout,
+    checkoutRead,
+    checkoutSearch,
+    checkoutWrite,
     autosave,
     listFiles,
     draftPromote,

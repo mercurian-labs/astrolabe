@@ -2150,6 +2150,104 @@ it.effect("lands a transform at once for a thread with no checkout of the wiki",
   ),
 );
 
+it.effect("reads, searches and writes a checkout's files for the turn's one amendment", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis, threadId, folder, save } = yield* threadWithCheckout(
+        harness,
+        "thread-files",
+      );
+      const author = agent(threadId);
+      const edit = (input: Omit<WikiService.WikiCheckoutWriteInput, "wikiId">) =>
+        wikis.checkoutWrite({ wikiId, ...input }, author);
+
+      assert.deepEqual(yield* wikis.checkoutRead({ wikiId, threadId, path: "Alpha.md" }), {
+        path: "Alpha.md",
+        text: FIXTURE["Alpha.md"],
+        startLine: 1,
+        endLine: 3,
+        totalLines: 3,
+      });
+      assert.equal(
+        (yield* wikis.checkoutRead({ wikiId, threadId, path: "Alpha.md", startLine: 3 })).text,
+        "Alpha builds on [[Beta]].",
+      );
+
+      assert.deepEqual(
+        yield* edit({ path: "Beta.md", oldText: "stands alone", newText: "waits" }),
+        {
+          path: "Beta.md",
+          change: "updated",
+        },
+      );
+      assert.equal(yield* read(folder, "Beta.md"), "# Beta\n\nBeta waits.\n");
+      assert.equal(
+        (yield* edit({ path: "area/Gamma.md", content: "Gamma, Gamma.\n" })).change,
+        "created",
+      );
+      assert.include(
+        (yield* failure(edit({ path: "area/Gamma.md", oldText: "Gamma", newText: "G" }))).message,
+        "more than once",
+      );
+      assert.include(
+        (yield* failure(edit({ path: "Beta.md", oldText: "stands alone", newText: "x" }))).message,
+        "is not in Beta.md",
+      );
+      assert.equal((yield* edit({ path: "Draft.md", content: "Gone soon.\n" })).change, "created");
+      assert.equal((yield* edit({ path: "Draft.md", delete: true })).change, "deleted");
+
+      const found = yield* wikis.checkoutSearch({ wikiId, threadId, query: "WAITS" });
+      assert.deepEqual(found, {
+        matches: [{ path: "Beta.md", lines: [{ line: 3, text: "Beta waits." }] }],
+        truncated: false,
+      });
+
+      // Nothing lands until the turn's save, which carries every write as one amendment.
+      assert.equal(yield* git(root, ["for-each-ref", "refs/heads/cr/"]), "");
+      const saved = yield* save();
+      assert.equal(saved!.changeRequest.amendments.length, 1);
+      assert.sameMembers([...saved!.changeRequest.files], ["Beta.md", "area/Gamma.md"]);
+      assert.equal(yield* git(folder, ["status", "--porcelain"]), "");
+    }),
+  ),
+);
+
+it.effect("keeps the checkout file tools inside the checkout, and bounds a search", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const { wikiId, wikis, threadId, folder } = yield* threadWithCheckout(harness, "thread-out");
+      const outside = yield* harness.folder("outside");
+      yield* fileSystem.symlink(outside, path.join(folder, "link")).pipe(Effect.orDie);
+      for (const file of ["../Escape.md", "/tmp/Escape.md", ".git/Escape.md", "link/Escape.md"]) {
+        const refused = yield* failure(
+          wikis.checkoutWrite({ wikiId, path: file, content: "Out." }, agent(threadId)),
+        );
+        assert.include(refused.message, "is not a path inside the wiki", file);
+      }
+      assert.deepEqual(yield* fileSystem.readDirectory(outside).pipe(Effect.orDie), []);
+      yield* fileSystem.remove(path.join(folder, "link")).pipe(Effect.orDie);
+      assert.equal(
+        (yield* failure(
+          wikis.checkoutRead({ wikiId, threadId: ThreadId.make("thread-none"), path: "Alpha.md" }),
+        )).reason,
+        "not-found",
+      );
+
+      yield* write(
+        folder,
+        Object.fromEntries(
+          Array.from({ length: 41 }, (_, at) => [`many/Note ${at}.md`, `A needle, ${at}.\n`]),
+        ),
+      );
+      const found = yield* wikis.checkoutSearch({ wikiId, threadId, query: "needle" });
+      assert.equal(found.matches.length, 40);
+      assert.isTrue(found.truncated);
+    }),
+  ),
+);
+
 const noteEdit = (text: string, readAt?: string) => ({
   document: "Alpha.md",
   write: {
