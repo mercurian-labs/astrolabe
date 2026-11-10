@@ -358,7 +358,6 @@ import { ThreadVisitWatermark } from "./chat/ThreadVisitWatermark";
 import { ChatTerminalDrawers } from "./chat/ChatTerminalDrawers";
 import { ChatRightPanel } from "./chat/ChatRightPanel";
 import { setReadingTurn } from "./lineage/readingTurn";
-import { ThreadChangeGroupPill } from "./changeRequests/groups/ThreadChangeGroupPill";
 import { PaneChatHeader } from "../panes/PaneChatHeader";
 import { useChatOwner } from "../panes/PaneSurfaceHost";
 import { isFocusedChatTab, takesPanelShortcut, useLiveSurfaceKeys } from "../panes/workspace";
@@ -3407,13 +3406,6 @@ export default function ChatView(props: ChatViewProps) {
                 : {})}
               {...(threadFindEnabled ? { onFindInThread: openThreadFindStable } : {})}
             />
-            {/* Astrolabe: the change group this thread's change requests are in. */}
-            {isServerThread ? (
-              <ThreadChangeGroupPill
-                environmentId={activeThread.environmentId}
-                threadId={activeThread.id}
-              />
-            ) : null}
           </PaneChatHeader>
         )}
 

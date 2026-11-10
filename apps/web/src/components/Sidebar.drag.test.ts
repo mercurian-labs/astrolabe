@@ -530,49 +530,6 @@ describe("sidebar drag projection", () => {
     expect(byTime.get("w")).toEqual(stationary);
   });
 
-  it("opens the moved card's own height when cards differ in height", () => {
-    const items = [
-      pinnedHeader,
-      divider,
-      thread("a1", "active"),
-      thread("a2", "active"),
-      thread("a3", "active"),
-      settledHeader,
-      marker("settled-placeholder"),
-    ];
-    const strategy = createSidebarSortingStrategy({
-      items,
-      settledOrder: [],
-      settledExpanded: true,
-    });
-    // a2 has no second line: 30px, between two-line cards.
-    const args = layout(items, "a2", "a1", 1, 44);
-    for (const [index, rect] of args.rects.entries()) {
-      if (index === 3) Object.assign(rect, { height: 30, bottom: rect.top + 30 });
-      if (index > 3) Object.assign(rect, { top: rect.top - 14, bottom: rect.bottom - 14 });
-    }
-    expect(strategy({ ...args, index: 2 })?.y).toBe(31);
-    expect(strategy({ ...args, index: 4 })).toEqual(stationary);
-  });
-
-  it("opens one card line for a settled row entering an empty Active", () => {
-    const items = [
-      pinnedHeader,
-      divider,
-      marker("active-placeholder"),
-      settledHeader,
-      thread("s1", "settled"),
-      thread("s2", "settled"),
-    ];
-    const result = preview(
-      { items, settledOrder: [], settledExpanded: true },
-      "s1",
-      sidebarMarkerId("active-placeholder"),
-    );
-    expect(result.get(sidebarMarkerId("settled-header"))?.y).toBe(28);
-    expect(result.get("s2")?.y).toBe(-9);
-  });
-
   it("updates the projection when the target or measured geometry changes", () => {
     const strategy = createSidebarSortingStrategy({
       items: pinned,

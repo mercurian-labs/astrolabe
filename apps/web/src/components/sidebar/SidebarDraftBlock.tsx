@@ -1,6 +1,6 @@
 import { discardComposerDraft } from "../../lib/discardComposerDraft";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
-import { XIcon } from "lucide-react";
+import { SquarePenIcon, XIcon } from "lucide-react";
 import {
   memo,
   useState,
@@ -20,14 +20,8 @@ import {
   type ComposerThreadDraftState,
   type DraftSessionState,
 } from "../../composerDraftStore";
-import { draftSurfaceClassName } from "./SidebarThreadRow";
-import {
-  SIDEBAR_ROW_SURFACE_CLASS,
-  SidebarAgentRowContent,
-  SidebarAgentRowItem,
-  SidebarCardHeader,
-  preventMiddleClickScroll,
-} from "./SidebarCard";
+import { draftPenClassName, draftSurfaceClassName } from "./SidebarThreadRow";
+import { SIDEBAR_ROW_SURFACE_CLASS, preventMiddleClickScroll } from "./SidebarCard";
 
 const SidebarDraftRow = memo(function SidebarDraftRow(props: {
   draftId: DraftId;
@@ -90,7 +84,7 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
     onDiscard(draftId);
   };
   return (
-    <SidebarAgentRowItem twoLines>
+    <li className="list-none py-0.5">
       <div
         role="button"
         tabIndex={0}
@@ -111,12 +105,10 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
         onKeyDown={handleKeyDown}
       >
         <span className="sr-only">{preview}</span>
-        {/* Astrolabe: laid out as the thread rows are, the preview as its title and Draft below. */}
-        <SidebarAgentRowContent>
-          <SidebarCardHeader>
-            {props.project ? (
-              <ProjectFavicon project={props.project} className="size-4 shrink-0" />
-            ) : null}
+        {/* Astrolabe: laid out as the thread rows are, the preview leading. */}
+        <div className="relative z-10 h-[4.875rem] px-(--sidebar-row-content-inset) py-(--sidebar-content-inset)">
+          <div className="flex h-5 min-w-0 items-center gap-1.5">
+            <SquarePenIcon aria-hidden className={draftPenClassName} />
             <span
               aria-hidden
               className="min-w-0 flex-1 truncate text-sm font-medium text-foreground/90"
@@ -140,16 +132,18 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
                 <TooltipPopup side="top">Discard draft</TooltipPopup>
               </Tooltip>
             </span>
-          </SidebarCardHeader>
-          <div
-            aria-hidden
-            className="flex h-4 items-center text-xs font-medium text-warning-foreground"
-          >
-            Draft
           </div>
-        </SidebarAgentRowContent>
+          <div className="mt-1 flex min-w-0 items-center gap-1.5">
+            {props.project ? (
+              <ProjectFavicon project={props.project} className="size-4 shrink-0" />
+            ) : null}
+            <span className="min-w-0 flex-1 truncate text-xs font-medium text-secondary-label">
+              {props.projectDisplayName}
+            </span>
+          </div>
+        </div>
       </div>
-    </SidebarAgentRowItem>
+    </li>
   );
 });
 
