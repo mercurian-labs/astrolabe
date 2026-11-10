@@ -1,7 +1,7 @@
-import type { CanvasStep } from "@mercurian/wiki/canvas";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
+  FileCodeIcon,
   MessageSquarePlusIcon,
   PlayIcon,
   XIcon,
@@ -10,6 +10,7 @@ import type { KeyboardEvent } from "react";
 
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import type { useCanvasWalk } from "./useCanvasWalk";
 
 /** Arrow keys walk a board while focus is anywhere in it; Escape goes back to the whole board. */
 export function onStepKey(
@@ -38,24 +39,37 @@ export function onStepKey(
 }
 
 /** A board's walk: the whole board first, then each frame with its note. */
-export function CanvasStepBar({
-  steps,
-  step,
-  onStep,
-  onAsk,
-}: {
-  readonly steps: ReadonlyArray<CanvasStep>;
-  readonly step: number | null;
-  readonly onStep: (step: number | null) => void;
-  /** Puts this step in the composer, to ask about; left out where there's no composer. */
-  readonly onAsk?: ((step: number) => void) | undefined;
-}) {
+export function CanvasStepBar({ walk }: { readonly walk: ReturnType<typeof useCanvasWalk> }) {
+  const { steps, step, go: onStep, ask: onAsk, followCode } = walk;
   const current = step === null ? undefined : steps[step];
   if (steps.length === 0) return null;
+  const codeToggle =
+    followCode === undefined ? null : (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              size="icon-xs"
+              variant="ghost"
+              aria-label="Follow the code"
+              aria-pressed={followCode.on}
+              data-pressed={followCode.on || undefined}
+              onClick={followCode.toggle}
+            />
+          }
+        >
+          <FileCodeIcon />
+        </TooltipTrigger>
+        <TooltipPopup side="top">
+          {followCode.on ? "Stop following the code" : "Follow the code: each step opens its file"}
+        </TooltipPopup>
+      </Tooltip>
+    );
   if (step === null || current === undefined) {
     return (
       <div className="flex min-h-10 items-center gap-2 border-t border-border py-1.5 pr-1.5 pl-3">
         <p className="min-w-0 flex-1 text-xs text-muted-foreground">{steps.length} steps</p>
+        {codeToggle}
         <Button size="xs" variant="ghost" onClick={() => onStep(0)}>
           <PlayIcon />
           Walk through
@@ -95,6 +109,7 @@ export function CanvasStepBar({
       >
         <ChevronRightIcon />
       </Button>
+      {codeToggle}
       {onAsk === undefined ? null : (
         <Tooltip>
           <TooltipTrigger

@@ -1,16 +1,9 @@
-import {
-  canvasBounds,
-  canvasSteps,
-  type CanvasCodeReference,
-  type CanvasStep,
-} from "@mercurian/wiki/canvas";
+import { canvasBounds, type CanvasCodeReference } from "@mercurian/wiki/canvas";
 import type { CanvasView } from "@t3tools/client-runtime/canvasViews";
 import type { ScopedThreadRef, ThreadId, TurnItemId } from "@t3tools/contracts";
-import { canvasContextRecord } from "@t3tools/shared/composerContextReferences";
 import { SquareArrowOutUpRightIcon } from "lucide-react";
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense } from "react";
 
-import { useComposerHandleContext } from "~/composerHandleContext";
 import { readLocalApi } from "~/localApi";
 import { useRightPanelStore } from "~/rightPanelStore";
 
@@ -19,6 +12,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { CanvasStepBar, onStepKey } from "./CanvasStepBar";
 import { KeepCanvasButton } from "./KeepCanvas";
 import { showThreadCanvas } from "./threadCanvasStore";
+import { useCanvasWalk } from "./useCanvasWalk";
 
 // The board brings the Markdown parser; a thread with no canvas shouldn't load it.
 export const LazyCanvasBoard = lazy(() =>
@@ -32,27 +26,6 @@ const openUrl = (href: string) => {
   if (api) void api.shell.openExternal(href);
   else window.open(href, "_blank", "noopener,noreferrer");
 };
-
-/** Asking about a step puts the board and that step in the composer; none without a composer. */
-export function useAskAboutStep(
-  source: { readonly threadId: ThreadId; readonly itemId: TurnItemId } | null,
-  title: string,
-  steps: ReadonlyArray<CanvasStep>,
-) {
-  const composer = useComposerHandleContext();
-  if (composer === null || source === null) return undefined;
-  return (index: number) => {
-    const step = steps[index];
-    if (step === undefined) return;
-    composer.current?.addCanvas(
-      canvasContextRecord({
-        ...source,
-        title,
-        walkStep: { index, count: steps.length, label: step.frame.label, note: step.note },
-      }),
-    );
-  };
-}
 
 /** What a canvas's cards can reach from a thread; a guest page has no thread to open files in. */
 export const canvasHost = (threadRef: ScopedThreadRef | null) => ({
@@ -82,13 +55,11 @@ export function CanvasFrame({
   readonly source: { readonly threadId: ThreadId; readonly itemId: TurnItemId };
 }) {
   const { width, height } = canvasBounds(view.data);
-  const steps = canvasSteps(view.data);
-  const [step, setStep] = useState<number | null>(null);
-  const onAsk = useAskAboutStep(threadRef === null ? null : source, view.title, steps);
+  const walk = useCanvasWalk(view, threadRef, source);
   return (
     <figure
       className="m-0 overflow-hidden rounded-lg border border-border"
-      onKeyDown={(event) => onStepKey(event, steps.length, step, setStep)}
+      onKeyDown={(event) => onStepKey(event, walk.steps.length, walk.step, walk.go)}
     >
       <figcaption className="flex h-8 items-center gap-2 border-b border-border pr-1 pl-3 text-xs text-muted-foreground">
         <span className="min-w-0 flex-1 truncate">{view.title}</span>
@@ -129,12 +100,12 @@ export function CanvasFrame({
             mode="fit"
             host={canvasHost(threadRef)}
             label={view.title}
-            step={step}
-            onStep={setStep}
+            step={walk.step}
+            onStep={walk.go}
           />
         </Suspense>
       </div>
-      <CanvasStepBar steps={steps} step={step} onStep={setStep} onAsk={onAsk} />
+      <CanvasStepBar walk={walk} />
     </figure>
   );
 }

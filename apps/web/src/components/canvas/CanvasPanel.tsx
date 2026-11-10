@@ -1,15 +1,15 @@
 import { useAtomValue } from "@effect/atom-react";
 import type { CanvasView } from "@t3tools/client-runtime/canvasViews";
 import { type ScopedThreadRef, TurnItemId } from "@t3tools/contracts";
-import { canvasSteps } from "@mercurian/wiki/canvas";
-import { Suspense, useState } from "react";
+import { Suspense } from "react";
 
 import { canvasViewsAtom, canvasViewsKey } from "~/state/canvasViews";
 
-import { canvasHost, LazyCanvasBoard, useAskAboutStep } from "./CanvasFrame";
+import { canvasHost, LazyCanvasBoard } from "./CanvasFrame";
 import { CanvasStepBar, onStepKey } from "./CanvasStepBar";
 import { KeepCanvasButton } from "./KeepCanvas";
 import { useThreadCanvasStore } from "./threadCanvasStore";
+import { useCanvasWalk } from "./useCanvasWalk";
 
 /** A thread's Canvas tab: the canvas opened from the thread, to pan and zoom. */
 export function CanvasPanel({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
@@ -34,17 +34,14 @@ function CanvasPanelBoard({
   readonly view: CanvasView & { readonly id: string };
   readonly threadRef: ScopedThreadRef;
 }) {
-  const steps = canvasSteps(view.data);
-  const [step, setStep] = useState<number | null>(null);
-  const onAsk = useAskAboutStep(
-    { threadId: threadRef.threadId, itemId: TurnItemId.make(view.id) },
-    view.title,
-    steps,
-  );
+  const walk = useCanvasWalk(view, threadRef, {
+    threadId: threadRef.threadId,
+    itemId: TurnItemId.make(view.id),
+  });
   return (
     <div
       className="flex min-h-0 flex-1 flex-col"
-      onKeyDown={(event) => onStepKey(event, steps.length, step, setStep)}
+      onKeyDown={(event) => onStepKey(event, walk.steps.length, walk.step, walk.go)}
     >
       <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border pr-1 pl-3">
         <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{view.title}</p>
@@ -63,12 +60,12 @@ function CanvasPanelBoard({
             mode="free"
             host={canvasHost(threadRef)}
             label={view.title}
-            step={step}
-            onStep={setStep}
+            step={walk.step}
+            onStep={walk.go}
           />
         </Suspense>
       </div>
-      <CanvasStepBar steps={steps} step={step} onStep={setStep} onAsk={onAsk} />
+      <CanvasStepBar walk={walk} />
     </div>
   );
 }
