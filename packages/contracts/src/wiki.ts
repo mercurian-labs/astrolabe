@@ -666,6 +666,8 @@ export const WikiChangeRequestDetail = Schema.Struct({
   files: Schema.Array(WikiFileChange),
   mergePreview: WikiMergePreview,
   errors: Schema.Array(WikiIndexError),
+  /** Files in the reading thread's wiki checkout not saved to it yet: the turn's end lands them. */
+  unsaved: Schema.optional(Schema.Array(Schema.String)),
 });
 export type WikiChangeRequestDetail = typeof WikiChangeRequestDetail.Type;
 
@@ -736,6 +738,7 @@ export const WikiAgentTransform = Schema.Union([
   ...WikiMechanicalTransforms,
   WikiCanvasAgentTransform,
 ]);
+export type WikiAgentTransform = typeof WikiAgentTransform.Type;
 
 export const WikiTransform = Schema.Union([
   ...WikiMechanicalTransforms,
@@ -772,6 +775,17 @@ export const WikiAmendResult = Schema.Struct({
   ),
 });
 export type WikiAmendResult = typeof WikiAmendResult.Type;
+
+/** A transform written into a thread's wiki checkout, uncommitted: the turn's end saves it. */
+export const WikiCheckoutTransformResult = Schema.Struct({
+  /** Paths from the checkout's root. */
+  written: Schema.Array(Schema.String),
+  removed: Schema.Array(Schema.String),
+  /** Index errors standing in the checkout after it. */
+  errors: Schema.Array(WikiIndexError),
+  canvas: WikiAmendResult.fields.canvas,
+});
+export type WikiCheckoutTransformResult = typeof WikiCheckoutTransformResult.Type;
 
 /** About 32 MiB of bytes: an attachment travels in one message. */
 const WIKI_ATTACHMENT_MAX_BASE64 = 44_000_000;

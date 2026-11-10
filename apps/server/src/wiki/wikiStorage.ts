@@ -75,6 +75,22 @@ export type ChangeRequestRecord = typeof ChangeRequestRecord.Type;
 
 export const ChangeRequestRecordJson = fromJsonStringPretty(ChangeRequestRecord);
 
+/**
+ * What a turn's transforms in a thread's checkout leave for its save, kept in the worktree's git
+ * folder: the amendment id their stamps carry, how many warning ids they minted, and their moves.
+ */
+export const PendingCheckoutAmendmentJson = fromJsonStringPretty(
+  Schema.Struct({
+    amendment: Schema.String,
+    minted: Schema.Number,
+    moved: Schema.Array(Schema.Struct({ from: Schema.String, to: Schema.String })),
+  }),
+);
+export type PendingCheckoutAmendment = typeof PendingCheckoutAmendmentJson.Type;
+
+/** The state folder's folder of thread checkouts: `<threadId>/<wikiId>` below it. */
+export const THREAD_CHECKOUTS_FOLDER = "wiki-checkouts";
+
 /** What a wiki's reviews are called: its host's name for them, else "pull request". */
 export const wikiTerms = (wiki: { readonly host?: { readonly kind?: string } | null }) =>
   builtInSourceControlDefinitions.get(wiki.host?.kind).changeRequest;

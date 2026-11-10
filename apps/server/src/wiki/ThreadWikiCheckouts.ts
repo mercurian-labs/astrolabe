@@ -13,6 +13,7 @@ import * as Path from "effect/Path";
 
 import * as ServerConfig from "../config.ts";
 import * as WikiService from "./WikiService.ts";
+import { THREAD_CHECKOUTS_FOLDER } from "./wikiStorage.ts";
 
 export class ThreadWikiCheckouts extends Context.Service<
   ThreadWikiCheckouts,
@@ -42,7 +43,7 @@ const make = Effect.gen(function* () {
   const wikis = yield* WikiService.WikiService;
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const base = path.join(config.stateDir, "wiki-checkouts");
+  const base = path.join(config.stateDir, THREAD_CHECKOUTS_FOLDER);
   const threadFolder = (threadId: ThreadId) => path.join(base, threadId);
 
   /** The wikis the thread has a checkout folder of. */

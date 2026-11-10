@@ -1,5 +1,6 @@
 import {
   OrchestratorMcpFailure,
+  type WikiAgentTransform,
   WikiChangeRequestId,
   type WikiError,
   WikiId,
@@ -10,7 +11,7 @@ import { withCanvasOutlines } from "../../../wiki/wikiViews.ts";
 import * as WikiService from "../../../wiki/WikiService.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import { readCaller } from "../../threadAccess.ts";
-import { WikiToolkit, type WikiListed } from "./tools.ts";
+import { WikiToolkit } from "./tools.ts";
 
 // Wiki errors carry fixed or validation messages written for the author, so they pass through.
 const wikiFailure = (error: WikiError) =>
@@ -71,44 +72,23 @@ const target = <
     : { changeRequestId: WikiChangeRequestId.make(changeRequestId.trim()) }),
 });
 
-const written = <I extends { readonly message: string; readonly title?: string | undefined }>(
-  input: I,
-) => ({
-  ...input,
-  message: input.message.trim(),
-  ...(input.title === undefined ? {} : { title: input.title.trim() }),
-});
+/** A commit message for a transform that lands now without one. */
+const subjectOf = (transform: WikiAgentTransform) =>
+  transform.kind === "rename"
+    ? `Move ${transform.from.trim()} to ${transform.to.trim()}`
+    : transform.kind === "canvas"
+      ? `Change ${transform.file.trim()}`
+      : `Change ${transform.map}`;
 
 export const layer = McpToolAccess.toLayer(WikiToolkit, {
-  astrolabe_wiki_list: McpToolAccess.reads(({ wiki, folder = "", changeRequestId }) =>
-    wiki === undefined
-      ? read<WikiListed>((wikis) =>
-          wikis.list.pipe(
-            // Tile addresses can hold access tokens, and agents have no use for them.
-            Effect.map(({ wikis }) => ({
-              wikis: wikis.map(({ mapBackgrounds: _, ...each }) => each),
-            })),
-          ),
-        )
-      : read<WikiListed>((wikis, threadId) =>
-          wikis
-            .listFolder({ ...target({ wiki, changeRequestId }), folder, threadId })
-            .pipe(Effect.map((contents) => ({ contents }))),
-        ),
-  ),
-  astrolabe_wiki_read: McpToolAccess.reads((input) =>
+  // Reads see the calling thread's checkout as it stands, unsaved edits included.
+  astrolabe_wiki_orient: McpToolAccess.reads((input) =>
     read((wikis, threadId) =>
-      wikis.readNote({ ...target(input), name: input.name.trim(), threadId }),
+      wikis.orient({ ...target(input), map: input.map.trim(), threadId, checkout: true }),
     ),
   ),
-  astrolabe_wiki_search: McpToolAccess.reads((input) =>
-    read((wikis, threadId) => wikis.search({ ...target(input), threadId })),
-  ),
-  astrolabe_wiki_orient: McpToolAccess.reads((input) =>
-    read((wikis, threadId) => wikis.orient({ ...target(input), map: input.map.trim(), threadId })),
-  ),
   astrolabe_wiki_links: McpToolAccess.reads((input) =>
-    read((wikis, threadId) => wikis.links({ ...target(input), threadId })),
+    read((wikis, threadId) => wikis.links({ ...target(input), threadId, checkout: true })),
   ),
   astrolabe_wiki_query: McpToolAccess.reads(({ base, view, ...input }) =>
     read((wikis, threadId) =>
@@ -118,6 +98,7 @@ export const layer = McpToolAccess.toLayer(WikiToolkit, {
           base: base.trim(),
           ...(view === undefined ? {} : { view: view.trim() }),
           threadId,
+          checkout: true,
         })
         // The property picker's list is for the app; an agent reads the base's YAML instead.
         .pipe(Effect.map(({ properties: _properties, ...result }) => result)),
@@ -125,14 +106,22 @@ export const layer = McpToolAccess.toLayer(WikiToolkit, {
   ),
   astrolabe_wiki_change_request: McpToolAccess.reads((input) =>
     read((wikis, threadId) =>
-      wikis.changeRequestsGet({ ...target(input), threadId }).pipe(Effect.map(withCanvasOutlines)),
+      wikis
+        .changeRequestsGet({ ...target(input), threadId, checkout: true })
+        .pipe(Effect.map(withCanvasOutlines)),
     ),
   ),
-  // Amendments belong to the calling thread's change request; only a live thread may write.
-  astrolabe_wiki_amend: McpToolAccess.actsAsCaller((input) =>
-    write((wikis, author) => wikis.amend(written(target(input)), author)),
-  ),
-  astrolabe_wiki_transform: McpToolAccess.actsAsCaller((input) =>
-    write((wikis, author) => wikis.transform(written(target(input)), author)),
+  // Changes belong to the calling thread's checkout or change request; only a live thread may write.
+  astrolabe_wiki_transform: McpToolAccess.actsAsCaller(({ message, title, ...input }) =>
+    write((wikis, author) =>
+      wikis.transformCheckout(
+        {
+          ...target(input),
+          message: message?.trim() || subjectOf(input.transform),
+          ...(title === undefined ? {} : { title: title.trim() }),
+        },
+        author,
+      ),
+    ),
   ),
 });
