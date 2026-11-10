@@ -5,7 +5,7 @@
  */
 
 export * from "./canvasPlace.ts";
-import { insideGroup } from "./canvasPlace.ts";
+import { canvasArrowSides, insideGroup } from "./canvasPlace.ts";
 
 export type CanvasSide = "top" | "right" | "bottom" | "left";
 
@@ -129,31 +129,79 @@ export interface CanvasStep {
   /** Whether the frame holds no card of its own, so it shows its note in their place. */
   readonly empty: boolean;
   readonly arrows: ReadonlySet<string>;
-  /** What the camera shows: the frame, stretched over any card it recalls. */
+  /**
+   * Where a recalled card stands during this step: beside the frame, on the side it really is,
+   * so the camera stays close. With the step it came from, counting from 0.
+   */
+  readonly docked: ReadonlyMap<string, CanvasBounds & { readonly from: number | undefined }>;
+  /** What the camera shows: the frame and the cards docked beside it. */
   readonly bounds: CanvasBounds;
 }
+
+/** Room between a frame and a card docked beside it: clear of the frame's label. */
+const DOCK_GAP = 60;
+const DOCK_SPACING = 24;
+
+const unionBounds = (a: CanvasBounds, b: CanvasBounds): CanvasBounds => {
+  const x = Math.min(a.x, b.x);
+  const y = Math.min(a.y, b.y);
+  return {
+    x,
+    y,
+    width: Math.max(a.x + a.width, b.x + b.width) - x,
+    height: Math.max(a.y + a.height, b.y + b.height) - y,
+  };
+};
 
 /** A board's walk: its frames in the file's order. Empty for a board with none. */
 export function canvasSteps(data: CanvasData): ReadonlyArray<CanvasStep> {
   const cards = data.nodes.filter((node) => node.type !== "group");
   const byId = new Map(cards.map((node) => [node.id, node]));
-  return data.nodes.flatMap((frame): CanvasStep[] => {
-    if (frame.type !== "group" || frame.astrolabe === undefined) return [];
-    const lit = new Set(cards.filter((node) => insideGroup(frame, node)).map((node) => node.id));
+  const frames = data.nodes.filter(
+    (node): node is CanvasGroupNode => node.type === "group" && node.astrolabe !== undefined,
+  );
+  const inside = frames.map(
+    (frame) => new Set(cards.filter((node) => insideGroup(frame, node)).map((node) => node.id)),
+  );
+  const home = (id: string) => {
+    const at = inside.findIndex((ids) => ids.has(id));
+    return at === -1 ? undefined : at;
+  };
+  return frames.map((frame, index): CanvasStep => {
+    const lit = new Set(inside[index]);
     const empty = lit.size === 0;
     let bounds: CanvasBounds = { x: frame.x, y: frame.y, width: frame.width, height: frame.height };
-    for (const id of frame.astrolabe.recall ?? []) {
-      const node = byId.get(id);
-      if (node === undefined) continue;
+    const docked = new Map<string, CanvasBounds & { readonly from: number | undefined }>();
+    const along = { top: frame.x, bottom: frame.x, left: frame.y, right: frame.y };
+    // Cards docked on one side keep the order they stand in on the board.
+    const recalled = (frame.astrolabe?.recall ?? [])
+      .flatMap((id) => {
+        const node = byId.get(id);
+        return node === undefined || lit.has(id)
+          ? []
+          : [{ id, node, side: canvasArrowSides(frame, node)[0] }];
+      })
+      .sort((a, b) =>
+        a.side === "top" || a.side === "bottom" ? a.node.x - b.node.x : a.node.y - b.node.y,
+      );
+    for (const { id, node, side } of recalled) {
+      if (lit.has(id)) continue;
       lit.add(id);
-      const left = Math.min(bounds.x, node.x);
-      const top = Math.min(bounds.y, node.y);
-      bounds = {
-        x: left,
-        y: top,
-        width: Math.max(bounds.x + bounds.width, node.x + node.width) - left,
-        height: Math.max(bounds.y + bounds.height, node.y + node.height) - top,
-      };
+      const { width, height } = node;
+      const spot =
+        side === "top" || side === "bottom"
+          ? {
+              x: along[side],
+              y: side === "top" ? frame.y - DOCK_GAP - height : frame.y + frame.height + DOCK_GAP,
+            }
+          : {
+              x: side === "left" ? frame.x - DOCK_GAP - width : frame.x + frame.width + DOCK_GAP,
+              y: along[side],
+            };
+      along[side] += (side === "top" || side === "bottom" ? width : height) + DOCK_SPACING;
+      const rect = { ...spot, width, height };
+      docked.set(id, { ...rect, from: home(id) });
+      bounds = unionBounds(bounds, rect);
     }
     const lights = (id: string) => id === frame.id || lit.has(id);
     const arrows = new Set(
@@ -161,8 +209,32 @@ export function canvasSteps(data: CanvasData): ReadonlyArray<CanvasStep> {
         .filter((edge) => lights(edge.fromNode) && lights(edge.toNode))
         .map((edge) => edge.id),
     );
-    return [{ frame, note: frame.astrolabe.note, cards: lit, empty, arrows, bounds }];
+    return { frame, note: frame.astrolabe?.note ?? "", cards: lit, empty, arrows, docked, bounds };
   });
+}
+
+/**
+ * The board as a step shows it: its recalled cards moved beside the frame, and the arrows that
+ * touch them leaving from the sides that now face each other.
+ */
+export function canvasStepData(data: CanvasData, step: CanvasStep): CanvasData {
+  if (step.docked.size === 0) return data;
+  const nodes = data.nodes.map((node) => {
+    const spot = step.docked.get(node.id);
+    return spot === undefined ? node : { ...node, x: spot.x, y: spot.y };
+  });
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  return {
+    nodes,
+    edges: data.edges.map((edge) => {
+      if (!step.docked.has(edge.fromNode) && !step.docked.has(edge.toNode)) return edge;
+      const from = byId.get(edge.fromNode);
+      const to = byId.get(edge.toNode);
+      if (from === undefined || to === undefined) return edge;
+      const [fromSide, toSide] = canvasArrowSides(from, to);
+      return { ...edge, fromSide, toSide };
+    }),
+  };
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>

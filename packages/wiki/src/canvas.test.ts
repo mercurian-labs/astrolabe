@@ -579,6 +579,17 @@ describe("placeCanvas", () => {
       const { nodes } = placeCanvas(shared);
       expect(nodes.filter((node) => node.id === "s")).toHaveLength(1);
       expect(nodes.filter((node) => node.id === "a")).toHaveLength(1);
+
+      // During f4, `a` stands beside f4 rather than three frames away, and says where it's from.
+      const f4 = canvasSteps(placeCanvas(shared))[3];
+      const docked = f4?.docked.get("a");
+      if (f4 === undefined || docked === undefined) throw new Error("a isn't docked in f4");
+      expect(docked.from).toBe(0);
+      expect(overlap(docked, f4.frame)).toBe(false);
+      expect(contains(f4.bounds, docked)).toBe(true);
+      expect(f4.bounds.width * f4.bounds.height).toBeLessThan(
+        canvasBounds(placeCanvas(shared)).width * canvasBounds(placeCanvas(shared)).height,
+      );
     });
 
     it("keeps every card clear of the others and of frames it isn't in", () => {

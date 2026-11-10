@@ -1070,10 +1070,26 @@ textarea.cv-label-editor {
   transition: opacity 200ms ease;
 }
 .cv-board[data-walking] :is(.cv-card, .cv-edge, .cv-edge-label)[data-lit="false"] {
-  opacity: 0.16;
+  opacity: 0;
+  pointer-events: none;
 }
 .cv-board[data-walking] .cv-group[data-lit="false"] {
   opacity: 0;
+  pointer-events: none;
+}
+/* A card a step brings back from elsewhere, shown beside the frame with where it's from. */
+.cv-card[data-from] {
+  border-style: dashed;
+}
+.cv-card[data-from]::before {
+  content: attr(data-from);
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  padding-bottom: 2px;
+  font-size: calc(12px * var(--cv-ui, 1));
+  color: var(--muted-foreground);
+  white-space: nowrap;
 }
 .cv-board[data-walking] .cv-group[data-lit="true"] {
   border-color: var(--primary);

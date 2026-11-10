@@ -53,8 +53,9 @@ export function CanvasStepBar({
       </div>
     );
   }
+  // A narrow board puts the note on its own row, above the controls.
   return (
-    <div className="flex min-h-10 items-center gap-1.5 border-t border-border px-1.5 py-1.5">
+    <div className="@container flex min-h-10 flex-wrap items-center gap-1.5 border-t border-border px-1.5 py-1.5">
       <Button
         size="icon-xs"
         variant="ghost"
@@ -63,13 +64,16 @@ export function CanvasStepBar({
       >
         <ChevronLeftIcon />
       </Button>
-      <p className="min-w-0 flex-1 text-sm" aria-live="polite">
+      <p
+        className="min-w-0 flex-1 text-sm @max-md:order-first @max-md:basis-full @max-md:px-1.5"
+        aria-live="polite"
+      >
         {current.frame.label === undefined ? null : (
           <span className="font-medium">{current.frame.label}. </span>
         )}
         {current.note}
       </p>
-      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+      <span className="shrink-0 text-xs text-muted-foreground tabular-nums @max-md:ms-auto">
         {step + 1} / {steps.length}
       </span>
       <Button

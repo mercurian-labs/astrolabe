@@ -17,6 +17,8 @@ import {
   type CanvasMarks,
   type CanvasNode,
   type CanvasSide,
+  type CanvasStep,
+  canvasStepData,
   canvasSteps,
 } from "@mercurian/wiki/canvas";
 import { pastedFileName } from "@mercurian/wiki/placement";
@@ -755,6 +757,7 @@ const CardNode = memo(function CardNode({
   editable,
   raised,
   lit,
+  from,
 }: {
   readonly node: Exclude<CanvasNode, CanvasGroupNode>;
   readonly selected: boolean;
@@ -770,6 +773,8 @@ const CardNode = memo(function CardNode({
   readonly raised: number | undefined;
   /** Whether the step being walked shows it; unset outside a walk. */
   readonly lit: boolean | undefined;
+  /** Shown beside the step's frame, away from its place: the step it belongs to, from 1. */
+  readonly from: string | undefined;
 }) {
   const { mode } = useBoard();
   const { style, ...color } = colorProps(node.color);
@@ -784,6 +789,7 @@ const CardNode = memo(function CardNode({
       data-selected={selected || undefined}
       data-mark={mark}
       data-lit={lit}
+      data-from={from}
       data-editing={editing || undefined}
       style={{ ...position(node), ...style, ...(raised === undefined ? {} : { zIndex: raised }) }}
       {...color}
@@ -1065,6 +1071,12 @@ interface Shown {
   readonly simple: boolean;
 }
 
+const dockedLabel = (step: CanvasStep | null, id: string) => {
+  if (step === null || !step.docked.has(id)) return undefined;
+  const from = step.docked.get(id)?.from;
+  return from === undefined ? "Earlier" : `From step ${from + 1}`;
+};
+
 const NOTHING: Shown = { groups: [], cards: [], shapes: [], simple: false };
 const NO_MARKS: CanvasMarks = { cards: {}, arrows: {} };
 /** As long as `.cv-flash` plays, and a little over. */
@@ -1291,7 +1303,12 @@ export function CanvasBoard({
   const active = step === null ? null : (steps[step] ?? null);
   const whole = useMemo(() => canvasBounds(data), [data]);
   const bounds = active?.bounds ?? whole;
-  const layout = useMemo(() => layoutOf(data, live.layout), [data, live]);
+  // A step moves the cards it recalls beside its frame; an edited board always shows where they are.
+  const shownData = useMemo(
+    () => (active === null || canvasDocument !== null ? data : canvasStepData(data, active)),
+    [data, active, canvasDocument],
+  );
+  const layout = useMemo(() => layoutOf(shownData, live.layout), [shownData, live]);
   const [shown, setShown] = useState(NOTHING);
   const [selection, setSelection] = useState<CanvasSelection>(NO_SELECTION);
   const [editing, setEditing] = useState<CanvasEditing | null>(null);
@@ -2065,6 +2082,7 @@ export function CanvasBoard({
               editable={editable}
               raised={raised.get(node.id)}
               lit={active === null ? undefined : active.cards.has(node.id)}
+              from={dockedLabel(active, node.id)}
             />
           ))}
         </div>
