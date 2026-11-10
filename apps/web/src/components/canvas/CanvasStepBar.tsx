@@ -1,8 +1,15 @@
 import type { CanvasStep } from "@mercurian/wiki/canvas";
-import { ChevronLeftIcon, ChevronRightIcon, PlayIcon, XIcon } from "lucide-react";
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  MessageSquarePlusIcon,
+  PlayIcon,
+  XIcon,
+} from "lucide-react";
 import type { KeyboardEvent } from "react";
 
 import { Button } from "../ui/button";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 /** Arrow keys walk a board while focus is anywhere in it; Escape goes back to the whole board. */
 export function onStepKey(
@@ -35,10 +42,13 @@ export function CanvasStepBar({
   steps,
   step,
   onStep,
+  onAsk,
 }: {
   readonly steps: ReadonlyArray<CanvasStep>;
   readonly step: number | null;
   readonly onStep: (step: number | null) => void;
+  /** Puts this step in the composer, to ask about; left out where there's no composer. */
+  readonly onAsk?: ((step: number) => void) | undefined;
 }) {
   const current = step === null ? undefined : steps[step];
   if (steps.length === 0) return null;
@@ -85,6 +95,23 @@ export function CanvasStepBar({
       >
         <ChevronRightIcon />
       </Button>
+      {onAsk === undefined ? null : (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                size="icon-xs"
+                variant="ghost"
+                aria-label="Ask about this step"
+                onClick={() => onAsk(step)}
+              />
+            }
+          >
+            <MessageSquarePlusIcon />
+          </TooltipTrigger>
+          <TooltipPopup side="top">Ask about this step</TooltipPopup>
+        </Tooltip>
+      )}
       <Button
         size="icon-xs"
         variant="ghost"

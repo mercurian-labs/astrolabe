@@ -384,6 +384,27 @@ describe("provider projection", () => {
     });
     expect(projected).toContain("threadId: thread-1\nitemId: item-1\ncomment: the agreed version");
     expect(projected).toContain("astrolabe_canvas_keep");
+
+    // A step is its own chip beside the whole board's, and names the step to the agent.
+    const step = canvasContextRecord({
+      threadId: "thread-1" as never,
+      itemId: "item-1" as never,
+      title: "Refund flow",
+      walkStep: {
+        index: 2,
+        count: 5,
+        label: "Manager review",
+        note: "Over $50 waits for a manager.",
+      },
+    });
+    expect(step.contextId).not.toBe(record.contextId);
+    expect(step.label).toBe("Refund flow · step 3");
+    expect(
+      projectComposerContextForProvider({
+        text: formatComposerContextReference(step),
+        records: [step],
+      }),
+    ).toContain("step: Step 3 of 5, Manager review: Over $50 waits for a manager.");
   });
 
   it("projects a mentioned machine as its identity and how to use it, never an address", () => {

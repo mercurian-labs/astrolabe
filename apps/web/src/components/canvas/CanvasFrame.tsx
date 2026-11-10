@@ -1,9 +1,16 @@
-import { canvasBounds, canvasSteps, type CanvasCodeReference } from "@mercurian/wiki/canvas";
+import {
+  canvasBounds,
+  canvasSteps,
+  type CanvasCodeReference,
+  type CanvasStep,
+} from "@mercurian/wiki/canvas";
 import type { CanvasView } from "@t3tools/client-runtime/canvasViews";
 import type { ScopedThreadRef, ThreadId, TurnItemId } from "@t3tools/contracts";
+import { canvasContextRecord } from "@t3tools/shared/composerContextReferences";
 import { SquareArrowOutUpRightIcon } from "lucide-react";
 import { lazy, Suspense, useState } from "react";
 
+import { useComposerHandleContext } from "~/composerHandleContext";
 import { readLocalApi } from "~/localApi";
 import { useRightPanelStore } from "~/rightPanelStore";
 
@@ -25,6 +32,27 @@ const openUrl = (href: string) => {
   if (api) void api.shell.openExternal(href);
   else window.open(href, "_blank", "noopener,noreferrer");
 };
+
+/** Asking about a step puts the board and that step in the composer; none without a composer. */
+export function useAskAboutStep(
+  source: { readonly threadId: ThreadId; readonly itemId: TurnItemId } | null,
+  title: string,
+  steps: ReadonlyArray<CanvasStep>,
+) {
+  const composer = useComposerHandleContext();
+  if (composer === null || source === null) return undefined;
+  return (index: number) => {
+    const step = steps[index];
+    if (step === undefined) return;
+    composer.current?.addCanvas(
+      canvasContextRecord({
+        ...source,
+        title,
+        walkStep: { index, count: steps.length, label: step.frame.label, note: step.note },
+      }),
+    );
+  };
+}
 
 /** What a canvas's cards can reach from a thread; a guest page has no thread to open files in. */
 export const canvasHost = (threadRef: ScopedThreadRef | null) => ({
@@ -56,6 +84,7 @@ export function CanvasFrame({
   const { width, height } = canvasBounds(view.data);
   const steps = canvasSteps(view.data);
   const [step, setStep] = useState<number | null>(null);
+  const onAsk = useAskAboutStep(threadRef === null ? null : source, view.title, steps);
   return (
     <figure
       className="m-0 overflow-hidden rounded-lg border border-border"
@@ -105,7 +134,7 @@ export function CanvasFrame({
           />
         </Suspense>
       </div>
-      <CanvasStepBar steps={steps} step={step} onStep={setStep} />
+      <CanvasStepBar steps={steps} step={step} onStep={setStep} onAsk={onAsk} />
     </figure>
   );
 }

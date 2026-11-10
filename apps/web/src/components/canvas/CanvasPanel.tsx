@@ -6,7 +6,7 @@ import { Suspense, useState } from "react";
 
 import { canvasViewsAtom, canvasViewsKey } from "~/state/canvasViews";
 
-import { canvasHost, LazyCanvasBoard } from "./CanvasFrame";
+import { canvasHost, LazyCanvasBoard, useAskAboutStep } from "./CanvasFrame";
 import { CanvasStepBar, onStepKey } from "./CanvasStepBar";
 import { KeepCanvasButton } from "./KeepCanvas";
 import { useThreadCanvasStore } from "./threadCanvasStore";
@@ -36,6 +36,11 @@ function CanvasPanelBoard({
 }) {
   const steps = canvasSteps(view.data);
   const [step, setStep] = useState<number | null>(null);
+  const onAsk = useAskAboutStep(
+    { threadId: threadRef.threadId, itemId: TurnItemId.make(view.id) },
+    view.title,
+    steps,
+  );
   return (
     <div
       className="flex min-h-0 flex-1 flex-col"
@@ -63,7 +68,7 @@ function CanvasPanelBoard({
           />
         </Suspense>
       </div>
-      <CanvasStepBar steps={steps} step={step} onStep={setStep} />
+      <CanvasStepBar steps={steps} step={step} onStep={setStep} onAsk={onAsk} />
     </div>
   );
 }

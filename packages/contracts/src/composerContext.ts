@@ -238,6 +238,8 @@ export const CanvasContextRecord = Schema.Struct({
   itemId: TurnItemId,
   title: ContextLabel,
   comment: Schema.optional(BoundedString(COMPOSER_CONTEXT_CANVAS_COMMENT_MAX_CHARS)),
+  /** One step of the board's walk, when the user asked about that step: its number, label and note. */
+  step: Schema.optional(BoundedString(COMPOSER_CONTEXT_CANVAS_COMMENT_MAX_CHARS)),
 });
 export type CanvasContextRecord = typeof CanvasContextRecord.Type;
 
