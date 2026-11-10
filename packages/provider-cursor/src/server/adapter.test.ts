@@ -1699,12 +1699,14 @@ describe("CursorAdapterV2", () => {
         runtimeMode: "full-access",
         interactionMode: "default",
         cwd: "/workspace",
+        writableRoots: ["/state/wiki-checkouts/notes"],
       },
       threadId,
       mcpSession,
       platform: "linux",
     });
     assert.deepEqual(options.mcpServers, cursorMcpServers(mcpSession));
+    assert.deepEqual(options.local?.dirs, ["/state/wiki-checkouts/notes"]);
 
     const logged = JSON.stringify(CursorAgentSdk.loggedCursorAgentOptions(options));
     assert.notInclude(logged, "secret-cursor-api-key");
