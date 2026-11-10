@@ -1,5 +1,5 @@
 import { assert, it } from "@effect/vitest";
-import { parseCanvas, placeCanvas } from "@mercurian/wiki";
+import { canvasSteps, parseCanvas, placeCanvas } from "@mercurian/wiki";
 import {
   type CanvasShowInput,
   ThreadId,
@@ -160,6 +160,50 @@ it.effect("lands a board as a new canvas, at the coordinates the thread showed",
     assert.equal(edges[0].fromNode, nodes[0].id);
     assert.equal(edges[0].toNode, nodes[1].id);
     assert.equal(edges[0].fromSide, shown.edges[0]?.fromSide);
+  }),
+);
+
+it.effect("keeps a walk: its frames and notes, recalling cards by their new ids", () =>
+  Effect.gen(function* () {
+    const walk: CanvasShowInput = {
+      title: "Walk",
+      cards: [
+        { id: "a", text: "Alpha" },
+        { id: "b", text: "Beta" },
+        { id: "c", text: "Gamma" },
+      ],
+      frames: [
+        { id: "one", note: "First", cards: ["a"] },
+        { id: "two", note: "Second", cards: ["b"] },
+        { id: "three", note: "Back to the start", cards: ["c", "a"] },
+      ],
+    };
+    const { source } = yield* keep({
+      item: {
+        type: "dynamic_tool",
+        status: "completed",
+        toolName: "mcp__t3-code__astrolabe_canvas_show",
+        input: walk,
+        output: { structuredContent: { message: "Shown" } },
+      },
+    });
+    const parsed = parseCanvas(source);
+    assert.isTrue(parsed.ok);
+    if (!parsed.ok) return;
+    const texts = new Map(
+      parsed.data.nodes.map((node) => [node.id, node.type === "text" ? node.text : ""]),
+    );
+    assert.deepEqual(
+      canvasSteps(parsed.data).map((step) => [
+        step.note,
+        [...step.cards].map((id) => texts.get(id)).toSorted(),
+      ]),
+      [
+        ["First", ["Alpha"]],
+        ["Second", ["Beta"]],
+        ["Back to the start", ["Alpha", "Gamma"]],
+      ],
+    );
   }),
 );
 

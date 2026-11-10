@@ -5,6 +5,7 @@
  */
 
 export * from "./canvasPlace.ts";
+import { insideGroup } from "./canvasPlace.ts";
 
 export type CanvasSide = "top" | "right" | "bottom" | "left";
 
@@ -53,6 +54,17 @@ export interface CanvasGroupNode extends CanvasNodeBase {
   readonly background?: string;
   /** `ratio` or `repeat`; a group with none covers, as Obsidian writes it. */
   readonly backgroundStyle?: string;
+  /** Makes the group a frame: one step of the board's walk, in the file's order. */
+  readonly astrolabe?: CanvasFrameInfo;
+}
+
+/**
+ * A frame shows the cards inside it, plus `recall`: cards elsewhere on the board that this step
+ * comes back to, where the layout couldn't stretch the frame over them.
+ */
+export interface CanvasFrameInfo {
+  readonly note: string;
+  readonly recall?: ReadonlyArray<string>;
 }
 
 export type CanvasNode = CanvasTextNode | CanvasLinkNode | CanvasFileNode | CanvasGroupNode;
@@ -108,6 +120,48 @@ export const canvasGroups = (
     node.type === "group" && node.label !== undefined ? [{ id: node.id, label: node.label }] : [],
   );
 
+/** One step of a board's walk: the frame, and every card and arrow it lights. */
+export interface CanvasStep {
+  readonly frame: CanvasGroupNode;
+  readonly note: string;
+  /** The cards inside the frame, then the ones it recalls from elsewhere. */
+  readonly cards: ReadonlySet<string>;
+  readonly arrows: ReadonlySet<string>;
+  /** What the camera shows: the frame, stretched over any card it recalls. */
+  readonly bounds: CanvasBounds;
+}
+
+/** A board's walk: its frames in the file's order. Empty for a board with none. */
+export function canvasSteps(data: CanvasData): ReadonlyArray<CanvasStep> {
+  const cards = data.nodes.filter((node) => node.type !== "group");
+  const byId = new Map(cards.map((node) => [node.id, node]));
+  return data.nodes.flatMap((frame): CanvasStep[] => {
+    if (frame.type !== "group" || frame.astrolabe === undefined) return [];
+    const lit = new Set(cards.filter((node) => insideGroup(frame, node)).map((node) => node.id));
+    let bounds: CanvasBounds = { x: frame.x, y: frame.y, width: frame.width, height: frame.height };
+    for (const id of frame.astrolabe.recall ?? []) {
+      const node = byId.get(id);
+      if (node === undefined) continue;
+      lit.add(id);
+      const left = Math.min(bounds.x, node.x);
+      const top = Math.min(bounds.y, node.y);
+      bounds = {
+        x: left,
+        y: top,
+        width: Math.max(bounds.x + bounds.width, node.x + node.width) - left,
+        height: Math.max(bounds.y + bounds.height, node.y + node.height) - top,
+      };
+    }
+    const lights = (id: string) => id === frame.id || lit.has(id);
+    const arrows = new Set(
+      data.edges
+        .filter((edge) => lights(edge.fromNode) && lights(edge.toNode))
+        .map((edge) => edge.id),
+    );
+    return [{ frame, note: frame.astrolabe.note, cards: lit, arrows, bounds }];
+  });
+}
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -136,6 +190,14 @@ function codeReference(astrolabe: unknown): CanvasCodeReference | undefined {
     ...(repository === undefined ? {} : { repository }),
     ...(commit === undefined ? {} : { commit }),
   };
+}
+
+function frameInfo(astrolabe: unknown): CanvasFrameInfo | undefined {
+  if (!isRecord(astrolabe) || typeof astrolabe.note !== "string") return undefined;
+  const recall = Array.isArray(astrolabe.recall)
+    ? astrolabe.recall.filter((id): id is string => typeof id === "string")
+    : [];
+  return { note: astrolabe.note, ...(recall.length === 0 ? {} : { recall }) };
 }
 
 /** The card a node draws as; none for a type this version doesn't know, which Obsidian skips too. */
@@ -183,12 +245,14 @@ function canvasNode(raw: Record<string, unknown>, id: string): CanvasNode | unde
       const label = text(raw.label);
       const background = text(raw.background);
       const backgroundStyle = text(raw.backgroundStyle);
+      const frame = frameInfo(raw.astrolabe);
       return {
         ...base,
         type: "group",
         ...(label === undefined ? {} : { label }),
         ...(background === undefined ? {} : { background }),
         ...(backgroundStyle === undefined ? {} : { backgroundStyle }),
+        ...(frame === undefined ? {} : { astrolabe: frame }),
       };
     }
     default:

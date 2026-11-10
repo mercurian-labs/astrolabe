@@ -62,6 +62,19 @@ export const CanvasShowGroup = Schema.Struct({
 });
 export type CanvasShowGroup = typeof CanvasShowGroup.Type;
 
+export const CanvasShowFrame = Schema.Struct({
+  id: CardReference.annotate({ description: "Unique among this call's cards, groups and frames." }),
+  label: Schema.optional(Schema.NonEmptyString),
+  note: Schema.NonEmptyString.annotate({
+    description: "One or two sentences the reader sees at this step.",
+  }),
+  cards: Schema.Array(CardReference).annotate({
+    description: "The cards this step shows. A card can be in several frames.",
+  }),
+  color: Schema.optional(CanvasShowColor),
+});
+export type CanvasShowFrame = typeof CanvasShowFrame.Type;
+
 export const CanvasShowInput = Schema.Struct({
   title: Schema.NonEmptyString.annotate({ description: "A few words naming the diagram." }),
   cards: Schema.Array(CanvasShowCard)
@@ -69,6 +82,12 @@ export const CanvasShowInput = Schema.Struct({
     .annotate({ description: "Each needs text, url or path." }),
   arrows: Schema.optional(Schema.Array(CanvasShowArrow)),
   groups: Schema.optional(Schema.Array(CanvasShowGroup)),
+  frames: Schema.optional(
+    Schema.Array(CanvasShowFrame).annotate({
+      description:
+        "To explain step by step: the steps in reading order, which the reader walks one at a time. Use instead of `groups`.",
+    }),
+  ),
 });
 export type CanvasShowInput = typeof CanvasShowInput.Type;
 

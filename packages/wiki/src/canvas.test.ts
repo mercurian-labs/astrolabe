@@ -8,6 +8,7 @@ import {
   canvasChangeSummary,
   canvasData,
   canvasDrawingProblems,
+  canvasSteps,
   diffCanvas,
   parseCanvas,
   placeCanvas,
@@ -539,6 +540,69 @@ describe("placeCanvas", () => {
     expect(edges).toEqual([]);
   });
 
+  describe("frames", () => {
+    const frame = (id: string, ...ids: string[]) => ({ id, note: `Step ${id}`, cards: ids });
+    const steps = (drawing: CanvasDrawing) =>
+      canvasSteps(placeCanvas(drawing)).map((step) => [step.frame.id, [...step.cards].toSorted()]);
+
+    it("walks each frame's cards, in the order the frames were written", () => {
+      expect(
+        steps({
+          cards: cards("a", "b", "c"),
+          frames: [frame("two", "c"), frame("one", "a", "b")],
+        }),
+      ).toEqual([
+        ["two", ["c"]],
+        ["one", ["a", "b"]],
+      ]);
+    });
+
+    it("shows a card again in a later frame, overlapping or recalled, never copied", () => {
+      // `s` is shared by neighbours; `a` comes back three frames later.
+      const shared: CanvasDrawing = {
+        cards: cards("a", "b", "c", "d", "e", "f", "s"),
+        frames: [
+          frame("f1", "a", "s"),
+          frame("f2", "s", "b"),
+          frame("f3", "c", "d"),
+          frame("f4", "e", "a"),
+          frame("f5", "f"),
+        ],
+      };
+      expect(steps(shared)).toEqual([
+        ["f1", ["a", "s"]],
+        ["f2", ["b", "s"]],
+        ["f3", ["c", "d"]],
+        ["f4", ["a", "e"]],
+        ["f5", ["f"]],
+      ]);
+      const { nodes } = placeCanvas(shared);
+      expect(nodes.filter((node) => node.id === "s")).toHaveLength(1);
+      expect(nodes.filter((node) => node.id === "a")).toHaveLength(1);
+    });
+
+    it("keeps every card clear of the others and of frames it isn't in", () => {
+      const drawing: CanvasDrawing = {
+        cards: cards("a", "b", "c", "d", "e"),
+        frames: [frame("f1", "a", "b"), frame("f2", "b", "c"), frame("f3", "d"), frame("f4")],
+        arrows: [{ from: "a", to: "b" }],
+      };
+      const { nodes } = placeCanvas(drawing);
+      const placed = nodes.filter((node) => node.type !== "group");
+      for (const a of placed) {
+        for (const b of placed) {
+          if (a.id !== b.id) expect(overlap(a, b), `${a.id} and ${b.id}`).toBe(false);
+        }
+      }
+      expect(steps(drawing)).toEqual([
+        ["f1", ["a", "b"]],
+        ["f2", ["b", "c"]],
+        ["f3", ["d"]],
+        ["f4", []],
+      ]);
+    });
+  });
+
   it("runs a long chain down the board, since across a chat column it would be a thin ribbon", () => {
     const ids = Array.from({ length: 12 }, (_, index) => `c${index}`);
     const { width, height } = canvasBounds(
@@ -572,6 +636,21 @@ describe("canvasDrawingProblems", () => {
     ["an empty card", { cards: [{ id: "a" }] }, "needs text, url or path"],
     ["a link that is also code", { cards: [{ id: "a", url: "x", path: "y" }] }, "only be one"],
     ["an unknown group", { cards: [{ id: "a", text: "A", group: "g" }] }, "isn't in `groups`"],
+    [
+      "a frame naming an unknown card",
+      { cards: cards("a"), frames: [{ id: "f", note: "N", cards: ["b"] }] },
+      "isn't here",
+    ],
+    [
+      "frames beside groups",
+      { cards: cards("a"), groups: [{ id: "g" }], frames: [{ id: "f", note: "N", cards: [] }] },
+      "not both",
+    ],
+    [
+      "a frame sharing a card's id",
+      { cards: cards("a"), frames: [{ id: "a", note: "N", cards: [] }] },
+      "used twice",
+    ],
     ["an absolute path", { cards: [{ id: "a", path: "/etc/passwd" }] }, "relative"],
     ["a Windows path", { cards: [{ id: "a", path: "C:\\x" }] }, "relative"],
     ["a path out of the repository", { cards: [{ id: "a", path: "src/../../x" }] }, "relative"],
