@@ -854,6 +854,7 @@ const GroupNode = memo(function GroupNode({
   editable,
   onLabel,
   step,
+  note,
   lit,
   onStep,
 }: {
@@ -867,6 +868,8 @@ const GroupNode = memo(function GroupNode({
   readonly onLabel: (id: string, label: string) => void;
   /** Its place in the walk, counting from 0, when it's a frame. */
   readonly step: number | undefined;
+  /** A frame's note, shown in it when it holds no card of its own. */
+  readonly note: string | undefined;
   readonly lit: boolean | undefined;
   readonly onStep: ((step: number) => void) | undefined;
 }) {
@@ -916,6 +919,7 @@ const GroupNode = memo(function GroupNode({
           {node.label}
         </span>
       )}
+      {note === undefined ? null : <p className="cv-frame-note">{note}</p>}
       {editable && selected ? <Dots /> : null}
       {editable && alone ? <Handles /> : null}
     </div>
@@ -1277,6 +1281,11 @@ export function CanvasBoard({
   const steps = useMemo(() => canvasSteps(data), [data]);
   const stepOf = useMemo(
     () => new Map(steps.map((each, index) => [each.frame.id, index] as const)),
+    [steps],
+  );
+  const emptyNotes = useMemo(
+    () =>
+      new Map(steps.flatMap((each) => (each.empty ? [[each.frame.id, each.note] as const] : []))),
     [steps],
   );
   const active = step === null ? null : (steps[step] ?? null);
@@ -2006,6 +2015,7 @@ export function CanvasBoard({
               editable={editable}
               onLabel={finishGroupLabel}
               step={stepOf.get(node.id)}
+              note={emptyNotes.get(node.id)}
               lit={active === null ? undefined : active.frame.id === node.id}
               onStep={onStep}
             />

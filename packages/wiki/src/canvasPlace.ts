@@ -474,8 +474,8 @@ function edgesAt(
 
 /** Room between blocks in a row of frames: past both frames' padding, so a block is in its own. */
 const FRAME_GAP = GROUP_PADDING * 2 + CROSS_GAP;
-/** A frame that holds only its note. */
-const NOTE_FRAME = { width: 240, height: 80 } as const;
+/** How wide a frame that holds nothing of its own is: it shows its note instead. */
+const NOTE_FRAME_WIDTH = 280;
 
 /**
  * Lays frames out in reading order, in rows. A card goes in the first frame that names it. When
@@ -545,7 +545,16 @@ function placeFrames(drawing: CanvasDrawing): CanvasData {
         const mine = own[index] ?? [];
         const next = between[index] ?? [];
         if (mine.length === 0 && next.length === 0 && (spans[index] ?? []).length === 0) {
-          put({ x, y: top, ...NOTE_FRAME }, [index]);
+          const note = frames[index]?.note ?? "";
+          put(
+            {
+              x,
+              y: top,
+              width: NOTE_FRAME_WIDTH,
+              height: snap(textHeight(note, NOTE_FRAME_WIDTH)),
+            },
+            [index],
+          );
         } else {
           block(mine, [index]);
         }

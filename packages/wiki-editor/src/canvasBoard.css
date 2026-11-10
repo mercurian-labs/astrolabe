@@ -1110,3 +1110,10 @@ button.cv-step-number {
   background: var(--primary);
   color: var(--primary-foreground, var(--background));
 }
+.cv-frame-note {
+  position: absolute;
+  inset: 52px 24px 24px;
+  margin: 0;
+  overflow: hidden;
+  color: var(--muted-foreground);
+}

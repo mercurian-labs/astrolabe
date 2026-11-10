@@ -126,6 +126,8 @@ export interface CanvasStep {
   readonly note: string;
   /** The cards inside the frame, then the ones it recalls from elsewhere. */
   readonly cards: ReadonlySet<string>;
+  /** Whether the frame holds no card of its own, so it shows its note in their place. */
+  readonly empty: boolean;
   readonly arrows: ReadonlySet<string>;
   /** What the camera shows: the frame, stretched over any card it recalls. */
   readonly bounds: CanvasBounds;
@@ -138,6 +140,7 @@ export function canvasSteps(data: CanvasData): ReadonlyArray<CanvasStep> {
   return data.nodes.flatMap((frame): CanvasStep[] => {
     if (frame.type !== "group" || frame.astrolabe === undefined) return [];
     const lit = new Set(cards.filter((node) => insideGroup(frame, node)).map((node) => node.id));
+    const empty = lit.size === 0;
     let bounds: CanvasBounds = { x: frame.x, y: frame.y, width: frame.width, height: frame.height };
     for (const id of frame.astrolabe.recall ?? []) {
       const node = byId.get(id);
@@ -158,7 +161,7 @@ export function canvasSteps(data: CanvasData): ReadonlyArray<CanvasStep> {
         .filter((edge) => lights(edge.fromNode) && lights(edge.toNode))
         .map((edge) => edge.id),
     );
-    return [{ frame, note: frame.astrolabe.note, cards: lit, arrows, bounds }];
+    return [{ frame, note: frame.astrolabe.note, cards: lit, empty, arrows, bounds }];
   });
 }
 
