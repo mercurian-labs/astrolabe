@@ -16,6 +16,7 @@ import * as ProjectService from "../../../project/ProjectService.ts";
 import * as GitVcsDriver from "../../../vcs/GitVcsDriver.ts";
 import * as CanvasKeep from "../../../wiki/CanvasKeep.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
+import * as OrchestratorMcpService from "../../OrchestratorMcpService.ts";
 
 const CanvasShowTool = Tool.make(CANVAS_SHOW_TOOL_NAME, {
   description:
@@ -27,6 +28,7 @@ const CanvasShowTool = Tool.make(CANVAS_SHOW_TOOL_NAME, {
   dependencies: [
     McpInvocationContext.McpInvocationContext,
     ThreadManagementService.ThreadManagementService,
+    OrchestratorMcpService.OrchestratorMcpService,
     ProjectService.ProjectService,
     GitVcsDriver.GitVcsDriver,
     FileSystem.FileSystem,

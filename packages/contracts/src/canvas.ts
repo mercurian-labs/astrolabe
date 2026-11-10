@@ -237,6 +237,8 @@ export type CanvasShowCode = typeof CanvasShowCode.Type;
 
 export const CanvasShowResult = Schema.Struct({
   message: Schema.String,
+  /** The turn item that holds the board as it was laid out, which clients draw. */
+  canvasItemId: Schema.optional(Schema.String),
   code: Schema.optional(CanvasShowCode),
 });
 export type CanvasShowResult = typeof CanvasShowResult.Type;

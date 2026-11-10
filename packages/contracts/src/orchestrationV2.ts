@@ -1,3 +1,4 @@
+import { CanvasShowCode } from "./canvas.ts";
 import { OrchestrationMessageContext } from "./composerContext.ts";
 import { withRecordIdTable } from "./orchestrationV2IdTable.ts";
 import * as DateTime from "effect/DateTime";
@@ -1556,6 +1557,18 @@ const OrchestrationV2SecretRequestFields = {
   secretStatus: OrchestrationV2SecretRequestStatus,
 } as const;
 
+/**
+ * Astrolabe: a board an agent drew, laid out once by the server when it was drawn, so it never
+ * moves after. Its tool call names it; the call's reply to the agent carries only this item's id.
+ */
+const OrchestrationV2CanvasFields = {
+  type: Schema.Literal("canvas"),
+  /** A JSON Canvas document: its nodes and edges where the layout put them, and its stories. */
+  document: Schema.Unknown,
+  /** Where its code cards point, so a kept card can pin that code. */
+  code: Schema.optional(CanvasShowCode),
+} as const;
+
 export const OrchestrationV2LinkRequestStatus = Schema.Literals([
   "pending",
   "linked",
@@ -1784,6 +1797,10 @@ export const OrchestrationV2TurnItem = Schema.Union([
   Schema.Struct({
     ...OrchestrationV2TurnItemBaseFields,
     ...OrchestrationV2SecretRequestFields,
+  }),
+  Schema.Struct({
+    ...OrchestrationV2TurnItemBaseFields,
+    ...OrchestrationV2CanvasFields,
   }),
   Schema.Struct({
     ...OrchestrationV2TurnItemBaseFields,
@@ -2615,6 +2632,10 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
   Schema.Struct({
     ...OrchestrationV2TurnItemJsonBaseFields,
     ...OrchestrationV2SecretRequestFields,
+  }),
+  Schema.Struct({
+    ...OrchestrationV2TurnItemJsonBaseFields,
+    ...OrchestrationV2CanvasFields,
   }),
   Schema.Struct({
     ...OrchestrationV2TurnItemJsonBaseFields,
@@ -3536,6 +3557,18 @@ const OrchestrationV2InternalCommand = Schema.Union([
     placeholder: Schema.optional(Schema.String),
     delivery: Schema.optional(OrchestrationV2SecretRequestDelivery),
     secretStatus: OrchestrationV2SecretRequestStatus,
+  }),
+  /** Astrolabe: records a board an agent drew, laid out by the server. */
+  Schema.Struct({
+    type: Schema.Literal("canvas.record"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    runId: RunId,
+    nodeId: NodeId,
+    turnItemId: TurnItemId,
+    title: TrimmedNonEmptyString,
+    document: Schema.Unknown,
+    code: Schema.optional(CanvasShowCode),
   }),
   /**
    * Records or updates a link an agent asked the user to make. Internal so no

@@ -1571,3 +1571,95 @@ it.effect("dispatch records the command outcome and its duration", () =>
     assert.strictEqual((yield* durations).count - durationsBefore, 1);
   }).pipe(Effect.provide(layerTest)),
 );
+
+it.effect("records a drawn board once, as the canvas item clients draw", () =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const threadId = ThreadId.make("thread:canvas-record");
+    const providerThreadId = ProviderThreadId.make("provider-thread:canvas-record");
+    const runId = RunId.make("run:canvas-record");
+    const nodeId = NodeId.make("node:canvas-record");
+    const now = yield* DateTime.now;
+    yield* orchestrator.dispatch({
+      type: "thread.create",
+      commandId: CommandId.make("create-canvas-record"),
+      threadId,
+      projectId: ProjectId.make("project:canvas-record"),
+      title: "Canvas record",
+      modelSelection,
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      createdBy: "user",
+      creationSource: "web",
+    });
+    yield* projections.apply({
+      id: EventId.make("canvas-record:run"),
+      type: "run.created",
+      threadId,
+      occurredAt: now,
+      payload: {
+        id: runId,
+        threadId,
+        ordinal: 1,
+        providerInstanceId: instanceId,
+        modelSelection,
+        providerThreadId,
+        userMessageId: MessageId.make("message:canvas-record"),
+        rootNodeId: nodeId,
+        activeAttemptId: null,
+        status: "running",
+        requestedAt: now,
+        startedAt: now,
+        completedAt: null,
+        checkpointId: null,
+        contextHandoffId: null,
+      },
+    });
+    const turnItemId = TurnItemId.make("turn-item:canvas:canvas-record:1");
+    const document = {
+      nodes: [{ id: "a", type: "text", text: "A", x: 40, y: 80, width: 180, height: 60 }],
+      edges: [],
+    };
+    const record = (title: string) =>
+      orchestrator.dispatch({
+        type: "canvas.record",
+        commandId: CommandId.make(`canvas-record:${title}`),
+        threadId,
+        runId,
+        nodeId,
+        turnItemId,
+        title,
+        document,
+        code: { commit: "9f2c1ab" },
+      });
+    yield* record("Flow");
+    // A board never moves after it's drawn: the same item recorded again changes nothing.
+    yield* record("Redrawn");
+
+    const { turnItems } = yield* projections.getThreadRecords(threadId, ["turnItems"], {
+      turnItemTypes: ["canvas"],
+      messageRoles: [],
+    });
+    assert.deepStrictEqual(
+      turnItems.map((item) => ({
+        id: item.id,
+        status: item.status,
+        title: item.title,
+        document: item.type === "canvas" ? item.document : null,
+        code: item.type === "canvas" ? item.code : null,
+      })),
+      [
+        {
+          id: turnItemId,
+          status: "completed",
+          title: "Flow",
+          document,
+          code: { commit: "9f2c1ab" },
+        },
+      ],
+    );
+  }).pipe(Effect.provide(layerTest)),
+);

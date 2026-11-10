@@ -1,4 +1,4 @@
-import { canvasDrawingProblems } from "@mercurian/wiki/canvas";
+import { canvasDocument, canvasDrawingProblems, placeCanvas } from "@mercurian/wiki/canvas";
 import {
   OrchestratorMcpFailure,
   ThreadId,
@@ -14,7 +14,9 @@ import * as Path from "effect/Path";
 import * as ProjectService from "../../../project/ProjectService.ts";
 import * as GitVcsDriver from "../../../vcs/GitVcsDriver.ts";
 import * as CanvasKeep from "../../../wiki/CanvasKeep.ts";
+import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
+import * as OrchestratorMcpService from "../../OrchestratorMcpService.ts";
 import { loadCaller, readThread, unavailable } from "../../threadAccess.ts";
 import { CanvasToolkit } from "./tools.ts";
 
@@ -75,12 +77,29 @@ export const layer = McpToolAccess.toLayer(CanvasToolkit, {
       if (problems.length > 0) return yield* invalid(problems.join(" "));
       const paths = input.cards.flatMap((card) => card.path ?? []);
       const code = paths.length > 0 ? yield* readCode(paths) : undefined;
+      // Laid out once, here: the board never moves after, whatever the engine becomes.
+      const scope = yield* McpInvocationContext.McpInvocationContext;
+      const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+      const canvasItemId = yield* service
+        .recordCanvas(scope, {
+          title: input.title,
+          document: canvasDocument(placeCanvas(input)),
+          code,
+        })
+        .pipe(
+          Effect.catch((error) =>
+            Effect.logWarning("A canvas was shown without its layout recorded", {
+              error: error.message,
+            }).pipe(Effect.as(undefined)),
+          ),
+        );
       return {
         message:
           (input.stories ?? []).length > 0
             ? "Shown to the reader above your reply, with its stories to walk: each step's note is what they read at that step. Don't list the steps again; reply with only what the stories don't already say."
             : "Shown to the reader above your reply. Don't describe it; reply with only what it doesn't already say.",
         ...(code === undefined ? {} : { code }),
+        ...(canvasItemId === undefined ? {} : { canvasItemId }),
       };
     }),
   ),

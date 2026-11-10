@@ -429,6 +429,15 @@ export function canvasData(document: unknown): CanvasData {
   };
 }
 
+/** A board as a file holds it, which `canvasData` reads back. */
+export const canvasDocument = (data: CanvasData) => ({
+  nodes: data.nodes,
+  edges: data.edges,
+  ...(data.stories === undefined || data.stories.length === 0
+    ? {}
+    : { astrolabe: { stories: data.stories } }),
+});
+
 export type ParsedCanvas =
   | {
       readonly ok: true;

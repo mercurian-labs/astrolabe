@@ -6,6 +6,7 @@ import {
   ProjectId,
   ProviderInstanceId,
   ThreadId,
+  TurnItemId,
   type WikiKeepCanvasInput,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -21,6 +22,9 @@ import * as WikiService from "../../../wiki/WikiService.ts";
 import * as McpHttpServer from "../../McpHttpServer.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccessTestkit from "../../McpToolAccess.testkit.ts";
+import * as OrchestratorMcpService from "../../OrchestratorMcpService.ts";
+import * as CanvasHandlers from "./handlers.ts";
+import { CanvasToolkit } from "./tools.ts";
 
 const projectId = ProjectId.make("project:mcp-test");
 const projectRoot = "/home/user/acme-app";
@@ -70,11 +74,12 @@ const project: Project = {
 
 const harness = (options: { readonly files?: ReadonlyArray<string>; readonly noGit?: boolean }) => {
   const asked: string[] = [];
+  const recorded: Array<{ readonly title: string; readonly document: unknown }> = [];
   const kept: Array<{
     readonly input: WikiKeepCanvasInput;
     readonly author: WikiService.WikiAuthor;
   }> = [];
-  const layer = McpHttpServer.layerCanvasToolkit.pipe(
+  const layer = McpHttpServer.toolkitRegistration(CanvasToolkit, CanvasHandlers.layer).pipe(
     Layer.provideMerge(McpHttpServer.layerInProcessMcpServer),
     Layer.provide(
       Layer.mergeAll(
@@ -87,6 +92,12 @@ const harness = (options: { readonly files?: ReadonlyArray<string>; readonly noG
             }),
           getProjectThreadRecords: (input) =>
             Effect.succeed({ thread: { id: input.threadId } } as never),
+        }),
+        Layer.mock(OrchestratorMcpService.OrchestratorMcpService)({
+          recordCanvas: (_scope, input) => {
+            recorded.push(input);
+            return Effect.succeed(TurnItemId.make("turn-item:canvas:1"));
+          },
         }),
         Layer.mock(CanvasKeep.CanvasKeep)({
           keep: (input, author) => {
@@ -121,7 +132,7 @@ const harness = (options: { readonly files?: ReadonlyArray<string>; readonly noG
       Effect.provideService(McpSchema.McpServerClient, client),
       Effect.provide(layer),
     );
-  return { asked, kept, call };
+  return { asked, recorded, kept, call };
 };
 
 const failureMessage = (result: McpSchema.CallToolResult) => {
@@ -144,8 +155,18 @@ describe("canvas toolkit handlers", () => {
         arrows: [{ from: "a", to: "b", label: "calls" }],
       });
       expect(result.isError).not.toBe(true);
-      expect(result.structuredContent).toEqual({ message: expect.any(String) });
+      expect(result.structuredContent).toEqual({
+        message: expect.any(String),
+        canvasItemId: "turn-item:canvas:1",
+      });
       expect(tools.asked).toEqual([]);
+      // The board is laid out here, once, for the thread to keep; the agent gets only its id.
+      expect(tools.recorded).toMatchObject([
+        {
+          title: "Flow",
+          document: { nodes: [{ id: "a" }, { id: "b" }], edges: [{ label: "calls" }] },
+        },
+      ]);
     }),
   );
 
@@ -174,7 +195,10 @@ describe("canvas toolkit handlers", () => {
         cards: [{ id: "a", path: "a.ts" }],
       });
       expect(result.isError).not.toBe(true);
-      expect(result.structuredContent).toEqual({ message: expect.any(String) });
+      expect(result.structuredContent).toEqual({
+        message: expect.any(String),
+        canvasItemId: "turn-item:canvas:1",
+      });
     }),
   );
 

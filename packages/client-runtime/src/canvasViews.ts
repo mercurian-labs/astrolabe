@@ -1,15 +1,16 @@
-import { placeCanvas, type CanvasData } from "@mercurian/wiki/canvas";
+import { canvasData, placeCanvas, type CanvasData } from "@mercurian/wiki/canvas";
 import { CANVAS_SHOW_TOOL_NAME, CanvasShowInput } from "@t3tools/contracts";
 import { resolveT3McpToolId } from "@t3tools/shared/t3McpToolPresentation";
-import { toolArguments } from "@t3tools/shared/toolOutput";
+import { compactDynamicToolOutput, toolArguments } from "@t3tools/shared/toolOutput";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import { t3ToolResultIndicatesFailure } from "./t3ToolSummary.ts";
 
 /**
- * Astrolabe: a canvas an agent drew in a thread, read from its finished `astrolabe_canvas_show`
- * call. Nothing else stores it: the call is the record, and every client lays it out the same.
+ * Astrolabe: a canvas an agent drew in a thread. The server lays it out once and records it as a
+ * `canvas` turn item, which is what clients draw. A call from before that has only its input, which
+ * every client lays out the same.
  */
 export interface CanvasView {
   readonly title: string;
@@ -18,37 +19,54 @@ export interface CanvasView {
 
 const decodeInput = Schema.decodeUnknownOption(CanvasShowInput);
 
-interface CanvasToolItem {
+interface CanvasItem {
+  readonly type: string;
+  readonly title?: string | null | undefined;
+  readonly document?: unknown;
   readonly toolName?: string | null | undefined;
   readonly status?: string | undefined;
   readonly input?: unknown;
   readonly output?: unknown;
 }
 
-// A finished call never changes, and timelines re-derive their rows on every thread update.
-const viewsByItem = new WeakMap<CanvasToolItem, CanvasView | null>();
+// A finished item never changes, and timelines re-derive their rows on every thread update.
+const viewsByItem = new WeakMap<CanvasItem, CanvasView | null | undefined>();
 
-/** The canvas a tool item drew, or undefined for any other item and for a failed call. */
-export function canvasViewFromToolItem(item: CanvasToolItem): CanvasView | undefined {
-  if (item.status !== "completed") return undefined;
-  if (resolveT3McpToolId(item.toolName) !== CANVAS_SHOW_TOOL_NAME) return undefined;
-  const cached = viewsByItem.get(item);
-  if (cached !== undefined) return cached ?? undefined;
-  const input = t3ToolResultIndicatesFailure(item.output)
-    ? null
-    : Option.getOrNull(decodeInput(toolArguments(item.input)));
-  const view = input === null ? null : { title: input.title, data: placeCanvas(input) };
-  viewsByItem.set(item, view);
-  return view ?? undefined;
+function viewOf(item: CanvasItem): CanvasView | null | undefined {
+  if (item.type === "canvas") {
+    return { title: item.title ?? "Canvas", data: canvasData(item.document) };
+  }
+  if (t3ToolResultIndicatesFailure(item.output)) return undefined;
+  // The board this call drew is its canvas item's, which draws in its place.
+  if (compactDynamicToolOutput(item.output)?.canvasItemId !== undefined) return null;
+  const input = Option.getOrUndefined(decodeInput(toolArguments(item.input)));
+  return input === undefined ? undefined : { title: input.title, data: placeCanvas(input) };
 }
 
-/** The thread's finished canvases, oldest first, each with its tool call's item id. */
+/**
+ * The canvas an item draws: a `canvas` item, or a finished `astrolabe_canvas_show` call that
+ * recorded none. `null` for a call whose canvas item draws it instead, which shows nothing itself;
+ * undefined for any other item.
+ */
+export function canvasViewFromItem(item: CanvasItem): CanvasView | null | undefined {
+  const drawn =
+    item.type === "canvas" ||
+    (item.type === "dynamic_tool" &&
+      item.status === "completed" &&
+      resolveT3McpToolId(item.toolName) === CANVAS_SHOW_TOOL_NAME);
+  if (!drawn) return undefined;
+  if (viewsByItem.has(item)) return viewsByItem.get(item);
+  const view = viewOf(item);
+  viewsByItem.set(item, view);
+  return view;
+}
+
+/** The thread's canvases, oldest first, each with the id of the item that draws it. */
 export function canvasViews(
-  items: ReadonlyArray<CanvasToolItem & { readonly id: string; readonly type: string }>,
+  items: ReadonlyArray<CanvasItem & { readonly id: string }>,
 ): ReadonlyArray<CanvasView & { readonly id: string }> {
   return items.flatMap((item) => {
-    if (item.type !== "dynamic_tool") return [];
-    const view = canvasViewFromToolItem(item);
-    return view === undefined ? [] : [{ ...view, id: item.id }];
+    const view = canvasViewFromItem(item);
+    return view === undefined || view === null ? [] : [{ ...view, id: item.id }];
   });
 }

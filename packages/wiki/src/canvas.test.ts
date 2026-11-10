@@ -7,6 +7,7 @@ import {
   canvasChangeSections,
   canvasChangeSummary,
   canvasData,
+  canvasDocument,
   canvasDrawingProblems,
   canvasSteps,
   diffCanvas,
@@ -671,6 +672,20 @@ describe("placeCanvas", () => {
           if (a.id !== b.id) expect(overlap(a, b), `${a.id} and ${b.id}`).toBe(false);
         }
       }
+    });
+
+    it("writes a board as a document that reads back the same", () => {
+      const board = placeCanvas({
+        cards: [
+          { id: "a", text: "A", group: "g" },
+          { id: "b", path: "src/b.ts", line: 3, endLine: 9, text: "B" },
+          { id: "c", url: "https://example.com" },
+        ],
+        groups: [{ id: "g", label: "G" }],
+        arrows: [{ from: "a", to: "b", label: "calls", ends: "both" }],
+        stories: [story(step("1", "a", "b"), step("2", "c"))],
+      });
+      expect(canvasData(canvasDocument(board))).toEqual(board);
     });
 
     it("reads a file's stories from its top level, leaving out steps with no card", () => {

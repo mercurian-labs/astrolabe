@@ -456,17 +456,18 @@ function cardNodesAt(
     }
     const lines =
       card.line === undefined ? undefined : ([card.line, card.endLine ?? card.line] as const);
+    const astrolabe = {
+      ...(card.text === undefined ? {} : { caption: card.text }),
+      ...(card.path === undefined
+        ? {}
+        : { code: { path: card.path, ...(lines === undefined ? {} : { lines }) } }),
+    };
     return [
       {
         ...base,
         type: "link",
         url: card.url ?? "",
-        astrolabe: {
-          ...(card.text === undefined ? {} : { caption: card.text }),
-          ...(card.path === undefined
-            ? {}
-            : { code: { path: card.path, ...(lines === undefined ? {} : { lines }) } }),
-        },
+        ...(Object.keys(astrolabe).length === 0 ? {} : { astrolabe }),
       },
     ];
   });
