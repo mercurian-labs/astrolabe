@@ -47,7 +47,7 @@ import { useThreadShell } from "~/state/entities";
 import { chatTabKey, parseChatTabKey } from "./sectionTabs";
 
 /** An arrangement showing `key`: brought forward where it is, else opened in the focused pane. */
-export function showKeyIn(
+function showKeyIn(
   arrangement: Arrangement,
   key: string,
   placement: "tab" | "beside" = "tab",

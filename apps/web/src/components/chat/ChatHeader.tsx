@@ -41,9 +41,7 @@ import { observeResize } from "~/lib/observeResize";
 import { cn } from "~/lib/utils";
 import { textDirection } from "~/textDirection";
 import { useClientSettings } from "../../hooks/useSettings";
-import { LinkedWikiChips } from "../wiki/LinkedWikiChips";
 import { GuestShareIndicator } from "./GuestShareControls";
-import { ThreadChangeGroupPill } from "../changeRequests/groups/ThreadChangeGroupPill";
 
 interface ChatHeaderProps {
   activeThreadEnvironmentId: EnvironmentId;
@@ -432,16 +430,7 @@ export const ChatHeader = memo(function ChatHeader({
           ) : null}
         </WorkspaceBreadcrumbItem>
       </WorkspaceBreadcrumb>
-      {activeProject && !activeProject.isScratch ? (
-        <LinkedWikiChips environmentId={activeProject.environmentId} projectId={activeProject.id} />
-      ) : null}
       {isServerThread ? <GuestShareIndicator threadRef={activeThreadRef} /> : null}
-      {isServerThread ? (
-        <ThreadChangeGroupPill
-          environmentId={activeThreadEnvironmentId}
-          threadId={activeThreadId}
-        />
-      ) : null}
     </div>
   );
 });
