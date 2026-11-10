@@ -309,6 +309,7 @@ const resumed = (
   options?: {
     readonly external?: boolean;
     readonly supervised?: boolean;
+    readonly writableRoots?: ReadonlyArray<string>;
     readonly replayGate?: ProviderReplayGate;
     readonly attachmentsDir?: string;
     readonly resolveExtractedTextPath?: (path: string) => Effect.Effect<string | undefined>;
@@ -327,7 +328,18 @@ const resumed = (
           ? [
               out("agent.list", "<any>"),
               reply("agent.list", agentList),
-              out("session.update", { sessionID: SESSION, permissions: supervisedRules }),
+              out("session.update", {
+                sessionID: SESSION,
+                permissions: [
+                  ...supervisedRules.slice(0, 3),
+                  ...(options.writableRoots ?? []).map((root) => ({
+                    action: "external_directory",
+                    resource: `${root}/*`,
+                    effect: "allow",
+                  })),
+                  ...supervisedRules.slice(3),
+                ],
+              }),
               reply("session.update", null),
             ]
           : []),
@@ -350,7 +362,10 @@ const resumed = (
       providerThread: providerThread(yield* DateTime.now),
       threadId,
       modelSelection: bigPickle,
-      runtimePolicy: policy(options?.supervised === true ? "approval-required" : "full-access"),
+      runtimePolicy: {
+        ...policy(options?.supervised === true ? "approval-required" : "full-access"),
+        ...(options?.writableRoots === undefined ? {} : { writableRoots: options.writableRoots }),
+      },
     });
     return { runtime, thread };
   });
@@ -1850,6 +1865,13 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
         "OpenCode is waiting on a request Astrolabe couldn't answer.",
       );
     }).pipe(Effect.scoped),
+  );
+
+  it.effect("lets a supervised session reach the thread's wiki checkouts", () =>
+    resumed([], { supervised: true, writableRoots: ["/state/wiki-checkouts/notes"] }).pipe(
+      Effect.asVoid,
+      Effect.scoped,
+    ),
   );
 
   it.effect("counts an answer to a request OpenCode already dropped as delivered", () =>

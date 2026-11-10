@@ -680,6 +680,15 @@ export function openCodePermissionRules(
     }
   }
 
+  // The thread's extra folders count as its own, so leaving the workspace for them never asks.
+  for (const root of runtimePolicy.writableRoots ?? []) {
+    rules.push({
+      permission: "external_directory",
+      pattern: `${root.replace(/\/$/, "")}/*`,
+      action: "allow",
+    });
+  }
+
   return rules;
 }
 

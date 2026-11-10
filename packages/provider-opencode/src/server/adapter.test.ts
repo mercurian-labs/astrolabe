@@ -2591,6 +2591,15 @@ describe("OpenCodeAdapterV2", () => {
       }),
     );
     assert.equal(permissionAction(approvalRequiredWorkspaceWrite, "edit"), "ask");
+
+    const withWiki = openCodePermissionRules(
+      runtimePolicy("approval-required", { writableRoots: ["/state/wiki-checkouts/notes/"] }),
+    );
+    assert.deepInclude(withWiki, {
+      permission: "external_directory",
+      pattern: "/state/wiki-checkouts/notes/*",
+      action: "allow",
+    });
   });
 
   it("enforces non-interactive sandbox policy through OpenCode permissions", () => {
