@@ -290,6 +290,9 @@ describe("amendments", () => {
     const warning = indexFiles(after).maps.get("Product.skillmap.md")?.warnings?.[0];
     expect(warning?.amendment).toBe(first.amendment);
     expect(severed.errors).toHaveLength(1);
+    // The same change set planned again, warning and all, as a checkout's save does, adds none.
+    const replanned = planAmendment(files, severed.changes, stamp());
+    expect(replanned.changes["Product.skillmap.md"]).toBe(severed.changes["Product.skillmap.md"]);
 
     expect(() =>
       planTransform(
