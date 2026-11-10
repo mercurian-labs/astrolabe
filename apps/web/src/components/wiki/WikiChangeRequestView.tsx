@@ -28,6 +28,7 @@ import { useEnvironmentQuery } from "~/state/query";
 import { wikiEnvironment } from "~/state/wiki";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { TabHeader } from "~/panes/TabHeader";
+import { ChangeGroupHeaderLink } from "../changeRequests/groups/ChangeGroupHeaderLink";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import type { FullPullRequestTarget } from "../pullRequest/pullRequestTabs";
 import {
@@ -181,6 +182,14 @@ export function WikiChangeRequestView({
   return frame(
     changeRequest.title,
     <>
+      <ChangeGroupHeaderLink
+        isMember={(group, member) =>
+          group.environmentId === environmentId &&
+          member.ref.kind === "wiki-change-request" &&
+          member.ref.wikiId === wikiId &&
+          member.ref.changeRequestId === changeRequestId
+        }
+      />
       <TabHeader.Status>
         {changeRequest.draft
           ? changeRequest.status === "open"

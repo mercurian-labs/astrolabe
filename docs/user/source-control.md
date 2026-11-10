@@ -230,7 +230,8 @@ request and the wiki pull request documenting it. A thread's own pull requests f
 their own, and so do a coordinator's children's and a fork's; a pull request with no thread joins
 the group whose titles share its issue key (`M-123`). Groups lead the **Changes** list,
 each with its state: **In sync**, **Docs behind**, **Waiting on code**, **Docs missing** or
-**Merged**. A thread in a group shows it beside its title.
+**Merged**. A thread in a group shows it in its details card, beside its pull request, and a pull
+request in a group names it in its header; click either to open the group.
 
 A group also lists the threads working on it: the thread it started from, the threads that opened
 its pull requests, their forks and coordinator's children (including a fork that opened
@@ -319,8 +320,8 @@ and their marks follow the same rules as on web and desktop.
 ## Linked pull requests
 
 A thread can hold several pull requests, including reviews from another repository on the same host.
-Use **Link pull request** in the command palette or **Linked pull requests** panel, or right-click a
-pull request link in the conversation. Creating a pull request from Git actions links it automatically,
+Use **Link pull request** in the command palette or a linked pull request's right-click menu in the
+thread details card, or right-click a pull request link in the conversation. Creating a pull request from Git actions links it automatically,
 and so does an agent creating one with `gh pr create` or `glab mr create`. Agents can link other
 pull requests with the `link_pull_request` tool.
 
@@ -329,11 +330,12 @@ on the Pull requests page, **Link to thread** lets you search for an active thre
 also lists the threads that link to it, including archived threads, so you can return to their context.
 
 Thread badges show a stack's layer count or the current review number with a count of additional
-links. Clicking a badge with more than one review opens the **Linked pull requests** panel. On mobile, the Git overview lists linked reviews and their stacks; tap a review to open it.
+links. Clicking a badge with more than one review opens the thread's change group, or its current
+review when grouping left it in none. On mobile, the Git overview lists linked reviews and their stacks; tap a review to open it.
 Linking and unlinking are available in the web and desktop clients.
 
-The **Linked pull requests** panel lists every review and groups stacks. Unlink a review from its
-row menu. An unlinked stack layer stays out of later syncs. Open linked reviews refresh on the server;
+The thread details card lists every linked review; **Show more** reveals the rest. Unlink a review
+from its right-click menu, or from **Manage linked pull requests** in the command palette. An unlinked stack layer stays out of later syncs. Open linked reviews refresh on the server;
 closed reviews refresh periodically so reopening one on the host is detected. Merged reviews refresh
 when requested. A settled thread's reviews stop refreshing until you unsettle it. With **Auto-settle merged threads** enabled, a thread can settle after every linked
 review is terminal. An open or unsynced link keeps it active.
@@ -349,7 +351,8 @@ failed reads in a row, or when you press Stop on the thread. A rate limit only p
 Settling or archiving a thread also ends all its watches. Unsettle the thread before starting a new
 watch. Watching a pull request again does not repeat check or conflict news its last
 watch already reported; unlinking the pull request clears that. Subagents cannot watch pull requests; the thread that delegated to them does. To start or stop
-it yourself, use the row menu in the **Linked pull requests** panel. In the thread details card, a
+it yourself, use the review's right-click menu in the thread details card, or **Manage linked pull
+requests** in the command palette. In the thread details card, a
 watched pull request shows an eye; click it to stop watching.
 
 A watched thread counts as working between wakes, so it stays in the **Working** section and does

@@ -3,6 +3,7 @@ import type { PullRequestDetail, PullRequestState } from "@t3tools/contracts";
 import { ListIcon, PencilIcon } from "lucide-react";
 
 import { TabHeader } from "~/panes/TabHeader";
+import { ChangeGroupHeaderLink } from "../changeRequests/groups/ChangeGroupHeaderLink";
 import { resolvePullRequestState } from "./pullRequestPresentation";
 
 /**
@@ -37,6 +38,13 @@ export function PullRequestTabHeading({
       <TabHeader.Title label="Pull request" parent={repository} keepParent>
         {title === null ? `#${number}` : `#${number} ${title}`}
       </TabHeader.Title>
+      <ChangeGroupHeaderLink
+        isMember={(_group, member) =>
+          member.ref.kind === "pull-request" &&
+          member.ref.repository === repository &&
+          member.ref.number === number
+        }
+      />
       {state === "open" ? (
         <TabHeader.Status>
           {resolvePullRequestState({ state, isDraft: summary?.isDraft ?? false }).label}
@@ -50,7 +58,7 @@ export function PullRequestTabHeading({
             </TabHeader.Action>
           ) : null}
           {onBack ? (
-            <TabHeader.Action label="This thread's pull requests" onClick={onBack}>
+            <TabHeader.Action label="This thread's change group" onClick={onBack}>
               <ListIcon className="size-4" />
             </TabHeader.Action>
           ) : null}
