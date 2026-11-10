@@ -4187,6 +4187,55 @@ describe("live subagents after their parent turn settles", () => {
     },
   );
 
+  it("lets running children stand in for the thinking row while the parent waits on them", () => {
+    const rowsWhileWaiting = (children: ReadonlyArray<OrchestrationV2TurnItem>) =>
+      deriveMessagesTimelineRows({
+        timelineEntries: deriveTimelineEntriesFromVisibleTurnItems({
+          visibleTurnItems: (
+            [
+              {
+                ...base("user", 0),
+                status: "completed",
+                type: "user_message",
+                messageId: MessageId.make("user"),
+                createdBy: "user",
+                creationSource: "web",
+                inputIntent: "turn_start",
+                text: "Delegate the review",
+                attachments: [],
+              },
+              {
+                ...base("assistant", 1),
+                status: "completed",
+                type: "assistant_message",
+                messageId: MessageId.make("assistant"),
+                text: "Running two children.",
+                streaming: false,
+              },
+              ...children,
+            ] satisfies OrchestrationV2TurnItem[]
+          ).map(projected),
+          optimisticMessages: [],
+        }),
+        latestRun: {
+          runId,
+          status: "running",
+          startedAt: DateTime.formatIso(at(0)),
+          completedAt: null,
+        },
+        isWorking: true,
+        activeTurnStartedAt: DateTime.formatIso(at(0)),
+        turnDiffSummaries: [],
+        supportsConversationRollback: false,
+      });
+
+    const waiting = rowsWhileWaiting([child("a", 2, "running"), child("b", 3, "running")]);
+    expect(waiting.some((row) => row.kind === "thinking")).toBe(false);
+
+    const settled = rowsWhileWaiting([child("a", 2, "completed"), child("b", 3, "completed")]);
+    expect(settled.at(-1)).toMatchObject({ kind: "thinking" });
+  });
+
   it("keeps a launch batch visible while any member is still running", () => {
     const rows = rowsFor([child("done", 3, "completed"), child("live", 4, "running")]);
     expect(rows.map((row) => row.id)).toEqual(["user", `turn-fold:${runId}`, "done", "assistant"]);

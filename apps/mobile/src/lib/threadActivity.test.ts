@@ -1244,6 +1244,38 @@ describe("buildThreadFeed", () => {
     expect(presented.some((entry) => entry.type === "thinking")).toBe(false);
   });
 
+  it("lets running subagents stand in for Thinking while the parent waits on them", () => {
+    const startedAt = "2026-06-20T00:00:01.000Z";
+    const presentedWith = (status: "running" | "completed") =>
+      deriveThreadFeedPresentation(
+        buildThreadFeed([
+          projected(userMessage(), 0),
+          projected(
+            {
+              ...base("agent", "2026-06-20T00:00:02.000Z", 1),
+              status,
+              type: "subagent",
+              subagentId: NodeId.make("agent"),
+              origin: "app_owned",
+              driver: ProviderDriverKind.make("codex"),
+              providerInstanceId: ProviderInstanceId.make("codex"),
+              childThreadId: ThreadId.make("child-agent"),
+              prompt: "Inspect the repo",
+              result: null,
+            },
+            1,
+          ),
+        ]),
+        { runId, status: "running", startedAt, completedAt: null },
+        new Set(),
+        new Set(),
+        startedAt,
+        true,
+      );
+    expect(presentedWith("running").some((entry) => entry.type === "thinking")).toBe(false);
+    expect(presentedWith("completed").at(-1)).toMatchObject({ type: "thinking" });
+  });
+
   it("does not show Thinking once the open run's provider turn has ended", () => {
     const startedAt = "2026-04-01T00:00:01.000Z";
     const run = { runId, status: "running" as const, startedAt, completedAt: null };
