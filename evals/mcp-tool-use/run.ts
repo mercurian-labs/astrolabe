@@ -269,7 +269,7 @@ export const McpToolUseCase = Schema.Struct({
         Schema.Struct({
           name: Schema.String,
           folder: Schema.String,
-          reach: Schema.optional(Schema.Literals(["edit", "read", "none"])),
+          reach: Schema.optional(Schema.Literals(["edit", "shell", "none"])),
         }),
       ),
     ),

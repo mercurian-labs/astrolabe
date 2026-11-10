@@ -103,19 +103,21 @@ export const wikiAgentGuidance = (names: ReadonlyArray<string>): string => {
 };
 
 /** How a provider session's file tools reach the thread's wiki checkouts, outside its folder. */
-export type WikiCheckoutReach = "edit" | "read" | "none";
+export type WikiCheckoutReach = "edit" | "shell" | "none";
 
 /**
- * Probed per provider: Cursor's sandbox reads extra folders but refuses edits there, and
- * Antigravity's file tools refuse any path outside the working folder. `sandboxed` is whether
- * the session's filesystem sandbox is on, as Cursor decides it.
+ * Probed per provider: Cursor's sandbox refuses its edit tool in extra folders, and every MCP
+ * call, but lets a shell command write there; Antigravity's file tools refuse any path outside
+ * the working folder. `sandboxed` is whether the session's filesystem sandbox is on, as Cursor
+ * decides it.
  */
 export const wikiCheckoutReach = (driver: string, sandboxed: boolean): WikiCheckoutReach =>
-  driver === "antigravity" ? "none" : driver === "cursor" && sandboxed ? "read" : "edit";
+  driver === "antigravity" ? "none" : driver === "cursor" && sandboxed ? "shell" : "edit";
 
 const reachClause: Record<WikiCheckoutReach, string> = {
   edit: ". Read, search and edit its notes there with your file tools.",
-  read: ". You can read it there, but your sandbox refuses edits outside this project: delegate edits with delegate_task's wiki field.",
+  shell:
+    ". Read and search it there with your file tools, but your sandbox refuses your edit tool outside this project: write notes there with a shell command that changes only the lines it needs, without rewriting the whole file or adding blank lines.",
   none: ", but your file tools can't leave this project's folder: delegate wiki work with delegate_task's wiki field.",
 };
 

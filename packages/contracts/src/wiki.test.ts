@@ -46,7 +46,7 @@ describe("wikiCheckoutReach", () => {
   it.each([
     ["claudeAgent", true, "edit"],
     ["codex", true, "edit"],
-    ["cursor", true, "read"],
+    ["cursor", true, "shell"],
     ["cursor", false, "edit"],
     ["antigravity", false, "none"],
   ] as const)("%s with its sandbox %s reaches a checkout to %s", (driver, sandboxed, reach) => {

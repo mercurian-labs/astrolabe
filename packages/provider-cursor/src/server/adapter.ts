@@ -310,7 +310,7 @@ export function makeCursorAgentOptions(input: {
     ...(input.apiKey === undefined ? {} : { apiKey: input.apiKey }),
     local: {
       ...(input.runtimePolicy.cwd === null ? {} : { cwd: input.runtimePolicy.cwd }),
-      // Read and searched; Cursor's sandbox still refuses edits outside cwd.
+      // The sandbox refuses the edit tool outside cwd, but a shell command can write in these.
       ...(input.runtimePolicy.writableRoots?.length
         ? { dirs: [...input.runtimePolicy.writableRoots] }
         : {}),
