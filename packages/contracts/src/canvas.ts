@@ -64,7 +64,9 @@ export type CanvasShowGroup = typeof CanvasShowGroup.Type;
 
 export const CanvasShowFrame = Schema.Struct({
   id: CardReference.annotate({ description: "Unique among this call's cards, groups and frames." }),
-  label: Schema.optional(Schema.NonEmptyString),
+  label: Schema.optional(
+    Schema.NonEmptyString.annotate({ description: "A few words. Frames are numbered for you." }),
+  ),
   note: Schema.NonEmptyString.annotate({
     description: "One or two sentences the reader sees at this step.",
   }),
