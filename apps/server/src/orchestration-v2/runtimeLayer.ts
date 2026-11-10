@@ -416,6 +416,8 @@ export const layerProduction = Layer.mergeAll(
   layerProjectService,
   layerManagedProjectFoldersProvided,
   layerWikiServiceProvided,
+  // Astrolabe: `delegate_task` checks out a wiki for a child to work in.
+  layerThreadWikiCheckoutsProvided,
   CanvasKeep.layer.pipe(
     Layer.provide(
       Layer.mergeAll(layerOrchestratorProvided, layerProjectService, layerWikiServiceProvided),
