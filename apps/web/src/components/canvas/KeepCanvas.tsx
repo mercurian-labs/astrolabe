@@ -237,7 +237,7 @@ export function KeepCanvasButton({
         width="md"
         padding="compact"
       >
-        <p className="truncate px-1 pb-1 text-sm font-medium">{`Keep ${board.title}`}</p>
+        <p className="truncate pb-1 text-sm font-medium">{`Keep ${board.title}`}</p>
         <PlaceInWiki board={board} onClose={() => setOpen(false)} />
       </PopoverPopup>
     </Popover>
