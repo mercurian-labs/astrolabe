@@ -182,6 +182,23 @@ it("bounds numbers and reads target.options in either schema form", () => {
   assert.lengthOf(failed(expect, run("10", {}, 60_000)), 2);
 });
 
+it("matches an args key listing alternatives when any of them matches", () => {
+  const expect = {
+    calls: [{ tool: "Edit|Write", args: { "file_path|patch": "~wiki/Deploys.md" } }],
+  };
+  const edit = (input: unknown): SampleRun => ({
+    calls: [{ step: 0, tool: "Edit", input }],
+    text: "",
+    stopReason: "end_turn",
+  });
+  assert.deepEqual(failed(expect, edit({ file_path: "/home/user/wiki/Deploys.md" })), []);
+  assert.deepEqual(
+    failed(expect, edit({ patch: "*** Update File: /home/user/wiki/Deploys.md" })),
+    [],
+  );
+  assert.lengthOf(failed(expect, edit({ file_path: "/home/user/app/src/deploy.ts" })), 1);
+});
+
 const template = {
   system: [
     { type: "text", text: "x-anthropic-billing-header: cc_version=1;" },
