@@ -4,6 +4,7 @@ import {
   type ChangeGroupGroupingSettings,
   type EnvironmentId,
   type ProjectId,
+  type ThreadPullRequestLink,
 } from "@t3tools/contracts";
 import {
   changeGroupCandidates,
@@ -15,6 +16,7 @@ import {
 
 import type { EnvironmentThreadShell } from "./state/models.ts";
 import type { WikiOverview } from "./state/wiki.ts";
+import { resolveThreadCurrentPullRequestLink } from "./threadPullRequests.ts";
 
 /** Astrolabe: a change group, with the environment it lives on. */
 export interface EnvironmentChangeGroup extends ChangeGroup {
@@ -121,4 +123,38 @@ export function changeGroupsByBranch(input: {
     for (const key of keys) byBranch.set(key, [...(byBranch.get(key) ?? []), group]);
   }
   return byBranch;
+}
+
+/** The change groups a thread works in, those holding its own change requests first. */
+export function threadChangeGroups(
+  groups: ReadonlyArray<EnvironmentChangeGroup>,
+  environmentId: EnvironmentId,
+  threadId: string,
+): ReadonlyArray<EnvironmentChangeGroup> {
+  const owns = (group: EnvironmentChangeGroup) =>
+    group.members.some((member) => member.threadId === threadId);
+  return groups
+    .filter((group) => group.environmentId === environmentId && group.threadIds.includes(threadId))
+    .sort((left, right) => Number(owns(right)) - Number(owns(left)));
+}
+
+export type ThreadChangeRequestsTarget =
+  | { readonly kind: "group"; readonly group: EnvironmentChangeGroup }
+  | { readonly kind: "pull-request"; readonly link: ThreadPullRequestLink };
+
+/**
+ * Where a thread's change requests open: its change group when it is in one, else its pull
+ * request. Several pull requests in no group (grouping off, members removed) open the current
+ * one; the thread details list reaches the rest.
+ */
+export function threadChangeRequestsTarget(input: {
+  readonly groups: ReadonlyArray<EnvironmentChangeGroup>;
+  readonly environmentId: EnvironmentId;
+  readonly threadId: string;
+  readonly pullRequests: ReadonlyArray<ThreadPullRequestLink>;
+}): ThreadChangeRequestsTarget | null {
+  const group = threadChangeGroups(input.groups, input.environmentId, input.threadId)[0];
+  if (group !== undefined) return { kind: "group", group };
+  const link = resolveThreadCurrentPullRequestLink(input.pullRequests);
+  return link === null ? null : { kind: "pull-request", link };
 }

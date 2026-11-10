@@ -233,7 +233,6 @@ export function createPanesController(storage: StorageLike | null): PanesControl
         before.diffAvailable === next.diffAvailable &&
         before.filesAvailable === next.filesAvailable &&
         before.pullRequestAvailable === next.pullRequestAvailable &&
-        before.pullRequestsAvailable === next.pullRequestsAvailable &&
         before.deviceAvailable === next.deviceAvailable &&
         before.graphAvailable === next.graphAvailable &&
         before.lineageAvailable === next.lineageAvailable &&

@@ -80,6 +80,9 @@ import {
   FilePenLineIcon,
 } from "lucide-react";
 import { openThreadFind } from "./chat/threadFindStore";
+import { openThreadChangeRequests } from "./changeRequests/groups/openThreadChangeRequests";
+import { linkedPullRequestsSubmenu } from "./pullRequest/linkedPullRequestsSubmenu";
+import { useLinkedPullRequestActions } from "./pullRequest/useLinkedPullRequestActions";
 import {
   useDeferredValue,
   useEffect,
@@ -164,7 +167,7 @@ import {
   useCommandPaletteMount,
   useCommandPaletteStore,
 } from "../commandPaletteStore";
-import { PULL_REQUESTS_PANEL_REF, useRightPanelStore } from "../rightPanelStore";
+import { PULL_REQUESTS_PANEL_REF } from "../rightPanelStore";
 import { getLatestThreadForProject, sortThreads } from "@t3tools/client-runtime/state/thread-sort";
 import {
   cn,
@@ -545,6 +548,9 @@ function OpenCommandPaletteDialog(props: {
   const openPanelPullRequestUrl = useOpenPanelPullRequestUrl(referenceThreadRef);
   const activeThreadServerConfig = useServerConfigs().get(
     activeThread?.environmentId ?? ("" as EnvironmentId),
+  );
+  const linkedPullRequestActions = useLinkedPullRequestActions(
+    activeThread ? scopeThreadRef(activeThread.environmentId, activeThread.id) : null,
   );
   const canShareActiveThreadWithGuest = useAtomValue(
     canShareWithGuestAtom(activeThread?.environmentId ?? ("" as EnvironmentId)),
@@ -1602,17 +1608,25 @@ function OpenCommandPaletteDialog(props: {
         openLinkPullRequestDialog(threadRef);
       },
     });
+    const linkedPullRequests = visibleThreadPullRequests(activeThread.pullRequests);
     actionItems.push({
       kind: "action",
       value: "action:open-thread-pull-requests",
-      searchTerms: ["pull requests", "linked", "stack", "prs"],
+      searchTerms: ["pull requests", "linked", "stack", "prs", "change group"],
       title: "Show linked pull requests",
-      disabled: visibleThreadPullRequests(activeThread.pullRequests).length === 0,
+      // Astrolabe: the thread's change group, or its one pull request (`threadChangeRequestsTarget`).
+      description: "Opens its change group, or its pull request",
+      disabled: linkedPullRequests.length === 0,
       icon: <PullRequestGlyph.link className={ITEM_ICON_CLASS} />,
       run: async () => {
-        useRightPanelStore.getState().open(threadRef, "pull-requests");
+        openThreadChangeRequests(threadRef);
       },
     });
+    if (linkedPullRequests.length > 0) {
+      actionItems.push(
+        linkedPullRequestsSubmenu(threadRef, linkedPullRequests, linkedPullRequestActions),
+      );
+    }
   }
 
   if (activeThread !== null && canShareActiveThreadWithGuest) {

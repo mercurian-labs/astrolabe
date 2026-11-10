@@ -21,6 +21,7 @@ import { MorphIcon } from "~/components/MorphIcon";
 import { linkedPullRequestSnapshotStatus, prStatusIndicator } from "../ThreadStatusIndicators";
 
 import { ThreadDetailsPrRow } from "./ThreadDetailsPrRow";
+import { ThreadDetailsPrRowMenu } from "./ThreadDetailsPrRowMenu";
 
 function ThreadDetailsPrLinkRow({
   environmentId,
@@ -91,7 +92,11 @@ export function ThreadDetailsPrRows({
               watching: false,
             },
           });
-  const currentRow = <ThreadDetailsPrRow {...row} onStopWatching={stopWatching(currentLink)} />;
+  const currentRow = (
+    <ThreadDetailsPrRowMenu threadRef={threadRef} link={currentLink}>
+      <ThreadDetailsPrRow {...row} onStopWatching={stopWatching(currentLink)} />
+    </ThreadDetailsPrRowMenu>
+  );
   const rest =
     currentLink === null
       ? []
@@ -106,14 +111,19 @@ export function ThreadDetailsPrRows({
       {expanded ? (
         <div data-thread-details-pr-list className="flex flex-col">
           {rest.map((link) => (
-            <ThreadDetailsPrLinkRow
+            <ThreadDetailsPrRowMenu
               key={threadPullRequestKeyOf(link)}
-              environmentId={row.environmentId}
+              threadRef={threadRef}
               link={link}
-              onOpen={(event) => onOpenLink(event, link.url)}
-              onActed={row.onActed}
-              onStopWatching={stopWatching(link)}
-            />
+            >
+              <ThreadDetailsPrLinkRow
+                environmentId={row.environmentId}
+                link={link}
+                onOpen={(event) => onOpenLink(event, link.url)}
+                onActed={row.onActed}
+                onStopWatching={stopWatching(link)}
+              />
+            </ThreadDetailsPrRowMenu>
           ))}
         </div>
       ) : null}

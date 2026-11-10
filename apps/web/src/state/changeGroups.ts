@@ -2,18 +2,21 @@ import {
   changeGroupsByBranch,
   environmentChangeGroups,
   environmentChangeRequests,
+  threadChangeGroups,
   type EnvironmentChangeGroup,
 } from "@t3tools/client-runtime/changeGroups";
 import type { ChangeGroupDecisions } from "@t3tools/contracts";
 import type { ChangeGroupMember } from "@t3tools/shared/changeGroups";
 import { createChangeGroupEnvironmentAtoms } from "@t3tools/client-runtime/state/changeGroups";
-import type { EnvironmentId } from "@t3tools/contracts";
+import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/reactivity";
 
 import { connectionAtomRuntime } from "../connection/runtime";
+import { appAtomRegistry } from "../rpc/atomRegistry";
 import { useEnvironments } from "./environments";
+import { environmentPresentations } from "./presentation";
 import { serverEnvironment } from "./server";
 import { environmentThreadShells } from "./threads";
 import { wikiEnvironment } from "./wiki";
@@ -25,7 +28,7 @@ const EMPTY: ReadonlyArray<EnvironmentChangeGroup> = [];
 
 /**
  * Every change group on the servers in `key` (a JSON array of environment ids), derived once
- * for every view that shows them: the Change Requests list, a group's tab, a thread's pill.
+ * for every view that shows them: the Change Requests list, a group's tab, a thread's details.
  */
 const changeGroupsAtom = Atom.family((key: string) =>
   Atom.make((get): ReadonlyArray<EnvironmentChangeGroup> => {
@@ -69,6 +72,41 @@ const useEnvironmentsKey = () => {
 /** Every change group on the connected servers. */
 export function useChangeGroups(): ReadonlyArray<EnvironmentChangeGroup> {
   return useAtomValue(changeGroupsAtom(useEnvironmentsKey()));
+}
+
+/** Every change group on the connected servers, read once rather than followed. */
+export function readChangeGroups(): ReadonlyArray<EnvironmentChangeGroup> {
+  const ids = [...appAtomRegistry.get(environmentPresentations.presentationsAtom).keys()];
+  return appAtomRegistry.get(changeGroupsAtom(JSON.stringify(ids)));
+}
+
+/** A thread's first change group's id (`threadChangeGroups`), so a change elsewhere rerenders nothing. */
+const threadChangeGroupIdAtom = Atom.family((key: string) =>
+  Atom.make((get): string | null => {
+    const [environmentsKey, environmentId, threadId] = JSON.parse(key) as [
+      string,
+      EnvironmentId | null,
+      string | null,
+    ];
+    if (environmentId === null || threadId === null) return null;
+    return (
+      threadChangeGroups(get(changeGroupsAtom(environmentsKey)), environmentId, threadId)[0]
+        ?.groupId ?? null
+    );
+  }).pipe(Atom.withLabel(`thread-change-group:${key}`)),
+);
+
+export function useThreadChangeGroupId(threadRef: ScopedThreadRef | null): string | null {
+  const environmentsKey = useEnvironmentsKey();
+  return useAtomValue(
+    threadChangeGroupIdAtom(
+      JSON.stringify([
+        environmentsKey,
+        threadRef?.environmentId ?? null,
+        threadRef?.threadId ?? null,
+      ]),
+    ),
+  );
 }
 
 /** The change groups each branch's work is in, by `branchGroupKey`. */

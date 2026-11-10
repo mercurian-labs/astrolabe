@@ -59,7 +59,7 @@ import {
   type ReactNode,
 } from "react";
 
-import { useRightPanelStore } from "../../rightPanelStore";
+import { openThreadChangeRequests } from "../changeRequests/groups/openThreadChangeRequests";
 import { useOpenPrLink } from "../../lib/openPullRequestLink";
 import { useUiStateStore } from "../../uiStateStore";
 import { useThreadSelectionStore } from "../../threadSelectionStore";
@@ -1064,7 +1064,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     ? resolveThreadPullRequestBadge(thread.pullRequests)
     : null;
   const handlePrListClick = () => {
-    useRightPanelStore.getState().open(threadRef, "pull-requests");
+    // Astrolabe: the thread's change group, or its one pull request.
+    openThreadChangeRequests(threadRef);
     if (!props.isRouteThread) onThreadActivate(threadRef);
   };
   const prBadge =
