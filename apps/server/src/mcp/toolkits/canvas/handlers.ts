@@ -77,7 +77,9 @@ export const layer = McpToolAccess.toLayer(CanvasToolkit, {
       const code = paths.length > 0 ? yield* readCode(paths) : undefined;
       return {
         message:
-          "Shown to the reader above your reply. Don't describe it; reply with only what it doesn't already say.",
+          (input.frames ?? []).length > 0
+            ? "Shown to the reader above your reply, as a walk: each frame's note is what they read at that step. Don't list the steps again; reply with only what the walk doesn't already say."
+            : "Shown to the reader above your reply. Don't describe it; reply with only what it doesn't already say.",
         ...(code === undefined ? {} : { code }),
       };
     }),
