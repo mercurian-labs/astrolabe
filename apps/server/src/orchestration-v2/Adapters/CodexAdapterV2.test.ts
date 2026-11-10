@@ -219,6 +219,22 @@ describe("CodexAdapterV2 runtime policy", () => {
       assert.equal(fullAccess.approvalPolicy, "never");
       assert.equal(fullAccess.approvalsReviewer, "user");
       assert.equal(fullAccess.sandboxPolicy?.type, "dangerFullAccess");
+
+      const withWiki = yield* CodexAdapterV2.buildCodexTurnStartParams({
+        nativeThreadId: "native-wiki",
+        codexInput: [{ type: "text", text: "test" }],
+        runtimePolicy: {
+          runtimeMode: "auto-accept-edits",
+          interactionMode: "default",
+          cwd: null,
+          writableRoots: ["/wiki-checkouts/notes"],
+        },
+        modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
+      });
+      assert.deepEqual(withWiki.sandboxPolicy, {
+        type: "workspaceWrite",
+        writableRoots: ["/wiki-checkouts/notes"],
+      });
     }),
   );
 

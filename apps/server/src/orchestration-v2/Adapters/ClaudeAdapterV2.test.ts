@@ -279,6 +279,7 @@ describe("ClaudeAdapterV2 runtime query policy", () => {
       resume: false,
       cwd: "/workspace",
       attachmentsDir: "/attachments",
+      writableRoots: ["/wiki-checkouts/notes"],
       settings: {
         ...AUTO_COMPACT_CLAUDE_SETTINGS,
         launchArgs: "--add-dir ../apps ../lib --verbose --add-dir=/shared",
@@ -287,6 +288,7 @@ describe("ClaudeAdapterV2 runtime query policy", () => {
     assert.deepEqual(options.additionalDirectories, [
       "/workspace",
       "/attachments",
+      "/wiki-checkouts/notes",
       "../apps",
       "../lib",
       "/shared",
@@ -568,6 +570,13 @@ describe("ClaudeAdapterV2 MCP query overrides", () => {
       }),
     );
     assert.notEqual(rotatedKey, initialKey);
+    // A folder added since launch needs a new process too.
+    const withWiki = ClaudeAdapterV2.claudeEffectiveQueryPolicyKey(
+      queryPolicy,
+      ClaudeAdapterV2.claudeMcpQueryOverrides({ mcpSession, readOnlySandbox: false }),
+      ["/wiki-checkouts/notes"],
+    );
+    assert.notEqual(withWiki, initialKey);
   });
 
   it("matches the read-only allowlist to the orchestrator toolkit annotations", () => {

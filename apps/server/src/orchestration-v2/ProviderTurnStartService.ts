@@ -29,6 +29,7 @@ import * as ServerConfig from "../config.ts";
 import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
 import * as GitWorkflowService from "../git/GitWorkflowService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
+import * as ThreadWikiCheckouts from "../wiki/ThreadWikiCheckouts.ts";
 import * as WikiService from "../wiki/WikiService.ts";
 import * as ProviderAuthService from "../provider/ProviderAuthService.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -163,6 +164,7 @@ export const layer: Layer.Layer<
     const isManagedWorktreePath = yield* makeIsManagedWorktreePath;
     // Astrolabe: optional, so a runtime without wikis starts turns unchanged.
     const wikis = yield* Effect.serviceOption(WikiService.WikiService);
+    const wikiCheckouts = yield* Effect.serviceOption(ThreadWikiCheckouts.ThreadWikiCheckouts);
 
     const resolveRecreateBase = Effect.fn("ProviderTurnStartService.resolveRecreateBase")(
       function* (cwd: string) {
@@ -693,7 +695,7 @@ export const layer: Layer.Layer<
       const { isCurrentAttemptInStatus } = runControls;
 
       // A side chat shares its parent's worktree; the turn that gets its context asks before acting.
-      const resolvedRuntimePolicy = yield* runtimePolicy.resolve({
+      const basePolicy = yield* runtimePolicy.resolve({
         thread:
           projection.thread.lineage.sideChat === true &&
           (sideChatHandoff !== undefined ||
@@ -702,6 +704,17 @@ export const layer: Layer.Layer<
             : projection.thread,
         modelSelection: run.modelSelection,
       });
+      // Astrolabe: the session reaches each linked wiki through the thread's checkout of it.
+      const wikiRoots = Option.isNone(wikiCheckouts)
+        ? []
+        : yield* wikiCheckouts.value.ensure({
+            threadId: projection.thread.id,
+            projectId: projection.thread.projectId,
+          });
+      const resolvedRuntimePolicy =
+        wikiRoots.length === 0
+          ? basePolicy
+          : { ...basePolicy, writableRoots: [...(basePolicy.writableRoots ?? []), ...wikiRoots] };
       if (!(yield* isCurrentAttemptInStatus("starting"))) return;
       const existingSessionProjection = projection.providerSessions.find(
         (candidate) => candidate.id === providerSessionId,
