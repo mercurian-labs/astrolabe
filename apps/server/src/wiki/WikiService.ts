@@ -342,6 +342,11 @@ export class WikiService extends Context.Service<
     ) => Effect.Effect<WikiAmendResult, WikiError>;
     /** The wikis linked to a project. */
     readonly linkedTo: (projectId: ProjectId) => Effect.Effect<ReadonlyArray<WikiId>, WikiError>;
+    /** The wiki linked to a project that `reference` names by id or name. */
+    readonly linkedWiki: (
+      projectId: ProjectId,
+      reference: string,
+    ) => Effect.Effect<WikiId, WikiError>;
     /**
      * Makes `folder` a worktree of the wiki on the thread's open change request, or detached at
      * main's tip while it has none; one with unsaved edits stays as it is. Returns the folder
@@ -2845,7 +2850,10 @@ const make = Effect.gen(function* () {
           const current = listed.branch === null ? null : `refs/heads/${listed.branch}`;
           if (current === branch && (branch !== null || listed.head === main)) return input.folder;
           // Unsaved edits and commits stay where they are; the turn-end save lands them.
-          const since = listed.branch === null ? yield* checkoutBase(wiki, listed.head) : undefined;
+          const since =
+            listed.branch === null && listed.head !== null
+              ? yield* checkoutBase(wiki, listed.head)
+              : undefined;
           if (carriedNames(yield* checkoutEdits(input.folder, true, since)).length > 0)
             return input.folder;
           yield* withWorkspaceLease(
@@ -3780,6 +3788,30 @@ const make = Effect.gen(function* () {
         .map((wiki) => wiki.wikiId),
     );
 
+  const linkedWiki: WikiService["Service"]["linkedWiki"] = Effect.fn("WikiService.linkedWiki")(
+    function* (projectId, reference) {
+      const { wikis } = yield* loadRegistry;
+      const names = (wiki: WikiRecord) =>
+        wiki.wikiId === reference || wiki.name.toLowerCase() === reference.toLowerCase();
+      const linked = wikis.filter((wiki) => wiki.projectIds.includes(projectId));
+      const byId = linked.find((wiki) => wiki.wikiId === reference);
+      if (byId !== undefined) return byId.wikiId;
+      const found = linked.filter(names);
+      if (found.length === 1) return found[0]!.wikiId;
+      const listed = linked.map((wiki) => `"${wiki.name}"`).join(", ");
+      return yield* new WikiError({
+        reason: found.length > 1 ? "invalid" : "not-found",
+        message: `${
+          found.length > 1
+            ? "Several wikis linked to this project have this name; use the wiki's id."
+            : wikis.some(names)
+              ? "That wiki is not linked to this project."
+              : "No wiki has this id or name."
+        } ${linked.length === 0 ? "This project has no linked wikis." : `Its linked wikis: ${listed}.`}`,
+      });
+    },
+  );
+
   const agentNote: WikiService["Service"]["agentNote"] = (projectId, linkedSince) =>
     loadRegistry.pipe(
       Effect.map((registry) =>
@@ -4340,6 +4372,7 @@ const make = Effect.gen(function* () {
     revertAmendment,
     saveWorktree,
     linkedTo,
+    linkedWiki,
     checkoutForThread,
     saveThreadCheckout,
     removeCheckout,

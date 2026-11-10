@@ -7,9 +7,11 @@ import {
   WikiQueryResult,
   WikiAgentTransform,
 } from "@t3tools/contracts";
+import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import { Tool, Toolkit } from "effect/ai";
 
+import * as ServerConfig from "../../../config.ts";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as WikiService from "../../../wiki/WikiService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -21,6 +23,8 @@ const shared = {
     McpInvocationContext.McpInvocationContext,
     ThreadManagementService.ThreadManagementService,
     WikiService.WikiService,
+    ServerConfig.ServerConfig,
+    Path.Path,
   ],
 };
 

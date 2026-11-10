@@ -32,6 +32,7 @@ import * as ServerSettings from "../serverSettings.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
+import * as ThreadWikiCheckouts from "./ThreadWikiCheckouts.ts";
 import * as WikiService from "./WikiService.ts";
 import { WikiRegistryJson } from "./wikiStorage.ts";
 import { withCanvasOutlines } from "./wikiViews.ts";
@@ -1889,6 +1890,82 @@ it.effect("lands commits an agent makes in its checkout with the turn's save", (
       assert.equal(yield* git(folder, ["rev-parse", "HEAD"]), second!.commit);
       assert.equal(second!.changeRequest.threadId, threadId);
     }),
+  ),
+);
+
+it.effect("a child working in a thread's checkout saves onto that thread's change request", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const path = yield* Path.Path;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const { stateDir } = yield* ServerConfig.ServerConfig;
+      const { root, wikiId, summary, wikis } = yield* registeredWiki(harness);
+      const projectId = ProjectId.make("project-app");
+      yield* wikis.setProjectLink({ wikiId, projectId, linked: true });
+      const checkouts = yield* ThreadWikiCheckouts.ThreadWikiCheckouts;
+      const parent = ThreadId.make("thread-parent");
+      const child = ThreadId.make("thread-child");
+      const checkoutFor = (threadId: ThreadId, wiki: string, worktreePath: string | null = null) =>
+        checkouts.checkoutFor({ threadId, projectId, worktreePath, wiki });
+
+      const unknown = yield* failure(checkoutFor(parent, "Research"));
+      assert.equal(
+        unknown.message,
+        `No wiki has this id or name. Its linked wikis: "${summary.name}".`,
+      );
+      yield* wikis.create({ name: "Research" });
+      assert.include(
+        (yield* failure(checkoutFor(parent, "research"))).message,
+        "That wiki is not linked to this project.",
+      );
+
+      const folder = yield* checkoutFor(parent, summary.name.toUpperCase());
+      assert.equal(folder, path.join(stateDir, "wiki-checkouts", parent, wikiId));
+      // The child mounts no checkout of its own, and a task it delegates shares the same one.
+      assert.deepEqual(
+        yield* checkouts.ensure({ threadId: child, projectId, worktreePath: folder }),
+        [],
+      );
+      assert.equal(yield* checkoutFor(child, wikiId, folder), folder);
+
+      const turn = (threadId: ThreadId, actor: string) =>
+        checkouts.saveTurn({
+          threadId,
+          projectId,
+          worktreePath: threadId === child ? folder : null,
+          title: "Turn",
+          author: { actor, threadId },
+        });
+      const amendments = Effect.gen(function* () {
+        const [open] = (yield* wikis.changeRequestsList({ wikiId })).changeRequests;
+        if (open === undefined) return [];
+        return (yield* wikis.changeRequestsGet({ wikiId, changeRequestId: open.changeRequestId }))
+          .changeRequest.amendments;
+      });
+
+      // The child's turn ends after its parent's: it saves the folder itself.
+      yield* write(folder, { "Beta.md": "# Beta\n\nBy the child.\n" });
+      yield* turn(child, "child-model");
+      const saved = yield* amendments;
+      assert.deepEqual(
+        saved.map((amendment) => amendment.actor),
+        ["child-model"],
+      );
+      const [open] = (yield* wikis.changeRequestsList({ wikiId })).changeRequests;
+      assert.equal(open?.threadId, parent);
+      assert.equal(yield* git(folder, ["rev-parse", "HEAD"]), saved[0]?.commit);
+
+      // Turns ending together save the folder once between them.
+      yield* write(folder, { "Beta.md": "# Beta\n\nBy both.\n" });
+      yield* Effect.all([turn(child, "child-model"), turn(parent, "parent-model")], {
+        concurrency: "unbounded",
+      });
+      assert.equal((yield* amendments).length, 2);
+      yield* Effect.all([turn(child, "child-model"), turn(parent, "parent-model")]);
+      assert.equal((yield* amendments).length, 2);
+      assert.isFalse(yield* fileSystem.exists(path.join(stateDir, "wiki-checkouts", child)));
+      assert.notInclude(yield* git(root, ["worktree", "list"]), child);
+    }).pipe(Effect.provide(ThreadWikiCheckouts.layer)),
   ),
 );
 

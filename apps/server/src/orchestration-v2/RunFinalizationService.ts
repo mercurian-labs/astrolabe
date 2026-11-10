@@ -66,6 +66,7 @@ const make = Effect.gen(function* () {
     yield* wikiCheckouts.value.saveTurn({
       threadId,
       projectId: thread.projectId,
+      worktreePath: thread.worktreePath,
       title: thread.title,
       author: { actor: thread.modelSelection.model, threadId },
     });

@@ -6,8 +6,11 @@ import {
   WikiId,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Path from "effect/Path";
 
+import * as ServerConfig from "../../../config.ts";
 import { withCanvasOutlines } from "../../../wiki/wikiViews.ts";
+import { checkoutOwner } from "../../../wiki/ThreadWikiCheckouts.ts";
 import * as WikiService from "../../../wiki/WikiService.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import { readCaller } from "../../threadAccess.ts";
@@ -23,35 +26,53 @@ const wikiFailure = (error: WikiError) =>
     message: error.message,
   });
 
-/** The wiki service and who is calling: the thread an agent runs in, and its model as actor. */
-const access = Effect.gen(function* () {
+/**
+ * The wiki service and who is calling: the thread an agent runs in, and its model as actor. A
+ * child working in a thread's checkout of `wiki` acts for that thread on it.
+ */
+const access = Effect.fn("WikiToolkit.access")(function* (wiki: string) {
   const { scope, caller } = yield* readCaller();
+  const wikis = yield* WikiService.WikiService;
+  const owner = checkoutOwner(
+    yield* Path.Path,
+    (yield* ServerConfig.ServerConfig).stateDir,
+    caller?.worktreePath ?? null,
+  );
+  const ownWiki =
+    owner === undefined || caller === undefined
+      ? false
+      : yield* wikis.linkedWiki(caller.projectId, wiki.trim()).pipe(
+          Effect.map((wikiId) => wikiId === owner.wikiId),
+          Effect.orElseSucceed(() => false),
+        );
   return {
-    wikis: yield* WikiService.WikiService,
-    threadId: scope.thread?.threadId,
+    wikis,
+    threadId: ownWiki ? owner?.threadId : scope.thread?.threadId,
     actor: caller?.modelSelection.model ?? "Agent",
   };
 });
 
 const read = <A>(
+  wiki: string,
   body: (
     wikis: WikiService.WikiService["Service"],
     threadId: WikiService.WikiReadTarget["threadId"],
   ) => Effect.Effect<A, WikiError>,
 ) =>
-  access.pipe(
+  access(wiki).pipe(
     Effect.flatMap(({ wikis, threadId }) =>
       body(wikis, threadId).pipe(Effect.mapError(wikiFailure)),
     ),
   );
 
 const write = <A>(
+  wiki: string,
   body: (
     wikis: WikiService.WikiService["Service"],
     author: WikiService.WikiAuthor,
   ) => Effect.Effect<A, WikiError>,
 ) =>
-  access.pipe(
+  access(wiki).pipe(
     Effect.flatMap(({ wikis, threadId, actor }) =>
       body(wikis, { actor, threadId: threadId ?? null }).pipe(Effect.mapError(wikiFailure)),
     ),
@@ -83,15 +104,17 @@ const subjectOf = (transform: WikiAgentTransform) =>
 export const layer = McpToolAccess.toLayer(WikiToolkit, {
   // Reads see the calling thread's checkout as it stands, unsaved edits included.
   astrolabe_wiki_orient: McpToolAccess.reads((input) =>
-    read((wikis, threadId) =>
+    read(input.wiki, (wikis, threadId) =>
       wikis.orient({ ...target(input), map: input.map.trim(), threadId, checkout: true }),
     ),
   ),
   astrolabe_wiki_links: McpToolAccess.reads((input) =>
-    read((wikis, threadId) => wikis.links({ ...target(input), threadId, checkout: true })),
+    read(input.wiki, (wikis, threadId) =>
+      wikis.links({ ...target(input), threadId, checkout: true }),
+    ),
   ),
   astrolabe_wiki_query: McpToolAccess.reads(({ base, view, ...input }) =>
-    read((wikis, threadId) =>
+    read(input.wiki, (wikis, threadId) =>
       wikis
         .query({
           ...target(input),
@@ -105,7 +128,7 @@ export const layer = McpToolAccess.toLayer(WikiToolkit, {
     ),
   ),
   astrolabe_wiki_change_request: McpToolAccess.reads((input) =>
-    read((wikis, threadId) =>
+    read(input.wiki, (wikis, threadId) =>
       wikis
         .changeRequestsGet({ ...target(input), threadId, checkout: true })
         .pipe(Effect.map(withCanvasOutlines)),
@@ -113,7 +136,7 @@ export const layer = McpToolAccess.toLayer(WikiToolkit, {
   ),
   // Changes belong to the calling thread's checkout or change request; only a live thread may write.
   astrolabe_wiki_transform: McpToolAccess.actsAsCaller(({ message, title, ...input }) =>
-    write((wikis, author) =>
+    write(input.wiki, (wikis, author) =>
       wikis.transformCheckout(
         {
           ...target(input),

@@ -710,6 +710,7 @@ export const layer: Layer.Layer<
         : yield* wikiCheckouts.value.ensure({
             threadId: projection.thread.id,
             projectId: projection.thread.projectId,
+            worktreePath: projection.thread.worktreePath,
           });
       const resolvedRuntimePolicy =
         wikiRoots.length === 0

@@ -4,12 +4,16 @@ import {
   ProviderInstanceId,
   ThreadId,
   WikiError,
+  WikiId,
   type WikiQueryResult,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Path from "effect/Path";
 import { McpSchema, McpServer } from "effect/ai";
 
+import * as ServerConfig from "../../../config.ts";
+import * as ThreadManagement from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as WikiService from "../../../wiki/WikiService.ts";
 import { advertisedJsonSchema } from "../../advertisedJsonSchema.ts";
 import * as McpHttpServer from "../../McpHttpServer.ts";
@@ -57,19 +61,34 @@ const rows: WikiQueryResult = {
   truncated: false,
 };
 
-const harness = (answer: Effect.Effect<WikiQueryResult, WikiError>) => {
+const harness = (
+  answer: Effect.Effect<WikiQueryResult, WikiError>,
+  /** The calling thread's working folder. */
+  worktreePath: string | null = null,
+) => {
   const calls: unknown[] = [];
   const layer = McpHttpServer.layerWikiToolkit.pipe(
     Layer.provideMerge(McpServer.McpServer.layer),
     Layer.provide(
       Layer.mergeAll(
-        McpToolAccessTestkit.liveThreadsLayer,
+        Layer.mock(ThreadManagement.ThreadManagementService)({
+          getThreadShell: (id) =>
+            Effect.succeed({ ...McpToolAccessTestkit.liveThreadShell(id), worktreePath }),
+        }),
         Layer.mock(WikiService.WikiService)({
           query: (input) => {
             calls.push(input);
             return answer;
           },
+          linkedWiki: (_projectId, reference) =>
+            reference === "Plans"
+              ? Effect.succeed(WikiId.make("wiki-plans"))
+              : Effect.fail(new WikiError({ reason: "not-found", message: "No wiki." })),
         }),
+        Layer.succeed(ServerConfig.ServerConfig, {
+          stateDir: "/state",
+        } as ServerConfig.ServerConfig["Service"]),
+        Path.layer,
       ),
     ),
   );
@@ -104,6 +123,18 @@ describe("astrolabe_wiki_query", () => {
       expect(result.structuredContent).toEqual(rows);
       expect(tools.calls).toEqual([
         { wikiId: "Plans", base: "Open decisions", view: "Open", threadId, checkout: true },
+      ]);
+    }),
+  );
+
+  it.effect("reads for the thread whose checkout of the wiki a child works in", () =>
+    Effect.gen(function* () {
+      const tools = harness(Effect.succeed(rows), "/state/wiki-checkouts/thread-parent/wiki-plans");
+      yield* tools.call({ wiki: "Plans", base: "Open" });
+      yield* tools.call({ wiki: "Research", base: "Open" });
+      expect(tools.calls).toMatchObject([
+        { wikiId: "Plans", threadId: "thread-parent" },
+        { wikiId: "Research", threadId },
       ]);
     }),
   );
