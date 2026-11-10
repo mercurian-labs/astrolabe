@@ -1854,6 +1854,44 @@ const threadWithCheckout = (harness: Harness, thread: string) =>
     return { ...registered, threadId, folder, save };
   });
 
+it.effect("lands commits an agent makes in its checkout with the turn's save", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis, threadId, folder, save } = yield* threadWithCheckout(
+        harness,
+        "thread-git",
+      );
+      const main = yield* git(root, ["rev-parse", "main"]);
+      // Before the first save the checkout sits detached at main.
+      yield* write(folder, { "Beta.md": "# Beta\n\nCommitted by hand.\n" });
+      yield* git(folder, ["commit", "--quiet", "-am", "By hand"]);
+      const first = yield* save();
+      assert.equal(first!.changeRequest.base, main);
+      assert.deepEqual(first!.changeRequest.files, ["Beta.md"]);
+      assert.equal(first!.changeRequest.amendments.length, 1);
+      assert.equal(yield* read(folder, "Beta.md"), "# Beta\n\nCommitted by hand.\n");
+      assert.equal(yield* git(folder, ["status", "--porcelain"]), "");
+
+      // On the change request's branch a commit is its own amendment, under its git author.
+      yield* write(folder, { "Alpha.md": "# Alpha\n\nAlpha builds on [[Beta]], by hand.\n" });
+      yield* git(folder, ["commit", "--quiet", "-am", "Alpha by hand"]);
+      assert.isNull(yield* save());
+      yield* write(folder, { "Beta.md": "# Beta\n\nThen saved.\n" });
+      const second = yield* save();
+      const { amendments } = (yield* wikis.changeRequestsGet({
+        wikiId,
+        changeRequestId: second!.changeRequest.changeRequestId,
+      })).changeRequest;
+      assert.deepEqual(
+        amendments.map((amendment) => amendment.actor),
+        ["test-model", "Fixture", "test-model"],
+      );
+      assert.equal(yield* git(folder, ["rev-parse", "HEAD"]), second!.commit);
+      assert.equal(second!.changeRequest.threadId, threadId);
+    }),
+  ),
+);
+
 it.effect("reads a thread's checkout as it stands, unsaved edits included", () =>
   withWikis((harness) =>
     Effect.gen(function* () {

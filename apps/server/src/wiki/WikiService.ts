@@ -2456,11 +2456,13 @@ const make = Effect.gen(function* () {
 
   /**
    * A checkout's unsaved edits: documents by text and, with `attachments`, other visible files as
-   * blobs written to the object store; null for a deleted one.
+   * blobs written to the object store; null for a deleted one. With `since`, what commits made
+   * in the folder after it changed counts too.
    */
   const checkoutEdits = Effect.fn("WikiService.checkoutEdits")(function* (
     at: string,
     attachments: boolean,
+    since?: string,
   ) {
     const status = yield* runGit("worktreeStatus", at, [
       "status",
@@ -2469,13 +2471,31 @@ const make = Effect.gen(function* () {
       "--no-renames",
       "--untracked-files=all",
     ]);
+    const entries = new Map<string, boolean>();
+    for (const record of status.stdout.split("\0")) {
+      if (record.length >= 4) entries.set(record.slice(3), record.slice(0, 2).includes("D"));
+    }
+    if (since !== undefined) {
+      const committed = yield* gitOut("committedEdits", at, [
+        "diff",
+        "--name-only",
+        "--no-renames",
+        "-z",
+        since,
+        "HEAD",
+      ]);
+      for (const file of committed.split("\0").filter(Boolean)) {
+        if (entries.has(file)) continue;
+        const exists = yield* fileSystem
+          .exists(path.join(at, file))
+          .pipe(Effect.orElseSucceed(() => false));
+        entries.set(file, !exists);
+      }
+    }
     const changes: Record<string, string | null> = {};
     const blobs: Record<string, string | null> = {};
     const hashed: string[] = [];
-    for (const record of status.stdout.split("\0")) {
-      const file = record.slice(3);
-      if (record.length < 4) continue;
-      const deleted = record.slice(0, 2).includes("D");
+    for (const [file, deleted] of entries) {
       if (attachments && isAttachmentName(file)) {
         if (deleted) blobs[file] = null;
         else hashed.push(file);
@@ -2541,8 +2561,10 @@ const make = Effect.gen(function* () {
     message: string,
     /** A thread's checkout saves every visible file; a person's worktree only its documents. */
     attachments: boolean,
+    /** Where the folder's own commits began, when they are to land as edits too. */
+    since?: string,
   ) {
-    const edits = yield* checkoutEdits(at, attachments);
+    const edits = yield* checkoutEdits(at, attachments, since);
     if (carriedNames(edits).length === 0) {
       yield* clearPending(at);
       return null;
@@ -2606,6 +2628,12 @@ const make = Effect.gen(function* () {
     }
     return result;
   });
+
+  /** Where a checkout's own commits began: the last commit `head` shares with main. */
+  const checkoutBase = (wiki: WikiRecord, head: string) =>
+    runGit("checkoutBase", wiki.root, ["merge-base", head, mainRef(wiki)], {
+      allowExitCodes: [1],
+    }).pipe(Effect.map((result) => (result.exitCode === 0 ? result.stdout.trim() : head)));
 
   /** Whether `folder` is one of the wiki's worktrees, with the branch it has checked out. */
   const listedCheckout = Effect.fn("WikiService.listedCheckout")(function* (
@@ -2816,8 +2844,9 @@ const make = Effect.gen(function* () {
           }
           const current = listed.branch === null ? null : `refs/heads/${listed.branch}`;
           if (current === branch && (branch !== null || listed.head === main)) return input.folder;
-          // Unsaved edits stay where they are; the turn-end save lands them on the right head.
-          if (carriedNames(yield* checkoutEdits(input.folder, true)).length > 0)
+          // Unsaved edits and commits stay where they are; the turn-end save lands them.
+          const since = listed.branch === null ? yield* checkoutBase(wiki, listed.head) : undefined;
+          if (carriedNames(yield* checkoutEdits(input.folder, true, since)).length > 0)
             return input.folder;
           yield* withWorkspaceLease(
             input.folder,
@@ -2841,16 +2870,19 @@ const make = Effect.gen(function* () {
         withWorkspaceLease(
           input.folder,
           Effect.gen(function* () {
-            if ((yield* listedCheckout(wiki, input.folder)) === undefined) return null;
+            const listed = yield* listedCheckout(wiki, input.folder);
+            if (listed === undefined) return null;
             const from = yield* gitOut("worktreeHead", input.folder, ["rev-parse", "HEAD"]);
             const own = yield* threadChangeRequest(wiki, input.threadId);
+            // Commits made on a detached checkout belong to no branch: they land in this amendment.
+            const since = listed.branch === null ? yield* checkoutBase(wiki, from) : from;
             const target: Target =
               own !== undefined
                 ? { kind: "existing", stored: own }
                 : {
                     kind: "new",
                     changeRequestId: WikiChangeRequestId.make(yield* newId),
-                    base: from,
+                    base: since,
                     title: oneLine(input.title) || subjectOf(input.message) || "Wiki change",
                     draft: false,
                   };
@@ -2862,6 +2894,7 @@ const make = Effect.gen(function* () {
               author,
               input.message,
               true,
+              since === from ? undefined : since,
             );
           }),
         ),
