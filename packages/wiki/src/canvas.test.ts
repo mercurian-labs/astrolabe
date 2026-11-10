@@ -16,6 +16,7 @@ import {
   reviewCanvasFiles,
   serializeCanvas,
   type CanvasBounds,
+  type CanvasData,
   type CanvasDrawing,
 } from "./canvas.ts";
 import { canvasLinks, canvasOutline, canvasSourceOutline, renameInCanvas } from "./canvasIndex.ts";
@@ -540,76 +541,118 @@ describe("placeCanvas", () => {
     expect(edges).toEqual([]);
   });
 
-  describe("frames", () => {
-    const frame = (id: string, ...ids: string[]) => ({ id, note: `Step ${id}`, cards: ids });
-    const steps = (drawing: CanvasDrawing) =>
-      canvasSteps(placeCanvas(drawing)).map((step) => [step.frame.id, [...step.cards].toSorted()]);
+  describe("stories", () => {
+    const step = (name: string, ...ids: string[]) => ({ note: `Step ${name}`, cards: ids });
+    const story = (...steps: ReturnType<typeof step>[]) => ({ title: "Story", steps });
+    const lit = (drawing: CanvasDrawing, at = 0) =>
+      canvasSteps(placeCanvas(drawing), at).map((each) => [each.note, [...each.cards].sort()]);
+    const positions = (data: CanvasData) =>
+      data.nodes.map(({ id, x, y, width, height }) => ({ id, x, y, width, height }));
 
-    it("walks each frame's cards, in the order the frames were written", () => {
+    it("walks a story's steps in the order they were written", () => {
       expect(
-        steps({
+        lit({
           cards: cards("a", "b", "c"),
-          frames: [frame("two", "c"), frame("one", "a", "b")],
+          stories: [story(step("two", "c"), step("one", "a", "b"))],
         }),
       ).toEqual([
-        ["two", ["c"]],
-        ["one", ["a", "b"]],
+        ["Step two", ["c"]],
+        ["Step one", ["a", "b"]],
       ]);
     });
 
-    it("shows a card again in a later frame, overlapping or recalled, never copied", () => {
-      // `s` is shared by neighbours; `a` comes back three frames later.
+    it("frames a card shared by neighbours in both steps, and docks one from far back", () => {
+      // `s` is shared by neighbours; `a` comes back three steps later.
       const shared: CanvasDrawing = {
         cards: cards("a", "b", "c", "d", "e", "f", "s"),
-        frames: [
-          frame("f1", "a", "s"),
-          frame("f2", "s", "b"),
-          frame("f3", "c", "d"),
-          frame("f4", "e", "a"),
-          frame("f5", "f"),
+        stories: [
+          story(
+            step("1", "a", "s"),
+            step("2", "s", "b"),
+            step("3", "c", "d"),
+            step("4", "e", "a"),
+            step("5", "f"),
+          ),
         ],
       };
-      expect(steps(shared)).toEqual([
-        ["f1", ["a", "s"]],
-        ["f2", ["b", "s"]],
-        ["f3", ["c", "d"]],
-        ["f4", ["a", "e"]],
-        ["f5", ["f"]],
+      const board = placeCanvas(shared);
+      const walked = canvasSteps(board);
+      const s = board.nodes.find((node) => node.id === "s");
+      if (s === undefined) throw new Error("s isn't on the board");
+      expect(walked.map((each) => contains(each.frame, s))).toEqual([
+        true,
+        true,
+        false,
+        false,
+        false,
       ]);
-      const { nodes } = placeCanvas(shared);
-      expect(nodes.filter((node) => node.id === "s")).toHaveLength(1);
-      expect(nodes.filter((node) => node.id === "a")).toHaveLength(1);
+      expect(walked[0]?.docked.size).toBe(0);
+      expect(walked[1]?.docked.size).toBe(0);
 
-      // During f4, `a` stands beside f4 rather than three frames away, and says where it's from.
-      const f4 = canvasSteps(placeCanvas(shared))[3];
-      const docked = f4?.docked.get("a");
-      if (f4 === undefined || docked === undefined) throw new Error("a isn't docked in f4");
+      // During step 4, `a` stands beside its frame rather than three steps away.
+      const fourth = walked[3];
+      const docked = fourth?.docked.get("a");
+      if (fourth === undefined || docked === undefined) throw new Error("a isn't docked");
       expect(docked.from).toBe(0);
-      expect(overlap(docked, f4.frame)).toBe(false);
-      expect(contains(f4.bounds, docked)).toBe(true);
-      expect(f4.bounds.width * f4.bounds.height).toBeLessThan(
-        canvasBounds(placeCanvas(shared)).width * canvasBounds(placeCanvas(shared)).height,
+      expect(overlap(docked, fourth.frame)).toBe(false);
+      expect(contains(fourth.bounds, docked)).toBe(true);
+      const whole = canvasBounds(board);
+      expect(fourth.bounds.width * fourth.bounds.height).toBeLessThan(whole.width * whole.height);
+    });
+
+    it("lets later stories, and stories on a map, walk the board without moving a card", () => {
+      const first = story(step("1", "a", "b"), step("2", "c"));
+      const second = { title: "Backwards", steps: [step("x", "c"), step("y", "a")] };
+      const walk: CanvasDrawing = { cards: cards("a", "b", "c"), stories: [first] };
+      const both = placeCanvas({ ...walk, stories: [first, second] });
+      expect(positions(both)).toEqual(positions(placeCanvas(walk)));
+      expect(both.stories?.map((each) => each.title)).toEqual(["Story", "Backwards"]);
+      expect(lit({ ...walk, stories: [first, second] }, 1)).toEqual([
+        ["Step x", ["c"]],
+        ["Step y", ["a"]],
+      ]);
+
+      const map: CanvasDrawing = {
+        cards: [{ id: "a", text: "A", group: "g" }, ...cards("b", "c")],
+        groups: [{ id: "g", label: "G" }],
+        arrows: [{ from: "a", to: "b" }],
+      };
+      expect(positions(placeCanvas({ ...map, stories: [second] }))).toEqual(
+        positions(placeCanvas(map)),
       );
     });
 
-    it("keeps every card clear of the others and of frames it isn't in", () => {
-      const drawing: CanvasDrawing = {
+    it("keeps every card clear of the others", () => {
+      const { nodes } = placeCanvas({
         cards: cards("a", "b", "c", "d", "e"),
-        frames: [frame("f1", "a", "b"), frame("f2", "b", "c"), frame("f3", "d"), frame("f4")],
+        stories: [story(step("1", "a", "b"), step("2", "b", "c"), step("3", "d"), step("4", "a"))],
         arrows: [{ from: "a", to: "b" }],
-      };
-      const { nodes } = placeCanvas(drawing);
-      const placed = nodes.filter((node) => node.type !== "group");
-      for (const a of placed) {
-        for (const b of placed) {
+      });
+      for (const a of nodes) {
+        for (const b of nodes) {
           if (a.id !== b.id) expect(overlap(a, b), `${a.id} and ${b.id}`).toBe(false);
         }
       }
-      expect(steps(drawing)).toEqual([
-        ["f1", ["a", "b"]],
-        ["f2", ["b", "c"]],
-        ["f3", ["d"]],
-        ["f4", []],
+    });
+
+    it("reads a file's stories from its top level, leaving out steps with no card", () => {
+      const data = canvasData({
+        nodes: [{ id: "a", type: "text", text: "A", x: 0, y: 0, width: 100, height: 60 }],
+        astrolabe: {
+          stories: [
+            {
+              title: "Tour",
+              steps: [
+                { label: "Start", note: "Here", cards: ["a"] },
+                { note: "Nothing", cards: [] },
+              ],
+            },
+            { title: "Empty", steps: [] },
+          ],
+        },
+      });
+      expect(data.stories).toEqual([
+        { title: "Tour", steps: [{ label: "Start", note: "Here", cards: ["a"] }] },
       ]);
     });
   });
@@ -648,19 +691,19 @@ describe("canvasDrawingProblems", () => {
     ["a link that is also code", { cards: [{ id: "a", url: "x", path: "y" }] }, "only be one"],
     ["an unknown group", { cards: [{ id: "a", text: "A", group: "g" }] }, "isn't in `groups`"],
     [
-      "a frame naming an unknown card",
-      { cards: cards("a"), frames: [{ id: "f", note: "N", cards: ["b"] }] },
+      "a step naming an unknown card",
+      { cards: cards("a"), stories: [{ title: "S", steps: [{ note: "N", cards: ["b"] }] }] },
       "isn't here",
     ],
     [
-      "frames beside groups",
-      { cards: cards("a"), groups: [{ id: "g" }], frames: [{ id: "f", note: "N", cards: [] }] },
-      "not both",
+      "a step with no card",
+      { cards: cards("a"), stories: [{ title: "S", steps: [{ note: "N", cards: [] }] }] },
+      "needs a card",
     ],
     [
-      "a frame sharing a card's id",
-      { cards: cards("a"), frames: [{ id: "a", note: "N", cards: [] }] },
-      "used twice",
+      "a story with no step",
+      { cards: cards("a"), stories: [{ title: "S", steps: [] }] },
+      "needs a step",
     ],
     ["an absolute path", { cards: [{ id: "a", path: "/etc/passwd" }] }, "relative"],
     ["a Windows path", { cards: [{ id: "a", path: "C:\\x" }] }, "relative"],

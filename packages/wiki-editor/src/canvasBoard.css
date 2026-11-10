@@ -1126,10 +1126,7 @@ button.cv-step-number {
   background: var(--primary);
   color: var(--primary-foreground, var(--background));
 }
-.cv-frame-note {
-  position: absolute;
-  inset: 52px 24px 24px;
-  margin: 0;
-  overflow: hidden;
-  color: var(--muted-foreground);
+/* A story's frame is drawn over the board, never picked: only its number takes a click. */
+.cv-story-frame {
+  pointer-events: none;
 }

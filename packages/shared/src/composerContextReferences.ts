@@ -104,9 +104,11 @@ export function canvasContextRecord(board: {
   readonly itemId: TurnItemId;
   readonly title: string;
   readonly comment?: string | undefined;
-  /** A step of the board's walk, from 0. */
+  /** A step of one of the board's stories, both from 0. */
   readonly walkStep?:
     | {
+        readonly story: number;
+        readonly storyTitle: string;
         readonly index: number;
         readonly count: number;
         readonly label?: string | undefined;
@@ -123,7 +125,7 @@ export function canvasContextRecord(board: {
     kind: "canvas",
     contextId: toKindScopedComposerContextId(
       "canvas",
-      `${board.threadId}/${board.itemId}${number === undefined ? "" : `#step-${number}`}`,
+      `${board.threadId}/${board.itemId}${step === undefined ? "" : `#story-${step.story + 1}-step-${step.index + 1}`}`,
     ),
     label:
       number === undefined
@@ -136,7 +138,7 @@ export function canvasContextRecord(board: {
     ...(step === undefined
       ? {}
       : {
-          step: `Step ${number} of ${step.count}${step.label === undefined ? "" : `, ${step.label}`}: ${step.note}`,
+          step: `${step.storyTitle}, step ${number} of ${step.count}${step.label === undefined ? "" : `, ${step.label}`}: ${step.note}`,
         }),
   };
 }
@@ -415,7 +417,7 @@ function formatComposerContextProviderPayload(record: KnownComposerContextRecord
         `itemId: ${record.itemId}`,
         ...(record.comment === undefined ? [] : [`comment: ${record.comment}`]),
         ...(record.step === undefined ? [] : [`step: ${record.step}`]),
-        "The user means this board, drawn in that thread by astrolabe_canvas_show, and that step of its walk when one is named. The comment is theirs. To save it into a wiki, call astrolabe_canvas_keep with these ids; never redraw it by hand.",
+        "The user means this board, drawn in that thread by astrolabe_canvas_show, and that step of one of its stories when one is named. The comment is theirs. To save it into a wiki, call astrolabe_canvas_keep with these ids; never redraw it by hand.",
       ].join("\n");
   }
 }

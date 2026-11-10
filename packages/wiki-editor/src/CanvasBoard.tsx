@@ -281,7 +281,7 @@ function colorProps(color: string | undefined) {
   };
 }
 
-const position = ({ x, y, width, height }: CanvasNode) => ({
+const position = ({ x, y, width, height }: CanvasBounds) => ({
   left: x,
   top: y,
   width,
@@ -859,10 +859,7 @@ const GroupNode = memo(function GroupNode({
   editing,
   editable,
   onLabel,
-  step,
-  note,
   lit,
-  onStep,
 }: {
   readonly node: CanvasGroupNode;
   readonly selected: boolean;
@@ -872,12 +869,7 @@ const GroupNode = memo(function GroupNode({
   readonly editing: boolean;
   readonly editable: boolean;
   readonly onLabel: (id: string, label: string) => void;
-  /** Its place in the walk, counting from 0, when it's a frame. */
-  readonly step: number | undefined;
-  /** A frame's note, shown in it when it holds no card of its own. */
-  readonly note: string | undefined;
   readonly lit: boolean | undefined;
-  readonly onStep: ((step: number) => void) | undefined;
 }) {
   const { host } = useBoard();
   const { style, ...color } = colorProps(node.color);
@@ -888,7 +880,6 @@ const GroupNode = memo(function GroupNode({
       data-card-id={node.id}
       data-selected={selected || undefined}
       data-mark={mark}
-      data-frame={step === undefined ? undefined : ""}
       data-lit={lit}
       style={{ ...position(node), ...style }}
       {...color}
@@ -904,33 +895,53 @@ const GroupNode = memo(function GroupNode({
           })}
       {editing ? (
         <GroupLabelEditor label={node.label ?? ""} onDone={(label) => onLabel(node.id, label)} />
-      ) : node.label === undefined && step === undefined ? null : (
-        <span className="cv-group-label">
-          {step === undefined ? null : onStep === undefined ? (
-            <span className="cv-step-number">{step + 1}</span>
-          ) : (
-            <button
-              type="button"
-              className="cv-step-number"
-              aria-label={`Show step ${step + 1}`}
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={(event) => {
-                event.stopPropagation();
-                onStep(step);
-              }}
-            >
-              {step + 1}
-            </button>
-          )}
-          {node.label}
-        </span>
+      ) : node.label === undefined ? null : (
+        <span className="cv-group-label">{node.label}</span>
       )}
-      {note === undefined ? null : <p className="cv-frame-note">{note}</p>}
       {editable && selected ? <Dots /> : null}
       {editable && alone ? <Handles /> : null}
     </div>
   );
 });
+
+/** A story's step on the board: the box around its cards, numbered, which a walk moves to. */
+function StoryFrame({
+  frame,
+  index,
+  label,
+  lit,
+  onStep,
+}: {
+  readonly frame: CanvasBounds;
+  readonly index: number;
+  readonly label: string | undefined;
+  readonly lit: boolean | undefined;
+  readonly onStep: ((step: number) => void) | undefined;
+}) {
+  return (
+    <div className="cv-group cv-story-frame" data-lit={lit} style={position(frame)}>
+      <span className="cv-group-label">
+        {onStep === undefined ? (
+          <span className="cv-step-number">{index + 1}</span>
+        ) : (
+          <button
+            type="button"
+            className="cv-step-number"
+            aria-label={`Show step ${index + 1}`}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              onStep(index);
+            }}
+          >
+            {index + 1}
+          </button>
+        )}
+        {label}
+      </span>
+    </div>
+  );
+}
 
 const EdgeNode = memo(function EdgeNode({
   shape,
@@ -1247,6 +1258,7 @@ export function CanvasBoard({
   onReadOnly,
   settings = DEFAULT_SETTINGS,
   onSettings,
+  story = 0,
   step = null,
   onStep,
   ref,
@@ -1272,7 +1284,9 @@ export function CanvasBoard({
   readonly onReadOnly?: ((on: boolean) => void) | undefined;
   readonly settings?: CanvasBoardSettings;
   readonly onSettings?: ((patch: Partial<CanvasBoardSettings>) => void) | undefined;
-  /** The frame being walked, from 0, in `canvasSteps` order: the camera shows only it. */
+  /** Which of the board's stories its frames and walk are, from 0. */
+  readonly story?: number;
+  /** The story's step being walked, from 0: the camera shows only it. */
   readonly step?: number | null;
   /** Asked to walk from a frame, as its number is clicked. */
   readonly onStep?: ((step: number) => void) | undefined;
@@ -1290,16 +1304,7 @@ export function CanvasBoard({
   const editable = canvasDocument !== null && !readOnly && mode === "free";
   const [view] = useState(() => new CanvasView());
   const [live] = useState(() => new BoardLive(data, marks, openingCamera));
-  const steps = useMemo(() => canvasSteps(data), [data]);
-  const stepOf = useMemo(
-    () => new Map(steps.map((each, index) => [each.frame.id, index] as const)),
-    [steps],
-  );
-  const emptyNotes = useMemo(
-    () =>
-      new Map(steps.flatMap((each) => (each.empty ? [[each.frame.id, each.note] as const] : []))),
-    [steps],
-  );
+  const steps = useMemo(() => canvasSteps(data, story), [data, story]);
   const active = step === null ? null : (steps[step] ?? null);
   const whole = useMemo(() => canvasBounds(data), [data]);
   const bounds = active?.bounds ?? whole;
@@ -1629,7 +1634,7 @@ export function CanvasBoard({
     view.setBounds(bounds, mode === "fit");
   }, [view, reads, host, layout, marks, bounds, whole, steps, mode, onCamera, live]);
 
-  const activeFrame = active?.frame.id ?? null;
+  const activeFrame = active === null ? null : `${story}:${step}`;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a free board's camera is the reader's: only a change of step moves it, outside React
   useLayoutEffect(() => {
     if (mode !== "free" || live.walkedTo === activeFrame) return;
@@ -2031,9 +2036,17 @@ export function CanvasBoard({
               editing={editing?.kind === "group" && editing.id === node.id}
               editable={editable}
               onLabel={finishGroupLabel}
-              step={stepOf.get(node.id)}
-              note={emptyNotes.get(node.id)}
-              lit={active === null ? undefined : active.frame.id === node.id}
+              lit={active === null ? undefined : false}
+            />
+          ))}
+          {steps.map((each, index) => (
+            <StoryFrame
+              // oxlint-disable-next-line react/no-array-index-key -- a step is its place in the story; frames hold no state
+              key={index}
+              frame={each.frame}
+              index={index}
+              label={each.label}
+              lit={active === null ? undefined : index === step}
               onStep={onStep}
             />
           ))}

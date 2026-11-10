@@ -62,20 +62,24 @@ export const CanvasShowGroup = Schema.Struct({
 });
 export type CanvasShowGroup = typeof CanvasShowGroup.Type;
 
-export const CanvasShowFrame = Schema.Struct({
-  id: CardReference.annotate({ description: "Unique among this call's cards, groups and frames." }),
+export const CanvasShowStep = Schema.Struct({
   label: Schema.optional(
-    Schema.NonEmptyString.annotate({ description: "A few words. Frames are numbered for you." }),
+    Schema.NonEmptyString.annotate({ description: "A few words. Steps are numbered for you." }),
   ),
   note: Schema.NonEmptyString.annotate({
     description: "One or two sentences the reader sees at this step.",
   }),
-  cards: Schema.Array(CardReference).annotate({
-    description: "The cards this step shows. A card can be in several frames.",
-  }),
-  color: Schema.optional(CanvasShowColor),
+  cards: Schema.Array(CardReference)
+    .check(Schema.isMinLength(1))
+    .annotate({ description: "The cards this step shows. A card can be in several steps." }),
 });
-export type CanvasShowFrame = typeof CanvasShowFrame.Type;
+export type CanvasShowStep = typeof CanvasShowStep.Type;
+
+export const CanvasShowStory = Schema.Struct({
+  title: Schema.NonEmptyString.annotate({ description: "A few words naming this telling." }),
+  steps: Schema.Array(CanvasShowStep).check(Schema.isMinLength(1)),
+});
+export type CanvasShowStory = typeof CanvasShowStory.Type;
 
 export const CanvasShowInput = Schema.Struct({
   title: Schema.NonEmptyString.annotate({ description: "A few words naming the diagram." }),
@@ -84,10 +88,10 @@ export const CanvasShowInput = Schema.Struct({
     .annotate({ description: "Each needs text, url or path." }),
   arrows: Schema.optional(Schema.Array(CanvasShowArrow)),
   groups: Schema.optional(Schema.Array(CanvasShowGroup)),
-  frames: Schema.optional(
-    Schema.Array(CanvasShowFrame).annotate({
+  stories: Schema.optional(
+    Schema.Array(CanvasShowStory).annotate({
       description:
-        "To explain step by step: the steps in reading order, which the reader walks one at a time. Use instead of `groups`.",
+        "To explain step by step: each story walks the board one step at a time, in reading order. The first lays out the board unless it has groups. Several tell it different ways.",
     }),
   ),
 });

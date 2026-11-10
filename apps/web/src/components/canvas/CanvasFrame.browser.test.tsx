@@ -82,9 +82,14 @@ describe("CanvasFrame", () => {
           { id: "a", text: "First card" },
           { id: "b", text: "Second card" },
         ],
-        frames: [
-          { id: "one", note: "It starts here.", cards: ["a"] },
-          { id: "two", label: "Then", note: "It ends here.", cards: ["b"] },
+        stories: [
+          {
+            title: "Start to end",
+            steps: [
+              { note: "It starts here.", cards: ["a"] },
+              { label: "Then", note: "It ends here.", cards: ["b"] },
+            ],
+          },
         ],
       }),
     };
@@ -103,7 +108,10 @@ describe("CanvasFrame", () => {
     await userEvent.click(screen.getByRole("button", { name: "Next step" }));
     await userEvent.click(screen.getByRole("button", { name: "Ask about step 2" }));
     expect(addCanvas).toHaveBeenLastCalledWith(
-      expect.objectContaining({ itemId: source.itemId, step: "Step 2 of 2, Then: It ends here." }),
+      expect.objectContaining({
+        itemId: source.itemId,
+        step: "Start to end, step 2 of 2, Then: It ends here.",
+      }),
     );
   });
 

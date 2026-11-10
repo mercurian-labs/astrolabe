@@ -163,7 +163,7 @@ it.effect("lands a board as a new canvas, at the coordinates the thread showed",
   }),
 );
 
-it.effect("keeps a walk: its frames and notes, recalling cards by their new ids", () =>
+it.effect("keeps every story, naming its cards by their new ids", () =>
   Effect.gen(function* () {
     const walk: CanvasShowInput = {
       title: "Walk",
@@ -172,10 +172,16 @@ it.effect("keeps a walk: its frames and notes, recalling cards by their new ids"
         { id: "b", text: "Beta" },
         { id: "c", text: "Gamma" },
       ],
-      frames: [
-        { id: "one", note: "First", cards: ["a"] },
-        { id: "two", note: "Second", cards: ["b"] },
-        { id: "three", note: "Back to the start", cards: ["c", "a"] },
+      stories: [
+        {
+          title: "Forwards",
+          steps: [
+            { note: "First", cards: ["a"] },
+            { note: "Second", cards: ["b"] },
+            { note: "Back to the start", cards: ["c", "a"] },
+          ],
+        },
+        { title: "Backwards", steps: [{ label: "End", note: "Last", cards: ["c"] }] },
       ],
     };
     const { source } = yield* keep({
@@ -203,6 +209,13 @@ it.effect("keeps a walk: its frames and notes, recalling cards by their new ids"
         ["Second", ["Beta"]],
         ["Back to the start", ["Alpha", "Gamma"]],
       ],
+    );
+    assert.deepEqual(
+      canvasSteps(parsed.data, 1).map((step) => [
+        step.label,
+        [...step.cards].map((id) => texts.get(id)),
+      ]),
+      [["End", ["Gamma"]]],
     );
   }),
 );

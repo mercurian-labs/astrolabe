@@ -2,7 +2,14 @@
  * Where cards go on a board, for agents that say what is on it and never where. Pure and
  * deterministic, and clients run it too: no array methods newer than the phone's engine has.
  */
-import type { CanvasBounds, CanvasData, CanvasEdge, CanvasNode, CanvasSide } from "./canvas.ts";
+import type {
+  CanvasBounds,
+  CanvasData,
+  CanvasEdge,
+  CanvasNode,
+  CanvasSide,
+  CanvasStory,
+} from "./canvas.ts";
 
 /** A group's cards are those wholly inside it, its edge included. Membership is never stored. */
 export const insideGroup = (group: CanvasBounds, card: CanvasBounds): boolean =>
@@ -39,14 +46,15 @@ export interface CanvasDrawing {
         readonly color?: string | undefined;
       }>
     | undefined;
-  /** The board's steps, in reading order. A card can be in several. */
-  readonly frames?:
+  /** Ways to tell the board, each walked a step at a time. A card can be in several steps. */
+  readonly stories?:
     | ReadonlyArray<{
-        readonly id: string;
-        readonly label?: string | undefined;
-        readonly note: string;
-        readonly cards: ReadonlyArray<string>;
-        readonly color?: string | undefined;
+        readonly title: string;
+        readonly steps: ReadonlyArray<{
+          readonly label?: string | undefined;
+          readonly note: string;
+          readonly cards: ReadonlyArray<string>;
+        }>;
       }>
     | undefined;
 }
@@ -275,18 +283,18 @@ export function canvasDrawingProblems(drawing: CanvasDrawing): string[] {
     seen.add(id);
   };
   for (const group of drawing.groups ?? []) unique(group.id);
-  for (const frame of drawing.frames ?? []) unique(frame.id);
   for (const card of drawing.cards) unique(card.id);
   const groups = new Set((drawing.groups ?? []).map((group) => group.id));
   const cardIds = new Set(drawing.cards.map((card) => card.id));
-  if ((drawing.frames ?? []).length > 0 && (drawing.groups ?? []).length > 0) {
-    problems.push("Use `frames` or `groups`, not both: a board is a walk or a map.");
-  }
-  for (const frame of drawing.frames ?? []) {
-    for (const id of frame.cards) {
-      if (!cardIds.has(id))
-        problems.push(`Frame "${frame.id}" names a card that isn't here: "${id}".`);
-    }
+  for (const story of drawing.stories ?? []) {
+    if (story.steps.length === 0) problems.push(`Story "${story.title}" needs a step.`);
+    story.steps.forEach((step, index) => {
+      const named = `Step ${index + 1} of "${story.title}"`;
+      if (step.cards.length === 0) problems.push(`${named} needs a card.`);
+      for (const id of step.cards) {
+        if (!cardIds.has(id)) problems.push(`${named} names a card that isn't here: "${id}".`);
+      }
+    });
   }
   for (const card of drawing.cards) {
     if (card.text === undefined && card.url === undefined && card.path === undefined) {
@@ -328,7 +336,24 @@ export function canvasDrawingProblems(drawing: CanvasDrawing): string[] {
  * Grouped cards and groups must name ids the drawing holds; arrows that don't are left out.
  */
 export function placeCanvas(drawing: CanvasDrawing): CanvasData {
-  if ((drawing.frames ?? []).length > 0) return placeFrames(drawing);
+  const stories: CanvasStory[] = (drawing.stories ?? []).map((story) => ({
+    title: story.title,
+    steps: story.steps.map((step) => ({
+      ...(step.label === undefined ? {} : { label: step.label }),
+      note: step.note,
+      cards: step.cards,
+    })),
+  }));
+  const first = stories[0];
+  const board =
+    (drawing.groups ?? []).length === 0 && first !== undefined
+      ? placeStory(drawing, first)
+      : placeMap(drawing);
+  return stories.length === 0 ? board : { ...board, stories };
+}
+
+/** A board laid out by its arrows, with its groups as regions. */
+function placeMap(drawing: CanvasDrawing): CanvasData {
   const groups = drawing.groups ?? [];
   const groupIds = new Set(groups.map((group) => group.id));
   const cards = drawing.cards;
@@ -474,30 +499,66 @@ function edgesAt(
 
 /** Room between blocks in a row of frames: past both frames' padding, so a block is in its own. */
 const FRAME_GAP = GROUP_PADDING * 2 + CROSS_GAP;
-/** How wide a frame that holds nothing of its own is: it shows its note instead. */
-const NOTE_FRAME_WIDTH = 280;
+/** How far apart a step's cards can be and still share its frame: past a rank's gap, short of a row's. */
+const STEP_REACH = RANK_GAP + GRID;
 
 /**
- * Lays frames out in reading order, in rows. A card goes in the first frame that names it. When
- * its first two frames sit side by side in a row, it goes between them and both frames stretch
- * over it, so they overlap. Any frame that names a card it can't reach recalls it instead.
+ * A step's frame: the padded box around its biggest run of cards that sit together, the earliest
+ * on a tie. Its other cards are away from it, and a walk brings them beside it.
  */
-function placeFrames(drawing: CanvasDrawing): CanvasData {
-  const frames = drawing.frames ?? [];
+export function canvasStepFrame(cards: ReadonlyArray<CanvasNode>): {
+  readonly frame: CanvasBounds | undefined;
+  readonly inside: ReadonlySet<string>;
+} {
+  const runs: CanvasNode[][] = [];
+  for (const card of cards) {
+    const near = runs.filter((run) => run.some((each) => touching(each, card, STEP_REACH)));
+    const joined = [...near.flat(), card];
+    for (const run of near) runs.splice(runs.indexOf(run), 1);
+    runs.push(joined);
+  }
+  const order = new Map(cards.map((card, index) => [card.id, index]));
+  const earliest = (run: ReadonlyArray<CanvasNode>) =>
+    Math.min(...run.map((card) => order.get(card.id) ?? 0));
+  let biggest: CanvasNode[] | undefined;
+  for (const run of runs) {
+    if (
+      biggest === undefined ||
+      run.length > biggest.length ||
+      (run.length === biggest.length && earliest(run) < earliest(biggest))
+    ) {
+      biggest = run;
+    }
+  }
+  const [first, ...rest] = biggest ?? [];
+  if (first === undefined) return { frame: undefined, inside: new Set() };
+  return {
+    frame: padded(rest.reduce<CanvasBounds>(union, first)),
+    inside: new Set((biggest ?? []).map((card) => card.id)),
+  };
+}
+
+/**
+ * Lays a board out for its first story: its steps in reading order, in rows. A card goes in the
+ * first step that names it. When its first two steps sit side by side in a row, it goes between
+ * them, so both frames stretch over it and overlap. Cards no step names go in a grid below.
+ */
+function placeStory(drawing: CanvasDrawing, story: CanvasStory): CanvasData {
+  const steps = story.steps;
   const cards = drawing.cards;
   const boxOf = new Map(cards.map((card) => [card.id, cardBox(card)]));
-  const frameIds = new Set(frames.map((frame) => frame.id));
-  const framesOf = new Map<string, number[]>();
-  frames.forEach((frame, index) => {
-    for (const id of frame.cards) {
-      const list = framesOf.get(id) ?? [];
+  const stepsOf = new Map<string, number[]>();
+  steps.forEach((step, index) => {
+    for (const id of step.cards) {
+      const list = stepsOf.get(id) ?? [];
       if (!boxOf.has(id) || list.includes(index)) continue;
       list.push(index);
-      framesOf.set(id, list);
+      stepsOf.set(id, list);
     }
   });
-  const known = (id: string) => boxOf.has(id) || frameIds.has(id);
-  const arrows = (drawing.arrows ?? []).filter((arrow) => known(arrow.from) && known(arrow.to));
+  const arrows = (drawing.arrows ?? []).filter(
+    (arrow) => boxOf.has(arrow.from) && boxOf.has(arrow.to),
+  );
   const arrangeIds = (ids: ReadonlyArray<string>) => {
     const held = new Set(ids);
     return arrange(
@@ -511,26 +572,20 @@ function placeFrames(drawing: CanvasDrawing): CanvasData {
   const rowsOf = (perRow: number) => {
     const sharesRow = (a: number, b: number | undefined) =>
       b === a + 1 && Math.floor(a / perRow) === Math.floor(b / perRow);
-    const own: string[][] = frames.map(() => []);
-    const between: string[][] = frames.map(() => []);
+    const own: string[][] = steps.map(() => []);
+    const between: string[][] = steps.map(() => []);
     for (const card of cards) {
-      const [first, second] = framesOf.get(card.id) ?? [];
+      const [first, second] = stepsOf.get(card.id) ?? [];
       if (first === undefined) continue;
       (sharesRow(first, second) ? between : own)[first]?.push(card.id);
     }
     const rects = new Map<string, CanvasBounds>();
-    const spans: CanvasBounds[][] = frames.map(() => []);
     let y = 0;
-    for (let start = 0; start < frames.length; start += perRow) {
+    for (let start = 0; start < steps.length; start += perRow) {
       const top = y + GROUP_LABEL + GROUP_PADDING;
       let x = 0;
       let tallest = 0;
-      const put = (box: CanvasBounds, owners: ReadonlyArray<number>) => {
-        for (const owner of owners) spans[owner]?.push(box);
-        x += box.width + FRAME_GAP;
-        tallest = Math.max(tallest, box.height);
-      };
-      const block = (ids: ReadonlyArray<string>, owners: ReadonlyArray<number>) => {
+      const block = (ids: ReadonlyArray<string>) => {
         if (ids.length === 0) return;
         const laid = arrangeIds(ids);
         for (const id of ids) {
@@ -539,42 +594,22 @@ function placeFrames(drawing: CanvasDrawing): CanvasData {
           if (box === undefined) continue;
           rects.set(id, { x: x + at.x, y: top + at.y, width: box.width, height: box.height });
         }
-        put({ x, y: top, width: laid.width, height: laid.height }, owners);
+        x += laid.width + FRAME_GAP;
+        tallest = Math.max(tallest, laid.height);
       };
-      for (let index = start; index < Math.min(start + perRow, frames.length); index++) {
-        const mine = own[index] ?? [];
-        const next = between[index] ?? [];
-        if (mine.length === 0 && next.length === 0 && (spans[index] ?? []).length === 0) {
-          const note = frames[index]?.note ?? "";
-          put(
-            {
-              x,
-              y: top,
-              width: NOTE_FRAME_WIDTH,
-              height: snap(textHeight(note, NOTE_FRAME_WIDTH)),
-            },
-            [index],
-          );
-        } else {
-          block(mine, [index]);
-        }
-        block(next, [index, index + 1]);
+      for (let index = start; index < Math.min(start + perRow, steps.length); index++) {
+        block(own[index] ?? []);
+        block(between[index] ?? []);
       }
-      y = top + tallest + GROUP_PADDING + RANK_GAP;
+      if (tallest > 0) y = top + tallest + GROUP_PADDING + RANK_GAP;
     }
-    const loose = cards.flatMap((card) =>
-      framesOf.has(card.id) ? [] : (boxOf.get(card.id) ?? []),
-    );
+    const loose = cards.flatMap((card) => (stepsOf.has(card.id) ? [] : (boxOf.get(card.id) ?? [])));
     const spots = new Map<string, Placed>();
     if (loose.length > 0) grid(loose, y, spots);
     for (const box of loose) {
       const at = spots.get(box.id) ?? { x: 0, y };
       rects.set(box.id, { ...at, width: box.width, height: box.height });
     }
-    frames.forEach((frame, index) => {
-      const [first, ...rest] = spans[index] ?? [];
-      if (first !== undefined) rects.set(frame.id, padded(rest.reduce(union, first)));
-    });
     return rects;
   };
 
@@ -586,33 +621,11 @@ function placeFrames(drawing: CanvasDrawing): CanvasData {
     return Math.abs(Math.log(whole.width / Math.max(1, whole.height) / TARGET_ASPECT));
   };
   let rects = rowsOf(1);
-  for (let perRow = 2; perRow <= frames.length; perRow++) {
+  for (let perRow = 2; perRow <= steps.length; perRow++) {
     const next = rowsOf(perRow);
     if (miss(next) < miss(rects)) rects = next;
   }
-
-  const frameNodes = frames.flatMap((frame): CanvasNode[] => {
-    const rect = rects.get(frame.id);
-    if (rect === undefined) return [];
-    const recall = frame.cards.filter((id, at) => {
-      const card = rects.get(id);
-      return card !== undefined && frame.cards.indexOf(id) === at && !insideGroup(rect, card);
-    });
-    return [
-      {
-        type: "group",
-        id: frame.id,
-        ...rect,
-        ...(frame.label === undefined ? {} : { label: frame.label }),
-        ...presetColor(frame.color),
-        astrolabe: { note: frame.note, ...(recall.length === 0 ? {} : { recall }) },
-      },
-    ];
-  });
-  return {
-    nodes: [...frameNodes, ...cardNodesAt(cards, rects)],
-    edges: edgesAt(arrows, rects),
-  };
+  return { nodes: cardNodesAt(cards, rects), edges: edgesAt(arrows, rects) };
 }
 
 /** How `canvasPlace` measures what it can't: the sizes Obsidian gives a new card. */

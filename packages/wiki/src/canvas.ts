@@ -5,7 +5,7 @@
  */
 
 export * from "./canvasPlace.ts";
-import { canvasArrowSides, insideGroup } from "./canvasPlace.ts";
+import { canvasArrowSides, canvasStepFrame } from "./canvasPlace.ts";
 
 export type CanvasSide = "top" | "right" | "bottom" | "left";
 
@@ -54,17 +54,19 @@ export interface CanvasGroupNode extends CanvasNodeBase {
   readonly background?: string;
   /** `ratio` or `repeat`; a group with none covers, as Obsidian writes it. */
   readonly backgroundStyle?: string;
-  /** Makes the group a frame: one step of the board's walk, in the file's order. */
-  readonly astrolabe?: CanvasFrameInfo;
 }
 
-/**
- * A frame shows the cards inside it, plus `recall`: cards elsewhere on the board that this step
- * comes back to, where the layout couldn't stretch the frame over them.
- */
-export interface CanvasFrameInfo {
+/** One step of a story: what the reader sees, and the cards it shows. */
+export interface CanvasStoryStep {
+  readonly label?: string;
   readonly note: string;
-  readonly recall?: ReadonlyArray<string>;
+  readonly cards: ReadonlyArray<string>;
+}
+
+/** One way of telling a board, walked a step at a time. The cards stay where the board has them. */
+export interface CanvasStory {
+  readonly title: string;
+  readonly steps: ReadonlyArray<CanvasStoryStep>;
 }
 
 export type CanvasNode = CanvasTextNode | CanvasLinkNode | CanvasFileNode | CanvasGroupNode;
@@ -86,6 +88,8 @@ export interface CanvasData {
   /** Earlier nodes draw beneath later ones. */
   readonly nodes: ReadonlyArray<CanvasNode>;
   readonly edges: ReadonlyArray<CanvasEdge>;
+  /** Kept at the file's top level, under `astrolabe`, which Obsidian writes back untouched. */
+  readonly stories?: ReadonlyArray<CanvasStory>;
 }
 
 export interface CanvasBounds {
@@ -120,18 +124,19 @@ export const canvasGroups = (
     node.type === "group" && node.label !== undefined ? [{ id: node.id, label: node.label }] : [],
   );
 
-/** One step of a board's walk: the frame, and every card and arrow it lights. */
+/** One step of a story as the board shows it: its frame, and every card and arrow it lights. */
 export interface CanvasStep {
-  readonly frame: CanvasGroupNode;
+  readonly label?: string;
   readonly note: string;
-  /** The cards inside the frame, then the ones it recalls from elsewhere. */
+  /** The box around the step's cards that sit together. */
+  readonly frame: CanvasBounds;
+  /** All the step's cards, docked ones included. */
   readonly cards: ReadonlySet<string>;
-  /** Whether the frame holds no card of its own, so it shows its note in their place. */
-  readonly empty: boolean;
   readonly arrows: ReadonlySet<string>;
   /**
-   * Where a recalled card stands during this step: beside the frame, on the side it really is,
-   * so the camera stays close. With the step it came from, counting from 0.
+   * The step's cards that sit away from the rest, and where the step shows them: beside the frame,
+   * on the side they really are, so the camera stays close. With the step whose frame holds them,
+   * counting from 0.
    */
   readonly docked: ReadonlyMap<string, CanvasBounds & { readonly from: number | undefined }>;
   /** What the camera shows: the frame and the cards docked beside it. */
@@ -153,40 +158,32 @@ const unionBounds = (a: CanvasBounds, b: CanvasBounds): CanvasBounds => {
   };
 };
 
-/** A board's walk: its frames in the file's order. Empty for a board with none. */
-export function canvasSteps(data: CanvasData): ReadonlyArray<CanvasStep> {
-  const cards = data.nodes.filter((node) => node.type !== "group");
-  const byId = new Map(cards.map((node) => [node.id, node]));
-  const frames = data.nodes.filter(
-    (node): node is CanvasGroupNode => node.type === "group" && node.astrolabe !== undefined,
-  );
-  const inside = frames.map(
-    (frame) => new Set(cards.filter((node) => insideGroup(frame, node)).map((node) => node.id)),
-  );
+/** A story's steps as the board shows them. Empty for a board without that story. */
+export function canvasSteps(data: CanvasData, story = 0): ReadonlyArray<CanvasStep> {
+  const steps = data.stories?.[story]?.steps ?? [];
+  const byId = new Map<string, CanvasNode>();
+  for (const node of data.nodes) if (node.type !== "group") byId.set(node.id, node);
+  const framed = steps.map((step) => {
+    const nodes = [...new Set(step.cards)].flatMap((id) => byId.get(id) ?? []);
+    return { step, nodes, ...canvasStepFrame(nodes) };
+  });
   const home = (id: string) => {
-    const at = inside.findIndex((ids) => ids.has(id));
+    const at = framed.findIndex((each) => each.inside.has(id));
     return at === -1 ? undefined : at;
   };
-  return frames.map((frame, index): CanvasStep => {
-    const lit = new Set(inside[index]);
-    const empty = lit.size === 0;
-    let bounds: CanvasBounds = { x: frame.x, y: frame.y, width: frame.width, height: frame.height };
+  return framed.flatMap(({ step, nodes, frame, inside }): CanvasStep[] => {
+    if (frame === undefined) return [];
+    let bounds = frame;
     const docked = new Map<string, CanvasBounds & { readonly from: number | undefined }>();
     const along = { top: frame.x, bottom: frame.x, left: frame.y, right: frame.y };
     // Cards docked on one side keep the order they stand in on the board.
-    const recalled = (frame.astrolabe?.recall ?? [])
-      .flatMap((id) => {
-        const node = byId.get(id);
-        return node === undefined || lit.has(id)
-          ? []
-          : [{ id, node, side: canvasArrowSides(frame, node)[0] }];
-      })
+    const away = nodes
+      .filter((node) => !inside.has(node.id))
+      .map((node) => ({ node, side: canvasArrowSides(frame, node)[0] }))
       .sort((a, b) =>
         a.side === "top" || a.side === "bottom" ? a.node.x - b.node.x : a.node.y - b.node.y,
       );
-    for (const { id, node, side } of recalled) {
-      if (lit.has(id)) continue;
-      lit.add(id);
+    for (const { node, side } of away) {
       const { width, height } = node;
       const spot =
         side === "top" || side === "bottom"
@@ -200,16 +197,26 @@ export function canvasSteps(data: CanvasData): ReadonlyArray<CanvasStep> {
             };
       along[side] += (side === "top" || side === "bottom" ? width : height) + DOCK_SPACING;
       const rect = { ...spot, width, height };
-      docked.set(id, { ...rect, from: home(id) });
+      docked.set(node.id, { ...rect, from: home(node.id) });
       bounds = unionBounds(bounds, rect);
     }
-    const lights = (id: string) => id === frame.id || lit.has(id);
+    const lit = new Set(nodes.map((node) => node.id));
     const arrows = new Set(
       data.edges
-        .filter((edge) => lights(edge.fromNode) && lights(edge.toNode))
+        .filter((edge) => lit.has(edge.fromNode) && lit.has(edge.toNode))
         .map((edge) => edge.id),
     );
-    return { frame, note: frame.astrolabe?.note ?? "", cards: lit, empty, arrows, docked, bounds };
+    return [
+      {
+        ...(step.label === undefined ? {} : { label: step.label }),
+        note: step.note,
+        frame,
+        cards: lit,
+        arrows,
+        docked,
+        bounds,
+      },
+    ];
   });
 }
 
@@ -225,6 +232,7 @@ export function canvasStepData(data: CanvasData, step: CanvasStep): CanvasData {
   });
   const byId = new Map(nodes.map((node) => [node.id, node]));
   return {
+    ...data,
     nodes,
     edges: data.edges.map((edge) => {
       if (!step.docked.has(edge.fromNode) && !step.docked.has(edge.toNode)) return edge;
@@ -267,12 +275,23 @@ function codeReference(astrolabe: unknown): CanvasCodeReference | undefined {
   };
 }
 
-function frameInfo(astrolabe: unknown): CanvasFrameInfo | undefined {
-  if (!isRecord(astrolabe) || typeof astrolabe.note !== "string") return undefined;
-  const recall = Array.isArray(astrolabe.recall)
-    ? astrolabe.recall.filter((id): id is string => typeof id === "string")
-    : [];
-  return { note: astrolabe.note, ...(recall.length === 0 ? {} : { recall }) };
+const strings = (value: unknown) =>
+  Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+
+/** A file's stories, each step with a note and a card; whatever else they hold is left out. */
+function canvasStories(astrolabe: unknown): ReadonlyArray<CanvasStory> {
+  if (!isRecord(astrolabe) || !Array.isArray(astrolabe.stories)) return [];
+  return astrolabe.stories.flatMap((story: unknown): CanvasStory[] => {
+    if (!isRecord(story) || !Array.isArray(story.steps)) return [];
+    const steps = story.steps.flatMap((step: unknown): CanvasStoryStep[] => {
+      if (!isRecord(step) || typeof step.note !== "string") return [];
+      const cards = strings(step.cards);
+      const label = text(step.label);
+      if (cards.length === 0) return [];
+      return [{ ...(label === undefined ? {} : { label }), note: step.note, cards }];
+    });
+    return steps.length === 0 ? [] : [{ title: text(story.title) ?? "Story", steps }];
+  });
 }
 
 /** The card a node draws as; none for a type this version doesn't know, which Obsidian skips too. */
@@ -320,14 +339,12 @@ function canvasNode(raw: Record<string, unknown>, id: string): CanvasNode | unde
       const label = text(raw.label);
       const background = text(raw.background);
       const backgroundStyle = text(raw.backgroundStyle);
-      const frame = frameInfo(raw.astrolabe);
       return {
         ...base,
         type: "group",
         ...(label === undefined ? {} : { label }),
         ...(background === undefined ? {} : { background }),
         ...(backgroundStyle === undefined ? {} : { backgroundStyle }),
-        ...(frame === undefined ? {} : { astrolabe: frame }),
       };
     }
     default:
@@ -385,9 +402,11 @@ const drawn = <A>(
 /** A file's JSON as drawn: every card with what it needs, whatever the file left out. */
 export function canvasData(document: unknown): CanvasData {
   if (!isRecord(document)) return { nodes: [], edges: [] };
+  const stories = canvasStories(document.astrolabe);
   return {
     nodes: drawn(document.nodes, "node", canvasNode),
     edges: drawn(document.edges, "edge", canvasEdge),
+    ...(stories.length === 0 ? {} : { stories }),
   };
 }
 

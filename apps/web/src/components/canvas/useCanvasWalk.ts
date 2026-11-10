@@ -9,18 +9,27 @@ import { useComposerHandleContext } from "~/composerHandleContext";
 import { toastManager } from "../ui/toast";
 
 /**
- * A board's walk where it's read: the step shown, and asking about the board, or the step on
- * screen, in the composer.
+ * A board's stories where it's read: the story picked, its step shown, and asking about the board,
+ * or the step on screen, in the composer.
  */
 export function useCanvasWalk(
   view: CanvasView,
   source: { readonly threadId: ThreadId; readonly itemId: TurnItemId } | null,
 ) {
-  const steps = canvasSteps(view.data);
+  const stories = view.data.stories ?? [];
+  const [picked, setPicked] = useState(0);
+  const story = Math.min(picked, Math.max(0, stories.length - 1));
+  const steps = canvasSteps(view.data, story);
   const [step, setStep] = useState<number | null>(null);
   const composer = useComposerHandleContext();
   const asked = step === null ? undefined : steps[step];
   return {
+    stories,
+    story,
+    pick: (index: number) => {
+      setPicked(index);
+      setStep(null);
+    },
     steps,
     step,
     go: setStep,
@@ -38,9 +47,11 @@ export function useCanvasWalk(
                     ? {}
                     : {
                         walkStep: {
+                          story,
+                          storyTitle: stories[story]?.title ?? "",
                           index: step,
                           count: steps.length,
-                          label: asked.frame.label,
+                          label: asked.label,
                           note: asked.note,
                         },
                       }),
