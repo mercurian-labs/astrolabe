@@ -317,7 +317,7 @@ describe("provider projection", () => {
         "wiki: Plans",
         "wikiId: wiki-1",
         "note: Login flow",
-        "Read it with astrolabe_wiki_read(wiki=wikiId, name=note).",
+        "It is that note's file in your checkout of the wiki: read it with your file tools.",
         "</context>",
         "</t3_context>",
       ].join("\n"),

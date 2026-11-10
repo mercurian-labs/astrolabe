@@ -42,7 +42,7 @@ const CanvasKeepTool = Tool.make(CANVAS_KEEP_TOOL_NAME, {
     "Save a board from `astrolabe_canvas_show` into a wiki. It joins your thread's open pull request and fixes where its cards sit. Call it when the user asks to keep a board.",
   parameters: Schema.Struct({
     wiki: Schema.NonEmptyString.annotate({
-      description: "The wiki's id or name, as astrolabe_wiki_list shows it.",
+      description: "The wiki's id or name, as the note on your linked wikis gives it.",
     }),
     name: Schema.NonEmptyString.annotate({
       description: "Its path in the wiki, as Name.canvas at the top or area/Name.canvas.",

@@ -338,7 +338,7 @@ function formatComposerContextProviderPayload(record: KnownComposerContextRecord
         `wiki: ${record.wikiName}`,
         `wikiId: ${record.wikiId}`,
         `note: ${record.name}`,
-        "Read it with astrolabe_wiki_read(wiki=wikiId, name=note).",
+        "It is that note's file in your checkout of the wiki: read it with your file tools.",
       ].join("\n");
     case "canvas":
       return [
