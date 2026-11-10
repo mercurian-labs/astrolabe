@@ -574,13 +574,16 @@ describe("MuseAdapterV2", () => {
     ),
   );
 
-  it.effect("pins sessions and turns to native canonical case", () =>
+  it.effect("pins sessions and turns to native canonical case, wiki checkouts included", () =>
     Effect.gen(function* () {
-      using _realpath = vi.spyOn(NodeFSP, "realpath").mockResolvedValue("/workspace/eevee");
+      using _realpath = vi
+        .spyOn(NodeFSP, "realpath")
+        .mockImplementation(async (path) => String(path).toLowerCase());
       const fake = yield* makeFakeMuse();
       const policy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
         ...runtimePolicy,
         cwd: "/workspace/EEVEE",
+        writableRoots: ["/Checkouts/Handbook"],
       });
       const harness = yield* makeHarness(
         fake,
@@ -596,6 +599,7 @@ describe("MuseAdapterV2", () => {
       assert.strictEqual(sessionStart?.params.workspaceRoot, "/workspace/eevee");
       assert.deepStrictEqual(turnStart?.params.workspaceRoots, [
         sessionStart?.params.workspaceRoot,
+        "/checkouts/handbook",
       ]);
     }).pipe(
       Effect.scoped,

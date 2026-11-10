@@ -294,6 +294,10 @@ export const makeMuseAdapterV2 = Effect.fn("makeMuseAdapterV2")(function* (
       const requestedCwd = input.runtimePolicy.cwd ?? providerHost.paths.cwd;
       const cwd = yield* museCanonicalPath(requestedCwd);
       const workspaceRoot = yield* museWorkspaceRoot(cwd);
+      const workspaceRoots = [
+        workspaceRoot,
+        ...(yield* Effect.forEach(input.runtimePolicy.writableRoots ?? [], museWorkspaceRoot)),
+      ];
       const now = yield* DateTime.now;
       let session: OrchestrationV2ProviderSession = {
         id: input.providerSessionId,
@@ -2070,7 +2074,7 @@ export const makeMuseAdapterV2 = Effect.fn("makeMuseAdapterV2")(function* (
                 ],
                 displayText: turnInput.message.text || "Image attachment",
                 // Resumed sessions retain old roots; pin edits to the current checkout.
-                workspaceRoots: [workspaceRoot],
+                workspaceRoots,
                 ifBusy: "queue",
                 ...(effort ? { reasoningEffort: effort } : {}),
               },
