@@ -2,10 +2,12 @@ import { CheckpointScopeId, ProjectId, RunId, ThreadId } from "@t3tools/contract
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import * as PullRequestService from "../pullRequest/PullRequestService.ts";
 import * as VcsStatusBroadcaster from "../vcs/VcsStatusBroadcaster.ts";
+import * as ThreadWikiCheckouts from "../wiki/ThreadWikiCheckouts.ts";
 import * as WorkspaceEntries from "../workspace/WorkspaceEntries.ts";
 import * as CheckpointCapture from "./CheckpointCaptureService.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
@@ -52,6 +54,22 @@ const make = Effect.gen(function* () {
   const checkpointCapture = yield* CheckpointCapture.CheckpointCaptureServiceV2;
   const projections = yield* ProjectionStore.ProjectionStoreV2;
   const observer = yield* RunFinalizationObserver;
+  const wikiCheckouts = yield* Effect.serviceOption(ThreadWikiCheckouts.ThreadWikiCheckouts);
+
+  /** Astrolabe: the turn's edits in the thread's wiki checkouts land as one amendment each. */
+  const saveWikiEdits = Effect.fn("RunFinalizationService.saveWikiEdits")(function* (
+    threadId: ThreadId,
+  ) {
+    if (Option.isNone(wikiCheckouts)) return;
+    const thread = yield* projections.getThreadShell(threadId);
+    if (thread === null) return;
+    yield* wikiCheckouts.value.saveTurn({
+      threadId,
+      projectId: thread.projectId,
+      title: thread.title,
+      author: { actor: thread.modelSelection.model, threadId },
+    });
+  });
 
   const finalize: RunFinalizationService["Service"]["finalize"] = Effect.fn(
     "RunFinalizationService.finalize",
@@ -63,6 +81,11 @@ const make = Effect.gen(function* () {
           (cause) => new RunFinalizationError({ ...input, operation: "capture-checkpoint", cause }),
         ),
       );
+    yield* saveWikiEdits(input.threadId).pipe(
+      Effect.catch((cause) =>
+        Effect.logWarning("Failed to save a turn's wiki edits", { ...input, cause }),
+      ),
+    );
     const projection = yield* projections
       .getCheckpointContext(input.threadId)
       .pipe(
