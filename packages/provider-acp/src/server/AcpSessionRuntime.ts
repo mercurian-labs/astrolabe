@@ -124,6 +124,8 @@ export interface AcpSessionRuntimeOptions {
   readonly authenticateEagerly?: boolean;
   readonly mcpServers?: ReadonlyArray<EffectAcpSchema.McpServer>;
   readonly additionalDirectories?: ReadonlyArray<string>;
+  /** More additional directories, sent only to an agent that advertises them. */
+  readonly advertisedAdditionalDirectories?: ReadonlyArray<string>;
   readonly transformStdout?: EffectAcpClient.AcpClientOptions["transformStdout"];
   readonly transformSessionUpdate?: (
     notification: EffectAcpSchema.SessionNotification,
@@ -2163,8 +2165,14 @@ export const make = Effect.fn("AcpSessionRuntime.make")(function* (
         | EffectAcpSchema.LoadSessionResponse
         | EffectAcpSchema.NewSessionResponse
         | EffectAcpSchema.ResumeSessionResponse;
-      const additionalDirectories = options.additionalDirectories?.length
-        ? { additionalDirectories: options.additionalDirectories }
+      const directories = [
+        ...(options.additionalDirectories ?? []),
+        ...(initializeResult.agentCapabilities?.sessionCapabilities?.additionalDirectories == null
+          ? []
+          : (options.advertisedAdditionalDirectories ?? [])),
+      ];
+      const additionalDirectories = directories.length
+        ? { additionalDirectories: directories }
         : {};
       if (options.resumeSessionId) {
         sessionId = options.resumeSessionId;
