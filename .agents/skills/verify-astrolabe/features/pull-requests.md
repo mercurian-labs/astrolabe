@@ -235,8 +235,8 @@ Save a screenshot of the section.
 - The URL keeps the last pull request while a wiki pull request or other foreign tab
   is focused (it follows only pull requests).
 - A real link test needs a thread with a linked pull request that wrote a wiki change:
-  add a scratch folder as a project, start a Claude thread there, ask it to amend a note
-  with `astrolabe_wiki_amend` only, then **Link pull request to thread** (palette) with a merged
+  add a scratch folder as a project with a wiki linked to it, start a Claude thread there, ask
+  it to edit a note in that wiki and let the turn end, then **Link pull request to thread** (palette) with a merged
   and an open upstream pull request URL; nothing is written to the host.
 - Escape with nothing open goes back to the previous page, whichever section that was (`useEscapeToGoBack`,
   `pullRequest/PullRequestsPage.tsx`). It does not yet clear a selection here as it does in

@@ -149,11 +149,11 @@ A note opened from a pull request's worktree reads from that pull request. When 
 
 ## Agents in wikis
 
-Agents in any thread can read, search and amend your wikis. Their amendments go into that thread's own pull request on the wiki, one per thread, which you review and merge like any other. They can list a folder, name a note by its path, and move a note or a whole folder as one amendment, with links following. A hidden file stays out of what they list and search, and they read one only by its exact path.
+Each thread in a linked project gets its own copy of every wiki linked to the project, and its agent reads, searches and edits the notes there with its own tools. When the turn ends, its edits land as one amendment in that thread's own pull request on the wiki, one per thread, which you review and merge like any other; agents never merge. Moving a note or a whole folder goes through Astrolabe, so links follow. Cursor with its sandbox on, and Antigravity, can't edit files outside the project's folder, so they hand wiki edits to a helper agent that works in the thread's copy.
 
 To point an agent at a note, type `[[` in a thread's message and pick the note; the agent reads it. Notes from the project's linked wikis come first. While the project has no linked wiki, the list also offers to link one.
 
-When an agent amends a note you have open in that pull request, its changes appear in the editor as it makes them, marked as its own, and deletions stay visible so you can restore them. Anything you type or change while the agent's turn is running saves to the pull request when the turn ends.
+When an agent's edits land on a note you have open in that pull request, they appear in the editor marked as its own, and deletions stay visible so you can restore them. Anything you type or change while the agent's turn is running saves to the pull request when the turn ends.
 
 ## Keep a wiki on a git host
 

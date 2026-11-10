@@ -146,12 +146,15 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   Both are lists with **Unlink** and a searchable **Link a project** or **Link a wiki** picker,
   and a chat in a linked project shows a chip per wiki in its header, hidden below `sm`.
 - **Agent note**: the first prompt of every new native conversation in a linked project,
-  including after a provider restart or handoff, gets an `<astrolabe_wikis>` note naming the
-  wikis and the `astrolabe_wiki_*` tools (`WikiService.agentNote`,
-  `ProviderTurnStartService.ts`); a conversation with turns gets it on its next prompt for wikis
+  including after a provider restart or handoff, gets an `<astrolabe_wikis>` note naming each
+  wiki, the absolute path of the thread's checkout of it, and how this session reaches it
+  (edits there; Cursor with its sandbox on reads only; Antigravity can't reach it, and both are
+  told to delegate with `delegate_task`'s `wiki`) (`WikiService.agentNote`, `wikiCheckoutReach`,
+  `ProviderTurnStartService.ts`). A conversation with turns gets it on its next prompt for wikis
   linked since its last one (links with no `projectLinkedAt` time never do); a prompt that
-  starts with `/` never does and doesn't count as its last. Only the provider
-  sees it, not the user's bubble. Prove it with a real turn that never names the wiki. The
+  starts with `/` never does and doesn't count as its last. A child started with `wiki` is told
+  once that its working folder is that wiki. Only the provider sees it, not the user's bubble;
+  how to use a wiki is in the fixed **Astrolabe wikis** instructions section. Prove it with a real turn that never names the wiki. The
   host T3 instance you drive from still has its own `t3_wiki_*` tools; don't mix them up.
 - **`[[` in the composer** (web only; `composer-logic.ts` `detectWikiNoteTrigger`,
   `chat/composerWikiNoteItems.ts`): opens `listbox "Wiki notes"` with this server's notes,
@@ -178,8 +181,7 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   error and its raw text. A change landing on the canvas refreshes it with the camera where it was.
 - **Agents on a canvas** (`packages/wiki/src/canvasEdits.ts`, `canvasPlace.ts`, the transform in
   `WikiService.transform`): ask an agent to add to a canvas with the board open in its change
-  request. It calls `astrolabe_wiki_transform` with kind `canvas`, no coordinates; `astrolabe_wiki_amend`
-  refuses and names the transform. No existing card moves, unless a group had to grow, and its
+  request. It calls `astrolabe_wiki_transform` with kind `canvas`, no coordinates. No existing card moves, unless a group had to grow, and its
   cards stay. The camera stays; each changed card highlights once (`.cv-flash`, gone after about a
   second, nothing repainting at rest), then keeps its mark until the pull request is merged or
   closed. On main there are no marks. The tool row's **Open canvas** opens the board in that change
