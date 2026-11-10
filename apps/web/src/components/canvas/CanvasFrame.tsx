@@ -1,7 +1,7 @@
 import { canvasBounds, canvasSteps, type CanvasCodeReference } from "@mercurian/wiki/canvas";
 import type { CanvasView } from "@t3tools/client-runtime/canvasViews";
 import type { ScopedThreadRef, ThreadId, TurnItemId } from "@t3tools/contracts";
-import { Maximize2Icon } from "lucide-react";
+import { SquareArrowOutUpRightIcon } from "lucide-react";
 import { lazy, Suspense, useState } from "react";
 
 import { readLocalApi } from "~/localApi";
@@ -77,7 +77,7 @@ export function CanvasFrame({
               aria-label={`Open ${view.title} in a panel`}
               onClick={() => showThreadCanvas(threadRef, id)}
             >
-              <Maximize2Icon />
+              <SquareArrowOutUpRightIcon />
             </Button>
           </>
         )}
