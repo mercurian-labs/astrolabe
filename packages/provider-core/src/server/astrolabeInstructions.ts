@@ -15,4 +15,4 @@ A wiki is a git repository of markdown notes. The message names your thread's ch
 - \`astrolabe_wiki_transform\`: every move or rename of a note, canvas or folder, since it rewrites links (never \`mv\`); also skill-map edges and canvases. \`astrolabe_wiki_links\`: what links to and from a note. \`astrolabe_wiki_orient\`: start from a skill map in an unfamiliar wiki. \`astrolabe_wiki_query\`: run a base. \`astrolabe_wiki_change_request\`: check your wiki changes.
 - Your edits are saved to this thread's pull request on the wiki when the turn ends. A person merges it in the app; never ask to merge.
 - Git in a checkout: read-only commands freely. Never amend, rebase, reset or switch branches there.
-- If your file tools can't reach or write a wiki's folder, \`delegate_task\` with \`wiki\` set to its name: the child works there.`;
+- If the message says your file tools can't reach a wiki's folder: for a small read or edit use \`astrolabe_wiki_read\`, \`astrolabe_wiki_search\` and \`astrolabe_wiki_write\`; for a larger job, \`delegate_task\` with \`wiki\` set to its name: the child works there.`;

@@ -168,6 +168,84 @@ const WikiTransformTool = Tool.make("astrolabe_wiki_transform", {
   success: Schema.Union([WikiAmendResult, WikiCheckoutTransformResult]),
 }).annotate(Tool.Destructive, false);
 
+// Every agent sees these; only a session whose file tools can't reach its checkout uses them.
+const FALLBACK =
+  "Only for a session whose file tools can't reach the wiki's folder, as the message about your linked wikis says; every other session uses its own file tools.";
+const notePath = Schema.NonEmptyString.annotate({
+  description: "The file's path from the wiki's root, as in area/Name.md.",
+});
+
+const WikiReadTool = Tool.make("astrolabe_wiki_read", {
+  ...shared,
+  description: `${FALLBACK} Read a note, base or canvas in your thread's checkout of a wiki as it stands, unsaved edits included: whole, or a range of lines.`,
+  parameters: Schema.Struct({
+    wiki,
+    path: notePath,
+    startLine: Schema.optional(
+      Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)).annotate({
+        description: "The first line to read, from 1. Omit for the start.",
+      }),
+    ),
+    endLine: Schema.optional(
+      Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)).annotate({
+        description: "The last line to read. Omit for the end.",
+      }),
+    ),
+  }),
+  success: Schema.Struct({
+    path: Schema.String,
+    text: Schema.String,
+    startLine: Schema.Number,
+    endLine: Schema.Number,
+    totalLines: Schema.Number,
+  }),
+})
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false);
+
+const WikiSearchTool = Tool.make("astrolabe_wiki_search", {
+  ...shared,
+  description: `${FALLBACK} Find the notes, bases and canvases in your thread's checkout of a wiki whose path or text contains a phrase (case-insensitive), unsaved edits included: their paths with a few matching lines each, at most 40 files.`,
+  parameters: Schema.Struct({
+    wiki,
+    query: Schema.NonEmptyString.annotate({ description: "The phrase to find." }),
+  }),
+  success: Schema.Struct({
+    matches: Schema.Array(
+      Schema.Struct({
+        path: Schema.String,
+        lines: Schema.Array(Schema.Struct({ line: Schema.Number, text: Schema.String })),
+      }),
+    ),
+    truncated: Schema.Boolean,
+  }),
+})
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false);
+
+const WikiWriteTool = Tool.make("astrolabe_wiki_write", {
+  ...shared,
+  description: `${FALLBACK} Write one note (.md) or base (.base) in your thread's checkout of a wiki: content creates or replaces the whole file, oldText with newText replaces text that must appear exactly once, delete removes it. A move or a canvas goes through astrolabe_wiki_transform. The change is written to the file only: the turn's end saves it to your thread's pull request on the wiki, and merging is a person's act in the app, so do not ask for it.`,
+  parameters: Schema.Struct({
+    wiki,
+    path: notePath,
+    content: Schema.optional(
+      Schema.String.annotate({ description: "The file's whole new content." }),
+    ),
+    oldText: Schema.optional(
+      Schema.NonEmptyString.annotate({
+        description: "Text in the file to replace, exactly as written there.",
+      }),
+    ),
+    newText: Schema.optional(Schema.String.annotate({ description: "What replaces oldText." })),
+    delete: Schema.optional(Schema.Boolean.annotate({ description: "true: delete the file." })),
+  }),
+  success: Schema.Struct({
+    path: Schema.String,
+    change: Schema.Literals(["created", "updated", "deleted"]),
+  }),
+}).annotate(Tool.Destructive, false);
+
 const WikiChangeRequestTool = Tool.make("astrolabe_wiki_change_request", {
   ...shared,
   description: `Review your thread's pull request on a wiki (or a named one): its amendments, every changed note before and after (a canvas as its outline), whether it merges cleanly into main, and the index errors it leaves. Your checkout's unsaved edits are not in it yet: unsaved lists the files the turn's end adds. ${CHECKOUT_RULE}`,
@@ -190,4 +268,7 @@ export const WikiToolkit = Toolkit.make(
   WikiQueryTool,
   WikiTransformTool,
   WikiChangeRequestTool,
+  WikiReadTool,
+  WikiSearchTool,
+  WikiWriteTool,
 );

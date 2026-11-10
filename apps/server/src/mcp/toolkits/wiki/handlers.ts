@@ -147,4 +147,20 @@ export const layer = McpToolAccess.toLayer(WikiToolkit, {
       ),
     ),
   ),
+  // For a session whose file tools can't reach its checkout: files there, never commits.
+  astrolabe_wiki_read: McpToolAccess.reads((input) =>
+    read(input.wiki, (wikis, threadId) =>
+      wikis.checkoutRead({ ...target(input), path: input.path.trim(), threadId }),
+    ),
+  ),
+  astrolabe_wiki_search: McpToolAccess.reads((input) =>
+    read(input.wiki, (wikis, threadId) =>
+      wikis.checkoutSearch({ ...target(input), query: input.query.trim(), threadId }),
+    ),
+  ),
+  astrolabe_wiki_write: McpToolAccess.actsAsCaller((input) =>
+    write(input.wiki, (wikis, author) =>
+      wikis.checkoutWrite({ ...target(input), path: input.path.trim() }, author),
+    ),
+  ),
 });

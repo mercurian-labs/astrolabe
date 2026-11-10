@@ -103,14 +103,29 @@ const harness = (
 };
 
 describe("WikiToolkit", () => {
-  it("leaves reading, searching, listing and writing notes to the agent's file tools", () => {
+  it("lists the checkout tools, and the file fallbacks say who they are for", () => {
     expect(Object.keys(WikiToolkit.tools).toSorted()).toEqual([
       "astrolabe_wiki_change_request",
       "astrolabe_wiki_links",
       "astrolabe_wiki_orient",
       "astrolabe_wiki_query",
+      "astrolabe_wiki_read",
+      "astrolabe_wiki_search",
       "astrolabe_wiki_transform",
+      "astrolabe_wiki_write",
     ]);
+    const fallbacks = [
+      WikiToolkit.tools.astrolabe_wiki_read,
+      WikiToolkit.tools.astrolabe_wiki_search,
+      WikiToolkit.tools.astrolabe_wiki_write,
+    ];
+    for (const tool of fallbacks) {
+      expect(tool.description).toMatch(/^Only for a session whose file tools can't reach/);
+      const schema = advertisedJsonSchema(tool) as {
+        properties: Record<string, { description?: string }>;
+      };
+      expect(Object.values(schema.properties).every((property) => property.description)).toBe(true);
+    }
   });
 });
 

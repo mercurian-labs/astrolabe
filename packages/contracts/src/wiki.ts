@@ -118,7 +118,7 @@ const reachClause: Record<WikiCheckoutReach, string> = {
   edit: ". Read, search and edit its notes there with your file tools.",
   shell:
     ". Read and search it there with your file tools, but your sandbox refuses your edit tool outside this project: write notes there with a shell command that changes only the lines it needs, without rewriting the whole file or adding blank lines.",
-  none: ", but your file tools can't leave this project's folder: delegate wiki work with delegate_task's wiki field.",
+  none: ", but your file tools can't leave this project's folder: for a small read or edit use astrolabe_wiki_read, astrolabe_wiki_search and astrolabe_wiki_write; for a larger job, delegate_task's wiki field.",
 };
 
 export interface WikiAgentCheckout {
