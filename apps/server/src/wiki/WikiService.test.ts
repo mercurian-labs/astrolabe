@@ -229,23 +229,36 @@ it.effect("links repositories, and tells their threads which wikis hold their pl
       const { wikiId, summary, wikis } = yield* registeredWiki(harness);
       const repository = ProjectId.make("project-app");
       const other = ProjectId.make("project-other");
-      assert.isNull(yield* wikis.agentNote(repository));
+      const second = yield* wikis.create({ name: "Research" });
+      const checkouts = [
+        { wikiId, folder: "/state/wiki-checkouts/thread-1/vault" },
+        { wikiId: second.wikiId, folder: "/state/wiki-checkouts/thread-1/research" },
+      ];
+      const note = (projectId: ProjectId, checkedOut = checkouts) =>
+        wikis.agentNote({ projectId, checkouts: checkedOut, reach: "edit" });
+      assert.isNull(yield* note(repository));
 
       const linked = yield* wikis.setProjectLink({ wikiId, projectId: repository, linked: true });
       assert.deepEqual(linked.projectIds, [repository]);
       yield* wikis.setProjectLink({ wikiId, projectId: repository, linked: true });
       assert.deepEqual((yield* wikis.list).wikis[0]?.projectIds, [repository]);
-      assert.include(yield* wikis.agentNote(repository), `wiki "${summary.name}"`);
-      assert.isNull(yield* wikis.agentNote(other));
+      const one = yield* note(repository);
+      assert.include(one, `wiki "${summary.name}"`);
+      assert.include(
+        one,
+        `"${summary.name}" is checked out for this thread at ${checkouts[0]!.folder}.`,
+      );
+      assert.isNull(yield* note(other));
 
-      const second = yield* wikis.create({ name: "Research" });
       yield* wikis.setProjectLink({ wikiId: second.wikiId, projectId: repository, linked: true });
-      assert.include(yield* wikis.agentNote(repository), `wikis "${summary.name}" and "Research"`);
+      assert.include(yield* note(repository), `wikis "${summary.name}" and "Research"`);
+      // A wiki the thread has no checkout of is one it cannot reach.
+      assert.notInclude(yield* note(repository, checkouts.slice(0, 1)), "Research");
 
       yield* wikis.setProjectLink({ wikiId, projectId: repository, linked: false });
       yield* wikis.setProjectLink({ wikiId: second.wikiId, projectId: repository, linked: false });
       assert.deepEqual((yield* wikis.list).wikis[0]?.projectIds, []);
-      assert.isNull(yield* wikis.agentNote(repository));
+      assert.isNull(yield* note(repository));
     }),
   ),
 );
@@ -255,23 +268,44 @@ it.effect("tells a conversation with turns only about wikis linked since its las
     Effect.gen(function* () {
       const { wikiId, summary, wikis } = yield* registeredWiki(harness);
       const repository = ProjectId.make("project-app");
+      const note = (linkedSince: DateTime.Utc) =>
+        wikis.agentNote({
+          projectId: repository,
+          linkedSince,
+          checkouts: [{ wikiId, folder: "/state/wiki-checkouts/thread-1/vault" }],
+          reach: "edit",
+        });
       const beforeTheLink = yield* DateTime.now;
       yield* TestClock.adjust("1 minute");
       yield* wikis.setProjectLink({ wikiId, projectId: repository, linked: true });
       yield* TestClock.adjust("1 minute");
       const afterTheLink = yield* DateTime.now;
 
-      assert.include(yield* wikis.agentNote(repository, beforeTheLink), `wiki "${summary.name}"`);
-      assert.isNull(yield* wikis.agentNote(repository, afterTheLink));
+      assert.include(yield* note(beforeTheLink), `wiki "${summary.name}"`);
+      assert.isNull(yield* note(afterTheLink));
 
       // Saving an existing link again is not a new link.
       yield* wikis.setProjectLink({ wikiId, projectId: repository, linked: true });
-      assert.isNull(yield* wikis.agentNote(repository, afterTheLink));
+      assert.isNull(yield* note(afterTheLink));
 
       yield* wikis.setProjectLink({ wikiId, projectId: repository, linked: false });
       yield* TestClock.adjust("1 minute");
       yield* wikis.setProjectLink({ wikiId, projectId: repository, linked: true });
-      assert.include(yield* wikis.agentNote(repository, afterTheLink), `wiki "${summary.name}"`);
+      assert.include(yield* note(afterTheLink), `wiki "${summary.name}"`);
+
+      // A child working in a checkout hears which wiki it is in, once.
+      const inside = (linkedSince?: DateTime.Utc) =>
+        wikis.agentNote({
+          projectId: repository,
+          linkedSince,
+          checkouts: [],
+          reach: "none",
+          workingIn: wikiId,
+        });
+      const first = yield* inside();
+      assert.include(first, `Your working folder is a checkout of the wiki "${summary.name}"`);
+      assert.notInclude(first, "delegate");
+      assert.isNull(yield* inside(beforeTheLink));
     }),
   ),
 );
@@ -1924,7 +1958,7 @@ it.effect("a child working in a thread's checkout saves onto that thread's chang
       // The child mounts no checkout of its own, and a task it delegates shares the same one.
       assert.deepEqual(
         yield* checkouts.ensure({ threadId: child, projectId, worktreePath: folder }),
-        [],
+        { checkouts: [], workingIn: wikiId },
       );
       assert.equal(yield* checkoutFor(child, wikiId, folder), folder);
 

@@ -1,3 +1,4 @@
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import { modelSelectionsEqual } from "@t3tools/shared/model";
 import { projectComposerContextForProvider } from "@t3tools/shared/composerContextReferences";
 import {
@@ -14,7 +15,9 @@ import {
   parseGoalCommand,
   RunId,
   ThreadId,
+  wikiCheckoutReach,
 } from "@t3tools/contracts";
+import { cursorRuntimeAgentPolicy } from "@t3tools/provider-cursor/server";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -165,6 +168,7 @@ export const layer: Layer.Layer<
     // Astrolabe: optional, so a runtime without wikis starts turns unchanged.
     const wikis = yield* Effect.serviceOption(WikiService.WikiService);
     const wikiCheckouts = yield* Effect.serviceOption(ThreadWikiCheckouts.ThreadWikiCheckouts);
+    const hostPlatform = yield* HostProcess.Platform;
 
     const resolveRecreateBase = Effect.fn("ProviderTurnStartService.resolveRecreateBase")(
       function* (cwd: string) {
@@ -705,13 +709,14 @@ export const layer: Layer.Layer<
         modelSelection: run.modelSelection,
       });
       // Astrolabe: the session reaches each linked wiki through the thread's checkout of it.
-      const wikiRoots = Option.isNone(wikiCheckouts)
-        ? []
+      const threadWikis = Option.isNone(wikiCheckouts)
+        ? { checkouts: [], workingIn: undefined }
         : yield* wikiCheckouts.value.ensure({
             threadId: projection.thread.id,
             projectId: projection.thread.projectId,
             worktreePath: projection.thread.worktreePath,
           });
+      const wikiRoots = threadWikis.checkouts.map((checkout) => checkout.folder);
       const resolvedRuntimePolicy =
         wikiRoots.length === 0
           ? basePolicy
@@ -896,13 +901,24 @@ export const layer: Layer.Layer<
       const wikiNoteLinkedSince = (linkedSince?: DateTime.Utc) =>
         isVerbatimPrompt(userText) || Option.isNone(wikis)
           ? Effect.succeed<string | null>(null)
-          : wikis.value.agentNote(projection.thread.projectId, linkedSince).pipe(
-              Effect.catch((cause) =>
-                Effect.logWarning("Could not read the wikis linked to this project.", {
-                  cause,
-                }).pipe(Effect.as(null)),
-              ),
-            );
+          : wikis.value
+              .agentNote({
+                projectId: projection.thread.projectId,
+                linkedSince,
+                checkouts: threadWikis.checkouts,
+                reach: wikiCheckoutReach(
+                  session.driver,
+                  cursorRuntimeAgentPolicy(resolvedRuntimePolicy, hostPlatform).sandboxEnabled,
+                ),
+                workingIn: threadWikis.workingIn,
+              })
+              .pipe(
+                Effect.catch((cause) =>
+                  Effect.logWarning("Could not read the wikis linked to this project.", {
+                    cause,
+                  }).pipe(Effect.as(null)),
+                ),
+              );
       const everyLinkedWiki = yield* Effect.cached(wikiNoteLinkedSince());
       const newlyLinkedWikis =
         lastPrompt === undefined

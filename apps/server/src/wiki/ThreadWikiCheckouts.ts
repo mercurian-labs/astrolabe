@@ -33,14 +33,17 @@ export class ThreadWikiCheckouts extends Context.Service<
   ThreadWikiCheckouts,
   {
     /**
-     * The folders holding the thread's checkout of each linked wiki, made where missing; none
-     * for a thread working in a checkout.
+     * The thread's checkout of each linked wiki, made where missing; for a thread working in
+     * a checkout, none, and the wiki it works in.
      */
     readonly ensure: (input: {
       readonly threadId: ThreadId;
       readonly projectId: ProjectId;
       readonly worktreePath: string | null;
-    }) => Effect.Effect<ReadonlyArray<string>>;
+    }) => Effect.Effect<{
+      readonly checkouts: ReadonlyArray<WikiService.WikiCheckout>;
+      readonly workingIn: WikiId | undefined;
+    }>;
     /**
      * The folder holding the thread's checkout of the linked wiki `wiki` names, made where
      * missing, for a child thread to work in. A thread working in a checkout of it passes on
@@ -94,7 +97,8 @@ const make = Effect.gen(function* () {
 
   const ensure: ThreadWikiCheckouts["Service"]["ensure"] = Effect.fn("ThreadWikiCheckouts.ensure")(
     function* (input) {
-      if (workingIn(input.threadId, input.worktreePath) !== undefined) return [];
+      const owner = workingIn(input.threadId, input.worktreePath);
+      if (owner !== undefined) return { checkouts: [], workingIn: owner.wikiId };
       const linked = yield* wikis.linkedTo(input.projectId).pipe(
         Effect.catch((cause) =>
           Effect.logWarning("Could not read the wikis linked to a thread's project.", {
@@ -102,7 +106,7 @@ const make = Effect.gen(function* () {
           }).pipe(Effect.as<ReadonlyArray<WikiId>>([])),
         ),
       );
-      const folders = yield* Effect.forEach(linked, (wikiId) =>
+      const checkouts = yield* Effect.forEach(linked, (wikiId) =>
         wikis
           .checkoutForThread({
             wikiId,
@@ -110,7 +114,7 @@ const make = Effect.gen(function* () {
             folder: path.join(threadFolder(input.threadId), wikiId),
           })
           .pipe(
-            Effect.map((folder) => [folder]),
+            Effect.map((folder) => [{ wikiId, folder }]),
             Effect.catch((cause) =>
               Effect.logWarning("Could not check a wiki out for a thread.", {
                 wikiId,
@@ -120,7 +124,7 @@ const make = Effect.gen(function* () {
             ),
           ),
       );
-      return folders.flat();
+      return { checkouts: checkouts.flat(), workingIn: undefined };
     },
   );
 

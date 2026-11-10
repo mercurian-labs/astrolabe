@@ -99,15 +99,45 @@ export const wikiAgentGuidance = (names: ReadonlyArray<string>): string => {
   const quoted = names.map((name) => `"${name}"`);
   const list =
     quoted.length < 2 ? quoted.join("") : `${quoted.slice(0, -1).join(", ")} and ${quoted.at(-1)}`;
-  return `This repository is linked to the ${names.length === 1 ? "wiki" : "wikis"} ${list}, where its research and plans live. When a task involves research, planning, or building a feature, first search it with the astrolabe_wiki_* tools for what it already says. Write findings and plans there with astrolabe_wiki_amend, not as files in this repository.`;
+  return `This repository is linked to the ${names.length === 1 ? "wiki" : "wikis"} ${list}, where its research and plans live. When a task involves research, planning, or building a feature, first look at what ${names.length === 1 ? "it" : "they"} already say${names.length === 1 ? "s" : ""}. Write findings and plans there, not as files in this repository.`;
 };
 
+/** How a provider session's file tools reach the thread's wiki checkouts, outside its folder. */
+export type WikiCheckoutReach = "edit" | "read" | "none";
+
+/**
+ * Probed per provider: Cursor's sandbox reads extra folders but refuses edits there, and
+ * Antigravity's file tools refuse any path outside the working folder. `sandboxed` is whether
+ * the session's filesystem sandbox is on, as Cursor decides it.
+ */
+export const wikiCheckoutReach = (driver: string, sandboxed: boolean): WikiCheckoutReach =>
+  driver === "antigravity" ? "none" : driver === "cursor" && sandboxed ? "read" : "edit";
+
+const reachClause: Record<WikiCheckoutReach, string> = {
+  edit: ". Read, search and edit its notes there with your file tools.",
+  read: ". You can read it there, but your sandbox refuses edits outside this project: delegate edits with delegate_task's wiki field.",
+  none: ", but your file tools can't leave this project's folder: delegate wiki work with delegate_task's wiki field.",
+};
+
+export interface WikiAgentCheckout {
+  readonly name: string;
+  /** Absolute path of the thread's checkout of the wiki. */
+  readonly folder: string;
+  readonly reach: WikiCheckoutReach;
+}
+
 /** What a thread's agent is told, after its message, about the wikis its repository is linked to. */
-export const linkedWikiAgentNote = (names: ReadonlyArray<string>): string | null =>
-  names.length === 0
+export const linkedWikiAgentNote = (checkouts: ReadonlyArray<WikiAgentCheckout>): string | null =>
+  checkouts.length === 0
     ? null
     : `<astrolabe_wikis>
-${wikiAgentGuidance(names)}
+${wikiAgentGuidance(checkouts.map((checkout) => checkout.name))}
+${checkouts.map((checkout) => `- "${checkout.name}" is checked out for this thread at ${checkout.folder}${reachClause[checkout.reach]}`).join("\n")}
+</astrolabe_wikis>`;
+
+/** What a child working in another thread's checkout of a wiki is told, after its message. */
+export const wikiCheckoutAgentNote = (name: string): string => `<astrolabe_wikis>
+Your working folder is a checkout of the wiki "${name}": its notes are the files here. Read, search and edit them with your file tools; your edits join the pull request of the thread that started you.
 </astrolabe_wikis>`;
 
 const WikiSummaryFields = {

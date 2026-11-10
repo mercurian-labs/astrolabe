@@ -1,7 +1,7 @@
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
-import { WikiListResult } from "./wiki.ts";
+import { WikiListResult, wikiCheckoutReach } from "./wiki.ts";
 
 const decodeList = Schema.decodeUnknownSync(WikiListResult);
 const encodeList = Schema.encodeSync(WikiListResult);
@@ -39,5 +39,17 @@ describe("WikiSummary", () => {
     const decoded = decodeList({ wikis: [olderWiki("p1")] });
     const { projectId: _, ...rest } = olderWiki("p1");
     expect(encodeList(decoded).wikis).toStrictEqual([{ ...rest, projectIds: ["p1"] }]);
+  });
+});
+
+describe("wikiCheckoutReach", () => {
+  it.each([
+    ["claudeAgent", true, "edit"],
+    ["codex", true, "edit"],
+    ["cursor", true, "read"],
+    ["cursor", false, "edit"],
+    ["antigravity", false, "none"],
+  ] as const)("%s with its sandbox %s reaches a checkout to %s", (driver, sandboxed, reach) => {
+    expect(wikiCheckoutReach(driver, sandboxed)).toBe(reach);
   });
 });
