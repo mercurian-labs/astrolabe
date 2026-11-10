@@ -1790,6 +1790,89 @@ it.effect("saves a worktree's documents in folders, and nothing git ignores", ()
   ),
 );
 
+it.effect("checks a thread out at main until its first save opens its change request", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const path = yield* Path.Path;
+      const { root, wikiId, wikis } = yield* registeredWiki(harness);
+      const threadId = ThreadId.make("thread-checkout");
+      const folder = path.join(harness.baseDir, "wiki-checkouts", threadId, wikiId);
+      const main = yield* git(root, ["rev-parse", "main"]);
+      const target = { wikiId, threadId, folder };
+      const save = { ...target, title: "Tidy Beta", message: "Tidy Beta" };
+
+      assert.equal(yield* wikis.checkoutForThread(target), folder);
+      assert.equal(yield* wikis.checkoutForThread(target), folder);
+      assert.equal(yield* git(folder, ["rev-parse", "HEAD"]), main);
+      assert.isNull(yield* wikis.saveThreadCheckout(save, agent(threadId)));
+      assert.equal(yield* git(root, ["for-each-ref", "refs/heads/cr/"]), "");
+
+      yield* write(folder, { "Beta.md": "# Beta\n\nTidied.\n" });
+      const saved = yield* wikis.saveThreadCheckout(save, agent(threadId));
+      assert.isNotNull(saved);
+      const { changeRequestId } = saved!.changeRequest;
+      assert.equal(saved!.changeRequest.title, "Tidy Beta");
+      assert.equal(saved!.changeRequest.threadId, threadId);
+      assert.equal(saved!.changeRequest.amendments.length, 1);
+      assert.equal(
+        yield* git(folder, ["symbolic-ref", "HEAD"]),
+        `refs/heads/cr/${changeRequestId}`,
+      );
+      assert.equal(yield* git(folder, ["status", "--porcelain"]), "");
+      assert.isNull(yield* wikis.saveThreadCheckout(save, agent(threadId)));
+
+      // The next turn's edits join the same change request, which a new checkout lands on.
+      yield* write(folder, { "Alpha.md": "# Alpha\n\nAlpha builds on [[Beta]], tidily.\n" });
+      const again = yield* wikis.saveThreadCheckout(save, agent(threadId));
+      assert.equal(again!.changeRequest.changeRequestId, changeRequestId);
+      assert.equal(again!.changeRequest.amendments.length, 2);
+      assert.equal(yield* wikis.checkoutForThread(target), folder);
+      assert.equal(yield* git(folder, ["rev-parse", "HEAD"]), again!.commit);
+
+      // Closed, it leaves the thread with none, so the checkout goes back to main.
+      yield* wikis.setChangeRequestStatus({ wikiId, changeRequestId, status: "closed" });
+      assert.equal(yield* wikis.checkoutForThread(target), folder);
+      assert.equal(yield* git(folder, ["rev-parse", "HEAD"]), main);
+
+      yield* wikis.removeCheckout({ wikiId, folder });
+      assert.notInclude(yield* git(root, ["worktree", "list"]), folder);
+    }),
+  ),
+);
+
+it.effect("saves a checkout onto the change request a tool opened during the turn", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const path = yield* Path.Path;
+      const { wikiId, wikis } = yield* registeredWiki(harness);
+      const threadId = ThreadId.make("thread-tool-opened");
+      const folder = path.join(harness.baseDir, "wiki-checkouts", threadId, wikiId);
+      yield* wikis.checkoutForThread({ wikiId, threadId, folder });
+      yield* write(folder, { "Beta.md": "# Beta\n\nFrom the checkout.\n" });
+      const opened = yield* wikis.amend(
+        {
+          wikiId,
+          message: "Alpha by tool",
+          changes: { "Alpha.md": "# Alpha\n\nAlpha builds on [[Beta]], by tool.\n" },
+        },
+        agent(threadId),
+      );
+      const saved = yield* wikis.saveThreadCheckout(
+        { wikiId, threadId, folder, title: "Turn", message: "Turn" },
+        agent(threadId),
+      );
+      assert.equal(saved!.changeRequest.changeRequestId, opened.changeRequest.changeRequestId);
+      assert.equal(
+        yield* read(folder, "Alpha.md"),
+        "# Alpha\n\nAlpha builds on [[Beta]], by tool.\n",
+      );
+      assert.equal(yield* read(folder, "Beta.md"), "# Beta\n\nFrom the checkout.\n");
+      assert.equal(yield* git(folder, ["rev-parse", "HEAD"]), saved!.commit);
+      assert.equal(yield* git(folder, ["status", "--porcelain"]), "");
+    }),
+  ),
+);
+
 const noteEdit = (text: string, readAt?: string) => ({
   document: "Alpha.md",
   write: {
