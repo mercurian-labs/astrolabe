@@ -149,8 +149,8 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   including after a provider restart or handoff, gets an `<astrolabe_wikis>` note naming each
   wiki, the absolute path of the thread's checkout of it, and how this session reaches it
   (edits there; Cursor with its sandbox on writes with a shell command, as its edit tool and every
-  MCP call are refused; Antigravity can't reach it and is told to delegate with `delegate_task`'s
-  `wiki`) (`WikiService.agentNote`, `wikiCheckoutReach`,
+  MCP call are refused; Antigravity can't reach it and is told to use `astrolabe_wiki_read`, `_search` and
+  `_write` for a small read or edit, and `delegate_task`'s `wiki` for a larger job) (`WikiService.agentNote`, `wikiCheckoutReach`,
   `ProviderTurnStartService.ts`). A conversation with turns gets it on its next prompt for wikis
   linked since its last one (links with no `projectLinkedAt` time never do); a prompt that
   starts with `/` never does and doesn't count as its last. A child started with `wiki` is told
