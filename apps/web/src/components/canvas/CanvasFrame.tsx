@@ -8,6 +8,7 @@ import { readLocalApi } from "~/localApi";
 import { useRightPanelStore } from "~/rightPanelStore";
 
 import { Button } from "../ui/button";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { CanvasStepBar, onStepKey } from "./CanvasStepBar";
 import { KeepCanvasButton } from "./KeepCanvas";
 import { showThreadCanvas } from "./threadCanvasStore";
@@ -71,14 +72,21 @@ export function CanvasFrame({
               title={view.title}
               size="icon-xs"
             />
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              aria-label={`Open ${view.title} in a panel`}
-              onClick={() => showThreadCanvas(threadRef, id)}
-            >
-              <SquareArrowOutUpRightIcon />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label={`Open ${view.title} in a tab`}
+                    onClick={() => showThreadCanvas(threadRef, id)}
+                  />
+                }
+              >
+                <SquareArrowOutUpRightIcon />
+              </TooltipTrigger>
+              <TooltipPopup side="bottom">Open in a tab</TooltipPopup>
+            </Tooltip>
           </>
         )}
       </figcaption>

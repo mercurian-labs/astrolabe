@@ -24,6 +24,7 @@ import { Label } from "../ui/label";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useOpenWikiTab } from "../wiki/useOpenWiki";
 import { useWikiCommand } from "../wiki/wikiEnvironment";
 
@@ -254,12 +255,27 @@ export function KeepCanvasButton({
 
   return (
     <Popover open={open} onOpenChange={change}>
-      <PopoverTrigger
-        render={<Button variant="ghost" size={size} aria-label={`Keep ${board.title}`} />}
-      >
-        <BookmarkPlusIcon />
-        {size === "xs" ? "Keep" : null}
-      </PopoverTrigger>
+      {size === "xs" ? (
+        <PopoverTrigger
+          render={<Button variant="ghost" size="xs" aria-label={`Keep ${board.title}`} />}
+        >
+          <BookmarkPlusIcon />
+          Keep
+        </PopoverTrigger>
+      ) : (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <PopoverTrigger
+                render={<Button variant="ghost" size={size} aria-label={`Keep ${board.title}`} />}
+              />
+            }
+          >
+            <BookmarkPlusIcon />
+          </TooltipTrigger>
+          <TooltipPopup side="bottom">Keep in a wiki</TooltipPopup>
+        </Tooltip>
+      )}
       <PopoverPopup
         aria-label={`Keep ${board.title}`}
         side="bottom"
