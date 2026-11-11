@@ -904,43 +904,18 @@ const GroupNode = memo(function GroupNode({
   );
 });
 
-/** A story's step on the board: the box around its cards, numbered, which a walk moves to. */
+/**
+ * A story's step on the board: an outline around its cards, which a walk moves to. It carries no
+ * title: groups name the board's regions, and the step bar names the step.
+ */
 function StoryFrame({
   frame,
-  index,
-  label,
   lit,
-  onStep,
 }: {
   readonly frame: CanvasBounds;
-  readonly index: number;
-  readonly label: string | undefined;
   readonly lit: boolean | undefined;
-  readonly onStep: ((step: number) => void) | undefined;
 }) {
-  return (
-    <div className="cv-group cv-story-frame" data-lit={lit} style={position(frame)}>
-      <span className="cv-group-label">
-        {onStep === undefined ? (
-          <span className="cv-step-number">{index + 1}</span>
-        ) : (
-          <button
-            type="button"
-            className="cv-step-number"
-            aria-label={`Show step ${index + 1}`}
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => {
-              event.stopPropagation();
-              onStep(index);
-            }}
-          >
-            {index + 1}
-          </button>
-        )}
-        {label}
-      </span>
-    </div>
-  );
+  return <div className="cv-group cv-story-frame" data-lit={lit} style={position(frame)} />;
 }
 
 const EdgeNode = memo(function EdgeNode({
@@ -1262,7 +1237,6 @@ export function CanvasBoard({
   onSettings,
   story = 0,
   step = null,
-  onStep,
   ref,
 }: {
   readonly data: CanvasData;
@@ -1290,8 +1264,6 @@ export function CanvasBoard({
   readonly story?: number;
   /** The story's step being walked, from 0: the camera shows only it. */
   readonly step?: number | null;
-  /** Asked to walk from a frame, as its number is clicked. */
-  readonly onStep?: ((step: number) => void) | undefined;
   readonly ref?: Ref<CanvasBoardHandle>;
 }) {
   const boardRef = useRef<HTMLDivElement>(null);
@@ -2046,10 +2018,7 @@ export function CanvasBoard({
               // oxlint-disable-next-line react/no-array-index-key -- a step is its place in the story; frames hold no state
               key={index}
               frame={each.frame}
-              index={index}
-              label={each.label}
               lit={active === null ? undefined : index === step}
-              onStep={onStep}
             />
           ))}
           <svg className="cv-edges" aria-hidden="true" width="1" height="1">

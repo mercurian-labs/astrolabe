@@ -249,6 +249,13 @@ export class CanvasGestures {
     const live = target.closest("[data-live]");
     const document = host.document();
     if (live !== null && (document === null || target.closest(CONTENT) !== null)) return;
+    // A board that only reads opens a card's link at once, selected or not.
+    if (
+      document === null &&
+      target.closest(".cv-card-content")?.contains(target.closest(CONTENT))
+    ) {
+      return;
+    }
 
     const start = host.view.toWorld(event.clientX, event.clientY);
     const selection = host.selection();

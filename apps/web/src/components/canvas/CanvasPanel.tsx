@@ -70,7 +70,6 @@ function CanvasPanelBoard({
             label={view.title}
             story={walk.story}
             step={walk.step}
-            onStep={walk.go}
           />
         </Suspense>
       </div>

@@ -40,7 +40,7 @@ export const canvasHost = (threadRef: ScopedThreadRef | null) => ({
 
 /**
  * A canvas in a thread: the whole board, sized by its own shape so the row never shifts when the
- * board loads, with its pan and zoom one click away in the right panel.
+ * board loads. It pans and zooms in place; the wheel scrolls the thread until the board is clicked.
  */
 export function CanvasFrame({
   id,
@@ -116,12 +116,12 @@ export function CanvasFrame({
         <Suspense fallback={null}>
           <LazyCanvasBoard
             data={view.data}
-            mode="fit"
+            mode="free"
+            wheelOnceFocused
             host={canvasHost(threadRef)}
             label={view.title}
             story={walk.story}
             step={walk.step}
-            onStep={walk.go}
           />
         </Suspense>
       </div>

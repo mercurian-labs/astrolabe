@@ -180,6 +180,10 @@
 .cv-board[data-mode="free"] .cv-card-content:not([data-live]) > * {
   pointer-events: none;
 }
+/* A board that only reads has nothing to select a card for: its links open on the first click. */
+.cv-board[data-mode="free"]:not([data-editable]) .cv-card-content :is(a, button) {
+  pointer-events: auto;
+}
 /* Above the grips around a selected card, which would otherwise take every press on the name. */
 .cv-card-label {
   position: absolute;
@@ -1098,33 +1102,6 @@ textarea.cv-label-editor {
   .cv-board[data-walkable] :is(.cv-world, .cv-card, .cv-group, .cv-edge, .cv-edge-label) {
     transition: none;
   }
-}
-.cv-step-number {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  min-width: 1.6em;
-  height: 1.6em;
-  margin-right: 0.45em;
-  padding: 0 0.35em;
-  border: 0;
-  border-radius: 999px;
-  background: var(--foreground);
-  color: var(--background);
-  font: inherit;
-  font-size: 0.8em;
-  font-weight: 700;
-  line-height: 1;
-  vertical-align: 0.1em;
-}
-button.cv-step-number {
-  cursor: pointer;
-  pointer-events: auto;
-}
-.cv-board[data-walking] .cv-group[data-lit="true"] .cv-step-number {
-  background: var(--primary);
-  color: var(--primary-foreground, var(--background));
 }
 /* A story's frame is a view over the board, not a region of it: an outline, never picked. */
 .cv-story-frame {
