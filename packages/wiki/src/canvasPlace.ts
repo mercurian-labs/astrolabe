@@ -403,6 +403,8 @@ export function canvasLayoutKind(drawing: CanvasDrawing): CanvasLayoutKind | und
 export function canvasFromRects(
   drawing: CanvasDrawing,
   rects: ReadonlyMap<string, CanvasBounds>,
+  /** Where the first story's steps are named, by step. */
+  headings: ReadonlyArray<CanvasBounds | undefined> = [],
 ): CanvasData {
   const groupNodes = (drawing.groups ?? []).flatMap((group): CanvasNode[] => {
     const rect = rects.get(group.id);
@@ -417,13 +419,17 @@ export function canvasFromRects(
       },
     ];
   });
-  const stories: CanvasStory[] = (drawing.stories ?? []).map((story) => ({
+  const stories: CanvasStory[] = (drawing.stories ?? []).map((story, which) => ({
     title: story.title,
-    steps: story.steps.map((step) => ({
-      ...(step.label === undefined ? {} : { label: step.label }),
-      note: step.note,
-      cards: step.cards,
-    })),
+    steps: story.steps.map((step, index) => {
+      const heading = which === 0 ? headings[index] : undefined;
+      return {
+        ...(step.label === undefined ? {} : { label: step.label }),
+        note: step.note,
+        cards: step.cards,
+        ...(heading === undefined ? {} : { heading }),
+      };
+    }),
   }));
   return {
     nodes: [...groupNodes, ...cardNodesAt(drawing.cards, rects)],
@@ -434,11 +440,16 @@ export function canvasFromRects(
 
 /** Room between lanes, so each reads as its own band. */
 const LANE_GAP = CROSS_GAP;
+/** The row above the lanes that names each step's column. */
+const HEADING_ROW = 32;
+/** Between that row and the first lane, room for the lane's own name. */
+const HEADING_GAP = 48;
 
 /**
  * Lanes: a band per group, top to bottom in the drawing's order, and a column per step of the
- * first story, so a step's cards line up across the lanes it touches. Without a story, columns
- * follow the arrows. Cards in no group share a last band with no label.
+ * first story, so a step's cards line up across the lanes it touches, named in a row above the
+ * lanes. Without a story, columns follow the arrows. Cards in no group share a last band with no
+ * label.
  */
 function placeLanes(drawing: CanvasDrawing): CanvasData {
   const cards = drawing.cards;
@@ -495,7 +506,15 @@ function placeLanes(drawing: CanvasDrawing): CanvasData {
   const right = x - RANK_GAP + GROUP_PADDING;
 
   const rects = new Map<string, CanvasBounds>();
-  let y = 0;
+  // A step that brings no card of its own has no column to name. Its name runs up to the next.
+  const headings = steps.map((_, index) => {
+    const at = left[index] ?? 0;
+    const own = width[index] ?? 0;
+    const next = left[index + 1];
+    const room = next === undefined ? own : next - at - CROSS_GAP;
+    return own > 0 ? { x: at, y: 0, width: room, height: HEADING_ROW } : undefined;
+  });
+  let y = steps.length > 0 ? HEADING_ROW + HEADING_GAP : 0;
   for (const lane of lanes) {
     const inLane = cards.filter((card) => laneOf(card) === lane);
     if (inLane.length === 0 && lane === "") continue;
@@ -515,7 +534,7 @@ function placeLanes(drawing: CanvasDrawing): CanvasData {
     if (lane !== "") rects.set(lane, { x: 0, y, width: right, height: bottom - y });
     y = bottom + LANE_GAP;
   }
-  return canvasFromRects(drawing, rects);
+  return canvasFromRects(drawing, rects, headings);
 }
 
 /** A board laid out by its arrows, with its groups as regions. */

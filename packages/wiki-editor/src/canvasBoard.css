@@ -1207,6 +1207,34 @@ button.cv-frame-chip:focus-visible {
   background: var(--primary);
   color: var(--primary-foreground, var(--background));
 }
+.cv-step-heading {
+  position: absolute;
+  display: flex;
+  align-items: flex-end;
+  gap: calc(6px * var(--cv-screen, 1));
+  font-size: calc(16px * var(--cv-ui, 1));
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.cv-step-heading .cv-frame-chip {
+  position: static;
+  flex: none;
+  transform: none;
+}
+.cv-step-heading-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cv-step-heading[data-lit="true"] {
+  color: var(--foreground);
+}
+.cv-board:is([data-walking], [data-peeking]) .cv-step-heading[data-lit="false"] {
+  opacity: 0.4;
+}
 /* Hovering a step's number: what it covers stays, the rest steps back without leaving. */
 .cv-board[data-peeking] :is(.cv-card, .cv-edge, .cv-edge-label)[data-lit="false"] {
   opacity: 0.25;

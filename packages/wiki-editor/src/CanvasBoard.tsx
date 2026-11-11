@@ -983,10 +983,28 @@ function stepChips(
   const byGroup = new Map<string, StepChipProps[]>();
   steps.forEach((each, index) => {
     const chip = all[index];
-    if (each.group === undefined || chip === undefined) return;
+    if (each.group === undefined || each.heading !== undefined || chip === undefined) return;
     byGroup.set(each.group, [...(byGroup.get(each.group) ?? []), chip]);
   });
   return { all, byGroup };
+}
+
+/** A lanes board's step, named above its column: what a frame would say, where nothing else is. */
+function StepHeading({
+  heading,
+  lit,
+  chip,
+}: {
+  readonly heading: CanvasBounds;
+  readonly lit: boolean | undefined;
+  readonly chip: StepChipProps;
+}) {
+  return (
+    <div className="cv-step-heading" data-lit={lit} style={position(heading)}>
+      <StepChip {...chip} />
+      {chip.label === undefined ? null : <span className="cv-step-heading-name">{chip.label}</span>}
+    </div>
+  );
 }
 
 /**
@@ -1742,7 +1760,9 @@ export function CanvasBoard({
       marks,
       bounds,
       walkable: steps.length > 0,
-      frames: steps.flatMap((each) => (each.group === undefined ? [each.frame] : [])),
+      frames: steps.flatMap((each) =>
+        each.group === undefined && each.heading === undefined ? [each.frame] : [],
+      ),
       whole,
     });
     reads.files.readFrom((paths) => host.readFiles?.(paths) ?? Promise.resolve([]));
@@ -2165,17 +2185,17 @@ export function CanvasBoard({
               steps={chips.byGroup.get(node.id)}
             />
           ))}
-          {steps.map((each, index) =>
-            each.group === undefined ? (
-              <StoryFrame
-                // oxlint-disable-next-line react/no-array-index-key -- a step is its place in the story; frames hold no state
-                key={index}
-                frame={each.frame}
-                lit={shines === null ? undefined : index === current}
-                chip={chips.all[index]!}
-              />
-            ) : null,
-          )}
+          {steps.map((each, index) => {
+            const lit = shines === null ? undefined : index === current;
+            const chip = chips.all[index]!;
+            if (each.heading !== undefined) {
+              // oxlint-disable-next-line react/no-array-index-key -- a step is its place in the story; headings hold no state
+              return <StepHeading key={index} heading={each.heading} lit={lit} chip={chip} />;
+            }
+            if (each.group !== undefined) return null;
+            // oxlint-disable-next-line react/no-array-index-key -- a step is its place in the story; frames hold no state
+            return <StoryFrame key={index} frame={each.frame} lit={lit} chip={chip} />;
+          })}
           <svg className="cv-edges" aria-hidden="true" width="1" height="1">
             {shown.shapes.map((shape) => (
               <EdgeNode

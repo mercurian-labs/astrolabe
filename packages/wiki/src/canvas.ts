@@ -64,6 +64,8 @@ export interface CanvasStoryStep {
   readonly cards: ReadonlyArray<string>;
   /** A group the step is: its cards are the group's, its frame the group's outline. */
   readonly group?: string;
+  /** Where a lanes board names the step, above its column. */
+  readonly heading?: CanvasBounds;
 }
 
 /** One way of telling a board, walked a step at a time. The cards stay where the board has them. */
@@ -102,13 +104,19 @@ export interface CanvasBounds {
   readonly height: number;
 }
 
-export function canvasBounds(data: Pick<CanvasData, "nodes">): CanvasBounds {
+/** What a board covers: its cards and groups, and the row its lanes' steps are named in. */
+export function canvasBounds(
+  data: Pick<CanvasData, "nodes"> & Pick<Partial<CanvasData>, "stories">,
+): CanvasBounds {
   if (data.nodes.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
   let left = Infinity;
   let top = Infinity;
   let right = -Infinity;
   let bottom = -Infinity;
-  for (const node of data.nodes) {
+  const headings = (data.stories ?? []).flatMap((story) =>
+    story.steps.flatMap((step) => (step.heading === undefined ? [] : [step.heading])),
+  );
+  for (const node of [...data.nodes, ...headings]) {
     left = Math.min(left, node.x);
     top = Math.min(top, node.y);
     right = Math.max(right, node.x + node.width);
@@ -134,6 +142,8 @@ export interface CanvasStep {
   readonly note: string;
   /** The group the step is, which the board draws as its frame. */
   readonly group?: string;
+  /** Where its name stands above its column, on a lanes board; it draws no frame there. */
+  readonly heading?: CanvasBounds;
   /** The box around the step's cards that sit together, or its group's outline. */
   readonly frame: CanvasBounds;
   /** All the step's cards, docked ones included. */
@@ -229,7 +239,8 @@ export function canvasSteps(data: CanvasData, story = 0): ReadonlyArray<CanvasSt
   };
   return framed.flatMap(({ step, nodes, group, frame, inside }): CanvasStep[] => {
     if (frame === undefined) return [];
-    let bounds = frame;
+    const { heading } = step;
+    let bounds = heading === undefined ? frame : unionBounds(frame, heading);
     const docked = new Map<string, CanvasDocked>();
     const along = { top: frame.x, bottom: frame.x, left: frame.y, right: frame.y };
     // Cards docked on one side keep the order they stand in on the board.
@@ -268,6 +279,7 @@ export function canvasSteps(data: CanvasData, story = 0): ReadonlyArray<CanvasSt
         ...(label === undefined ? {} : { label }),
         note: step.note,
         ...(group === undefined ? {} : { group: group.id }),
+        ...(heading === undefined ? {} : { heading }),
         frame,
         cards: lit,
         arrows,
@@ -333,6 +345,17 @@ function codeReference(astrolabe: unknown): CanvasCodeReference | undefined {
   };
 }
 
+const finite = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value);
+const bounds = (value: unknown): CanvasBounds | undefined =>
+  isRecord(value) &&
+  finite(value.x) &&
+  finite(value.y) &&
+  finite(value.width) &&
+  finite(value.height)
+    ? { x: value.x, y: value.y, width: value.width, height: value.height }
+    : undefined;
+
 const strings = (value: unknown) =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 
@@ -346,6 +369,7 @@ function canvasStories(astrolabe: unknown): ReadonlyArray<CanvasStory> {
       const cards = strings(step.cards);
       const label = text(step.label);
       const group = text(step.group);
+      const heading = bounds(step.heading);
       if (cards.length === 0 && group === undefined) return [];
       return [
         {
@@ -353,6 +377,7 @@ function canvasStories(astrolabe: unknown): ReadonlyArray<CanvasStory> {
           note: step.note,
           cards,
           ...(group === undefined ? {} : { group }),
+          ...(heading === undefined ? {} : { heading }),
         },
       ];
     });

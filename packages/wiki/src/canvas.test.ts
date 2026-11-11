@@ -623,7 +623,7 @@ describe("placeCanvas", () => {
       ).toEqual(positions(placeCanvas(map)));
     });
 
-    it("lays a story told across groups out in lanes, each step a column no card has to leave", () => {
+    it("lays a story told across groups out in lanes, each step a named column no card has to leave", () => {
       const drawing: CanvasDrawing = {
         cards: [
           { id: "form", text: "Form", group: "browser" },
@@ -667,6 +667,15 @@ describe("placeCanvas", () => {
       expect(at.get("sessions")!.x).toBe(at.get("cookie")!.x);
       expect(at.get("users")!.x).toBeGreaterThan(at.get("login")!.x);
       expect(canvasSteps(board).map((each) => each.docked.size)).toEqual([0, 0, 0, 0]);
+      // Each step is named above the column of the cards it brings, clear of every lane.
+      const headings = canvasSteps(board).map((each) => each.heading);
+      expect(headings.map((each) => each?.x)).toEqual(
+        ["form", "users", "check", "sessions"].map((id) => at.get(id)!.x),
+      );
+      const firstLane = Math.min(...lanes.map((lane) => lane.y));
+      for (const heading of headings) expect(heading!.y + heading!.height).toBeLessThan(firstLane);
+      expect(canvasBounds(board).y).toBe(Math.min(...headings.map((each) => each!.y)));
+      expect(canvasData(canvasDocument(board))).toEqual(board);
       const cards = board.nodes.filter((node) => node.type !== "group");
       for (const a of cards) {
         for (const b of cards)
