@@ -446,6 +446,9 @@ describe("MuseAdapterV2", () => {
       yield* harness.takeEvent("turn.terminal");
       yield* startConversation(harness, fake, 2);
       assert.deepStrictEqual(turns(fake).map(told), [true, false]);
+      // Muse joins input parts with no separator, so the instructions must end their own line.
+      const parts = turns(fake)[0]!.params.input as ReadonlyArray<{ readonly text?: string }>;
+      assert.match(parts.find((part) => part.text?.includes("Astrolabe wikis"))!.text!, /\n\n$/);
     }).pipe(Effect.scoped, Effect.provide(testLayer)),
   );
 

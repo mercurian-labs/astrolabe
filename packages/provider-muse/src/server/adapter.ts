@@ -2099,7 +2099,7 @@ export const makeMuseAdapterV2 = Effect.fn("makeMuseAdapterV2")(function* (
                   },
                   ...(orchestration === undefined
                     ? []
-                    : [{ type: "text" as const, text: orchestration.trim() }]),
+                    : [{ type: "text" as const, text: `${orchestration.trim()}\n\n` }]),
                   ...parts,
                 ],
                 displayText: turnInput.message.text || "Image attachment",
