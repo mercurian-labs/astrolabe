@@ -62,6 +62,7 @@ import {
 import { renderAssistantCitationsAsText } from "@t3tools/shared/assistantCitations";
 import { encodeComposerContextFragment } from "@t3tools/shared/composerContextClipboard";
 import { hostedThreadLink, parseThreadLinkHref } from "@t3tools/shared/threadLinks";
+import { findChangeGroup } from "@t3tools/shared/changeGroups";
 import { PROMPT_LINK_MAX_PROMPT_LENGTH } from "@t3tools/shared/promptLinks";
 import {
   parseComposerContextHref,
@@ -252,6 +253,7 @@ import {
 import { ThreadMcpApp } from "./McpAppWebView";
 import { assetEnvironment, useAssetUrl, useRefreshAssetUrl } from "../../state/assets";
 import { useAtomQueryRunner } from "../../state/use-atom-query-runner";
+import { readEnvironmentChangeGroups } from "../../state/changeGroups";
 import { readEnvironmentScope, usePreparedConnection } from "../../state/session";
 import { projectEnvironment } from "../../state/projects";
 import {
@@ -2435,6 +2437,20 @@ function UserMessageContent(props: UserMessageContentProps) {
         itemId: String(record.itemId),
       });
       return;
+    }
+    if (record?.kind === "change-group" && "groupId" in record) {
+      const group = findChangeGroup(
+        readEnvironmentChangeGroups(record.environmentId),
+        record.groupId,
+        record.memberKeys,
+      );
+      if (group) {
+        navigation.navigate("ChangeGroup", {
+          environmentId: String(group.environmentId),
+          groupId: group.groupId,
+        });
+        return;
+      }
     }
     const document = composerDocumentAttachmentRecord(record);
     if (document) {
