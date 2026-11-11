@@ -159,7 +159,14 @@ export function SectionTabContent({
             if (pane && pane.id !== groupPane?.id && pane.tabs.length === 1) {
               return activateTab(arrangement, key);
             }
-            return openBeside(arrangement, key, groupPane?.id ?? arrangement.focused, "right");
+            const beside = openBeside(
+              arrangement,
+              key,
+              groupPane?.id ?? arrangement.focused,
+              "right",
+            );
+            // A new chat opens in front of the group first; moving it out leaves the group in front.
+            return activateTab(beside, tabKey, false);
           })
         }
         openAll={
