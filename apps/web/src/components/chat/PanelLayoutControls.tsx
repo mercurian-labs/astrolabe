@@ -194,13 +194,10 @@ export function WorkspaceTitlebarControls(props: {
   readonly children: ReactNode;
 }) {
   // Astrolabe: a pane's chat header is not the window's title bar, and its pane's strip already
-  // maximizes: the controls end the header, which saves them room (`ChatHeader`'s end padding).
+  // maximizes. The controls end the header in its flow, so nothing in it can slide under them.
   if (useChatOwner() !== null) {
     return (
-      <div
-        className="absolute inset-y-0 right-3 flex items-center"
-        data-workspace-titlebar-controls
-      >
+      <div className="ms-2 flex shrink-0 items-center" data-workspace-titlebar-controls>
         {props.children}
       </div>
     );
