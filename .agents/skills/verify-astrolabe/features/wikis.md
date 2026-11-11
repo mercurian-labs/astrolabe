@@ -150,7 +150,7 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   wiki, the absolute path of the thread's checkout of it, and how this session reaches it
   (edits there; Cursor with its sandbox on writes with a shell command, as its edit tool and every
   MCP call are refused; Antigravity can't reach it and is told to use `astrolabe_wiki_read`, `_search` and
-  `_write` for a small read or edit, and `delegate_task`'s `wiki` for a larger job) (`WikiService.agentNote`, `wikiCheckoutReach`,
+  `_write` for a small read or edit, and `delegate_task`'s `wiki` for a larger job: moving, splitting or merging notes, or editing more than three) (`WikiService.agentNote`, `wikiCheckoutReach`,
   `ProviderTurnStartService.ts`). A conversation with turns gets it on its next prompt for wikis
   linked since its last one (links with no `projectLinkedAt` time never do); a prompt that
   starts with `/` never does and doesn't count as its last. A child started with `wiki` is told
@@ -196,7 +196,14 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   ` ```base ` block in a note shows the same view in place (`.cm-md-host-block`, via the
   editor's `codeBlocks` option) and its YAML once the caret is in it. Row names and `[[links]]`
   in cells open notes: in a base's own tab the note replaces it (Back returns); a view with no name column gets a "Name" column. A base outside the
-  supported subset shows "This base can't be shown" naming the unsupported part. On the phone,
+  supported subset shows "This base can't be shown" naming the unsupported part. One that runs
+  with warnings (`baseWarnings` in `bases.ts`: unknown keys, `properties` or a sort under a view's
+  `order`, a link method on a file) shows "Parts of this base don't work as written" above its
+  view, each warning a line; the phone's `BaseBlock` lists them above the view, and a pull
+  request lists its changed bases' warnings with its standing errors. A turn that saves a broken
+  base gets one system message in its thread, "A base needs fixing", naming each base and problem
+  (`brokenBasesMessage`, `RunFinalizationService.saveWikiEdits`); the turn it starts never gets
+  another. On the phone,
   the page asks the app for each block (`queryBase`/`baseResult` in `wiki-editor/protocol.ts`)
   and draws its first view. A `.base` file lists on the phone too, `button "<name>.base, <wiki>"`
   with a table icon and "Base · read only" under it, and opens in `WikiDocument` (the same
