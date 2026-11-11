@@ -240,9 +240,11 @@ its issue key. A thread can be in more than one group.
 
 A group's tab lists its members and why each is there. **Merge with the code** merges the
 documentation the moment the code has; a merge the wiki refuses stays open for you. From the tab
-you can add a pull request or a thread by hand or take one out, ask an agent for suggestions of
-either (you accept or dismiss each), and ask a thread to update documentation that fell behind or to
-draft missing documentation. **Open as a tab group** opens the group's threads, pull requests and
+you can add a pull request or a thread by hand (a thread brings its pull requests) or take one out,
+and accept or dismiss what an agent suggests. **Add a thread** starts with **New thread**, a draft
+beside the group that names it and joins it when you send, and offers first messages to update
+documentation that fell behind or draft what's missing. To name a group in any thread without
+adding the thread, type `@` and its title or a pull request number. **Open as a tab group** opens the group's threads, pull requests and
 documentation together behind a numbered marker. Beside a thread, the group's threads open as chats
 after the one you're in, and its other tabs are [linked](./thread-sidebar.md#linked-tabs) to the
 group: they show beside whichever of its threads is in front, and close for all of them at once.
@@ -250,8 +252,8 @@ Clicking the marker shows the group's tab; its menu collapses the group, merges 
 closes its tabs.
 Dragging a tab away doesn't take it out of the group: it gets a marker of its own where it lands.
 
-Which rules group pull requests and threads, including **Same branch**, and what an agent may do,
-are under **Settings → Changes → Grouping**, for each environment. Turning a rule off keeps the
+Which rules group pull requests and threads, including **Same branch**, are under **Settings →
+Changes → Grouping**, for each environment. Turning a rule off keeps the
 pull requests already grouped.
 
 On your phone, groups lead the **Changes** tab; a group shows its members and threads, opens each,
