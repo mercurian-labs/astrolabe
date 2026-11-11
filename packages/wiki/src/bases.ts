@@ -459,7 +459,10 @@ function compileView(base: WikiBase, spec: BaseViewSpec): CompiledView {
   if (config.order !== undefined && config.order !== null && !Array.isArray(config.order)) {
     throw new BaseError(`order must be a list in ${where}.`);
   }
-  const order = ((config.order as unknown[] | undefined | null) ?? ["file.name"]).map(String);
+  // A sort or list under order is reported as a warning and draws no column.
+  const order = ((config.order as unknown[] | undefined | null) ?? ["file.name"])
+    .filter((entry) => entry !== null && typeof entry !== "object")
+    .map(String);
   const columns = order
     .map((id) => {
       const ref = propertyRef(id, `${where}'s order`, context);

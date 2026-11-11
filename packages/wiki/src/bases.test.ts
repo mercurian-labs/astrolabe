@@ -424,6 +424,15 @@ describe("warnings", () => {
     expect(checkBase(source).warnings).toEqual(warnings);
   });
 
+  it("draws no column for a sort or list written under order", () => {
+    const { columns } = queryBase(
+      WIKI,
+      parseBase("views:\n  - type: table\n    order: [file.name, {property: due}, [status]]\n"),
+      { now: NOW },
+    );
+    expect(columns.map((column) => column.id)).toEqual(["file.name"]);
+  });
+
   it("checks each base a document holds, numbering a note's blocks", () => {
     const broken = "views:\n  - type: table\n    columns: [x]\n    summaries: { x: Count }\n";
     expect(documentBaseCheck("Q.base", broken)).toEqual({
