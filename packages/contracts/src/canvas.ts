@@ -64,14 +64,21 @@ export type CanvasShowGroup = typeof CanvasShowGroup.Type;
 
 export const CanvasShowStep = Schema.Struct({
   label: Schema.optional(
-    Schema.NonEmptyString.annotate({ description: "A few words. Steps are numbered for you." }),
+    Schema.NonEmptyString.annotate({
+      description: "A few words. Steps are numbered for you; a group's step has its label.",
+    }),
   ),
   note: Schema.NonEmptyString.annotate({
     description: "One or two sentences the reader sees at this step.",
   }),
-  cards: Schema.Array(CardReference)
-    .check(Schema.isMinLength(1))
-    .annotate({ description: "The cards this step shows. A card can be in several steps." }),
+  group: Schema.optional(
+    CardReference.annotate({ description: "The group this step is: it shows that group's cards." }),
+  ),
+  cards: Schema.optional(
+    Schema.Array(CardReference).check(Schema.isMinLength(1)).annotate({
+      description: "Or the cards it shows, across groups. A card can be in several steps.",
+    }),
+  ),
 });
 export type CanvasShowStep = typeof CanvasShowStep.Type;
 
@@ -108,7 +115,7 @@ export const CanvasShowInput = Schema.Struct({
   stories: Schema.optional(
     Schema.Array(CanvasShowStory).annotate({
       description:
-        "To explain step by step: each story walks the board one step at a time, in reading order. The first lays out the board unless it has groups. Several tell it different ways.",
+        "To explain step by step: each story walks the board one step at a time, in reading order. Part by part: make each part a group and each step a group. Who does what over time: groups are who, and each step picks its cards across them. Several stories tell it different ways.",
     }),
   ),
 });

@@ -9,6 +9,7 @@ import {
   canvasData,
   canvasDocument,
   canvasDrawingProblems,
+  canvasLayoutKind,
   canvasSteps,
   diffCanvas,
   parseCanvas,
@@ -767,6 +768,43 @@ describe("placeCanvas", () => {
       expect(steps[0]?.docked.size).toBe(0);
     });
 
+    it("lays a story told group by group out in the order it walks them, each step its group", () => {
+      const drawing: CanvasDrawing = {
+        cards: [
+          { id: "pay", text: "Charge the card", group: "payments" },
+          { id: "cart", text: "Cart", group: "store" },
+          { id: "price", text: "Price it", group: "orders" },
+        ],
+        groups: [
+          { id: "payments", label: "Payments" },
+          { id: "orders", label: "Orders API" },
+          { id: "store", label: "Storefront" },
+        ],
+        stories: [
+          {
+            title: "Buying",
+            steps: [
+              { note: "Shop", group: "store" },
+              { note: "Order", group: "orders" },
+              { note: "Pay", group: "payments" },
+            ],
+          },
+        ],
+      };
+      expect(canvasLayoutKind(drawing)).toBe("flow");
+      const board = placeCanvas(drawing);
+      expect(board.nodes.filter((node) => node.type === "group").map((node) => node.id)).toEqual([
+        "store",
+        "orders",
+        "payments",
+      ]);
+      expect(canvasSteps(board).map((each) => [each.group, each.label, [...each.cards]])).toEqual([
+        ["store", "Storefront", ["cart"]],
+        ["orders", "Orders API", ["price"]],
+        ["payments", "Payments", ["pay"]],
+      ]);
+    });
+
     it("keeps every card clear of the others", () => {
       const { nodes } = placeCanvas({
         cards: cards("a", "b", "c", "d", "e"),
@@ -864,7 +902,21 @@ describe("canvasDrawingProblems", () => {
     [
       "a step with no card",
       { cards: cards("a"), stories: [{ title: "S", steps: [{ note: "N", cards: [] }] }] },
-      "needs a card",
+      "needs cards or a group",
+    ],
+    [
+      "a step naming an unknown group",
+      { cards: cards("a"), stories: [{ title: "S", steps: [{ note: "N", group: "g" }] }] },
+      "isn't in `groups`",
+    ],
+    [
+      "a step with a group and cards",
+      {
+        cards: [{ id: "a", text: "A", group: "g" }],
+        groups: [{ id: "g" }],
+        stories: [{ title: "S", steps: [{ note: "N", group: "g", cards: ["a"] }] }],
+      },
+      "give one",
     ],
     [
       "a story with no step",

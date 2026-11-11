@@ -8,6 +8,7 @@ import {
   canvasCardBox,
   canvasFromRects,
   canvasLayoutKind,
+  canvasStoryOrder,
   placeCanvas,
   type CanvasBounds,
   type CanvasData,
@@ -255,8 +256,9 @@ const run = (graph: ElkNode) =>
  * can't do falls back to `placeCanvas`, so a board always draws.
  */
 export const layoutCanvas = Effect.fn("CanvasLayout.layout")(function* (
-  drawing: CanvasDrawing,
+  drawn: CanvasDrawing,
 ): Effect.fn.Return<CanvasData> {
+  const drawing = canvasStoryOrder(drawn);
   const kind = canvasLayoutKind(drawing);
   const asked = drawing.layout?.direction;
   const direction = asked === "down" ? "DOWN" : "RIGHT";

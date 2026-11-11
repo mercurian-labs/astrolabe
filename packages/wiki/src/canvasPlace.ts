@@ -57,17 +57,31 @@ export interface CanvasDrawing {
       }
     | undefined;
   /** Ways to tell the board, each walked a step at a time. A card can be in several steps. */
-  readonly stories?:
-    | ReadonlyArray<{
-        readonly title: string;
-        readonly steps: ReadonlyArray<{
-          readonly label?: string | undefined;
-          readonly note: string;
-          readonly cards: ReadonlyArray<string>;
-        }>;
-      }>
-    | undefined;
+  readonly stories?: ReadonlyArray<CanvasDrawingStory> | undefined;
 }
+
+export interface CanvasDrawingStory {
+  readonly title: string;
+  /** Each shows some cards, or is one group. */
+  readonly steps: ReadonlyArray<{
+    readonly label?: string | undefined;
+    readonly note: string;
+    readonly cards?: ReadonlyArray<string> | undefined;
+    readonly group?: string | undefined;
+  }>;
+}
+
+type DrawingStep = CanvasDrawingStory["steps"][number];
+
+/** A step's cards: those it names, or those in the group it is. */
+const stepCards = (drawing: CanvasDrawing, step: DrawingStep): ReadonlyArray<string> =>
+  step.group === undefined
+    ? (step.cards ?? [])
+    : drawing.cards.filter((card) => card.group === step.group).map((card) => card.id);
+
+/** A story told part by part: every step one group. */
+const toldByGroups = (story: CanvasDrawingStory | undefined) =>
+  story !== undefined && story.steps.every((step) => step.group !== undefined);
 
 /**
  * flow: steps and dependencies. lanes: who does what over time, a lane per group and a column per
@@ -329,8 +343,14 @@ export function canvasDrawingProblems(drawing: CanvasDrawing): string[] {
     if (story.steps.length === 0) problems.push(`Story "${story.title}" needs a step.`);
     story.steps.forEach((step, index) => {
       const named = `Step ${index + 1} of "${story.title}"`;
-      if (step.cards.length === 0) problems.push(`${named} needs a card.`);
-      for (const id of step.cards) {
+      const cards = step.cards ?? [];
+      if (step.group !== undefined) {
+        if (cards.length > 0) problems.push(`${named} has both a group and cards; give one.`);
+        if (!groups.has(step.group)) {
+          problems.push(`${named} names a group that isn't in \`groups\`: "${step.group}".`);
+        }
+      } else if (cards.length === 0) problems.push(`${named} needs cards or a group.`);
+      for (const id of cards) {
         if (!cardIds.has(id)) problems.push(`${named} names a card that isn't here: "${id}".`);
       }
     });
@@ -374,7 +394,8 @@ export function canvasDrawingProblems(drawing: CanvasDrawing): string[] {
  * the same drawing. Groups are laid out first, then placed with the loose cards as single boxes.
  * Grouped cards and groups must name ids the drawing holds; arrows that don't are left out.
  */
-export function placeCanvas(drawing: CanvasDrawing): CanvasData {
+export function placeCanvas(asked: CanvasDrawing): CanvasData {
+  const drawing = canvasStoryOrder(asked);
   const kind = canvasLayoutKind(drawing);
   const first = drawing.stories?.[0];
   if (kind === "lanes") return placeLanes(drawing);
@@ -384,16 +405,30 @@ export function placeCanvas(drawing: CanvasDrawing): CanvasData {
 
 /**
  * The layout a board asks for, or the one its contents suggest: lanes for a story told across
- * groups, a map for groups alone, a flow otherwise. None for a story with no groups, which lays
- * out by its steps.
+ * groups, a flow for one told group by group, a map for groups alone, a flow otherwise. None for
+ * a story with no groups, which lays out by its steps.
  */
 export function canvasLayoutKind(drawing: CanvasDrawing): CanvasLayoutKind | undefined {
   const asked = drawing.layout?.kind;
   if (asked !== undefined) return asked;
   const grouped = (drawing.groups ?? []).length > 0;
-  const told = (drawing.stories ?? []).length > 0;
-  if (told) return grouped ? "lanes" : undefined;
+  const first = drawing.stories?.[0];
+  if (toldByGroups(first)) return "flow";
+  if (first !== undefined) return grouped ? "lanes" : undefined;
   return grouped ? "map" : "flow";
+}
+
+/** A story told group by group lays its groups out in the order it walks them. */
+export function canvasStoryOrder(drawing: CanvasDrawing): CanvasDrawing {
+  const first = drawing.stories?.[0];
+  const groups = drawing.groups;
+  if (!toldByGroups(first) || first === undefined || groups === undefined) return drawing;
+  const order = new Map<string, number>();
+  for (const step of first.steps) {
+    if (step.group !== undefined && !order.has(step.group)) order.set(step.group, order.size);
+  }
+  const at = (id: string) => order.get(id) ?? order.size;
+  return { ...drawing, groups: [...groups].sort((a, b) => at(a.id) - at(b.id)) };
 }
 
 /**
@@ -426,7 +461,8 @@ export function canvasFromRects(
       return {
         ...(step.label === undefined ? {} : { label: step.label }),
         note: step.note,
-        cards: step.cards,
+        cards: step.cards ?? [],
+        ...(step.group === undefined ? {} : { group: step.group }),
         ...(heading === undefined ? {} : { heading }),
       };
     }),
@@ -458,7 +494,9 @@ function placeLanes(drawing: CanvasDrawing): CanvasData {
   const column = new Map<string, number>();
   if (steps.length > 0) {
     steps.forEach((step, index) => {
-      for (const id of step.cards) if (boxOf.has(id) && !column.has(id)) column.set(id, index);
+      for (const id of stepCards(drawing, step)) {
+        if (boxOf.has(id) && !column.has(id)) column.set(id, index);
+      }
     });
     // A card no step names follows the cards that point at it, or waits in a last column.
     const arrows = drawing.arrows ?? [];
@@ -713,11 +751,8 @@ export function canvasStepFrame(cards: ReadonlyArray<CanvasNode>): {
  * first step that names it. When its first two steps sit side by side in a row, it goes between
  * them, so both frames stretch over it and overlap. Cards no step names go in a grid below.
  */
-function placeStory(
-  drawing: CanvasDrawing,
-  story: { readonly steps: ReadonlyArray<{ readonly cards: ReadonlyArray<string> }> },
-): CanvasData {
-  const steps = story.steps;
+function placeStory(drawing: CanvasDrawing, story: CanvasDrawingStory): CanvasData {
+  const steps = story.steps.map((step) => ({ cards: stepCards(drawing, step) }));
   const cards = drawing.cards;
   const boxOf = new Map(cards.map((card) => [card.id, cardBox(card)]));
   const stepsOf = new Map<string, number[]>();
