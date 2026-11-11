@@ -62,6 +62,7 @@ import {
 } from "../../apps/server/src/mcp/toolkits/pullRequests/tools.ts";
 import { ThreadToolkit } from "../../apps/server/src/mcp/toolkits/thread/tools.ts";
 import { WikiToolkit } from "../../apps/server/src/mcp/toolkits/wiki/tools.ts";
+import { brokenBasesMessage } from "../../apps/server/src/wiki/ThreadWikiCheckouts.ts";
 import { WorktreeToolkit } from "../../apps/server/src/mcp/toolkits/worktree/tools.ts";
 import {
   CLAUDE_PROVIDER,
@@ -270,6 +271,20 @@ export const McpToolUseCase = Schema.Struct({
           name: Schema.String,
           folder: Schema.String,
           reach: Schema.optional(Schema.Literals(["edit", "shell", "none"])),
+        }),
+      ),
+    ),
+    /**
+     * The turn is T3's follow-up to one that left these bases broken: T3's message is what the
+     * agent gets, and `prompt` only tells the shell simulator what happened.
+     */
+    brokenBases: Schema.optional(
+      Schema.Array(
+        Schema.Struct({
+          wiki: Schema.String,
+          file: Schema.String,
+          path: Schema.String,
+          problems: Schema.Array(Schema.String),
         }),
       ),
     ),
@@ -901,10 +916,13 @@ export const buildMessages = (sample: Sample) => {
     }
     if (turn.text) push(turn.role, text(turn.text));
   }
+  const brokenBases = testCase.setup.brokenBases;
   const composed =
-    testCase.promptContext === undefined
-      ? testCase.prompt
-      : projectComposerContextForProvider({ text: testCase.prompt, ...testCase.promptContext });
+    brokenBases !== undefined
+      ? brokenBasesMessage(brokenBases)
+      : testCase.promptContext === undefined
+        ? testCase.prompt
+        : projectComposerContextForProvider({ text: testCase.prompt, ...testCase.promptContext });
   const wikiNote = linkedWikiAgentNote(
     (testCase.setup.linkedWikis ?? []).map((wiki) => ({ ...wiki, reach: wiki.reach ?? "edit" })),
   );
