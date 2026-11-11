@@ -489,6 +489,19 @@ span.cv-wikilink {
   padding: 0;
   font-size: 13px;
 }
+/* A group that is a story's step leads its label with the step's number. */
+.cv-group-label[data-steps] {
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--cv-screen, 1));
+  overflow: visible;
+}
+.cv-group-name {
+  min-width: 0;
+  margin-inline-start: calc(2px * var(--cv-screen, 1));
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .cv-edges {
   position: absolute;
@@ -1171,6 +1184,11 @@ textarea.cv-label-editor {
   pointer-events: auto;
   transform: translate(calc(50% + var(--cv-stack, 0) * 24px * var(--cv-screen, 1)), 50%);
 }
+.cv-group-label .cv-frame-chip {
+  position: static;
+  flex: none;
+  transform: none;
+}
 button.cv-frame-chip {
   cursor: pointer;
 }
@@ -1184,7 +1202,7 @@ button.cv-frame-chip:focus-visible {
 .cv-story-frame[data-lit="true"] .cv-frame-corner {
   border-color: var(--primary);
 }
-.cv-story-frame[data-lit="true"] .cv-frame-chip {
+.cv-frame-chip[data-current] {
   border-color: var(--primary);
   background: var(--primary);
   color: var(--primary-foreground, var(--background));
@@ -1193,6 +1211,9 @@ button.cv-frame-chip:focus-visible {
 .cv-board[data-peeking] :is(.cv-card, .cv-edge, .cv-edge-label)[data-lit="false"] {
   opacity: 0.25;
 }
-.cv-board[data-peeking] .cv-story-frame[data-lit="false"] {
+.cv-board[data-peeking] .cv-group[data-lit="false"] {
   opacity: 0.4;
+}
+.cv-board[data-peeking] .cv-group[data-lit="true"] {
+  border-color: var(--primary);
 }

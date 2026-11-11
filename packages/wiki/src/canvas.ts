@@ -56,11 +56,14 @@ export interface CanvasGroupNode extends CanvasNodeBase {
   readonly backgroundStyle?: string;
 }
 
-/** One step of a story: what the reader sees, and the cards it shows. */
+/** One step of a story: what the reader sees, and the cards it shows, or the group that is it. */
 export interface CanvasStoryStep {
   readonly label?: string;
   readonly note: string;
+  /** Empty for a step that names its group. */
   readonly cards: ReadonlyArray<string>;
+  /** A group the step is: its cards are the group's, its frame the group's outline. */
+  readonly group?: string;
 }
 
 /** One way of telling a board, walked a step at a time. The cards stay where the board has them. */
@@ -126,9 +129,12 @@ export const canvasGroups = (
 
 /** One step of a story as the board shows it: its frame, and every card and arrow it lights. */
 export interface CanvasStep {
+  /** Its own label, else its group's. */
   readonly label?: string;
   readonly note: string;
-  /** The box around the step's cards that sit together. */
+  /** The group the step is, which the board draws as its frame. */
+  readonly group?: string;
+  /** The box around the step's cards that sit together, or its group's outline. */
   readonly frame: CanvasBounds;
   /** All the step's cards, docked ones included. */
   readonly cards: ReadonlySet<string>;
@@ -168,9 +174,40 @@ export function canvasSteps(data: CanvasData, story = 0): ReadonlyArray<CanvasSt
   const steps = data.stories?.[story]?.steps ?? [];
   const byId = new Map<string, CanvasNode>();
   for (const node of data.nodes) if (node.type !== "group") byId.set(node.id, node);
+  const allGroups = data.nodes.filter((node): node is CanvasGroupNode => node.type === "group");
+  const held = new Map<string, ReadonlySet<string>>();
+  const heldBy = (group: CanvasGroupNode) => {
+    let cards = held.get(group.id);
+    if (cards === undefined) {
+      cards = new Set(
+        [...byId.values()].filter((card) => insideGroup(group, card)).map((card) => card.id),
+      );
+      held.set(group.id, cards);
+    }
+    return cards;
+  };
+  // The group a step is: the one it names, else the smallest holding exactly its cards.
+  const groupFor = (step: CanvasStoryStep, nodes: ReadonlyArray<CanvasNode>) => {
+    if (step.group !== undefined) return allGroups.find((group) => group.id === step.group);
+    if (nodes.length === 0) return undefined;
+    let found: CanvasGroupNode | undefined;
+    for (const group of allGroups) {
+      const cards = heldBy(group);
+      if (cards.size !== nodes.length || !nodes.every((node) => cards.has(node.id))) continue;
+      if (found === undefined || group.width * group.height < found.width * found.height) {
+        found = group;
+      }
+    }
+    return found;
+  };
   const framed = steps.map((step) => {
-    const nodes = [...new Set(step.cards)].flatMap((id) => byId.get(id) ?? []);
-    return { step, nodes, ...canvasStepFrame(nodes) };
+    const named = [...new Set(step.cards)].flatMap((id) => byId.get(id) ?? []);
+    const group = groupFor(step, named);
+    if (group === undefined) return { step, nodes: named, group, ...canvasStepFrame(named) };
+    const inside = heldBy(group);
+    const nodes = [...inside].flatMap((id) => byId.get(id) ?? []);
+    const { x, y, width, height } = group;
+    return { step, nodes, group, frame: { x, y, width, height }, inside };
   });
   const home = (id: string) => {
     const at = framed.findIndex((each) => each.inside.has(id));
@@ -190,7 +227,7 @@ export function canvasSteps(data: CanvasData, story = 0): ReadonlyArray<CanvasSt
     }
     return found?.label;
   };
-  return framed.flatMap(({ step, nodes, frame, inside }): CanvasStep[] => {
+  return framed.flatMap(({ step, nodes, group, frame, inside }): CanvasStep[] => {
     if (frame === undefined) return [];
     let bounds = frame;
     const docked = new Map<string, CanvasDocked>();
@@ -225,10 +262,12 @@ export function canvasSteps(data: CanvasData, story = 0): ReadonlyArray<CanvasSt
         .filter((edge) => lit.has(edge.fromNode) && lit.has(edge.toNode))
         .map((edge) => edge.id),
     );
+    const label = step.label ?? group?.label;
     return [
       {
-        ...(step.label === undefined ? {} : { label: step.label }),
+        ...(label === undefined ? {} : { label }),
         note: step.note,
+        ...(group === undefined ? {} : { group: group.id }),
         frame,
         cards: lit,
         arrows,
@@ -306,8 +345,16 @@ function canvasStories(astrolabe: unknown): ReadonlyArray<CanvasStory> {
       if (!isRecord(step) || typeof step.note !== "string") return [];
       const cards = strings(step.cards);
       const label = text(step.label);
-      if (cards.length === 0) return [];
-      return [{ ...(label === undefined ? {} : { label }), note: step.note, cards }];
+      const group = text(step.group);
+      if (cards.length === 0 && group === undefined) return [];
+      return [
+        {
+          ...(label === undefined ? {} : { label }),
+          note: step.note,
+          cards,
+          ...(group === undefined ? {} : { group }),
+        },
+      ];
     });
     return steps.length === 0 ? [] : [{ title: text(story.title) ?? "Story", steps }];
   });

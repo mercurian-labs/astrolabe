@@ -712,6 +712,52 @@ describe("placeCanvas", () => {
       ]);
     });
 
+    it("makes a step that names a group, or shows exactly its cards, that group", () => {
+      const card = (id: string, x: number, y = 40) => ({
+        id,
+        type: "text",
+        text: id,
+        x,
+        y,
+        width: 100,
+        height: 60,
+      });
+      const data = canvasData({
+        nodes: [
+          { id: "g", type: "group", label: "Server", x: 0, y: 0, width: 400, height: 140 },
+          { id: "h", type: "group", x: 0, y: 0, width: 1000, height: 400 },
+          card("a", 20),
+          card("b", 200),
+          card("c", 600),
+        ],
+        astrolabe: {
+          stories: [
+            {
+              title: "S",
+              steps: [
+                { note: "named", group: "g" },
+                { note: "its cards", cards: ["b", "a"] },
+                { note: "some of them", cards: ["a"] },
+                { label: "Own", note: "relabelled", group: "g" },
+                { note: "gone", group: "missing" },
+              ],
+            },
+          ],
+        },
+      });
+      const steps = canvasSteps(data);
+      expect(steps.map((each) => [each.note, each.group, each.label])).toEqual([
+        ["named", "g", "Server"],
+        ["its cards", "g", "Server"],
+        ["some of them", undefined, undefined],
+        ["relabelled", "g", "Own"],
+      ]);
+      expect(steps[0]?.frame).toEqual({ x: 0, y: 0, width: 400, height: 140 });
+      expect(steps[0]?.bounds).toEqual(steps[0]?.frame);
+      expect([...(steps[0]?.cards ?? [])].sort()).toEqual(["a", "b"]);
+      expect(steps[0]?.docked.size).toBe(0);
+    });
+
     it("keeps every card clear of the others", () => {
       const { nodes } = placeCanvas({
         cards: cards("a", "b", "c", "d", "e"),
@@ -739,7 +785,7 @@ describe("placeCanvas", () => {
       expect(canvasData(canvasDocument(board))).toEqual(board);
     });
 
-    it("reads a file's stories from its top level, leaving out steps with no card", () => {
+    it("reads a file's stories from its top level, leaving out steps with no card or group", () => {
       const data = canvasData({
         nodes: [{ id: "a", type: "text", text: "A", x: 0, y: 0, width: 100, height: 60 }],
         astrolabe: {
@@ -749,6 +795,7 @@ describe("placeCanvas", () => {
               steps: [
                 { label: "Start", note: "Here", cards: ["a"] },
                 { note: "Nothing", cards: [] },
+                { note: "A group", group: "g" },
               ],
             },
             { title: "Empty", steps: [] },
@@ -756,7 +803,13 @@ describe("placeCanvas", () => {
         },
       });
       expect(data.stories).toEqual([
-        { title: "Tour", steps: [{ label: "Start", note: "Here", cards: ["a"] }] },
+        {
+          title: "Tour",
+          steps: [
+            { label: "Start", note: "Here", cards: ["a"] },
+            { note: "A group", cards: [], group: "g" },
+          ],
+        },
       ]);
     });
   });

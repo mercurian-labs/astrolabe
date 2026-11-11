@@ -860,6 +860,7 @@ const GroupNode = memo(function GroupNode({
   editable,
   onLabel,
   lit,
+  steps,
 }: {
   readonly node: CanvasGroupNode;
   readonly selected: boolean;
@@ -870,6 +871,8 @@ const GroupNode = memo(function GroupNode({
   readonly editable: boolean;
   readonly onLabel: (id: string, label: string) => void;
   readonly lit: boolean | undefined;
+  /** The story's steps this group is, numbered on its label. */
+  readonly steps: ReadonlyArray<StepChipProps> | undefined;
 }) {
   const { host } = useBoard();
   const { style, ...color } = colorProps(node.color);
@@ -895,6 +898,13 @@ const GroupNode = memo(function GroupNode({
           })}
       {editing ? (
         <GroupLabelEditor label={node.label ?? ""} onDone={(label) => onLabel(node.id, label)} />
+      ) : steps !== undefined ? (
+        <span className="cv-group-label" data-steps>
+          {steps.map((each) => (
+            <StepChip key={each.index} {...each} />
+          ))}
+          {node.label === undefined ? null : <span className="cv-group-name">{node.label}</span>}
+        </span>
       ) : node.label === undefined ? null : (
         <span className="cv-group-label">{node.label}</span>
       )}
@@ -906,28 +916,18 @@ const GroupNode = memo(function GroupNode({
 
 const CORNERS = ["nw", "ne", "se", "sw"] as const;
 
-/**
- * A story's step on the board: a viewfinder over its cards, which a walk moves to. Its number sits
- * on the bottom-right corner, away from the top-left where groups are named; hovering it shows
- * what the step covers, and clicking it asks the host for the step's details.
- */
-function StoryFrame({
-  frame,
-  index,
-  label,
-  lit,
-  open,
-  onOpen,
-  onPeek,
-}: {
-  readonly frame: CanvasBounds;
+interface StepChipProps {
   readonly index: number;
   readonly label: string | undefined;
-  readonly lit: boolean | undefined;
+  /** The step walked or peeked at. */
+  readonly current: boolean;
   readonly open: boolean;
   readonly onOpen: ((step: number, chip: HTMLElement) => void) | undefined;
   readonly onPeek: (step: number | null) => void;
-}) {
+}
+
+/** A step's number: hovering it shows what the step covers, clicking it asks for its details. */
+function StepChip({ index, label, current, open, onOpen, onPeek }: StepChipProps) {
   const name = `Step ${index + 1}${label === undefined ? "" : `: ${label}`}`;
   const peek = {
     onPointerEnter: () => onPeek(index),
@@ -935,32 +935,79 @@ function StoryFrame({
     onFocus: () => onPeek(index),
     onBlur: () => onPeek(null),
   };
+  return onOpen === undefined ? (
+    <span
+      className="cv-frame-chip"
+      data-current={current || undefined}
+      aria-hidden="true"
+      {...peek}
+    >
+      {index + 1}
+    </span>
+  ) : (
+    <button
+      type="button"
+      className="cv-frame-chip"
+      data-current={current || undefined}
+      aria-label={name}
+      aria-expanded={open}
+      aria-haspopup="dialog"
+      {...peek}
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        event.stopPropagation();
+        onOpen(index, event.currentTarget);
+      }}
+    >
+      {index + 1}
+    </button>
+  );
+}
+
+/** Every step's number, and those of the steps that are groups by their group. */
+function stepChips(
+  steps: ReadonlyArray<CanvasStep>,
+  at: Pick<StepChipProps, "onOpen" | "onPeek"> & {
+    readonly current: number | null;
+    readonly open: number | null;
+  },
+) {
+  const all = steps.map((each, index): StepChipProps => ({
+    index,
+    label: each.label,
+    current: index === at.current,
+    open: index === at.open,
+    onOpen: at.onOpen,
+    onPeek: at.onPeek,
+  }));
+  const byGroup = new Map<string, StepChipProps[]>();
+  steps.forEach((each, index) => {
+    const chip = all[index];
+    if (each.group === undefined || chip === undefined) return;
+    byGroup.set(each.group, [...(byGroup.get(each.group) ?? []), chip]);
+  });
+  return { all, byGroup };
+}
+
+/**
+ * A story's step on the board that no group is: a viewfinder over its cards, which a walk moves
+ * to. Its number sits on the bottom-right corner, away from the top-left where groups are named.
+ */
+function StoryFrame({
+  frame,
+  lit,
+  chip,
+}: {
+  readonly frame: CanvasBounds;
+  readonly lit: boolean | undefined;
+  readonly chip: StepChipProps;
+}) {
   return (
     <div className="cv-group cv-story-frame" data-lit={lit} style={position(frame)}>
       {CORNERS.map((corner) => (
         <span key={corner} className="cv-frame-corner" data-corner={corner} />
       ))}
-      {onOpen === undefined ? (
-        <span className="cv-frame-chip" aria-hidden="true" {...peek}>
-          {index + 1}
-        </span>
-      ) : (
-        <button
-          type="button"
-          className="cv-frame-chip"
-          aria-label={name}
-          aria-expanded={open}
-          aria-haspopup="dialog"
-          {...peek}
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation();
-            onOpen(index, event.currentTarget);
-          }}
-        >
-          {index + 1}
-        </button>
-      )}
+      <StepChip {...chip} />
     </div>
   );
 }
@@ -1363,6 +1410,11 @@ export function CanvasBoard({
   const peeked = peekIndex === null ? null : (steps[peekIndex] ?? null);
   // A walk shows only its step; a peek, outside one, dims what the step leaves out.
   const shines = active ?? peeked;
+  const current = step ?? peekIndex;
+  const chips = useMemo(
+    () => stepChips(steps, { current, open: openFrame, onOpen: onFrame, onPeek: setHovered }),
+    [steps, current, openFrame, onFrame],
+  );
   const whole = useMemo(() => canvasBounds(data), [data]);
   const bounds = active?.bounds ?? whole;
   // A step moves the cards it recalls beside its frame; an edited board always shows where they are.
@@ -1690,7 +1742,7 @@ export function CanvasBoard({
       marks,
       bounds,
       walkable: steps.length > 0,
-      frames: steps.map((each) => each.frame),
+      frames: steps.flatMap((each) => (each.group === undefined ? [each.frame] : [])),
       whole,
     });
     reads.files.readFrom((paths) => host.readFiles?.(paths) ?? Promise.resolve([]));
@@ -2103,22 +2155,27 @@ export function CanvasBoard({
               editing={editing?.kind === "group" && editing.id === node.id}
               editable={editable}
               onLabel={finishGroupLabel}
-              lit={active === null ? undefined : false}
+              lit={
+                shines?.group === node.id
+                  ? true
+                  : active !== null || shines?.group !== undefined
+                    ? false
+                    : undefined
+              }
+              steps={chips.byGroup.get(node.id)}
             />
           ))}
-          {steps.map((each, index) => (
-            <StoryFrame
-              // oxlint-disable-next-line react/no-array-index-key -- a step is its place in the story; frames hold no state
-              key={index}
-              frame={each.frame}
-              index={index}
-              label={each.label}
-              lit={shines === null ? undefined : index === (step ?? peekIndex)}
-              open={openFrame === index}
-              onOpen={onFrame}
-              onPeek={setHovered}
-            />
-          ))}
+          {steps.map((each, index) =>
+            each.group === undefined ? (
+              <StoryFrame
+                // oxlint-disable-next-line react/no-array-index-key -- a step is its place in the story; frames hold no state
+                key={index}
+                frame={each.frame}
+                lit={shines === null ? undefined : index === current}
+                chip={chips.all[index]!}
+              />
+            ) : null,
+          )}
           <svg className="cv-edges" aria-hidden="true" width="1" height="1">
             {shown.shapes.map((shape) => (
               <EdgeNode

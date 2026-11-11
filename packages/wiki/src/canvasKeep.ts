@@ -116,6 +116,7 @@ export function keptCanvasSource(
     steps: story.steps.map((step) => ({
       ...step,
       cards: step.cards.map((id) => ids.get(id) ?? id),
+      ...(step.group === undefined ? {} : { group: ids.get(step.group) ?? step.group }),
     })),
   }));
   return serializeCanvas({
