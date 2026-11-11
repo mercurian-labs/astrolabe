@@ -10,15 +10,26 @@ import type { BaseCorpus } from "./baseCorpus.ts";
 import {
   compileExpression,
   evaluate,
+  expressionWarnings,
+  nearest,
   noteReferences,
   parseExpression,
   renameInExpression,
+  sentence,
   unsupported,
   type CompileContext,
   type Expr,
 } from "./baseExpression.ts";
-import { docName, FILE_FIELDS, fileField, noteProperty, type BaseScope } from "./baseFunctions.ts";
 import {
+  docName,
+  FILE_FIELDS,
+  FILE_METHODS,
+  fileField,
+  noteProperty,
+  type BaseScope,
+} from "./baseFunctions.ts";
+import {
+  BASE_VIEW_SETTING_KEYS,
   coordinatesOf,
   displayOf,
   imageOf,
@@ -359,6 +370,10 @@ const SUMMARIES = new Set([
   "Unique",
 ]);
 
+/** A count of rows is Filled, the summary models most often name some other way. */
+const summaryHint = (name: string): string | undefined =>
+  /^count$/i.test(name) ? "Filled" : nearest(name, SUMMARIES);
+
 interface CompiledColumn {
   readonly id: string;
   readonly label: string;
@@ -490,7 +505,9 @@ function compileView(base: WikiBase, spec: BaseViewSpec): CompiledView {
       throw new BaseError(`summaries must be a mapping in ${where}.`);
     for (const [id, name] of Object.entries(config.summaries)) {
       if (typeof name !== "string" || (!SUMMARIES.has(name) && !customSummaries.has(name))) {
-        throw new BaseError(`No summary named “${String(name)}” in ${where}.`);
+        throw new BaseError(
+          `${sentence(`No summary named “${String(name)}” in ${where}`, summaryHint(String(name)))} The summaries are ${[...SUMMARIES].join(", ")}, and those under the base's summaries.`,
+        );
       }
       const ref = propertyRef(id, `${where}'s summaries`, context);
       const column = columns.find((candidate) => canonical(candidate.ref) === canonical(ref));
@@ -901,14 +918,7 @@ export function baseProblems(
   } catch (error) {
     return [message(error)];
   }
-  const problems = new Set<string>();
-  for (const spec of base.views) {
-    try {
-      compileView(base, spec);
-    } catch (error) {
-      problems.add(message(error));
-    }
-  }
+  const problems = new Set(viewErrors(base));
   const document = readBase(source);
   for (const node of document === null ? [] : expressionNodes(document)) {
     let references: ReadonlyArray<{ readonly name: string }>;
@@ -922,4 +932,154 @@ export function baseProblems(
     }
   }
   return [...problems];
+}
+
+const BASE_KEYS: ReadonlySet<string> = new Set([
+  "filters",
+  "formulas",
+  "properties",
+  "summaries",
+  "views",
+]);
+const VIEW_KEYS: ReadonlySet<string> = new Set(["type", "name", ...BASE_VIEW_SETTING_KEYS]);
+/** Keys models write in a view meaning one Obsidian spells another way. */
+const VIEW_KEY_ALIASES: Readonly<Record<string, string>> = {
+  properties: "order",
+  columns: "order",
+  fields: "order",
+  group: "groupBy",
+  filter: "filters",
+  where: "filters",
+};
+/** The app calls a kanban a board. */
+const VIEW_TYPE_ALIASES: Readonly<Record<string, string>> = { board: "kanban", gallery: "cards" };
+
+/** A few lines naming the keys, view keys and summaries a base has, for whoever wrote one wrong. */
+export const BASE_SYNTAX_REMINDER = [
+  `Base keys: ${[...BASE_KEYS].join(", ")}.`,
+  `View keys: type (${BASE_VIEW_TYPES.join(", ")}), name, filters, order (the columns, a list of property ids), sort (a list of property and direction ASC or DESC), groupBy, limit, summaries (property id: summary name).`,
+  `Summaries: ${[...SUMMARIES].join(", ")}; Filled counts rows with a value.`,
+  `File methods: ${[...FILE_METHODS].map((name) => `file.${name}()`).join(", ")}.`,
+].join("\n");
+
+/** Each statement of a filter, by where it sits: `filters.and[1]`. */
+function filterStatements(raw: unknown, where: string): ReadonlyArray<[string, string]> {
+  if (typeof raw === "string") return [[where, raw]];
+  if (!isRecord(raw)) return [];
+  return Object.entries(raw).flatMap(([group, items]) =>
+    Array.isArray(items)
+      ? items.flatMap((item, at) => filterStatements(item, `${where}.${group}[${at}]`))
+      : [],
+  );
+}
+
+/**
+ * What a base holds that runs but can't be what its writer meant: keys nothing reads, columns that
+ * are sorts, view types and file methods that don't exist. A base that doesn't parse gives none;
+ * its error says why. Never a reason to refuse the base.
+ */
+export function baseWarnings(source: string): ReadonlyArray<string> {
+  const document = readBase(source);
+  let data: unknown;
+  try {
+    data = document?.toJS({ maxAliasCount: 0 });
+  } catch {
+    return [];
+  }
+  if (!isRecord(data)) return [];
+  const warnings: string[] = [];
+  const statements: Array<[string, string]> = [...filterStatements(data.filters, "filters")];
+  for (const name of Object.keys(data)) {
+    if (BASE_KEYS.has(name)) continue;
+    warnings.push(
+      VIEW_KEYS.has(name)
+        ? `${name} is a view key, so at the top of the base it is ignored; move it into a view.`
+        : sentence(`${name} is not a base key and is ignored`, nearest(name, BASE_KEYS)),
+    );
+  }
+  for (const section of ["formulas", "summaries"]) {
+    const entries = data[section];
+    if (!isRecord(entries)) continue;
+    for (const [name, text] of Object.entries(entries)) {
+      if (typeof text === "string") statements.push([`${section}.${name}`, text]);
+    }
+  }
+  const views = Array.isArray(data.views) ? data.views : [];
+  for (const [position, view] of views.entries()) {
+    if (!isRecord(view)) continue;
+    const at = `views[${position}]`;
+    for (const name of Object.keys(view)) {
+      if (VIEW_KEYS.has(name)) continue;
+      warnings.push(
+        sentence(
+          `${at}.${name} is not a view key and is ignored`,
+          VIEW_KEY_ALIASES[name] ?? nearest(name, VIEW_KEYS),
+        ),
+      );
+    }
+    if (typeof view.type === "string" && !VIEW_TYPES.has(view.type)) {
+      warnings.push(
+        sentence(
+          `${at}.type ${view.type} is not a view type (${BASE_VIEW_TYPES.join(", ")})`,
+          VIEW_TYPE_ALIASES[view.type] ?? nearest(view.type, VIEW_TYPES),
+        ),
+      );
+    }
+    if (Array.isArray(view.order)) {
+      for (const [index, entry] of view.order.entries()) {
+        if (typeof entry === "string" || typeof entry === "number") continue;
+        warnings.push(
+          isRecord(entry) && "property" in entry
+            ? `${at}.order[${index}] is a sort, not a column; move it under sort.`
+            : `${at}.order[${index}] must be a property id such as note.status.`,
+        );
+      }
+    }
+    statements.push(...filterStatements(view.filters, `${at}.filters`));
+  }
+  for (const [where, text] of statements) {
+    for (const warning of expressionWarnings(text)) warnings.push(`${where}: ${warning}`);
+  }
+  return warnings;
+}
+
+/** A base's errors, from its YAML or any of its views, and its warnings. */
+export interface BaseCheck {
+  readonly errors: ReadonlyArray<string>;
+  readonly warnings: ReadonlyArray<string>;
+}
+
+export function checkBase(source: string): BaseCheck {
+  let base: WikiBase;
+  try {
+    base = parseBase(source);
+  } catch (error) {
+    return { errors: [message(error)], warnings: [] };
+  }
+  return { errors: viewErrors(base), warnings: baseWarnings(source) };
+}
+
+function viewErrors(base: WikiBase): ReadonlyArray<string> {
+  const errors = new Set<string>();
+  for (const spec of base.views) {
+    try {
+      compileView(base, spec);
+    } catch (error) {
+      errors.add(message(error));
+    }
+  }
+  return [...errors];
+}
+
+/**
+ * Every problem in the bases a document holds, errors first: the document itself when it is a
+ * `.base`, else each ```` ```base ```` block in it, numbered when there is more than one.
+ */
+export function documentBaseProblems(file: string, source: string): ReadonlyArray<string> {
+  const blocks = isBaseFile(file) ? [source] : /\.md$/i.test(file) ? baseBlocks(source) : [];
+  return blocks.flatMap((block, position) => {
+    const { errors, warnings } = checkBase(block);
+    const label = blocks.length > 1 ? `base block ${position + 1}: ` : "";
+    return [...errors, ...warnings].map((problem) => label + problem);
+  });
 }

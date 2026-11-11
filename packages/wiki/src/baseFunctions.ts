@@ -368,6 +368,21 @@ export function callGlobal(
   }
 }
 
+/** The methods a file has: its own, below, and those every value has. */
+export const FILE_METHODS: ReadonlySet<string> = new Set([
+  "hasLink",
+  "linksOfType",
+  "backlinksOfType",
+  "hasTag",
+  "hasProperty",
+  "inFolder",
+  "asLink",
+  "isEmpty",
+  "isTruthy",
+  "isType",
+  "toString",
+]);
+
 function fileMethod(
   doc: BaseDoc,
   name: string,

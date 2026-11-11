@@ -8,6 +8,8 @@ import {
   BaseError,
   baseBlocks,
   baseCorpus,
+  checkBase,
+  documentBaseProblems,
   noteProperties,
   noteTags,
   parseBase,
@@ -190,8 +192,11 @@ describe("queries", () => {
 
   it("fails on a name the language doesn't have, even where no file would reach it", () => {
     expect(failure(filter("false && file.nope > 0"))).toMatch(/Not supported: file\.nope/);
-    expect(failure(filter("shout(status)"))).toMatch(/Not supported: shout\(\)/);
+    expect(failure(filter("shout(status)"))).toMatch(/Not supported: shout\(\) in [^;]*\.$/);
     expect(failure(filter("status.shout()"))).toMatch(/status\.shout\(\)/);
+    expect(failure(filter("file.linkTo(link('A'))"))).toMatch(/did you mean file\.hasLink\(\)\?/);
+    expect(failure(filter("file.hasTags('a')"))).toMatch(/did you mean file\.hasTag\(\)\?/);
+    expect(failure(filter("todya()"))).toMatch(/did you mean today\(\)\?/);
     expect(failure(filter("formula"))).toMatch(/`formula` needs a name/);
     expect(failure(filter("formula.x > 1"))).toMatch(/No formula named “x”/);
     expect(failure(filter("/ab"))).toMatch(/Unclosed regular expression/);
@@ -200,7 +205,12 @@ describe("queries", () => {
       failure(
         "views:\n  - type: table\n    order: [priority]\n    summaries: { priority: Mode }\n",
       ),
-    ).toMatch(/No summary named “Mode”/);
+    ).toMatch(/No summary named “Mode”.* The summaries are Average, .*Filled, Unique/);
+    expect(
+      failure(
+        "views:\n  - type: table\n    order: [priority]\n    summaries: { priority: count }\n",
+      ),
+    ).toMatch(/No summary named “count” in view “Table”; did you mean Filled\?/);
     expect(failure(filter("this.file.name == 'x'"))).toMatch(/`this` needs/);
     expect(failure(filter("status = 'open'"))).toMatch(/Unexpected "="/);
     expect(failure("filters:\n  xor: []\n")).toMatch(/exactly one of and, or, not/);
@@ -348,5 +358,86 @@ describe("queries", () => {
     );
     expect(grouped.total).toBe(8);
     expect(grouped.truncated).toBe(true);
+  });
+});
+
+describe("warnings", () => {
+  // Bases models wrote from memory (base-schema-probe-20261110), each run but not as meant.
+  it.each([
+    [
+      "a view's properties list and sorts under order",
+      [
+        "views:",
+        "  - type: table",
+        "    properties: [file.name, status]",
+        "    order:",
+        "      - property: due",
+        "        direction: asc",
+        "      - [status]",
+      ].join("\n"),
+      [
+        "views[0].properties is not a view key and is ignored; did you mean order?",
+        "views[0].order[0] is a sort, not a column; move it under sort.",
+        "views[0].order[1] must be a property id such as note.status.",
+      ],
+    ],
+    [
+      "a link method called on a file, in a filter group and a formula",
+      [
+        "formulas:",
+        "  auth: 'this.file.linksTo(file)'",
+        "views:",
+        "  - type: table",
+        "    filters:",
+        "      and:",
+        '        - file.inFolder("x")',
+        '        - file.linksTo("Auth")',
+      ].join("\n"),
+      [
+        "formulas.auth: this.file.linksTo() is not a file method, so it gives nothing; did you mean this.file.hasLink()?",
+        "views[0].filters.and[1]: file.linksTo() is not a file method, so it gives nothing; did you mean file.hasLink()?",
+      ],
+    ],
+    [
+      "keys nothing reads, at the top and in a view",
+      [
+        "filter: 'true'",
+        "order: [file.name]",
+        "views:",
+        "  - type: board",
+        "    columns: [file.name]",
+        "    groupby: status",
+        "    sortBy: [due]",
+      ].join("\n"),
+      [
+        "filter is not a base key and is ignored; did you mean filters?",
+        "order is a view key, so at the top of the base it is ignored; move it into a view.",
+        "views[0].columns is not a view key and is ignored; did you mean order?",
+        "views[0].groupby is not a view key and is ignored; did you mean groupBy?",
+        "views[0].sortBy is not a view key and is ignored; did you mean sort?",
+        "views[0].type board is not a view type (table, cards, list, kanban, map); did you mean kanban?",
+      ],
+    ],
+    ["a base that is right", "views:\n  - type: cards\n    order: [file.name, 2026]\n", []],
+    ["a base that doesn't parse, whose error says why", "views: [", []],
+  ])("%s", (_, source, warnings) => {
+    expect(checkBase(source).warnings).toEqual(warnings);
+  });
+
+  it("lists the problems of each base a document holds, errors first", () => {
+    const broken = "views:\n  - type: table\n    columns: [x]\n    summaries: { x: Count }\n";
+    expect(documentBaseProblems("Q.base", broken)).toEqual([
+      expect.stringMatching(/^No summary named “Count” in view “Table”; did you mean Filled\?/),
+      "views[0].columns is not a view key and is ignored; did you mean order?",
+    ]);
+    const note = (...blocks: string[]) =>
+      blocks.map((block) => `\`\`\`base\n${block}\`\`\`\n`).join("");
+    expect(documentBaseProblems("N.md", note("views: []\n", "colums: 1\n"))).toEqual([
+      "base block 2: colums is not a base key and is ignored.",
+    ]);
+    expect(documentBaseProblems("N.md", note("views: [\n"))[0]).toMatch(
+      /^The base is not valid YAML/,
+    );
+    expect(documentBaseProblems("N.txt", broken)).toEqual([]);
   });
 });
