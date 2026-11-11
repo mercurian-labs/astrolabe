@@ -425,6 +425,31 @@ export function deriveChangeGroups(input: {
   );
 }
 
+/**
+ * The group `groupId` names, else, once its root changed and its id with it, the one holding any
+ * of `memberKeys` now (as a context record sent earlier remembers them): a change request first,
+ * as it is in one group only, then a thread.
+ */
+export function findChangeGroup<Group extends ChangeGroup>(
+  groups: ReadonlyArray<Group>,
+  groupId: string | null,
+  memberKeys: ReadonlyArray<string>,
+): Group | null {
+  const byId = groupId === null ? undefined : groups.find((group) => group.groupId === groupId);
+  if (byId !== undefined) return byId;
+  const keys = new Set(memberKeys);
+  if (keys.size === 0) return null;
+  return (
+    groups.find((group) => group.members.some((member) => keys.has(member.key))) ??
+    groups.find((group) =>
+      group.threadIds.some((threadId) =>
+        keys.has(changeGroupMemberKey({ kind: "thread", threadId })),
+      ),
+    ) ??
+    null
+  );
+}
+
 /** Branches too common to say two threads work on the same thing. */
 const SHARED_BRANCHES = new Set(["main", "master", "develop", "trunk"]);
 

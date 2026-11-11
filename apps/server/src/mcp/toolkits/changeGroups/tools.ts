@@ -72,8 +72,25 @@ export const ChangeGroupSummary = Schema.Struct({
 
 const ChangeGroupsTool = Tool.make("astrolabe_change_groups", {
   ...shared,
-  description: `List this environment's change groups: each group's members (code and documentation, with why each is there), the threads working on it (with why each is there), its state, and whether its documentation merges with its code. ${RULES}`,
-  success: Schema.Struct({ groups: Schema.Array(ChangeGroupSummary) }),
+  description: `List this environment's change groups: each group's members (code and documentation, with why each is there), the threads working on it (with why each is there), its state, and whether its documentation merges with its code. Pass groupId to read one group in full instead, as a change group the user attached says to: each member's branches, state, checks and link, and its threads. ${RULES}`,
+  parameters: Schema.Struct({
+    groupId: Schema.optional(
+      Schema.NonEmptyString.annotate({
+        description:
+          "Read this one group: its id, as an attached change group or astrolabe_change_groups shows it. Leave out to list every group.",
+      }),
+    ),
+    memberKeys: Schema.optional(
+      Schema.Array(Schema.NonEmptyString).annotate({
+        description:
+          "The member keys an attached change group carried. When groupId no longer names a group, the group holding any of them now is read.",
+      }),
+    ),
+  }),
+  success: Schema.Struct({
+    groups: Schema.optional(Schema.Array(ChangeGroupSummary)),
+    group: Schema.optional(ChangeGroupService.ChangeGroupDetail),
+  }),
 })
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false);

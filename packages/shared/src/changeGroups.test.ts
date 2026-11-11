@@ -9,6 +9,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   deriveChangeGroups,
+  findChangeGroup,
   type ChangeGroupThread,
   type ChangeGroupWikiChange,
 } from "./changeGroups.ts";
@@ -323,6 +324,20 @@ describe("change groups", () => {
       ["shared", "manual"],
     ]);
     expect(threadsOf(takenOut, "b")).toEqual([]);
+  });
+
+  it("are found by id, or by a member they hold once their root changed", () => {
+    const groups = derive([
+      thread("a", [link(1, "One"), link(2, "Two")]),
+      thread("b", [link(3, "Three"), link(4, "Four")]),
+    ]);
+    expect(findChangeGroup(groups, "b", [])?.groupId).toBe("b");
+    expect(
+      findChangeGroup(groups, "gone", ["pr:github.com/acme/app#9", "pr:github.com/acme/app#2"])
+        ?.groupId,
+    ).toBe("a");
+    expect(findChangeGroup(groups, "gone", ["thread:b"])?.groupId).toBe("b");
+    expect(findChangeGroup(groups, "gone", ["pr:github.com/acme/app#9"])).toBeNull();
   });
 
   it("say where the group stands", () => {
