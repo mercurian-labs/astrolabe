@@ -954,12 +954,22 @@ const VIEW_KEY_ALIASES: Readonly<Record<string, string>> = {
 /** The app calls a kanban a board. */
 const VIEW_TYPE_ALIASES: Readonly<Record<string, string>> = { board: "kanban", gallery: "cards" };
 
+// The methods every value has are left out: a reminder names what a filter on files reaches for.
+const FILE_OWN_METHODS = [
+  "hasLink",
+  "hasTag",
+  "hasProperty",
+  "inFolder",
+  "linksOfType",
+  "backlinksOfType",
+].filter((name) => FILE_METHODS.has(name));
+
 /** A few lines naming the keys, view keys and summaries a base has, for whoever wrote one wrong. */
 export const BASE_SYNTAX_REMINDER = [
   `Base keys: ${[...BASE_KEYS].join(", ")}.`,
   `View keys: type (${BASE_VIEW_TYPES.join(", ")}), name, filters, order (the columns, a list of property ids), sort (a list of property and direction ASC or DESC), groupBy, limit, summaries (property id: summary name).`,
   `Summaries: ${[...SUMMARIES].join(", ")}; Filled counts rows with a value.`,
-  `File methods: ${[...FILE_METHODS].map((name) => `file.${name}()`).join(", ")}.`,
+  `File methods: ${FILE_OWN_METHODS.map((name) => `file.${name}()`).join(", ")}.`,
 ].join("\n");
 
 /** Each statement of a filter, by where it sits: `filters.and[1]`. */
