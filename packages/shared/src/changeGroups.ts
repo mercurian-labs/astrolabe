@@ -287,6 +287,30 @@ export function deriveChangeGroups(input: {
       });
     }
   }
+  // A thread added to a group brings its own pull requests, to the group it joined last; one
+  // added somewhere by itself stays there.
+  const brought = new Map<
+    string,
+    { readonly groupId: string; readonly reason: ChangeGroupReason; readonly note: string }
+  >();
+  for (const decision of input.decisions) {
+    for (const entry of decision.added) {
+      if (entry.member.kind !== "thread") continue;
+      if (decision.removed.includes(changeGroupMemberKey(entry.member))) continue;
+      for (const link of threads.get(entry.member.threadId)?.pullRequests ?? []) {
+        if (link.source === "stack-dismissed") continue;
+        const key = changeGroupMemberKey({
+          kind: "pull-request",
+          host: link.host,
+          repository: link.repository,
+          number: link.number,
+        });
+        if (!added.has(key))
+          brought.set(key, { groupId: decision.groupId, reason: "same-thread", note: "" });
+      }
+    }
+  }
+  for (const [key, entry] of brought) added.set(key, entry);
 
   const members = new Map<string, ChangeGroupMember[]>();
   const threadIds = new Map<string, string[]>();

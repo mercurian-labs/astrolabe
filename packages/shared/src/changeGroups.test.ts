@@ -273,8 +273,46 @@ describe("change groups", () => {
       ["b", "opened"],
       ["shared", "manual"],
     ]);
-    // A thread added to a group takes no change request with it.
-    expect(both.find((group) => group.groupId === "a")?.members).toHaveLength(2);
+    // A thread added to a group brings its own pull requests, to the group it joined last.
+    const membersOf = (groups: ReturnType<typeof derive>, groupId: string) =>
+      groups.find((group) => group.groupId === groupId)?.members.map((member) => member.key);
+    const owning = [thread("a", [link(1, "One")]), thread("b", [link(3, "Three")])];
+    const own = [...owning, thread("shared", [link(5, "Five"), link(6, "Six")])];
+    const brought = derive(own, [], [decided("a", { added }), decided("b", { added })]);
+    expect(membersOf(brought, "b")).toEqual([
+      "pr:github.com/acme/app#3",
+      "pr:github.com/acme/app#5",
+      "pr:github.com/acme/app#6",
+    ]);
+    expect(membersOf(brought, "a")).toEqual(["pr:github.com/acme/app#1"]);
+    // One taken out stays out, and one added elsewhere by itself stays there.
+    const pinned = derive(
+      own,
+      [],
+      [
+        decided("a", {
+          added: [
+            ...added,
+            {
+              member: {
+                kind: "pull-request",
+                host: "github.com",
+                repository: "acme/app",
+                number: 6,
+              },
+              reason: "manual",
+              note: "",
+            },
+          ],
+        }),
+        decided("b", { added, removed: ["pr:github.com/acme/app#5"] }),
+      ],
+    );
+    expect(membersOf(pinned, "a")).toEqual([
+      "pr:github.com/acme/app#1",
+      "pr:github.com/acme/app#6",
+    ]);
+    expect(membersOf(pinned, "b")).toEqual(["pr:github.com/acme/app#3"]);
     const takenOut = derive(
       threads,
       [],
