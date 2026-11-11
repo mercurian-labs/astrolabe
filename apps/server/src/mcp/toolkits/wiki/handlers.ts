@@ -1,8 +1,10 @@
+import { BASE_SYNTAX_REMINDER, BaseError, isBaseFile } from "@mercurian/wiki";
 import {
   OrchestratorMcpFailure,
   type WikiAgentTransform,
+  type WikiChangeRequestDetail,
   WikiChangeRequestId,
-  type WikiError,
+  WikiError,
   WikiId,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -93,6 +95,22 @@ const target = <
     : { changeRequestId: WikiChangeRequestId.make(changeRequestId.trim()) }),
 });
 
+/** A result that reports a broken base, with the reminder of how one is written. */
+const withSyntax = <A extends object>(result: A, broken: boolean) =>
+  broken ? { ...result, syntax: BASE_SYNTAX_REMINDER } : result;
+
+/** The change request's bases: their errors are index errors on a note or base it changes. */
+const changesBrokenBase = (detail: WikiChangeRequestDetail) => {
+  const changed = new Set(detail.files.map(({ file }) => file));
+  return (
+    detail.warnings !== undefined ||
+    detail.errors.some(
+      ({ file, edge }) =>
+        edge === undefined && changed.has(file) && (isBaseFile(file) || file.endsWith(".md")),
+    )
+  );
+};
+
 /** A commit message for a transform that lands now without one. */
 const subjectOf = (transform: WikiAgentTransform) =>
   transform.kind === "rename"
@@ -123,15 +141,26 @@ export const layer = McpToolAccess.toLayer(WikiToolkit, {
           threadId,
           checkout: true,
         })
-        // The property picker's list is for the app; an agent reads the base's YAML instead.
-        .pipe(Effect.map(({ properties: _properties, ...result }) => result)),
+        .pipe(
+          // The property picker's list is for the app; an agent reads the base's YAML instead.
+          Effect.map(({ properties: _properties, ...result }) =>
+            withSyntax(result, result.warnings !== undefined),
+          ),
+          Effect.mapError((error) =>
+            error.cause instanceof BaseError
+              ? new WikiError({ ...error, message: `${error.message}\n${BASE_SYNTAX_REMINDER}` })
+              : error,
+          ),
+        ),
     ),
   ),
   astrolabe_wiki_change_request: McpToolAccess.reads((input) =>
     read(input.wiki, (wikis, threadId) =>
       wikis
         .changeRequestsGet({ ...target(input), threadId, checkout: true })
-        .pipe(Effect.map(withCanvasOutlines)),
+        .pipe(
+          Effect.map((detail) => withSyntax(withCanvasOutlines(detail), changesBrokenBase(detail))),
+        ),
     ),
   ),
   // Changes belong to the calling thread's checkout or change request; only a live thread may write.
@@ -160,7 +189,9 @@ export const layer = McpToolAccess.toLayer(WikiToolkit, {
   ),
   astrolabe_wiki_write: McpToolAccess.actsAsCaller((input) =>
     write(input.wiki, (wikis, author) =>
-      wikis.checkoutWrite({ ...target(input), path: input.path.trim() }, author),
+      wikis
+        .checkoutWrite({ ...target(input), path: input.path.trim() }, author)
+        .pipe(Effect.map((result) => withSyntax(result, result.warnings !== undefined))),
     ),
   ),
 });

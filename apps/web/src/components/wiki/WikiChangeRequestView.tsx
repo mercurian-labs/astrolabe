@@ -42,7 +42,7 @@ import { Spinner } from "../ui/spinner";
 import { toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
-  describeIndexError,
+  changeRequestProblems,
   describeWikiFailure,
   hasUnpublishedWork,
   isCanvasName,
@@ -144,7 +144,7 @@ export function WikiChangeRequestView({
   const { changeRequest, files, mergePreview } = detail.data;
   const open = changeRequest.status === "open";
   const blocked = mergeBlockedReason({ canWrite: canMerge, preview: mergePreview });
-  const errors = (open ? mergePreview.errors : detail.data.errors).map(describeIndexError);
+  const errors = changeRequestProblems(detail.data);
   const target = { wikiId, changeRequestId };
 
   const runMerge = async () => {

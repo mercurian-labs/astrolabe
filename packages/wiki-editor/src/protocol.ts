@@ -86,6 +86,8 @@ export interface WikiEditorBaseResult {
   readonly summaries?: ReadonlyArray<WikiEditorBaseSummary> | undefined;
   readonly total: number;
   readonly truncated: boolean;
+  /** What in the base doesn't work as written. */
+  readonly warnings?: ReadonlyArray<string> | undefined;
 }
 
 /** Who wrote a version that lands live, in which turn; the page marks it in their colour. */

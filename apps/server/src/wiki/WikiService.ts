@@ -36,6 +36,8 @@ import {
   parseBase,
   queryBase,
   baseCorpus,
+  checkBase,
+  documentBaseCheck,
   applyBaseEdits,
   applyChanges,
   corpusWithChanges,
@@ -237,6 +239,8 @@ export interface WikiCheckoutWriteInput {
 export interface WikiCheckoutWriteResult {
   readonly path: string;
   readonly change: "created" | "updated" | "deleted";
+  /** The errors and warnings of the bases the file now holds. Absent when none. */
+  readonly warnings?: ReadonlyArray<string>;
 }
 
 export class WikiService extends Context.Service<
@@ -3030,9 +3034,12 @@ const make = Effect.gen(function* () {
               }
               yield* fileSystem.makeDirectory(path.dirname(at), { recursive: true });
               yield* fileSystem.writeFileString(at, next);
+              const check = documentBaseCheck(file, next);
+              const warnings = [...check.errors, ...check.warnings];
               return {
                 path: file,
                 change: existing === undefined ? "created" : "updated",
+                ...(warnings.length ? { warnings } : {}),
               } as const;
             }).pipe(
               Effect.mapError((cause) =>
@@ -3389,7 +3396,10 @@ const make = Effect.gen(function* () {
                 cause,
               }),
           });
-          return { commit, ...result };
+          // The view ran, so any error is another view's.
+          const { errors, warnings } = checkBase(located.source);
+          const problems = [...errors, ...warnings];
+          return { commit, ...result, ...(problems.length ? { warnings: problems } : {}) };
         }),
       input.changeRequestId,
     );
@@ -3657,6 +3667,12 @@ const make = Effect.gen(function* () {
             ...listed.map(({ file, movedFrom }) => `${from}:${movedFrom ?? file}`),
             ...listed.map(({ file }) => `${stored.head}:${file}`),
           ]);
+          const warnings = listed.flatMap(({ file }, position) => {
+            const after = contents[listed.length + position];
+            return after == null
+              ? []
+              : documentBaseCheck(file, after).warnings.map((warning) => ({ file, warning }));
+          });
           return {
             changeRequest: yield* view(wiki, stored),
             files: listed.map(({ file, movedFrom }, position) => ({
@@ -3670,6 +3686,7 @@ const make = Effect.gen(function* () {
                 ? { status: "up-to-date" as const, conflicts: [], errors: [], canvases: [] }
                 : yield* mergePreview(wiki, stored, main),
             errors: (yield* snapshotAt(wiki, stored.head)).index.errors,
+            ...(warnings.length ? { warnings } : {}),
             ...(unsaved === undefined ? {} : { unsaved }),
           } satisfies WikiChangeRequestDetail;
         }),

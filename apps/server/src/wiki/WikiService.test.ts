@@ -432,6 +432,12 @@ it.effect("runs a base by file, by a note's block, or by source, on the line rea
       assert.equal(outside.reason, "invalid");
       // A base's own error names what to fix.
       assert.equal(outside.message, "No formula named “ppu” in view “Table”'s order.");
+      // Another view's error comes back with the view that runs.
+      const other = yield* wikis.query({
+        wikiId,
+        source: "views:\n  - type: table\n  - type: table\n    name: B\n    order: [formula.ppu]\n",
+      });
+      assert.deepEqual(other.warnings, ["No formula named “ppu” in view “B”'s order."]);
     }),
   ),
 );
@@ -2012,9 +2018,11 @@ it.effect("reads a thread's checkout as it stands, unsaved edits included", () =
       );
       yield* write(folder, {
         "Beta.md": "---\nstatus: open\n---\n# Beta\n\nBeta now needs [[Delta]].\n",
-        "Open.base": "filters: 'status == \"open\"'\nviews:\n  - type: table\n    name: Open\n",
+        "Open.base":
+          "filters: 'status == \"open\"'\nviews:\n  - type: table\n    name: Open\n    columns: [x]\n",
         "Product.skillmap.md": MAP.replace("How the product fits together", "Edited on disk"),
       });
+      const warning = "views[0].columns is not a view key and is ignored; did you mean order?";
       const inCheckout = { wikiId, threadId, checkout: true };
       const links = yield* wikis.links({ ...inCheckout, name: "Beta" });
       assert.deepEqual(links.outgoing, [{ target: "Delta", unresolved: true, types: [] }]);
@@ -2027,6 +2035,7 @@ it.effect("reads a thread's checkout as it stands, unsaved edits included", () =
         rows.rows.map((row) => row.file),
         ["Beta.md"],
       );
+      assert.deepEqual(rows.warnings, [warning]);
       const unopened = yield* failure(wikis.changeRequestsGet(inCheckout));
       assert.include(unopened.message, "Beta.md, Open.base, Product.skillmap.md");
 
@@ -2039,6 +2048,7 @@ it.effect("reads a thread's checkout as it stands, unsaved edits included", () =
       const detail = yield* wikis.changeRequestsGet(inCheckout);
       assert.equal(detail.changeRequest.changeRequestId, saved!.changeRequest.changeRequestId);
       assert.deepEqual(detail.unsaved, []);
+      assert.deepEqual(detail.warnings, [{ file: "Open.base", warning }]);
     }),
   ),
 );
@@ -2195,6 +2205,15 @@ it.effect("reads, searches and writes a checkout's files for the turn's one amen
       );
       assert.equal((yield* edit({ path: "Draft.md", content: "Gone soon.\n" })).change, "created");
       assert.equal((yield* edit({ path: "Draft.md", delete: true })).change, "deleted");
+      // A broken base is written all the same, with what is wrong in it.
+      const based = yield* edit({
+        path: "Draft.md",
+        content: "```base\nviews:\n  - type: table\n    columns: [x]\n```\n",
+      });
+      assert.deepEqual(based.warnings, [
+        "views[0].columns is not a view key and is ignored; did you mean order?",
+      ]);
+      yield* edit({ path: "Draft.md", delete: true });
 
       const found = yield* wikis.checkoutSearch({ wikiId, threadId, query: "WAITS" });
       assert.deepEqual(found, {

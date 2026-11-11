@@ -1072,14 +1072,20 @@ function viewErrors(base: WikiBase): ReadonlyArray<string> {
 }
 
 /**
- * Every problem in the bases a document holds, errors first: the document itself when it is a
- * `.base`, else each ```` ```base ```` block in it, numbered when there is more than one.
+ * What is wrong in the bases a document holds: the document itself when it is a `.base`, else
+ * each ```` ```base ```` block in it, numbered when there is more than one.
  */
-export function documentBaseProblems(file: string, source: string): ReadonlyArray<string> {
+export function documentBaseCheck(file: string, source: string): BaseCheck {
   const blocks = isBaseFile(file) ? [source] : /\.md$/i.test(file) ? baseBlocks(source) : [];
-  return blocks.flatMap((block, position) => {
-    const { errors, warnings } = checkBase(block);
-    const label = blocks.length > 1 ? `base block ${position + 1}: ` : "";
-    return [...errors, ...warnings].map((problem) => label + problem);
-  });
+  const checks = blocks.map(checkBase);
+  const labelled = (pick: (check: BaseCheck) => ReadonlyArray<string>) =>
+    checks.flatMap((check, position) =>
+      pick(check).map((problem) =>
+        blocks.length > 1 ? `base block ${position + 1}: ${problem}` : problem,
+      ),
+    );
+  return {
+    errors: labelled((check) => check.errors),
+    warnings: labelled((check) => check.warnings),
+  };
 }

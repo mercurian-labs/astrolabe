@@ -600,6 +600,8 @@ export const WikiQueryResult = Schema.Struct({
   /** How many files the view shows; `rows` stops short of it when `truncated`. */
   total: NonNegativeInt,
   truncated: Schema.Boolean,
+  /** What in the base runs but can't be what its writer meant, and other views' errors. Absent when none. */
+  warnings: Schema.optional(Schema.Array(Schema.String)),
 });
 export type WikiQueryResult = typeof WikiQueryResult.Type;
 
@@ -698,6 +700,10 @@ export const WikiChangeRequestDetail = Schema.Struct({
   files: Schema.Array(WikiFileChange),
   mergePreview: WikiMergePreview,
   errors: Schema.Array(WikiIndexError),
+  /** Warnings of the bases it changes; their errors are in `errors`. Absent when none. */
+  warnings: Schema.optional(
+    Schema.Array(Schema.Struct({ file: Schema.String, warning: Schema.String })),
+  ),
   /** Files in the reading thread's wiki checkout not saved to it yet: the turn's end lands them. */
   unsaved: Schema.optional(Schema.Array(Schema.String)),
 });

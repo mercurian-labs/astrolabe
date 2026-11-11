@@ -9,7 +9,7 @@ import {
   baseBlocks,
   baseCorpus,
   checkBase,
-  documentBaseProblems,
+  documentBaseCheck,
   noteProperties,
   noteTags,
   parseBase,
@@ -424,20 +424,21 @@ describe("warnings", () => {
     expect(checkBase(source).warnings).toEqual(warnings);
   });
 
-  it("lists the problems of each base a document holds, errors first", () => {
+  it("checks each base a document holds, numbering a note's blocks", () => {
     const broken = "views:\n  - type: table\n    columns: [x]\n    summaries: { x: Count }\n";
-    expect(documentBaseProblems("Q.base", broken)).toEqual([
-      expect.stringMatching(/^No summary named “Count” in view “Table”; did you mean Filled\?/),
-      "views[0].columns is not a view key and is ignored; did you mean order?",
-    ]);
+    expect(documentBaseCheck("Q.base", broken)).toEqual({
+      errors: [
+        expect.stringMatching(/^No summary named “Count” in view “Table”; did you mean Filled\?/),
+      ],
+      warnings: ["views[0].columns is not a view key and is ignored; did you mean order?"],
+    });
     const note = (...blocks: string[]) =>
       blocks.map((block) => `\`\`\`base\n${block}\`\`\`\n`).join("");
-    expect(documentBaseProblems("N.md", note("views: []\n", "colums: 1\n"))).toEqual([
-      "base block 2: colums is not a base key and is ignored.",
-    ]);
-    expect(documentBaseProblems("N.md", note("views: [\n"))[0]).toMatch(
-      /^The base is not valid YAML/,
-    );
-    expect(documentBaseProblems("N.txt", broken)).toEqual([]);
+    expect(documentBaseCheck("N.md", note("views: []\n", "colums: 1\n"))).toEqual({
+      errors: [],
+      warnings: ["base block 2: colums is not a base key and is ignored."],
+    });
+    expect(documentBaseCheck("N.md", note("views: [\n")).errors[0]).toMatch(/not valid YAML/);
+    expect(documentBaseCheck("N.txt", broken)).toEqual({ errors: [], warnings: [] });
   });
 });

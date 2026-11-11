@@ -1,4 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
+import { BASE_SYNTAX_REMINDER, BaseError } from "@mercurian/wiki";
 import {
   EnvironmentId,
   ProviderInstanceId,
@@ -139,6 +140,12 @@ describe("astrolabe_wiki_query", () => {
       expect(tools.calls).toEqual([
         { wikiId: "Plans", base: "Open decisions", view: "Open", threadId, checkout: true },
       ]);
+      const warnings = ["views[0].columns is not a view key and is ignored; did you mean order?"];
+      const warned = yield* harness(Effect.succeed({ ...rows, warnings })).call({
+        wiki: "Plans",
+        base: "Open decisions",
+      });
+      expect(warned.structuredContent).toEqual({ ...rows, warnings, syntax: BASE_SYNTAX_REMINDER });
     }),
   );
 
@@ -158,13 +165,23 @@ describe("astrolabe_wiki_query", () => {
     Effect.gen(function* () {
       const message =
         "Not supported: formula.ppu (formulas) in the base's filters `formula.ppu > 5`.";
-      const tools = harness(Effect.fail(new WikiError({ reason: "invalid", message })));
-      const result = yield* tools.call({ wiki: "Plans", base: "Prices.base" });
-      const text = result.content[0];
-      expect(result.isError).toBe(true);
-      expect(text?.type === "text" ? JSON.parse(text.text) : undefined).toMatchObject({
+      const failed = (error: WikiError) =>
+        harness(Effect.fail(error))
+          .call({ wiki: "Plans", base: "Prices.base" })
+          .pipe(
+            Effect.map((result) => {
+              const text = result.content[0];
+              expect(result.isError).toBe(true);
+              return text?.type === "text" ? JSON.parse(text.text) : undefined;
+            }),
+          );
+      expect(yield* failed(new WikiError({ reason: "invalid", message }))).toMatchObject({
         code: "invalid_request",
         message,
+      });
+      const cause = new BaseError(message);
+      expect(yield* failed(new WikiError({ reason: "invalid", message, cause }))).toMatchObject({
+        message: `${message}\n${BASE_SYNTAX_REMINDER}`,
       });
     }),
   );

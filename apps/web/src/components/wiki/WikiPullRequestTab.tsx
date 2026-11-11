@@ -20,7 +20,7 @@ import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
-import { describeIndexError, hasUnpublishedWork, wikiTerms } from "./wiki.logic";
+import { changeRequestProblems, hasUnpublishedWork, wikiTerms } from "./wiki.logic";
 import { AmendmentRow, LinkedPullRequests, NO_LINKS } from "./WikiChangeRequestView";
 import { useWikiCommand } from "./wikiEnvironment";
 import { wikiTabKey } from "./wikiTabs";
@@ -99,9 +99,7 @@ export function WikiPullRequestTab({
 
   const open = changeRequest.status === "open";
   const files = detail.data?.files ?? [];
-  const errors = (
-    detail.data === null ? [] : open ? detail.data.mergePreview.errors : detail.data.errors
-  ).map(describeIndexError);
+  const errors = detail.data === null ? [] : changeRequestProblems(detail.data);
   const openNote = (file: string) =>
     workspace.open(
       wikiTabKey({

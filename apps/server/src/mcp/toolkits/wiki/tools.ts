@@ -16,6 +16,9 @@ import * as ThreadManagementService from "../../../orchestration-v2/ThreadManage
 import * as WikiService from "../../../wiki/WikiService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 
+// Beside a broken base's warnings: how a base is written.
+const syntax = Schema.optional(Schema.String);
+
 const shared = {
   failure: OrchestratorMcpFailure,
   failureMode: "return" as const,
@@ -135,7 +138,7 @@ const WikiQueryTool = Tool.make("astrolabe_wiki_query", {
     ),
     changeRequestId: readFrom,
   }),
-  success: WikiQueryResult,
+  success: Schema.Struct({ ...WikiQueryResult.fields, syntax }),
 })
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false);
@@ -243,6 +246,8 @@ const WikiWriteTool = Tool.make("astrolabe_wiki_write", {
   success: Schema.Struct({
     path: Schema.String,
     change: Schema.Literals(["created", "updated", "deleted"]),
+    warnings: Schema.optional(Schema.Array(Schema.String)),
+    syntax,
   }),
 }).annotate(Tool.Destructive, false);
 
@@ -257,7 +262,7 @@ const WikiChangeRequestTool = Tool.make("astrolabe_wiki_change_request", {
       }),
     ),
   }),
-  success: WikiChangeRequestDetail,
+  success: Schema.Struct({ ...WikiChangeRequestDetail.fields, syntax }),
 })
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false);
