@@ -74,6 +74,12 @@ export function useChangeGroups(): ReadonlyArray<EnvironmentChangeGroup> {
   return useAtomValue(changeGroupsAtom(useEnvironmentsKey()));
 }
 
+/** Every change group on the connected servers while `active`, else none, deriving nothing. */
+export function useChangeGroupsWhile(active: boolean): ReadonlyArray<EnvironmentChangeGroup> {
+  const key = useEnvironmentsKey();
+  return useAtomValue(changeGroupsAtom(active ? key : "[]"));
+}
+
 /** Every change group on the connected servers, read once rather than followed. */
 export function readChangeGroups(): ReadonlyArray<EnvironmentChangeGroup> {
   const ids = [...appAtomRegistry.get(environmentPresentations.presentationsAtom).keys()];

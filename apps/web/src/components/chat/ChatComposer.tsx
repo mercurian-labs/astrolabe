@@ -140,7 +140,10 @@ import {
 } from "../../lib/attachmentUploadQueue";
 import { attachmentUploadBlockReason } from "../../lib/attachmentUploadState";
 import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
-import { canvasContextRecord } from "@t3tools/shared/composerContextReferences";
+import {
+  canvasContextRecord,
+  changeGroupContextRecord,
+} from "@t3tools/shared/composerContextReferences";
 import { showThreadCanvas } from "../canvas/threadCanvasStore";
 import { shortcutLabelForCommand } from "../../keybindings";
 import {
@@ -2058,6 +2061,25 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     if (item.type === "wiki-note") {
       if (trigger.kind !== "wiki-note") return;
       const record = wikiNoteContextRecord(item);
+      const replacement = `${formatInlineContextReference(wikiContextReference(record))} `;
+      const replacementRangeEnd = extendReplacementRangeForTrailingSpace(
+        snapshot.value,
+        trigger.rangeEnd,
+        replacement,
+      );
+      const applied = applyPromptReplacement(trigger.rangeStart, replacementRangeEnd, replacement, {
+        expectedText: snapshot.value.slice(trigger.rangeStart, replacementRangeEnd),
+      });
+      if (applied) {
+        addComposerDraftWikiContexts(composerDraftTarget, [record]);
+        setComposerHighlightedItemId(null);
+      }
+      return;
+    }
+    // Mentioning a group names it for the agent; the thread does not join it.
+    if (item.type === "change-group") {
+      if (trigger.kind !== "path") return;
+      const record = changeGroupContextRecord(item.group);
       const replacement = `${formatInlineContextReference(wikiContextReference(record))} `;
       const replacementRangeEnd = extendReplacementRangeForTrailingSpace(
         snapshot.value,

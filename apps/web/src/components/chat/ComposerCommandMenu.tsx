@@ -18,6 +18,7 @@ import {
   BlocksIcon,
   FileTextIcon,
   FolderIcon,
+  LayersIcon,
   LinkIcon,
   MessagesSquareIcon,
   PackageIcon,
@@ -36,6 +37,7 @@ import { PierreEntryIcon } from "./PierreEntryIcon";
 import { ComposerBanner } from "./ComposerBanner";
 import { resolvePullRequestState } from "../pullRequest/pullRequestPresentation";
 import type { ComposerWikiLinkItem, ComposerWikiNoteItem } from "./composerWikiNoteItems";
+import type { ComposerChangeGroupItem } from "@t3tools/client-runtime/changeGroups";
 
 export type ComposerCommandItem =
   | {
@@ -86,6 +88,7 @@ export type ComposerCommandItem =
     }
   | ComposerWikiNoteItem
   | ComposerWikiLinkItem
+  | ComposerChangeGroupItem
   | {
       id: string;
       type: "environment";
@@ -220,6 +223,9 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
       ) : null}
       {props.item.type === "thread" ? (
         <MessagesSquareIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
+      ) : null}
+      {props.item.type === "change-group" ? (
+        <LayersIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
       ) : null}
       {props.item.type === "wiki-note" ? (
         <FileTextIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />

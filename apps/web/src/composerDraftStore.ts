@@ -2196,7 +2196,11 @@ export function partializeComposerDraftStoreState(
         ? { threadContexts: draft.threadContexts.map((record) => ({ ...record })) }
         : {}),
       ...(draft.wikiContexts.length > 0
-        ? { wikiNotes: draft.wikiContexts.map((record) => ({ ...record })) }
+        ? {
+            wikiNotes: draft.wikiContexts.map(
+              (record) => ({ ...record }) as DeepMutable<WikiContextRecord>,
+            ),
+          }
         : {}),
       ...(draft.environmentContexts.length > 0
         ? { environmentContexts: draft.environmentContexts.map((record) => ({ ...record })) }

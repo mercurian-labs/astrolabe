@@ -1,6 +1,7 @@
 import {
   COMPOSER_CONTEXT_LABEL_MAX_CHARS,
   type CanvasContextRecord,
+  type ChangeGroupContextRecord,
   type ComposerContextId,
   type ComposerContextKind,
   type ComposerContextRecord,
@@ -116,6 +117,29 @@ export function canvasContextRecord(board: {
     itemId: board.itemId,
     title: label,
     ...(comment ? { comment } : {}),
+  };
+}
+
+/** One record per group, so adding it again reuses the chip. */
+export function changeGroupContextRecord(group: {
+  readonly environmentId: EnvironmentId;
+  readonly groupId: string;
+  readonly title: string;
+  readonly members: ReadonlyArray<{ readonly key: string }>;
+}): ChangeGroupContextRecord {
+  const label = sanitizeComposerContextLabel(group.title, "change-group");
+  return {
+    version: 1,
+    kind: "change-group",
+    contextId: toKindScopedComposerContextId(
+      "change-group",
+      `${group.environmentId}/${group.groupId}`,
+    ),
+    label,
+    environmentId: group.environmentId,
+    groupId: group.groupId,
+    title: label,
+    memberKeys: group.members.slice(0, 100).map((member) => member.key),
   };
 }
 
@@ -393,6 +417,14 @@ function formatComposerContextProviderPayload(record: KnownComposerContextRecord
         `itemId: ${record.itemId}`,
         ...(record.comment === undefined ? [] : [`comment: ${record.comment}`]),
         "The user means this board, drawn in that thread by astrolabe_canvas_show. The comment is theirs. To save it into a wiki, call astrolabe_canvas_keep with these ids; never redraw it by hand.",
+      ].join("\n");
+    case "change-group":
+      return [
+        `title: ${record.title}`,
+        `groupId: ${record.groupId}`,
+        `environmentId: ${record.environmentId}`,
+        "The user means this change group: pull requests across projects that are one effort, and the threads working on it. It changes as they do, so read it as it is now with " +
+          `astrolabe_change_groups(${JSON.stringify({ groupId: record.groupId, memberKeys: record.memberKeys })}) before acting on it.`,
       ].join("\n");
   }
 }

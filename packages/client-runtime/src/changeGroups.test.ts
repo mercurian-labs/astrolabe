@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   branchGroupKey,
   changeGroupsByBranch,
+  matchComposerChangeGroupItems,
   threadChangeRequestsTarget,
   type EnvironmentChangeGroup,
 } from "./changeGroups.ts";
@@ -74,5 +75,42 @@ describe("threadChangeRequestsTarget", () => {
     expect(target([elsewhere], [first])).toEqual({ kind: "pull-request", link: first });
     expect(target([], [first, second])).toEqual({ kind: "pull-request", link: second });
     expect(target([], [])).toBeNull();
+  });
+});
+
+describe("matchComposerChangeGroupItems", () => {
+  const named = (groupId: string, title: string, threadIds: string[], prs: [number, string][]) =>
+    ({
+      environmentId,
+      groupId,
+      title,
+      state: "in-sync",
+      threadIds,
+      members: prs.map(([number, prTitle]) => ({
+        title: prTitle,
+        ref: { kind: "pull-request", host: "github.com", repository: "acme/app", number },
+      })),
+    }) as unknown as EnvironmentChangeGroup;
+  // Derived newest first.
+  const groups = [
+    named("refunds", "Refunds", ["r"], [[12, "Partial refunds"]]),
+    named("billing", "Billing", ["b"], [[7, "Refund webhooks"]]),
+    { ...named("elsewhere", "Refunds", [], []), environmentId: EnvironmentId.make("other") },
+  ];
+  const match = (query: string, threadId: string | null = null) =>
+    matchComposerChangeGroupItems({ groups, environmentId, threadId, query }).map(
+      (item) => item.group.groupId,
+    );
+
+  it("matches a group's title, a member's title or a pull request's number, on this environment", () => {
+    expect(match("refund")).toEqual(["refunds", "billing"]);
+    expect(match("webhooks")).toEqual(["billing"]);
+    expect(match("#12")).toEqual(["refunds"]);
+    expect(match("7")).toEqual(["billing"]);
+    expect(match("")).toEqual([]);
+  });
+
+  it("puts the thread's own groups first, then the rest as recent as they are", () => {
+    expect(match("refund", "b")).toEqual(["billing", "refunds"]);
   });
 });

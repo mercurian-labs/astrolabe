@@ -51,11 +51,6 @@ const ROWS: ReadonlyArray<{
     subtitle: "A thread on a group's pull request branch joins.",
   },
   {
-    key: "agentSuggestions",
-    label: "Agent suggestions",
-    subtitle: "An agent suggests pull requests and threads for you to accept.",
-  },
-  {
     key: "flagDocsBehind",
     label: "Flag documentation that falls behind",
     subtitle: "Docs behind, when code changed after its docs.",
@@ -63,7 +58,7 @@ const ROWS: ReadonlyArray<{
   {
     key: "offerDocDrafts",
     label: "Offer drafts for missing documentation",
-    subtitle: "Ask the thread to draft docs the code lacks.",
+    subtitle: "Start a thread to draft docs the code lacks.",
   },
   {
     key: "armByDefault",
@@ -74,7 +69,7 @@ const ROWS: ReadonlyArray<{
 
 /**
  * Astrolabe: Settings › Change requests › Grouping on the phone, as on web: the rules that add
- * change requests to a group, what an agent may do, and whether new groups merge together. Kept
+ * change requests to a group, what a group offers, and whether new groups merge together. Kept
  * by each selected environment.
  */
 export function SettingsChangeRequestsRouteScreen() {

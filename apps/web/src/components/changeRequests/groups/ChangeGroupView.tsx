@@ -19,7 +19,6 @@ import {
   MessageSquarePlusIcon,
   MessagesSquareIcon,
   PlusIcon,
-  SparklesIcon,
   XIcon,
 } from "lucide-react";
 
@@ -55,24 +54,28 @@ import {
 import { changeGroupTabKey, type ChangeGroupTab } from "./changeGroupTabs";
 import {
   changeGroupMemberTabKey,
-  useAskThread,
+  pointThreadAtChangeGroup,
+  useStartChangeGroupThread,
   useUpdateChangeGroup,
 } from "./useChangeGroupActions";
 
 /**
  * A change group's tab: its code and documentation members and the threads working on it (each
- * with why it is there), its state, Merge with the code, agent suggestions, and agent help for
- * stale or missing documentation and for members the rules cannot see. Each member is reviewed
- * and merged in its own tab.
+ * with why it is there), its state, Merge with the code, agents' suggestions, and threads to
+ * start or point at it, some with a first message for stale or missing documentation. Each
+ * member is reviewed and merged in its own tab.
  */
 export function ChangeGroupView({
   tab,
   open,
+  showBeside,
   openAll,
 }: {
   readonly tab: ChangeGroupTab;
   /** Opens a member's tab beside the group. */
   readonly open: (key: string) => void;
+  /** Shows a tab in a pane beside the group's, moving it there if it is open elsewhere. */
+  readonly showBeside: (key: string) => void;
   /** Opens tabs together, the group's own first, as one tab group. */
   readonly openAll?: (keys: ReadonlyArray<string>, group: EnvironmentChangeGroup) => void;
 }) {
@@ -91,7 +94,15 @@ export function ChangeGroupView({
       </div>
     );
   }
-  return <GroupDetails group={group} groups={groups} open={open} openAll={openAll} />;
+  return (
+    <GroupDetails
+      group={group}
+      groups={groups}
+      open={open}
+      showBeside={showBeside}
+      openAll={openAll}
+    />
+  );
 }
 
 function GroupHeader({
@@ -115,11 +126,13 @@ function GroupDetails({
   group,
   groups,
   open,
+  showBeside,
   openAll,
 }: {
   readonly group: EnvironmentChangeGroup;
   readonly groups: ReadonlyArray<EnvironmentChangeGroup>;
   readonly open: (key: string) => void;
+  readonly showBeside: (key: string) => void;
   readonly openAll:
     | ((keys: ReadonlyArray<string>, group: EnvironmentChangeGroup) => void)
     | undefined;
@@ -137,7 +150,7 @@ function GroupDetails({
       .map((shell) => [shell.id as string, shell]),
   );
   const update = useUpdateChangeGroup();
-  const ask = useAskThread();
+  const startThread = useStartChangeGroupThread(showBeside);
   const code = group.members.filter((member) => member.side === "code");
   const docs = group.members.filter((member) => member.side === "docs");
   const byKey = new Map(candidates.map((member) => [member.key, member]));
@@ -170,74 +183,33 @@ function GroupDetails({
     const key = changeGroupMemberTabKey(environmentId, member);
     if (key) open(key);
   };
-  const list = (members: ReadonlyArray<ChangeGroupMember>) =>
-    members
-      .map((member) => `- ${member.title} (${member.place}${member.url ? `, ${member.url}` : ""})`)
-      .join("\n");
-
-  const askToUpdateDocs = () => {
-    const target = docs.find((member) => member.state !== "merged" && member.threadId !== null);
-    if (!target?.threadId) return;
-    void ask(
-      environmentId,
-      target.threadId,
-      `The code this documentation describes changed after it was written:\n${list(code)}\n\nUpdate the documentation pull request “${target.title}” in the ${target.place} wiki so it matches the code as it is now.`,
-    );
-  };
-  const askToDraftDocs = () => {
-    const target = code.find((member) => member.threadId !== null);
-    if (!target?.threadId) return;
-    void ask(
-      environmentId,
-      target.threadId,
-      `This change has no documentation yet:\n${list(code)}\n\nDocument it in the team's wiki: amend the notes that describe what changed, opening a pull request there.`,
-    );
-  };
-  const askForSuggestions = () => {
-    const dismissed = new Set(decisions?.dismissed ?? []);
-    const others = addable.filter((member) => !dismissed.has(member.key));
-    const otherThreads = addableThreads
-      .filter((shell) => !dismissed.has(threadKey(shell.id)))
-      .slice(0, 40);
-    void ask(
-      environmentId,
-      group.groupId,
-      `Look for other open pull requests and threads that belong with the change group “${group.title}”, which holds:\n${list(group.members)}\n\nThreads working on it:\n${
-        group.threads.map((entry) => `- ${entry.title}`).join("\n") || "- none yet"
-      }\n\nCandidate pull requests:\n${
-        others.map((member) => `- ${member.key}: ${member.title} (${member.place})`).join("\n") ||
-        "- none open right now"
-      }\n\nCandidate threads, newest first:\n${
-        otherThreads
-          .map(
-            (shell) =>
-              `- ${threadKey(shell.id)}: ${shell.title}${shell.branch ? ` (branch ${shell.branch})` : ""}`,
-          )
-          .join("\n") || "- none"
-      }\n\nFor each candidate that is part of the same effort, call the astrolabe_change_group_suggest tool with this group's id (${group.groupId}), the candidate's key, and one sentence on why. Suggest nothing that does not clearly belong.`,
-    );
-  };
+  // Ready-made first messages for a new thread, which the person reads over before sending.
+  const starters: ReadonlyArray<ThreadStarter> = [
+    ...(group.state === "docs-behind"
+      ? [
+          {
+            label: "Update the docs",
+            sentence:
+              "The code changed after its documentation was written. Update the documentation so it matches the code as it is now.",
+          },
+        ]
+      : []),
+    ...(group.state === "docs-missing" && settings.offerDocDrafts
+      ? [
+          {
+            label: "Draft the docs",
+            sentence:
+              "This change has no documentation yet. Document it in the team's wiki: amend the notes that describe what changed, opening a pull request there.",
+          },
+        ]
+      : []),
+  ];
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <GroupHeader title={group.title}>
         <TabHeader.Status>{CHANGE_GROUP_STATE_LABELS[group.state]}</TabHeader.Status>
         <TabHeader.Actions>
-          {group.state === "docs-behind" ? (
-            <TabHeader.Action label="Ask to update the docs" onClick={askToUpdateDocs}>
-              <BookOpenIcon className="size-4" />
-            </TabHeader.Action>
-          ) : null}
-          {group.state === "docs-missing" && settings.offerDocDrafts ? (
-            <TabHeader.Action label="Draft the docs" onClick={askToDraftDocs}>
-              <BookOpenIcon className="size-4" />
-            </TabHeader.Action>
-          ) : null}
-          {settings.agentSuggestions ? (
-            <TabHeader.Action label="Ask for suggestions" onClick={askForSuggestions}>
-              <SparklesIcon className="size-4" />
-            </TabHeader.Action>
-          ) : null}
           <AddMember
             candidates={addable}
             onAdd={(member) =>
@@ -246,14 +218,9 @@ function GroupDetails({
           />
           <AddThread
             candidates={addableThreads}
-            onAdd={(shell) =>
-              void update(group, {
-                type: "add",
-                member: { kind: "thread", threadId: shell.id },
-                reason: "manual",
-                note: "",
-              })
-            }
+            starters={starters}
+            onStart={(sentence) => void startThread(group, sentence)}
+            onAdd={(shell) => void pointThreadAtChangeGroup(group, shell.id, update, showBeside)}
           />
           {openAll ? (
             <TabHeader.Action
@@ -553,31 +520,61 @@ function HeaderComboboxTrigger({
   );
 }
 
-/** Adds a thread to the group by hand: any thread on its environment not in it yet. */
+/** A first message a new thread can start from, which the person edits before sending. */
+interface ThreadStarter {
+  readonly label: string;
+  readonly sentence: string;
+}
+
+type ThreadPick =
+  | { readonly type: "new"; readonly label: string; readonly sentence: string }
+  | { readonly type: "thread"; readonly shell: EnvironmentThreadShell };
+
+const pickKey = (pick: ThreadPick) => (pick.type === "new" ? `new:${pick.label}` : pick.shell.id);
+
+/**
+ * Brings a thread into the group: a new one first (plain, or from a starter), each opening as a
+ * draft naming the group, then any thread on its environment not in it yet.
+ */
 function AddThread({
   candidates,
+  starters,
+  onStart,
   onAdd,
 }: {
   readonly candidates: ReadonlyArray<EnvironmentThreadShell>;
+  readonly starters: ReadonlyArray<ThreadStarter>;
+  readonly onStart: (sentence: string) => void;
   readonly onAdd: (shell: EnvironmentThreadShell) => void;
 }) {
   const [query, setQuery] = useState("");
   const filter = useComboboxFilter();
+  const items: ReadonlyArray<ThreadPick> = [
+    { type: "new", label: "New thread", sentence: "" },
+    ...starters.map((starter) => ({ type: "new" as const, ...starter })),
+    ...candidates.map((shell) => ({ type: "thread" as const, shell })),
+  ];
   const filtered =
     query.trim() === ""
-      ? candidates
-      : candidates.filter((shell) =>
-          filter.contains(shell, query, (item) => `${item.title} ${item.branch ?? ""}`),
+      ? items
+      : items.filter((pick) =>
+          filter.contains(pick, query, (item) =>
+            item.type === "new" ? item.label : `${item.shell.title} ${item.shell.branch ?? ""}`,
+          ),
         );
   return (
     <Combobox
-      items={candidates}
+      items={items}
       filteredItems={filtered}
-      itemToStringLabel={(shell: EnvironmentThreadShell) => shell.title}
-      isItemEqualToValue={(a: EnvironmentThreadShell, b: EnvironmentThreadShell) => a.id === b.id}
+      itemToStringLabel={(pick: ThreadPick) =>
+        pick.type === "new" ? pick.label : pick.shell.title
+      }
+      isItemEqualToValue={(a: ThreadPick, b: ThreadPick) => pickKey(a) === pickKey(b)}
       value={null}
-      onValueChange={(shell: EnvironmentThreadShell | null) => {
-        if (shell) onAdd(shell);
+      onValueChange={(pick: ThreadPick | null) => {
+        if (pick === null) return;
+        if (pick.type === "new") onStart(pick.sentence);
+        else onAdd(pick.shell);
       }}
       onOpenChange={(open) => {
         if (!open) setQuery("");
@@ -595,14 +592,23 @@ function AddThread({
         />
         <ComboboxEmpty>No other threads.</ComboboxEmpty>
         <ComboboxList>
-          {(shell: EnvironmentThreadShell) => (
-            <ComboboxItem key={shell.id} hideIndicator value={shell}>
-              <span className="flex min-w-0 flex-col">
-                <span className="truncate text-sm">{shell.title}</span>
-                {shell.branch ? (
-                  <span className="truncate text-xs text-muted-foreground">{shell.branch}</span>
-                ) : null}
-              </span>
+          {(pick: ThreadPick) => (
+            <ComboboxItem key={pickKey(pick)} hideIndicator value={pick}>
+              {pick.type === "new" ? (
+                <span className="flex min-w-0 items-center gap-2">
+                  <PlusIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="truncate text-sm">{pick.label}</span>
+                </span>
+              ) : (
+                <span className="flex min-w-0 flex-col">
+                  <span className="truncate text-sm">{pick.shell.title}</span>
+                  {pick.shell.branch ? (
+                    <span className="truncate text-xs text-muted-foreground">
+                      {pick.shell.branch}
+                    </span>
+                  ) : null}
+                </span>
+              )}
             </ComboboxItem>
           )}
         </ComboboxList>

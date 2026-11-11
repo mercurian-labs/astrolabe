@@ -7,6 +7,7 @@ import {
   type ThreadPullRequestLink,
 } from "@t3tools/contracts";
 import {
+  CHANGE_GROUP_STATE_LABELS,
   changeGroupCandidates,
   deriveChangeGroups,
   isSharedBranch,
@@ -157,4 +158,53 @@ export function threadChangeRequestsTarget(input: {
   if (group !== undefined) return { kind: "group", group };
   const link = resolveThreadCurrentPullRequestLink(input.pullRequests);
   return link === null ? null : { kind: "pull-request", link };
+}
+
+const COMPOSER_CHANGE_GROUP_RESULT_LIMIT = 3;
+
+export interface ComposerChangeGroupItem {
+  readonly id: string;
+  readonly type: "change-group";
+  readonly group: EnvironmentChangeGroup;
+  readonly label: string;
+  readonly description: string;
+}
+
+/**
+ * Change groups to mention from a composer: those on its environment, where its agent reads
+ * them, whose title, a member's title or a pull request's number matches. The thread's own
+ * groups come first, then the rest by their latest activity, as they are derived.
+ */
+export function matchComposerChangeGroupItems(input: {
+  readonly groups: ReadonlyArray<EnvironmentChangeGroup>;
+  readonly environmentId: EnvironmentId;
+  readonly threadId: string | null;
+  readonly query: string;
+}): ComposerChangeGroupItem[] {
+  const query = input.query.trim().toLowerCase();
+  if (query.length === 0) return [];
+  const number = /^#?(\d+)$/u.exec(query)?.[1];
+  const matches = (group: EnvironmentChangeGroup) =>
+    group.title.toLowerCase().includes(query) ||
+    group.members.some(
+      (member) =>
+        member.title.toLowerCase().includes(query) ||
+        (number !== undefined &&
+          member.ref.kind === "pull-request" &&
+          String(member.ref.number) === number),
+    );
+  const found = input.groups.filter(
+    (group) => group.environmentId === input.environmentId && matches(group),
+  );
+  const own = (group: EnvironmentChangeGroup) =>
+    input.threadId !== null && group.threadIds.includes(input.threadId);
+  return [...found.filter(own), ...found.filter((group) => !own(group))]
+    .slice(0, COMPOSER_CHANGE_GROUP_RESULT_LIMIT)
+    .map((group) => ({
+      id: `change-group:${group.environmentId}:${group.groupId}`,
+      type: "change-group",
+      group,
+      label: group.title,
+      description: `Change group · ${CHANGE_GROUP_STATE_LABELS[group.state]}`,
+    }));
 }

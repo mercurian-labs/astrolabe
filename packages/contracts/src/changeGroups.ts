@@ -104,7 +104,7 @@ export type ChangeGroupDecisions = typeof ChangeGroupDecisions.Type;
 
 /**
  * Settings › Change Requests › Grouping, kept by the environment: the rules that add members on
- * their own, and what the agent may do. Each starts at its default when a stored file lacks it.
+ * their own, and what the tab offers. Each starts at its default when a stored file lacks it.
  */
 const on = Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true)));
 const off = Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false)));
@@ -115,7 +115,6 @@ export const ChangeGroupGroupingSettings = Schema.Struct({
   references: on,
   /** A thread on a member pull request's branch joins the group. */
   sameBranch: on,
-  agentSuggestions: on,
   flagDocsBehind: on,
   offerDocDrafts: off,
   armByDefault: on,
@@ -132,7 +131,6 @@ export const ChangeGroupGroupingSettingsPatch = Schema.Struct({
   lineage: Schema.optionalKey(Schema.Boolean),
   references: Schema.optionalKey(Schema.Boolean),
   sameBranch: Schema.optionalKey(Schema.Boolean),
-  agentSuggestions: Schema.optionalKey(Schema.Boolean),
   flagDocsBehind: Schema.optionalKey(Schema.Boolean),
   offerDocDrafts: Schema.optionalKey(Schema.Boolean),
   armByDefault: Schema.optionalKey(Schema.Boolean),

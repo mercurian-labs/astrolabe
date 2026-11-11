@@ -151,6 +151,17 @@ export function SectionTabContent({
           if (thread !== null) workspace.openChat(chatTabKey(thread));
           else store.update((arrangement) => showKeyIn(arrangement, key, "beside"));
         }}
+        showBeside={(key) =>
+          store.update((arrangement) => {
+            const groupPane = leafWithTab(arrangement.root, tabKey);
+            const pane = leafWithTab(arrangement.root, key);
+            // A tab standing alone in a pane of its own is beside the group already.
+            if (pane && pane.id !== groupPane?.id && pane.tabs.length === 1) {
+              return activateTab(arrangement, key);
+            }
+            return openBeside(arrangement, key, groupPane?.id ?? arrangement.focused, "right");
+          })
+        }
         openAll={
           openAll ??
           (shared
