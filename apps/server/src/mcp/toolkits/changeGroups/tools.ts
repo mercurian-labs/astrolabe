@@ -2,7 +2,6 @@ import {
   ChangeGroupDecisions,
   ChangeGroupReason,
   OrchestratorMcpFailure,
-  TrimmedNonEmptyString,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { Tool, Toolkit } from "effect/ai";
@@ -24,11 +23,12 @@ const shared = {
 const RULES =
   "A change group is the pull requests in different projects that are one effort: a repository's and the wiki's documenting them, plus the threads working on it. A thread's own pull requests, a coordinator's children's, and a fork's join its group on their own; so do threads on its pull requests' branches and threads naming its issue key. People add, take out, and accept suggestions on top. A pull request is in one group; a thread can be in several. Each member is reviewed and merged in its own place.";
 
-const groupId = TrimmedNonEmptyString.annotate({
+// TrimmedNonEmptyString's annotations never reach the advertised schema, so these stay plain.
+const groupId = Schema.NonEmptyString.annotate({
   description:
     "The group's id, as astrolabe_change_groups shows it: the thread the group started from.",
 });
-const memberKey = TrimmedNonEmptyString.annotate({
+const memberKey = Schema.NonEmptyString.annotate({
   description:
     "A pull request's or a thread's key, as astrolabe_change_groups shows it: `pr:<host>/<owner>/<repo>#<number>`, `wiki:<wikiId>/<changeRequestId>`, or `thread:<threadId>`.",
 });
@@ -102,7 +102,7 @@ const ChangeGroupSuggestTool = Tool.make("astrolabe_change_group_suggest", {
   parameters: Schema.Struct({
     groupId,
     memberKey,
-    note: TrimmedNonEmptyString.annotate({ description: "Why it belongs, in one sentence." }),
+    note: Schema.NonEmptyString.annotate({ description: "Why it belongs, in one sentence." }),
   }),
   success: ChangeGroupDecisions,
 })
@@ -115,7 +115,9 @@ const ChangeGroupUpdateTool = Tool.make("astrolabe_change_group_update", {
     "Add a pull request or a thread to a group, or take one out, as a coordinator builds its group on purpose. Prefer astrolabe_change_group_suggest when the person should decide.",
   parameters: Schema.Struct({
     groupId,
-    action: Schema.Literals(["add", "remove"]),
+    action: Schema.Literals(["add", "remove"]).annotate({
+      description: "add puts the member in this group; remove takes it out.",
+    }),
     memberKey,
     note: Schema.optional(Schema.String).annotate({ description: "Why, for an added member." }),
   }),

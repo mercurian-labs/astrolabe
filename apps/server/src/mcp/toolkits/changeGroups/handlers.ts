@@ -66,17 +66,24 @@ export const layer = McpToolAccess.toLayer(ChangeGroupToolkit, {
   ),
   // Suggestions and edits come from a live thread's agent, as wiki amendments do.
   astrolabe_change_group_suggest: McpToolAccess.actsAsCaller(({ groupId, memberKey, note }) =>
-    memberOf(memberKey).pipe(
-      Effect.flatMap((member) => update(groupId, { type: "suggest", member, note })),
+    memberOf(memberKey.trim()).pipe(
+      Effect.flatMap((member) =>
+        update(groupId.trim(), { type: "suggest", member, note: note.trim() }),
+      ),
     ),
   ),
   astrolabe_change_group_update: McpToolAccess.actsAsCaller(
     ({ groupId, action, memberKey, note }) =>
       action === "remove"
-        ? update(groupId, { type: "remove", memberKey })
-        : memberOf(memberKey).pipe(
+        ? update(groupId.trim(), { type: "remove", memberKey: memberKey.trim() })
+        : memberOf(memberKey.trim()).pipe(
             Effect.flatMap((member) =>
-              update(groupId, { type: "add", member, reason: "manual", note: note ?? "" }),
+              update(groupId.trim(), {
+                type: "add",
+                member,
+                reason: "manual",
+                note: note?.trim() ?? "",
+              }),
             ),
           ),
   ),
