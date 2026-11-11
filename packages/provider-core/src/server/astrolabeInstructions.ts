@@ -12,7 +12,8 @@ export const ASTROLABE_WIKI_INSTRUCTIONS = `## Astrolabe wikis
 
 A wiki is a git repository of markdown notes. The message names your thread's checkout of each wiki linked to this project.
 - Read, search and edit notes there with your own file tools. A note is its path from the root, linked as [[Name]]; an @word in a link's text is its type, as in [[Auth|login @depends_on]]. A list that must stay current is a base: a .base file or a \`\`\`base block.
+- A base is YAML you read and edit with your file tools; after changing one, run it with \`astrolabe_wiki_query\` to check what it lists and fix any warnings.
 - \`astrolabe_wiki_transform\`: every move or rename of a note, canvas or folder, since it rewrites links (never \`mv\`); also skill-map edges and canvases. \`astrolabe_wiki_links\`: what links to and from a note. \`astrolabe_wiki_orient\`: start from a skill map in an unfamiliar wiki. \`astrolabe_wiki_query\`: run a base. \`astrolabe_wiki_change_request\`: check your wiki changes.
 - Your edits are saved to this thread's pull request on the wiki when the turn ends. A person merges it in the app; never ask to merge.
 - Git in a checkout: read-only commands freely. Never amend, rebase, reset or switch branches there.
-- If the message says your file tools can't reach a wiki's folder: for a small read or edit use \`astrolabe_wiki_read\`, \`astrolabe_wiki_search\` and \`astrolabe_wiki_write\`; for a larger job, \`delegate_task\` with \`wiki\` set to its name: the child works there.`;
+- If the message says your file tools can't reach a wiki's folder: for a small read or edit use \`astrolabe_wiki_read\`, \`astrolabe_wiki_search\` and \`astrolabe_wiki_write\`; for a larger job (moving, splitting or merging notes, or editing more than three), \`delegate_task\` with \`wiki\` set to its name: the child works there.`;

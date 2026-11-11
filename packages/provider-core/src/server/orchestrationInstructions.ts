@@ -120,24 +120,32 @@ function prependT3OrchestrationInstructions(prompt: string, instructions: string
   return `<t3_code_orchestration_instructions>${instructions.trim()}</t3_code_orchestration_instructions>\n\n<user_request>\n${prompt}\n</user_request>`;
 }
 
-/** For providers whose instructions ride on the prompt, so a compacted conversation loses them. */
-export function t3OrchestrationPrompt(input: {
-  readonly prompt: string;
+interface T3OrchestrationDelivery {
   readonly hasT3Mcp: boolean;
   readonly hasDeviceTools: boolean;
   readonly orchestrationDelivered: boolean;
   readonly deviceInstructionsDelivered: boolean;
-}): string {
-  if (!input.hasT3Mcp) return input.prompt;
-  if (!input.orchestrationDelivered) {
-    return prependT3OrchestrationInstructions(
-      input.prompt,
-      orchestrationInstructions(input.hasDeviceTools),
-    );
-  }
+}
+
+/** The instructions a prompt-riding session still lacks, or none when it has them all. */
+export function t3OrchestrationInstructionsToSend(
+  input: T3OrchestrationDelivery,
+): string | undefined {
+  if (!input.hasT3Mcp) return undefined;
+  if (!input.orchestrationDelivered) return orchestrationInstructions(input.hasDeviceTools);
   return input.hasDeviceTools && !input.deviceInstructionsDelivered
-    ? prependT3OrchestrationInstructions(input.prompt, T3_CODE_DEVICE_TOOL_INSTRUCTIONS)
-    : input.prompt;
+    ? T3_CODE_DEVICE_TOOL_INSTRUCTIONS
+    : undefined;
+}
+
+/** For providers whose instructions ride on the prompt, so a compacted conversation loses them. */
+export function t3OrchestrationPrompt(
+  input: T3OrchestrationDelivery & { readonly prompt: string },
+): string {
+  const instructions = t3OrchestrationInstructionsToSend(input);
+  return instructions === undefined
+    ? input.prompt
+    : prependT3OrchestrationInstructions(input.prompt, instructions);
 }
 
 export function t3OrchestrationSystemPrompt(

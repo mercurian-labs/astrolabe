@@ -40,6 +40,7 @@ import * as Stream from "effect/Stream";
 import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
 import * as McpProviderSession from "@t3tools/provider-core/server/mcpSession";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
+import { t3OrchestrationInstructionsToSend } from "@t3tools/provider-core/server/orchestrationInstructions";
 import { buildRuntimeInstructions } from "@t3tools/provider-core/server/runtimeInstructions";
 import { museModelCapabilities, resolveMuseReasoningEffort } from "./modelCatalog.ts";
 import {
@@ -329,6 +330,9 @@ export const makeMuseAdapterV2 = Effect.fn("makeMuseAdapterV2")(function* (
       // Only idle host failures can be retried on this runtime.
       let relaunchable = false;
       let nativeSessionId: string | undefined;
+      // The T3 tools the native session was opened with, and the instructions it has been sent.
+      let sessionTools = { mcp: false, device: false };
+      let told: { session: string; orchestration: boolean; device: boolean } | undefined;
       let thread: OrchestrationV2ProviderThread | undefined;
       let active: ActiveTurn | undefined;
       let lastProviderTurn: OrchestrationV2ProviderTurn | undefined;
@@ -1819,6 +1823,10 @@ export const makeMuseAdapterV2 = Effect.fn("makeMuseAdapterV2")(function* (
         return yield* Effect.gen(function* () {
           nativeSessionId = requestedId ?? host.connection.mintCommandId();
           const mcpSession = yield* mcpSessions.read(args.threadId);
+          sessionTools = {
+            mcp: mcpSession !== undefined,
+            device: mcpSession?.capabilities?.has("device") === true,
+          };
           if (mcpSession && !host.initializeResult.grantedCapabilities.includes("sessionMcp"))
             return yield* protocolError(
               "Update Muse Code to a version that supports session MCP servers",
@@ -2057,7 +2065,26 @@ export const makeMuseAdapterV2 = Effect.fn("makeMuseAdapterV2")(function* (
               return yield* protocolError(
                 `Muse returned an unsupported compaction status: ${result.status}`,
               );
+            // The summary keeps no instructions: the next turn sends them again.
+            else if (nativeSessionId)
+              told = { session: nativeSessionId, orchestration: false, device: false };
           } else {
+            // Muse has no system prompt: T3's instructions ride on the prompt, once per session.
+            const delivered =
+              told !== undefined && told.session === nativeSessionId
+                ? told
+                : {
+                    // A session this process hasn't sent to was told on its first run.
+                    orchestration:
+                      (thread?.firstRunOrdinal ?? turnInput.runOrdinal) < turnInput.runOrdinal,
+                    device: false,
+                  };
+            const orchestration = t3OrchestrationInstructionsToSend({
+              hasT3Mcp: sessionTools.mcp,
+              hasDeviceTools: sessionTools.device,
+              orchestrationDelivered: delivered.orchestration,
+              deviceInstructionsDelivered: delivered.device,
+            });
             const result = yield* request(
               "turn/start",
               {
@@ -2070,6 +2097,9 @@ export const makeMuseAdapterV2 = Effect.fn("makeMuseAdapterV2")(function* (
                       reasoningEffort: effort,
                     }),
                   },
+                  ...(orchestration === undefined
+                    ? []
+                    : [{ type: "text" as const, text: orchestration.trim() }]),
                   ...parts,
                 ],
                 displayText: turnInput.message.text || "Image attachment",
@@ -2081,6 +2111,12 @@ export const makeMuseAdapterV2 = Effect.fn("makeMuseAdapterV2")(function* (
               true,
               nativeId,
             ).pipe(Effect.flatMap((value) => decode(MuseTurnStartResult, value)));
+            if (nativeSessionId)
+              told = {
+                session: nativeSessionId,
+                orchestration: delivered.orchestration || sessionTools.mcp,
+                device: delivered.device || sessionTools.device,
+              };
             if (result.turnId !== nativeId) {
               yield* eventPermit.withPermits(1)(
                 failHost(new Error("Muse admitted an unowned turn")),
