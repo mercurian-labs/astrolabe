@@ -14,6 +14,8 @@ export function onStepKey(
 ) {
   if (count === 0 || event.metaKey || event.ctrlKey || event.altKey) return;
   const target = event.target as Element;
+  // A step's popover is portalled out of the board, though its keys still bubble through it.
+  if (!event.currentTarget.contains(target)) return;
   if (target.closest("input, textarea, [contenteditable='true']") !== null) return;
   const next =
     event.key === "ArrowRight"

@@ -228,6 +228,8 @@ export class CanvasView {
     this.#world.style.transform = `translate(${x}px, ${y}px) scale(${zoom})`;
     // Labels, borders and arrows thin out slower than the board, so they stay readable.
     this.#world.style.setProperty("--cv-ui", String(1 / Math.sqrt(zoom)));
+    // A frame's corners and number are the reader's marks over the board: the same size at any zoom.
+    this.#world.style.setProperty("--cv-screen", String(1 / zoom));
     if (this.#board !== null) {
       this.#onPaint?.(this.#camera, this.#board.clientWidth, this.#board.clientHeight);
     }

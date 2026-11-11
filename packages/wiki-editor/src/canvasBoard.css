@@ -1103,12 +1103,96 @@ textarea.cv-label-editor {
     transition: none;
   }
 }
-/* A story's frame is a view over the board, not a region of it: an outline, never picked. */
+/* A story's frame is a view over the board, not a region of it: a viewfinder, never picked. */
 .cv-story-frame {
+  --cv-corner-weight: calc(2px * var(--cv-screen, 1));
   pointer-events: none;
   background: none;
   border-style: dashed;
+  border-color: color-mix(in srgb, var(--muted-foreground) 50%, transparent);
 }
-.cv-board[data-walking] .cv-story-frame[data-lit="true"] {
-  border-style: solid;
+/* Never more than a quarter of a small frame, so its corners mark it rather than cover it. */
+.cv-frame-corner {
+  position: absolute;
+  width: min(calc(14px * var(--cv-screen, 1)), 25%);
+  height: min(calc(14px * var(--cv-screen, 1)), 25%);
+  border: 0 solid color-mix(in srgb, var(--muted-foreground) 80%, transparent);
+}
+.cv-frame-corner[data-corner="nw"] {
+  top: -1px;
+  left: -1px;
+  border-top-width: var(--cv-corner-weight);
+  border-left-width: var(--cv-corner-weight);
+  border-top-left-radius: 6px;
+}
+.cv-frame-corner[data-corner="ne"] {
+  top: -1px;
+  right: -1px;
+  border-top-width: var(--cv-corner-weight);
+  border-right-width: var(--cv-corner-weight);
+  border-top-right-radius: 6px;
+}
+.cv-frame-corner[data-corner="se"] {
+  right: -1px;
+  bottom: -1px;
+  border-right-width: var(--cv-corner-weight);
+  border-bottom-width: var(--cv-corner-weight);
+  border-bottom-right-radius: 6px;
+}
+.cv-frame-corner[data-corner="sw"] {
+  bottom: -1px;
+  left: -1px;
+  border-bottom-width: var(--cv-corner-weight);
+  border-left-width: var(--cv-corner-weight);
+  border-bottom-left-radius: 6px;
+}
+/* The step's number, on the corner groups never name, beside any other chip already there. */
+.cv-frame-chip {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: calc(20px * var(--cv-screen, 1));
+  height: calc(20px * var(--cv-screen, 1));
+  padding: 0 calc(5px * var(--cv-screen, 1));
+  border: calc(1px * var(--cv-screen, 1)) solid
+    color-mix(in srgb, var(--muted-foreground) 60%, transparent);
+  border-radius: 999px;
+  background: var(--background);
+  color: var(--foreground);
+  font: inherit;
+  font-size: calc(11px * var(--cv-screen, 1));
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: auto;
+  transform: translate(calc(50% + var(--cv-stack, 0) * 24px * var(--cv-screen, 1)), 50%);
+}
+button.cv-frame-chip {
+  cursor: pointer;
+}
+button.cv-frame-chip:focus-visible {
+  outline: calc(2px * var(--cv-screen, 1)) solid var(--ring, var(--primary));
+  outline-offset: calc(2px * var(--cv-screen, 1));
+}
+.cv-story-frame[data-lit="true"] {
+  border-color: var(--primary);
+}
+.cv-story-frame[data-lit="true"] .cv-frame-corner {
+  border-color: var(--primary);
+}
+.cv-story-frame[data-lit="true"] .cv-frame-chip {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-foreground, var(--background));
+}
+/* Hovering a step's number: what it covers stays, the rest steps back without leaving. */
+.cv-board[data-peeking] :is(.cv-card, .cv-edge, .cv-edge-label)[data-lit="false"] {
+  opacity: 0.25;
+}
+.cv-board[data-peeking] .cv-story-frame[data-lit="false"] {
+  opacity: 0.4;
 }

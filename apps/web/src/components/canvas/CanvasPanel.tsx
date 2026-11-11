@@ -2,13 +2,15 @@ import { useAtomValue } from "@effect/atom-react";
 import type { CanvasView } from "@t3tools/client-runtime/canvasViews";
 import { type ScopedThreadRef, TurnItemId } from "@t3tools/contracts";
 import { MessageSquarePlusIcon } from "lucide-react";
-import { Suspense } from "react";
+import type { CanvasBoardHandle } from "@mercurian/wiki-editor/canvas-board";
+import { Suspense, useRef } from "react";
 
 import { TabHeader } from "~/panes/TabHeader";
 
 import { canvasViewsAtom, canvasViewsKey } from "~/state/canvasViews";
 
 import { canvasHost, LazyCanvasBoard } from "./CanvasFrame";
+import { CanvasFramePopover } from "./CanvasFramePopover";
 import { CanvasStepBar, onStepKey } from "./CanvasStepBar";
 import { KeepCanvasButton } from "./KeepCanvas";
 import { useThreadCanvasStore } from "./threadCanvasStore";
@@ -39,6 +41,7 @@ function CanvasPanelBoard({
 }) {
   const itemId = TurnItemId.make(view.id);
   const walk = useCanvasWalk(view, { threadId: threadRef.threadId, itemId });
+  const board = useRef<CanvasBoardHandle>(null);
   return (
     <div
       className="flex min-h-0 flex-1 flex-col"
@@ -70,10 +73,14 @@ function CanvasPanelBoard({
             label={view.title}
             story={walk.story}
             step={walk.step}
+            openFrame={walk.frame?.step ?? null}
+            onFrame={walk.toggleFrame}
+            ref={board}
           />
         </Suspense>
       </div>
       <CanvasStepBar walk={walk} />
+      <CanvasFramePopover view={view} walk={walk} onCard={(id) => board.current?.focusCard(id)} />
     </div>
   );
 }

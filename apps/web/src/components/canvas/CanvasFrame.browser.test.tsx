@@ -113,6 +113,18 @@ describe("CanvasFrame", () => {
         step: "Start to end, step 2 of 2, Then: It ends here.",
       }),
     );
+
+    // A step's frame opens its details: asking from there asks about that step, not the walk's.
+    await userEvent.click(screen.getByRole("button", { name: "Show the whole board" }));
+    await userEvent.click(screen.getByRole("button", { name: "Step 1" }));
+    await expect.element(screen.getByText("It starts here.").last()).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Ask about this step" }));
+    expect(addCanvas).toHaveBeenLastCalledWith(
+      expect.objectContaining({ step: "Start to end, step 1 of 2: It starts here." }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Step 2: Then" }));
+    await userEvent.click(screen.getByRole("button", { name: "Walk from here" }));
+    await expect.element(screen.getByRole("button", { name: "Ask about step 2" })).toBeVisible();
   });
 
   it("opens a code card's file at its line, and a guest page leaves the card inert", async () => {

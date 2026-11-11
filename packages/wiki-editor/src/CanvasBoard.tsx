@@ -904,18 +904,89 @@ const GroupNode = memo(function GroupNode({
   );
 });
 
+const CORNERS = ["nw", "ne", "se", "sw"] as const;
+
 /**
- * A story's step on the board: an outline around its cards, which a walk moves to. It carries no
- * title: groups name the board's regions, and the step bar names the step.
+ * A story's step on the board: a viewfinder over its cards, which a walk moves to. Its number sits
+ * on the bottom-right corner, away from the top-left where groups are named; hovering it shows
+ * what the step covers, and clicking it asks the host for the step's details.
  */
 function StoryFrame({
   frame,
+  index,
+  label,
   lit,
+  open,
+  onOpen,
+  onPeek,
 }: {
   readonly frame: CanvasBounds;
+  readonly index: number;
+  readonly label: string | undefined;
   readonly lit: boolean | undefined;
+  readonly open: boolean;
+  readonly onOpen: ((step: number, chip: HTMLElement) => void) | undefined;
+  readonly onPeek: (step: number | null) => void;
 }) {
-  return <div className="cv-group cv-story-frame" data-lit={lit} style={position(frame)} />;
+  const name = `Step ${index + 1}${label === undefined ? "" : `: ${label}`}`;
+  const peek = {
+    onPointerEnter: () => onPeek(index),
+    onPointerLeave: () => onPeek(null),
+    onFocus: () => onPeek(index),
+    onBlur: () => onPeek(null),
+  };
+  return (
+    <div className="cv-group cv-story-frame" data-lit={lit} style={position(frame)}>
+      {CORNERS.map((corner) => (
+        <span key={corner} className="cv-frame-corner" data-corner={corner} />
+      ))}
+      {onOpen === undefined ? (
+        <span className="cv-frame-chip" aria-hidden="true" {...peek}>
+          {index + 1}
+        </span>
+      ) : (
+        <button
+          type="button"
+          className="cv-frame-chip"
+          aria-label={name}
+          aria-expanded={open}
+          aria-haspopup="dialog"
+          {...peek}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpen(index, event.currentTarget);
+          }}
+        >
+          {index + 1}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Screen pixels apart, under which two frames' numbers would cover each other. */
+const CHIP_NEAR = 26;
+
+/**
+ * Sets each frame's number beside any other already on the same corner, as the reader sees them:
+ * frames far apart on the board can share a corner once it's zoomed out.
+ */
+function stackChips(world: HTMLElement, frames: ReadonlyArray<CanvasBounds>, zoom: number) {
+  const placed: Array<{ readonly x: number; readonly y: number }> = [];
+  const elements = world.querySelectorAll<HTMLElement>(":scope > .cv-story-frame");
+  frames.forEach((frame, index) => {
+    const corner = { x: (frame.x + frame.width) * zoom, y: (frame.y + frame.height) * zoom };
+    const stack = placed.filter(
+      (each) => Math.abs(each.x - corner.x) < CHIP_NEAR && Math.abs(each.y - corner.y) < CHIP_NEAR,
+    ).length;
+    placed.push(corner);
+    const element = elements[index];
+    if (element !== undefined && element.dataset.stack !== String(stack)) {
+      element.dataset.stack = String(stack);
+      element.style.setProperty("--cv-stack", String(stack));
+    }
+  });
 }
 
 const EdgeNode = memo(function EdgeNode({
@@ -1111,6 +1182,7 @@ class BoardLive {
   openMenu: OpenMenu | null = null;
   readAt: string | undefined = undefined;
   walkable = false;
+  frames: ReadonlyArray<CanvasBounds> = [];
   /** The frame a free board's camera last moved to. */
   walkedTo: string | null = null;
   whole: CanvasBounds = { x: 0, y: 0, width: 0, height: 0 };
@@ -1237,6 +1309,8 @@ export function CanvasBoard({
   onSettings,
   story = 0,
   step = null,
+  openFrame = null,
+  onFrame,
   ref,
 }: {
   readonly data: CanvasData;
@@ -1264,6 +1338,10 @@ export function CanvasBoard({
   readonly story?: number;
   /** The story's step being walked, from 0: the camera shows only it. */
   readonly step?: number | null;
+  /** The step whose details the host is showing, which stays picked out until they close. */
+  readonly openFrame?: number | null;
+  /** Asked for a step's details, as its frame's number is clicked, beside that number. */
+  readonly onFrame?: ((step: number, chip: HTMLElement) => void) | undefined;
   readonly ref?: Ref<CanvasBoardHandle>;
 }) {
   const boardRef = useRef<HTMLDivElement>(null);
@@ -1280,6 +1358,11 @@ export function CanvasBoard({
   const [live] = useState(() => new BoardLive(data, marks, openingCamera));
   const steps = useMemo(() => canvasSteps(data, story), [data, story]);
   const active = step === null ? null : (steps[step] ?? null);
+  const [hovered, setHovered] = useState<number | null>(null);
+  const peekIndex = active === null ? (hovered ?? openFrame) : null;
+  const peeked = peekIndex === null ? null : (steps[peekIndex] ?? null);
+  // A walk shows only its step; a peek, outside one, dims what the step leaves out.
+  const shines = active ?? peeked;
   const whole = useMemo(() => canvasBounds(data), [data]);
   const bounds = active?.bounds ?? whole;
   // A step moves the cards it recalls beside its frame; an edited board always shows where they are.
@@ -1341,6 +1424,7 @@ export function CanvasBoard({
     setShown((now) => (sameShown(now, mounted) ? now : mounted));
     live.onCamera?.(view.fitted ? null : camera);
     placeToolbar();
+    if (worldRef.current !== null) stackChips(worldRef.current, live.frames, camera.zoom);
     if (next.simple) return;
     reads.files.want(
       next.cards.flatMap((card) =>
@@ -1600,7 +1684,15 @@ export function CanvasBoard({
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- new contents reach the view outside React, keeping a reader's camera where it was
   useLayoutEffect(() => {
-    live.update({ onCamera, layout, marks, bounds, walkable: steps.length > 0, whole });
+    live.update({
+      onCamera,
+      layout,
+      marks,
+      bounds,
+      walkable: steps.length > 0,
+      frames: steps.map((each) => each.frame),
+      whole,
+    });
     reads.files.readFrom((paths) => host.readFiles?.(paths) ?? Promise.resolve([]));
     reads.code.readFrom(
       (keys) => host.readCodeStatus?.(keys.map(codeOfKey)) ?? Promise.resolve([]),
@@ -1993,6 +2085,7 @@ export function CanvasBoard({
       data-card-names={settings.cardNames}
       data-walkable={steps.length > 0 || undefined}
       data-walking={active !== null || undefined}
+      data-peeking={peeked !== null || undefined}
       role="group"
       aria-label={label}
       {...interactive}
@@ -2018,7 +2111,12 @@ export function CanvasBoard({
               // oxlint-disable-next-line react/no-array-index-key -- a step is its place in the story; frames hold no state
               key={index}
               frame={each.frame}
-              lit={active === null ? undefined : index === step}
+              index={index}
+              label={each.label}
+              lit={shines === null ? undefined : index === (step ?? peekIndex)}
+              open={openFrame === index}
+              onOpen={onFrame}
+              onPeek={setHovered}
             />
           ))}
           <svg className="cv-edges" aria-hidden="true" width="1" height="1">
@@ -2028,7 +2126,7 @@ export function CanvasBoard({
                 shape={shape}
                 selected={shape.edge.id === selection.arrow}
                 mark={marks.arrows[shape.edge.id]}
-                lit={active === null ? undefined : active.arrows.has(shape.edge.id)}
+                lit={shines === null ? undefined : shines.arrows.has(shape.edge.id)}
               />
             ))}
           </svg>
@@ -2040,7 +2138,7 @@ export function CanvasBoard({
                     key={edge.id}
                     edge={edge}
                     at={labelAt}
-                    lit={active === null ? undefined : active.arrows.has(edge.id)}
+                    lit={shines === null ? undefined : shines.arrows.has(edge.id)}
                   />,
                 ],
           )}
@@ -2065,7 +2163,7 @@ export function CanvasBoard({
               }
               editable={editable}
               raised={raised.get(node.id)}
-              lit={active === null ? undefined : active.cards.has(node.id)}
+              lit={shines === null ? undefined : shines.cards.has(node.id)}
               from={dockedLabel(active, node.id)}
             />
           ))}
