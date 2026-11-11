@@ -444,9 +444,6 @@ export function layerWithRegistry<Error>(
       ),
     ),
   );
-  const layerRunFinalizationServiceProvided = RunFinalizationService.layer.pipe(
-    Layer.provide(Layer.merge(layerCheckpointCaptureServiceProvided, layerStores)),
-  );
   const layerThreadTitleRegenerationTest = Layer.succeed(
     ThreadTitleRegenerationService.ThreadTitleRegenerationService,
     ThreadTitleRegenerationService.ThreadTitleRegenerationService.of({
@@ -485,6 +482,15 @@ export function layerWithRegistry<Error>(
       });
     }),
   ).pipe(Layer.provide(layerOrchestratorProvided));
+  const layerRunFinalizationServiceProvided = RunFinalizationService.layer.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        layerCheckpointCaptureServiceProvided,
+        layerStores,
+        layerThreadManagementProvided,
+      ),
+    ),
+  );
   const layerContinuationWorkerProvided =
     options.runContinuationWorker === true
       ? ProviderContinuationService.layer.pipe(

@@ -4,7 +4,14 @@
  * saves onto that thread's change request and gets no checkouts of its own.
  * @module ThreadWikiCheckouts
  */
-import { type ProjectId, ThreadId, WikiError, WikiId } from "@t3tools/contracts";
+import { BASE_SYNTAX_REMINDER, documentBaseCheck, isBaseFile } from "@mercurian/wiki";
+import {
+  type ProjectId,
+  ThreadId,
+  type WikiAmendResult,
+  WikiError,
+  WikiId,
+} from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -28,6 +35,31 @@ export const checkoutOwner = (
     return undefined;
   return { threadId: ThreadId.make(threadId), wikiId: WikiId.make(wikiId) };
 };
+
+/** A base a turn saved that doesn't work as written. */
+export interface BrokenBase {
+  readonly wiki: string;
+  /** Its path in the wiki. */
+  readonly file: string;
+  /** Where it sits in the checkout. */
+  readonly path: string;
+  readonly problems: ReadonlyArray<string>;
+}
+
+/** What the app tells the agent whose turn left bases broken. */
+export function brokenBasesMessage(bases: ReadonlyArray<BrokenBase>): string {
+  const one = bases.length === 1;
+  return [
+    `Astrolabe checked the bases your last turn changed, and ${one ? "one doesn't" : `${bases.length} don't`} work as written.`,
+    ...bases.map(({ wiki, file, path, problems }) =>
+      [`${file} in the ${wiki} wiki (${path}):`, ...problems.map((problem) => `- ${problem}`)].join(
+        "\n",
+      ),
+    ),
+    `How a base is written:\n${BASE_SYNTAX_REMINDER}`,
+    `Fix ${one ? "it" : "them"}, then run ${one ? "it" : "each"} with astrolabe_wiki_query to check what it lists.`,
+  ].join("\n\n");
+}
 
 export class ThreadWikiCheckouts extends Context.Service<
   ThreadWikiCheckouts,
@@ -58,7 +90,8 @@ export class ThreadWikiCheckouts extends Context.Service<
     /**
      * Saves each checkout's edits as one amendment by `author`, then drops checkouts of wikis
      * no longer linked; a thread working in a checkout saves that one onto its owner's change
-     * request. Failures are logged, never raised.
+     * request. Returns the bases saved that don't work as written. Failures are logged, never
+     * raised.
      */
     readonly saveTurn: (input: {
       readonly threadId: ThreadId;
@@ -66,7 +99,7 @@ export class ThreadWikiCheckouts extends Context.Service<
       readonly worktreePath: string | null;
       readonly title: string;
       readonly author: WikiService.WikiAuthor;
-    }) => Effect.Effect<void>;
+    }) => Effect.Effect<ReadonlyArray<BrokenBase>>;
     /** Removes every checkout the thread has. */
     readonly removeThread: (threadId: ThreadId) => Effect.Effect<void>;
   }
@@ -158,17 +191,48 @@ const make = Effect.gen(function* () {
     );
   };
 
+  /** The bases an amendment changed that don't work as written, read from the saved checkout. */
+  const brokenBases = Effect.fn("ThreadWikiCheckouts.brokenBases")(function* (
+    wikiId: WikiId,
+    folder: string,
+    saved: WikiAmendResult | null,
+  ) {
+    const files = (
+      saved?.changeRequest.amendments.find(({ amendment }) => amendment === saved.amendment)
+        ?.files ?? []
+    ).filter((file) => isBaseFile(file) || file.endsWith(".md"));
+    const broken = yield* Effect.forEach(files, (file) => {
+      const at = path.join(folder, file);
+      return fileSystem.readFileString(at).pipe(
+        Effect.map((source) => {
+          const { errors, warnings } = documentBaseCheck(file, source);
+          const problems = [...errors, ...warnings];
+          return problems.length ? [{ file, path: at, problems }] : [];
+        }),
+        // A file the turn deleted holds no base.
+        Effect.orElseSucceed(() => []),
+      );
+    });
+    if (broken.flat().length === 0) return [];
+    const wiki = yield* wikis.get(wikiId).pipe(
+      Effect.map(({ name }) => name),
+      Effect.orElseSucceed(() => wikiId),
+    );
+    return broken.flat().map((base): BrokenBase => ({ wiki, ...base }));
+  });
+
   const saveTurn: ThreadWikiCheckouts["Service"]["saveTurn"] = Effect.fn(
     "ThreadWikiCheckouts.saveTurn",
   )(function* (input) {
     const owner = workingIn(input.threadId, input.worktreePath);
     if (owner !== undefined) {
-      yield* wikis
+      const folder = path.join(threadFolder(owner.threadId), owner.wikiId);
+      const saved = yield* wikis
         .saveThreadCheckout(
           {
             wikiId: owner.wikiId,
             threadId: owner.threadId,
-            folder: path.join(threadFolder(owner.threadId), owner.wikiId),
+            folder,
             title: input.title,
             message: input.title,
           },
@@ -180,40 +244,45 @@ const make = Effect.gen(function* () {
               ...owner,
               childThreadId: input.threadId,
               cause,
-            }),
+            }).pipe(Effect.as(null)),
           ),
         );
-      return;
+      return yield* brokenBases(owner.wikiId, folder, saved);
     }
     const folders = yield* checkedOut(input.threadId);
-    if (folders.length === 0) return;
+    if (folders.length === 0) return [];
     const linked = yield* wikis.linkedTo(input.projectId).pipe(Effect.option);
+    const broken: BrokenBase[] = [];
     for (const wikiId of folders) {
+      const folder = path.join(threadFolder(input.threadId), wikiId);
       const saved = yield* wikis
         .saveThreadCheckout(
           {
             wikiId,
             threadId: input.threadId,
-            folder: path.join(threadFolder(input.threadId), wikiId),
+            folder,
             title: input.title,
             message: input.title,
           },
           input.author,
         )
         .pipe(
-          Effect.as(true),
+          Effect.map((result) => ({ result })),
           Effect.catch((cause) =>
             Effect.logWarning("Could not save a turn's wiki edits.", {
               wikiId,
               threadId: input.threadId,
               cause,
-            }).pipe(Effect.as(false)),
+            }).pipe(Effect.as(undefined)),
           ),
         );
-      if (saved && linked._tag === "Some" && !linked.value.includes(wikiId)) {
+      if (saved === undefined) continue;
+      broken.push(...(yield* brokenBases(wikiId, folder, saved.result)));
+      if (linked._tag === "Some" && !linked.value.includes(wikiId)) {
         yield* remove(input.threadId, wikiId);
       }
     }
+    return broken;
   });
 
   const removeThread: ThreadWikiCheckouts["Service"]["removeThread"] = Effect.fn(

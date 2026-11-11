@@ -1985,7 +1985,7 @@ it.effect("a child working in a thread's checkout saves onto that thread's chang
 
       // The child's turn ends after its parent's: it saves the folder itself.
       yield* write(folder, { "Beta.md": "# Beta\n\nBy the child.\n" });
-      yield* turn(child, "child-model");
+      assert.deepEqual(yield* turn(child, "child-model"), []);
       const saved = yield* amendments;
       assert.deepEqual(
         saved.map((amendment) => amendment.actor),
@@ -2005,6 +2005,17 @@ it.effect("a child working in a thread's checkout saves onto that thread's chang
       assert.equal((yield* amendments).length, 2);
       assert.isFalse(yield* fileSystem.exists(path.join(stateDir, "wiki-checkouts", child)));
       assert.notInclude(yield* git(root, ["worktree", "list"]), child);
+
+      // A base the child's turn breaks comes back to the child's turn, where the edit was made.
+      yield* write(folder, { "Projects.base": "views:\n  - type: table\n    columns: [x]\n" });
+      assert.deepEqual(yield* turn(child, "child-model"), [
+        {
+          wiki: summary.name,
+          file: "Projects.base",
+          path: path.join(folder, "Projects.base"),
+          problems: ["views[0].columns is not a view key and is ignored; did you mean order?"],
+        },
+      ]);
     }).pipe(Effect.provide(ThreadWikiCheckouts.layer)),
   ),
 );
