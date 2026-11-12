@@ -79,7 +79,8 @@ function cardLines(node: CanvasNode): string[] {
   switch (node.type) {
     case "text": {
       const [first = "", ...rest] = node.text.split("\n");
-      return [`${tag} ${first}`, ...rest.map((line) => `  ${line}`)];
+      const shape = node.astrolabe?.shape === undefined ? "" : ` (${node.astrolabe.shape})`;
+      return [`${tag}${shape} ${first}`, ...rest.map((line) => `  ${line}`)];
     }
     case "file":
       return [`${tag} File: ${node.file}${node.subpath ?? ""}`];
@@ -116,6 +117,10 @@ export function canvasOutline(file: string, data: CanvasData): string {
   const lines = [
     `${file}: ${cards.length} ${cards.length === 1 ? "card" : "cards"}, ${groups.length} ${groups.length === 1 ? "group" : "groups"}, ${data.edges.length} ${data.edges.length === 1 ? "arrow" : "arrows"}.`,
   ];
+  const drawings = data.drawings?.length ?? 0;
+  if (drawings > 0) {
+    lines.push(`${drawings} hand ${drawings === 1 ? "drawing" : "drawings"}, not listed.`);
+  }
   for (const card of loose.slice().sort(readingOrder)) lines.push(...cardLines(card));
   for (const group of groups.slice().sort(readingOrder)) {
     lines.push("", `Group [${group.id}] ${groupTitle(group)}`);

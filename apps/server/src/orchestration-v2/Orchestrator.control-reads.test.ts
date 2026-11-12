@@ -1677,6 +1677,10 @@ it.effect(
               op: "set-stories",
               stories: [{ title: "Walk", steps: [{ note: "A", cards: ["a"] }] }],
             },
+            {
+              op: "put-drawing",
+              drawing: { id: "s", type: "stroke", x: 10, y: 20, points: [0, 0, 30, 4] },
+            },
           ],
         });
       yield* edit("first", turnItemId);
@@ -1688,7 +1692,10 @@ it.effect(
       assert.deepStrictEqual(edited?.type === "canvas" ? edited.document : null, {
         nodes: [{ id: "a", type: "text", text: "A", x: 300, y: 80, width: 180, height: 60 }],
         edges: [],
-        astrolabe: { stories: [{ title: "Walk", steps: [{ note: "A", cards: ["a"] }] }] },
+        astrolabe: {
+          stories: [{ title: "Walk", steps: [{ note: "A", cards: ["a"] }] }],
+          drawings: [{ id: "s", type: "stroke", x: 10, y: 20, points: [0, 0, 30, 4] }],
+        },
       });
       assert.isTrue(edited?.type === "canvas" && edited.editedAt !== undefined);
       const refused = yield* edit("missing", TurnItemId.make("turn-item:missing")).pipe(

@@ -2,7 +2,14 @@
 import * as NodeFS from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
 
-import { canvasData, parseCanvas, serializeCanvas, type CanvasBounds } from "./canvas.ts";
+import {
+  canvasBounds,
+  canvasData,
+  canvasInkEnd,
+  parseCanvas,
+  serializeCanvas,
+  type CanvasBounds,
+} from "./canvas.ts";
 import {
   applyCanvasEdits,
   applyCanvasHandEdits,
@@ -451,17 +458,24 @@ describe("a person's edits", () => {
   };
   const applyInverse = (document: unknown, inverse: ReadonlyArray<CanvasHandEdit>) =>
     serializeCanvas(applyCanvasHandEdits(document, inverse).document);
-  const SURVIVORS = board(
-    [
+  const SURVIVORS = serializeCanvas({
+    nodes: [
       card("a", 0.5, 10, { future: { kept: true } }),
       { id: "strange", type: "hologram", x: 5, y: 5, width: 10, height: 10, depth: 3 },
       card("b", 300, 0),
     ],
-    [
+    edges: [
       { id: "e1", fromNode: "a", toNode: "b", style: "dashed" },
       { id: "e2", fromNode: "a", toNode: "gone" },
     ],
-  );
+    astrolabe: {
+      drawings: [
+        { id: "s1", type: "stroke", x: 10, y: 10, points: [0, 0, 5, 5], pressure: [1] },
+        { id: "comet", type: "comet", tail: 3 },
+        { id: "f1", type: "arrow", from: { x: 0, y: 400 }, to: { node: "a", side: "bottom" } },
+      ],
+    },
+  });
 
   it.each<[string, ReadonlyArray<CanvasHandEdit>]>([
     ["a move", [{ op: "move", card: "a", x: 20, y: 40 }]],
@@ -482,6 +496,24 @@ describe("a person's edits", () => {
       [
         { op: "remove-card", card: "a" },
         { op: "remove-card", card: "b" },
+      ],
+    ],
+    [
+      "a new drawing",
+      [{ op: "put-drawing", drawing: { id: "s2", type: "stroke", x: 0, y: 0, points: [0, 0] } }],
+    ],
+    ["a drawing moved", [{ op: "set-drawing", drawing: "s1", keys: { x: 40, y: 50 } }]],
+    [
+      "an arrow's end re-ended and coloured",
+      [{ op: "set-drawing", drawing: "f1", keys: { to: { x: 9, y: 9 }, color: "2" } }],
+    ],
+    ["a drawing's removal", [{ op: "remove-drawing", drawing: "s1" }]],
+    [
+      "every drawing removed",
+      [
+        { op: "remove-drawing", drawing: "s1" },
+        { op: "remove-drawing", drawing: "comet" },
+        { op: "remove-drawing", drawing: "f1" },
       ],
     ],
   ])("%s undoes back to the same bytes, unknowns and all", (_name, edits) => {
@@ -563,6 +595,30 @@ describe("a person's edits", () => {
   it("removes an arrow with its card, and only that one", () => {
     const { source } = apply(SURVIVORS, [{ op: "remove-card", card: "b" }]);
     expect(read(source).data.edges.map((edge) => edge.id)).toEqual(["e2"]);
+    const { data } = read(apply(SURVIVORS, [{ op: "remove-card", card: "a" }]).source);
+    expect(data.drawings?.map((ink) => ink.id)).toEqual(["s1"]);
+  });
+
+  it("keeps a drawing it doesn't know through a save, and draws an arrow's end on its card", () => {
+    const { source } = apply(SURVIVORS, [
+      { op: "move", card: "a", x: 100, y: 200 },
+      { op: "set-drawing", drawing: "s1", keys: { x: 0, y: 0 } },
+      { op: "put-drawing", drawing: { id: "s1", type: "stroke", x: 1, y: 1, points: [0, 0] } },
+    ]);
+    const { document, data } = read(source);
+    expect((document as { astrolabe: { drawings: unknown[] } }).astrolabe.drawings[1]).toEqual({
+      id: "comet",
+      type: "comet",
+      tail: 3,
+    });
+    // A stroke's points are scalars, so they stay on one line however many there are.
+    expect(source).toContain('\t\t\t\t"points":[0,0]\n');
+    const arrow = data.drawings?.find((ink) => ink.id === "f1");
+    if (arrow?.type !== "arrow") throw new Error("f1 isn't an arrow");
+    const nodes = new Map(data.nodes.map((node) => [node.id, node]));
+    // The card moved to (100, 200) and is 200 by 100: its bottom's middle is where the arrow ends.
+    expect(canvasInkEnd(arrow.to, nodes)).toEqual({ x: 200, y: 300 });
+    expect(canvasBounds(data)).toMatchObject({ x: 0, y: 0, height: 400 });
   });
 
   it("refuses a list that mixes a person's edits with an agent's", () => {

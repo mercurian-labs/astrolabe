@@ -19,9 +19,13 @@ interface CanvasNodeBase {
   readonly color?: string;
 }
 
+/** A text card's outline other than the rectangle, which other apps draw it as. */
+export type CanvasShape = "ellipse" | "diamond";
+
 export interface CanvasTextNode extends CanvasNodeBase {
   readonly type: "text";
   readonly text: string;
+  readonly astrolabe?: { readonly shape?: CanvasShape };
 }
 
 /** Code a link card cites. Kept beside `url` so the card still works away from the product. */
@@ -88,6 +92,37 @@ export interface CanvasEdge {
   readonly label?: string;
 }
 
+/** One end of a hand-drawn arrow: a point on the board, or a node's side, which it follows. */
+export type CanvasInkEnd =
+  | { readonly x: number; readonly y: number }
+  | { readonly node: string; readonly side: CanvasSide };
+
+/** A long scribble simplifies to a few hundred; the board simplifies harder past this. */
+export const CANVAS_MAX_STROKE_POINTS = 1_000;
+
+/** A freehand line. `points` are x, y pairs from `x`, `y`, so moving it moves only those two. */
+export interface CanvasInkStroke {
+  readonly id: string;
+  readonly type: "stroke";
+  readonly x: number;
+  readonly y: number;
+  readonly points: ReadonlyArray<number>;
+  readonly color?: string;
+}
+
+/** An arrow with an end that isn't on a node; one with both on nodes is an edge. */
+export interface CanvasInkArrow {
+  readonly id: string;
+  readonly type: "arrow";
+  readonly from: CanvasInkEnd;
+  readonly to: CanvasInkEnd;
+  readonly color?: string;
+  readonly label?: string;
+}
+
+/** What a person drew by hand, which JSON Canvas has no node for. */
+export type CanvasInk = CanvasInkStroke | CanvasInkArrow;
+
 /** What a board draws. A file's exact contents live in the document `parseCanvas` returns. */
 export interface CanvasData {
   /** Earlier nodes draw beneath later ones. */
@@ -95,6 +130,8 @@ export interface CanvasData {
   readonly edges: ReadonlyArray<CanvasEdge>;
   /** Kept at the file's top level, under `astrolabe`, which Obsidian writes back untouched. */
   readonly stories?: ReadonlyArray<CanvasStory>;
+  /** Under `astrolabe` too, as `drawings`; above the cards, in the file's order. */
+  readonly drawings?: ReadonlyArray<CanvasInk>;
 }
 
 export interface CanvasBounds {
@@ -104,11 +141,13 @@ export interface CanvasBounds {
   readonly height: number;
 }
 
-/** What a board covers: its cards and groups, and the row its lanes' steps are named in. */
+/** What a board covers: its cards and groups, its drawings, and its lanes' step names. */
 export function canvasBounds(
-  data: Pick<CanvasData, "nodes"> & Pick<Partial<CanvasData>, "stories">,
+  data: Pick<CanvasData, "nodes"> & Pick<Partial<CanvasData>, "stories" | "drawings">,
 ): CanvasBounds {
-  if (data.nodes.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
+  const nodes = new Map(data.nodes.map((node) => [node.id, node]));
+  const drawn = (data.drawings ?? []).flatMap((ink) => canvasInkBounds(ink, nodes) ?? []);
+  if (data.nodes.length === 0 && drawn.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
   let left = Infinity;
   let top = Infinity;
   let right = -Infinity;
@@ -116,13 +155,61 @@ export function canvasBounds(
   const headings = (data.stories ?? []).flatMap((story) =>
     story.steps.flatMap((step) => (step.heading === undefined ? [] : [step.heading])),
   );
-  for (const node of [...data.nodes, ...headings]) {
+  for (const node of [...data.nodes, ...headings, ...drawn]) {
     left = Math.min(left, node.x);
     top = Math.min(top, node.y);
     right = Math.max(right, node.x + node.width);
     bottom = Math.max(bottom, node.y + node.height);
   }
   return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
+const sideMiddle = (node: CanvasBounds, side: CanvasSide) => {
+  switch (side) {
+    case "top":
+      return { x: node.x + node.width / 2, y: node.y };
+    case "right":
+      return { x: node.x + node.width, y: node.y + node.height / 2 };
+    case "bottom":
+      return { x: node.x + node.width / 2, y: node.y + node.height };
+    case "left":
+      return { x: node.x, y: node.y + node.height / 2 };
+  }
+};
+
+/** Where an arrow's end is now; none when the node it was on is gone. */
+export function canvasInkEnd(
+  end: CanvasInkEnd,
+  nodes: ReadonlyMap<string, CanvasBounds>,
+): { readonly x: number; readonly y: number } | undefined {
+  if (!("node" in end)) return end;
+  const node = nodes.get(end.node);
+  return node === undefined ? undefined : sideMiddle(node, end.side);
+}
+
+/** What a drawing covers; none for an arrow whose node is gone, which isn't drawn. */
+export function canvasInkBounds(
+  ink: CanvasInk,
+  nodes: ReadonlyMap<string, CanvasBounds>,
+): CanvasBounds | undefined {
+  const xs: number[] = [];
+  const ys: number[] = [];
+  if (ink.type === "stroke") {
+    for (let at = 0; at + 1 < ink.points.length; at += 2) {
+      xs.push(ink.x + ink.points[at]!);
+      ys.push(ink.y + ink.points[at + 1]!);
+    }
+  } else {
+    const from = canvasInkEnd(ink.from, nodes);
+    const to = canvasInkEnd(ink.to, nodes);
+    if (from === undefined || to === undefined) return undefined;
+    xs.push(from.x, to.x);
+    ys.push(from.y, to.y);
+  }
+  if (xs.length === 0) return undefined;
+  const x = Math.min(...xs);
+  const y = Math.min(...ys);
+  return { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y };
 }
 
 export const isCanvasFile = (file: string): boolean => /\.canvas$/i.test(file);
@@ -385,6 +472,45 @@ function canvasStories(astrolabe: unknown): ReadonlyArray<CanvasStory> {
   });
 }
 
+const shapeOf = (astrolabe: unknown): CanvasShape | undefined =>
+  isRecord(astrolabe) && (astrolabe.shape === "ellipse" || astrolabe.shape === "diamond")
+    ? astrolabe.shape
+    : undefined;
+
+function inkEnd(value: unknown): CanvasInkEnd | undefined {
+  if (!isRecord(value)) return undefined;
+  const at = side(value.side);
+  if (typeof value.node === "string" && at !== undefined) return { node: value.node, side: at };
+  return finite(value.x) && finite(value.y) ? { x: value.x, y: value.y } : undefined;
+}
+
+/** A drawing as drawn; none for a kind this version doesn't know, which the file keeps. */
+function canvasInk(raw: Record<string, unknown>, id: string): CanvasInk | undefined {
+  const color = text(raw.color);
+  const colored = color === undefined ? {} : { color };
+  if (raw.type === "stroke") {
+    const { points } = raw;
+    if (!finite(raw.x) || !finite(raw.y) || !Array.isArray(points)) return undefined;
+    if (points.length < 2 || points.length % 2 !== 0 || !points.every(finite)) return undefined;
+    return { id, type: "stroke", x: raw.x, y: raw.y, points: points as number[], ...colored };
+  }
+  if (raw.type === "arrow") {
+    const from = inkEnd(raw.from);
+    const to = inkEnd(raw.to);
+    if (from === undefined || to === undefined) return undefined;
+    const label = text(raw.label);
+    return {
+      id,
+      type: "arrow",
+      from,
+      to,
+      ...colored,
+      ...(label === undefined ? {} : { label }),
+    };
+  }
+  return undefined;
+}
+
 /** The card a node draws as; none for a type this version doesn't know, which Obsidian skips too. */
 function canvasNode(raw: Record<string, unknown>, id: string): CanvasNode | undefined {
   const color = text(raw.color);
@@ -397,8 +523,15 @@ function canvasNode(raw: Record<string, unknown>, id: string): CanvasNode | unde
     ...(color === undefined ? {} : { color }),
   };
   switch (raw.type) {
-    case "text":
-      return { ...base, type: "text", text: text(raw.text) ?? "" };
+    case "text": {
+      const shape = shapeOf(raw.astrolabe);
+      return {
+        ...base,
+        type: "text",
+        text: text(raw.text) ?? "",
+        ...(shape === undefined ? {} : { astrolabe: { shape } }),
+      };
+    }
     case "file": {
       const subpath = text(raw.subpath);
       return {
@@ -494,21 +627,31 @@ const drawn = <A>(
 export function canvasData(document: unknown): CanvasData {
   if (!isRecord(document)) return { nodes: [], edges: [] };
   const stories = canvasStories(document.astrolabe);
+  const drawings = isRecord(document.astrolabe)
+    ? drawn(document.astrolabe.drawings, "drawing", canvasInk)
+    : [];
   return {
     nodes: drawn(document.nodes, "node", canvasNode),
     edges: drawn(document.edges, "edge", canvasEdge),
     ...(stories.length === 0 ? {} : { stories }),
+    ...(drawings.length === 0 ? {} : { drawings }),
   };
 }
 
 /** A board as a file holds it, which `canvasData` reads back. */
-export const canvasDocument = (data: CanvasData) => ({
-  nodes: data.nodes,
-  edges: data.edges,
-  ...(data.stories === undefined || data.stories.length === 0
-    ? {}
-    : { astrolabe: { stories: data.stories } }),
-});
+export const canvasDocument = (data: CanvasData) => {
+  const astrolabe = {
+    ...(data.stories === undefined || data.stories.length === 0 ? {} : { stories: data.stories }),
+    ...(data.drawings === undefined || data.drawings.length === 0
+      ? {}
+      : { drawings: data.drawings }),
+  };
+  return {
+    nodes: data.nodes,
+    edges: data.edges,
+    ...(Object.keys(astrolabe).length === 0 ? {} : { astrolabe }),
+  };
+};
 
 export type ParsedCanvas =
   | {

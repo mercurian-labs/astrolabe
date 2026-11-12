@@ -8,6 +8,11 @@ const CANVAS_SHOW_MAX_CARDS = 200;
 const CANVAS_MAX_EDITS = 500;
 /** Selecting a whole board and nudging it is one edit per card. */
 const CANVAS_MAX_HAND_EDITS = 50_000;
+/**
+ * `CANVAS_MAX_STROKE_POINTS` and `CANVAS_MAX_DRAWINGS` in `@mercurian/wiki`, which this package
+ * can't import: the board simplifies a stroke to fit, and only the whole file counts drawings.
+ */
+const CANVAS_MAX_STROKE_POINTS = 1_000;
 
 export const CanvasShowColor = Schema.Literals([
   "red",
@@ -202,6 +207,13 @@ export type CanvasAgentEdit = typeof CanvasAgentEdit.Type;
 
 const JsonKeys = Schema.Record(Schema.String, Schema.Unknown);
 const point = { x: Schema.Finite, y: Schema.Finite };
+/** x, y pairs: a drawing's other keys are whatever the file holds, unknown kinds included. */
+const strokePoints = {
+  points: Schema.optional(
+    Schema.Array(Schema.Finite).check(Schema.isMaxLength(CANVAS_MAX_STROKE_POINTS * 2)),
+  ),
+};
+const DrawingKeys = Schema.StructWithRest(Schema.Struct(strokePoints), [JsonKeys]);
 
 /** A person's edits: they place cards by hand, by id. A list holds these or an agent's, not both. */
 const CanvasHandEdits = [
@@ -233,6 +245,15 @@ const CanvasHandEdits = [
   }),
   Schema.Struct({ op: Schema.Literal("remove-arrow"), arrow: Schema.String }),
   Schema.Struct({ op: Schema.Literal("set-stories"), stories: Schema.Array(Schema.Unknown) }),
+  Schema.Struct({
+    op: Schema.Literal("put-drawing"),
+    drawing: Schema.StructWithRest(Schema.Struct({ id: Schema.String, ...strokePoints }), [
+      JsonKeys,
+    ]),
+    at: Schema.optional(Schema.Int),
+  }),
+  Schema.Struct({ op: Schema.Literal("set-drawing"), drawing: Schema.String, keys: DrawingKeys }),
+  Schema.Struct({ op: Schema.Literal("remove-drawing"), drawing: Schema.String }),
 ] as const;
 
 /** A person's edit to a board, replayed by id on whatever the board holds by then. */

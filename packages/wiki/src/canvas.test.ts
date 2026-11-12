@@ -334,10 +334,23 @@ describe("canvasOutline", () => {
         width: 50,
         height: 50,
       },
-      { id: "c", type: "text", text: "half out", x: 480, y: 0, width: 50, height: 50 },
+      {
+        id: "c",
+        type: "text",
+        text: "half out",
+        x: 480,
+        y: 0,
+        width: 50,
+        height: 50,
+        astrolabe: { shape: "ellipse" },
+      },
     ],
     edges: [{ id: "e", fromNode: "a", toNode: "b", label: "uses", fromEnd: "arrow" }],
     astrolabe: {
+      drawings: [
+        { id: "s", type: "stroke", x: 0, y: 0, points: [0, 0, 10, 10] },
+        { id: "f", type: "arrow", from: { x: 0, y: 0 }, to: { node: "a", side: "top" } },
+      ],
       stories: [
         {
           title: "Tour",
@@ -354,7 +367,8 @@ describe("canvasOutline", () => {
     expect(canvasOutline("Board.canvas", data)).toBe(
       [
         "Board.canvas: 3 cards, 2 groups, 1 arrow.",
-        "[c] half out",
+        "2 hand drawings, not listed.",
+        "[c] (ellipse) half out",
         "",
         "Group [outer] Outer",
         "[b] File: Note.md#Top",

@@ -132,7 +132,19 @@ export type CanvasHandEdit =
     }
   | { readonly op: "remove-arrow"; readonly arrow: string }
   /** The board's stories, whole, as the file holds them; none removes them. */
-  | { readonly op: "set-stories"; readonly stories: ReadonlyArray<unknown> };
+  | { readonly op: "set-stories"; readonly stories: ReadonlyArray<unknown> }
+  /** A whole drawing: new, or in place of the one with its id. `at` is its place in the list. */
+  | {
+      readonly op: "put-drawing";
+      readonly drawing: Readonly<Record<string, unknown>>;
+      readonly at?: number | undefined;
+    }
+  | {
+      readonly op: "set-drawing";
+      readonly drawing: string;
+      readonly keys: Readonly<Record<string, unknown>>;
+    }
+  | { readonly op: "remove-drawing"; readonly drawing: string };
 
 export type CanvasEdit = CanvasStructureEdit | CanvasHandEdit;
 
@@ -165,7 +177,13 @@ const HAND_OPS: ReadonlySet<string> = new Set([
   "put-arrow",
   "remove-arrow",
   "set-stories",
+  "put-drawing",
+  "set-drawing",
+  "remove-drawing",
 ]);
+
+/** Past this a board takes no new drawing: each is drawn as it is, with no simple form. */
+export const CANVAS_MAX_DRAWINGS = 2_000;
 
 const isHandEdit = (edit: CanvasEdit): edit is CanvasHandEdit => HAND_OPS.has(edit.op);
 
@@ -245,6 +263,10 @@ function insertedAt(
 }
 
 const idOf = (raw: Readonly<Record<string, unknown>>) => (typeof raw.id === "string" ? raw.id : "");
+
+const anchoredTo = (raw: unknown, node: unknown) =>
+  isRecord(raw) &&
+  [raw.from, raw.to].some((end) => isRecord(end) && end.node !== undefined && end.node === node);
 
 const keyChanges = (raw: Raw, keys: Readonly<Record<string, unknown>>) =>
   Object.fromEntries(Object.keys(keys).map((key) => [key, raw[key] ?? null]));
@@ -334,10 +356,53 @@ export function applyCanvasHandEdits(
   };
 
   let astrolabe = isRecord(document.astrolabe) ? document.astrolabe : undefined;
+  // Read only once an edit is about drawings, so a board without any writes none.
+  const ink: { list: unknown[] | null } = { list: null };
+  const drawingList = () => (ink.list ??= given(astrolabe?.drawings));
+  const drawingAt = (id: string) => placesIn(drawingList(), "drawing").get(id);
+  const removeDrawing = (position: number) => {
+    const list = drawingList();
+    const [raw] = list.splice(position, 1);
+    if (isRecord(raw)) others.push({ op: "put-drawing", drawing: raw, at: position });
+  };
 
   for (let index = 0; index < edits.length;) {
     const edit = edits[index] as CanvasHandEdit;
     switch (edit.op) {
+      case "put-drawing": {
+        const list = drawingList();
+        const id = idOf(edit.drawing);
+        const position = drawingAt(id);
+        if (position !== undefined) {
+          others.push({ op: "put-drawing", drawing: list[position] as Raw });
+          list[position] = edit.drawing;
+        } else if (id !== "" && list.length < CANVAS_MAX_DRAWINGS) {
+          others.push({ op: "remove-drawing", drawing: id });
+          list.splice(Math.min(edit.at ?? list.length, list.length), 0, edit.drawing);
+        }
+        break;
+      }
+      case "set-drawing": {
+        const position = drawingAt(edit.drawing);
+        if (position === undefined) break;
+        const list = drawingList();
+        const before = list[position] as Raw;
+        others.push({
+          op: "set-drawing",
+          drawing: edit.drawing,
+          keys: keyChanges(before, edit.keys),
+        });
+        list[position] = Object.entries(edit.keys).reduce(
+          (raw, [key, value]) => withKey(raw, key, value),
+          before,
+        );
+        break;
+      }
+      case "remove-drawing": {
+        const position = drawingAt(edit.drawing);
+        if (position !== undefined) removeDrawing(position);
+        break;
+      }
       case "set-stories": {
         others.push({ op: "set-stories", stories: given(astrolabe?.stories) });
         const kept = withKey(
@@ -405,6 +470,11 @@ export function applyCanvasHandEdits(
         restored.push({ op: "put-card", node: raw, at: position });
         const stored = raw.id ?? edit.card;
         for (const arrow of arrowIndex().get(stored) ?? []) removeArrow(arrow);
+        // A drawn arrow on it goes too, as its arrows do; from the end, so places hold.
+        const list = astrolabe?.drawings === undefined && ink.list === null ? [] : drawingList();
+        for (let at = list.length - 1; at >= 0; at--) {
+          if (anchoredTo(list[at], stored)) removeDrawing(at);
+        }
         nodes[position] = undefined;
         nodeAt.delete(edit.card);
         break;
@@ -447,6 +517,10 @@ export function applyCanvasHandEdits(
     index += 1;
   }
   closeHoles();
+  if (ink.list !== null) {
+    const kept = withKey(astrolabe ?? {}, "drawings", ink.list.length === 0 ? null : ink.list);
+    astrolabe = Object.keys(kept).length === 0 ? undefined : kept;
+  }
   restored.sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
   const rest = withKey({ ...document, nodes, edges }, "astrolabe", astrolabe ?? null);
   return { document: rest, inverse: [...restored, ...others.reverse()] };
