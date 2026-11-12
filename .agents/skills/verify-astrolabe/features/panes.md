@@ -5,7 +5,8 @@ Agents, Wikis, Projects and Changes share one set of panes (`panes/workspace.ts`
 the panes hold only their starting empty tab, `/wikis`, `/repositories` and `/pull-requests`): chats,
 pull requests, pull requests, change groups, files, diffs, local graphs, project search results,
 problems and places (`repo-search:`, `repo-problems:`, `repo-locations:`), wiki notes and a thread's right-panel surfaces
-(Browser, Terminal, Files, Diff, Pull request, Linked pull requests, Device, Graph, Lineage, Side chat) are
+(Browser, Terminal, Files, Diff, Pull request, Device, Graph, Lineage, Side chat; a Linked pull
+requests tab only when restored from an older layout) are
 all tabs that split right or down. The sidebar section only decides what the sidebar lists. A
 thread's surfaces are tabs linked to its chat (`panes/linkedTabs.ts`): they show only while that
 chat is the one in front, and park, remembering where they stood, while another chat is. Nothing
@@ -30,7 +31,7 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   switch, the ChatView count unchanged, the URL, and the sidebar's lit row.
 
 - **Linked New tab** (the chat header's **New linked tab** `[data-new-linked-tab]`, `t` `n` `tab.newLinked`, or `rightPanel.toggle` with no linked tabs): an empty tab owned by the chat, showing T3 Code's launcher (`[aria-label="Open a surface"]`: Browser `B`,
-  Terminal `T`, Files `F`, Diff `D`, Pull request `P`, Linked pull requests `L`, Device `M`,
+  Terminal `T`, Files `F`, Diff `D`, Pull request `P`, Device `M`,
   Graph `G`, Lineage `I`, and upstream's Side chat `S` where the chat offers side chats; it is
   disabled with "Side chats start after the first message." on a chat with none yet, and a side
   chat cannot start another). Rows without a source are disabled `div`s whose hover says why.
@@ -74,7 +75,10 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   visibility with `getClientRects()`) and showing a 6th chat unmounts the oldest. Every way
   of showing a chat (sidebar click, Option/middle-click, **Open in new tab**, Search, the
   palette, `:b`, a fork, New thread or a draft, a thread link, Lineage, a change group's
-  member row, a deep link, Back/Forward to a thread route) goes through `workspace.ts` `openChat`: a chat open
+  member row, a deep link, Back/Forward to a thread route) goes through `workspace.ts` `openChat`,
+  except a change group's **Add a thread** picks and draft rows, which go through
+  `SectionTabContent.tsx` `showBeside` (the chat in a pane right of the group's, the group left
+  in front of its own; pull-requests.md): a chat open
   anywhere comes forward and its pane takes focus (never a second tab); else a focused
   unowned New tab takes it in place; else it opens in a new tab right after the chat in
   front, in that chat's pane, in front (after the focused pane's tab with no chat in front).
@@ -132,6 +136,10 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   in full) to the group (`owners[key] = change-group:<env>:<id>`), shown while the front chat
   is one of the group's threads and parked otherwise. Beside a chat outside the group they
   stand on their own, together in one new pane beside it. The groups' threads reach the panes through `GroupsSync`.
+  A group's tab also opens by itself, in a new pane right of the focused one or forward where it
+  is open (`openThreadChangeRequests.ts` `showChangeGroupTab`), from a thread's linked pull
+  requests (palette **Show linked pull requests**, the sidebar badge, the automatic open after
+  a turn) and thread details' change group row.
 - **Tab groups** (`panes/tabGroups.tsx`, runs from `panes/tabGroupRuns.ts`): in any
   strip, a change
   group's run of tabs (its chats, wiki pull requests and own tab, pull requests
@@ -331,8 +339,8 @@ and returning shows the first chat's again. After a reload both reads return the
 - Closing a terminal asks first: press `role=button[name='Confirm']`.
 - The launcher's Diff row is a disabled `div`, not a button, outside a git-backed
   server thread; Files needs a project. Pick a seeded thread in a repository.
-- Tab names differ from menu labels: Linked pull requests shows as "Pull requests",
-  a pull request as `#<n>`, a browser by page title or host, terminals as
+- Tab names differ from menu labels: a restored Linked pull requests tab shows as "Pull
+  requests", a pull request as `#<n>`, a browser by page title or host, terminals as
   "Terminal 1".
 - Focus in a terminal keeps Cmd+K for the terminal. Click a non-terminal tab before
   using the keyboard menu (or the leader key; Cmd+K is the default `whichKey.open`).
