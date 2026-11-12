@@ -241,7 +241,7 @@ export type CanvasBoardCommand =
   | "create-group"
   | "help";
 
-/** What a board's page drives from outside, such as Jump to group. */
+/** What a board's page drives from outside, such as Jump to section. */
 export interface CanvasBoardHandle {
   readonly focusCard: (id: string) => void;
   /** Brings a card or arrow into view and selects it, above whatever covers it. */
@@ -843,7 +843,7 @@ function GroupLabelEditor({
     <input
       className="cv-group-label cv-label-editor"
       data-card-editor
-      aria-label="Group label"
+      aria-label="Section label"
       autoFocus
       defaultValue={label}
       onFocus={(event) => event.target.select()}
@@ -2068,7 +2068,7 @@ export function CanvasBoard({
       ...(groups.length > 0
         ? [
             {
-              label: "Jump to group",
+              label: "Jump to section",
               items: groups.map((group) => ({
                 label: group.label,
                 run: () => {
@@ -2653,13 +2653,13 @@ function SelectionToolbar({
       ) : null}
       {count > 1 ? (
         <CanvasToolbarButton
-          label="Create group"
+          label="Create section"
           onClick={() => {
             setPopover(null);
             commands.createGroup({ x: 0, y: 0 });
           }}
         >
-          Group
+          Section
         </CanvasToolbarButton>
       ) : null}
       {count > 1 || group !== undefined ? (

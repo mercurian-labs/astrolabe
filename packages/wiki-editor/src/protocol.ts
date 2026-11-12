@@ -208,7 +208,7 @@ export type WikiEditorCommand =
       readonly requestId: number;
       readonly answer: WikiEditorCanvasAnswer;
     }
-  /** Brings a card or group into view, as Jump to group does; a review's list selects it too. */
+  /** Brings a card or group into view, as Jump to section does; a review's list selects it too. */
   | { readonly type: "focusCard"; readonly id: string; readonly select?: boolean | undefined }
   /** The documents the wiki holds, and the file on the page that links to them. */
   | {

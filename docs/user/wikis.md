@@ -62,9 +62,9 @@ A canvas is a board of cards and arrows, stored as a JSON Canvas `.canvas` file,
 
 To start one, choose **New document**, type a name and pick **New canvas**, or use **New canvas** in the command palette, then choose **Create canvas**. It starts in your draft, at the top of the wiki unless you type a folder before its name. You can also [keep a canvas from a thread](html-renders.md#canvases).
 
-An agent says what goes on a board, and Astrolabe finds the room: nothing already there moves, except that a group can grow to fit a new card. Its changes land on a pull request, never on main. A canvas open in that pull request refreshes as they land, with the camera where you left it. Each changed card highlights once, then keeps its mark until the pull request is merged or closed. On the thread, **Open canvas** beside the agent's step takes you to the board.
+An agent says what goes on a board, and Astrolabe finds the room: nothing already there moves, except that a section can grow to fit a new card. Its changes land on a pull request, never on main. A canvas open in that pull request refreshes as they land, with the camera where you left it. Each changed card highlights once, then keeps its mark until the pull request is merged or closed. On the thread, **Open canvas** beside the agent's step takes you to the board.
 
-Open a canvas like any document. Scroll to pan, hold ⌘ and scroll to zoom, hold Space and drag to pan, ⇧1 fits the board, and ⇧2 zooms to the selection. Far zoomed out, cards show only their names. **Jump to group** lists a canvas's labelled groups, from the board's menu (☰ at its top right) or the command palette. The zoom chip at the bottom right shows the zoom; click it to fit the board, and ⇧0 goes to 100%.
+Open a canvas like any document. Scroll to pan, hold ⌘ and scroll to zoom, hold Space and drag to pan, ⇧1 fits the board, and ⇧2 zooms to the selection. Far zoomed out, cards show only their names. **Jump to section** lists a canvas's labelled sections, from the board's menu (☰ at its top right) or the command palette. The zoom chip at the bottom right shows the zoom; click it to fit the board, and ⇧0 goes to 100%.
 
 Click a card to select it, and its content becomes live: links open, a note scrolls, a web page loads, and media plays. Double-click a file card's name to open the file. A web page that refuses to be framed stays blank on its card, so open it from the link instead.
 
@@ -72,22 +72,22 @@ Click a card to select it, and its content becomes live: links open, a note scro
 
 Edits save by themselves a moment after you stop, into [your draft](#drafts), or into the pull request the canvas is open in. There is no Save. A canvas in a closed pull request, or one you can't write to, only reads, and **Read-only** in the board's menu, or E, turns it on for that board alone. The same menu holds both kinds of snapping and **Keys and help** (?).
 
-- **Tools:** the row at the bottom picks what a drag does: **Hand** (H) pans, **Select** (V) selects and moves, **Card** (C) draws a card, or drops one where you click, **Section** (S) draws a group around cards, and **Arrow** (A) joins the card you drag from to the one you drop on. After one card, group or arrow you're back on Select, as Escape also does. Space-drag pans whatever the tool. **Done** stops editing.
+- **Tools:** the row at the bottom picks what a drag does: **Hand** (H) pans, **Select** (V) selects and moves, **Card** (C) draws a card, or drops one where you click, **Section** (S) draws a section around cards, and **Arrow** (A) joins the card you drag from to the one you drop on. After one card, section or arrow you're back on Select, as Escape also does. Space-drag pans whatever the tool. **Done** stops editing.
 - **Add:** double-click the board for a text card, right-click it, drag Note or Media from the tool row, or paste text, an address or an image. Drop files from your computer, a folder's files with them, or drag documents from the sidebar. A folder dragged from the sidebar adds a card for every file in it, its subfolders' too, up to 200. Dropped and pasted files land where **New files** in **Settings → Wikis** says.
 - **Select and move:** click a card, Shift-click to add, or drag across the board to select everything you touch. Cards snap to a grid of 20 and to the cards near them; hold ⌃ during a drag to turn snapping off, Shift to hold to one direction, and Alt to leave a copy behind. Arrow keys nudge the selection, further with Shift.
 - **Connect:** drag from the dot on a card's side. Drop on another card, or in empty space to make a new one. Drag an arrow to move its nearer end, and double-click it to label it.
 - **Resize:** drag just outside a selected card's edge. Double-click the bottom or right edge to fit its text.
-- **Group:** select cards and choose **Create group**. A group carries whatever sits fully inside it, and you pick it up by its label. An unlabelled group is reached by dragging across it.
+- **Section:** select cards and choose **Create section**, or draw one with the Section tool. A section carries whatever sits fully inside it, and you pick it up by its label. An unlabelled section is reached by dragging across it.
 - **Edit text:** double-click a card, or click a selected one. Escape or clicking away leaves it. A note card edits the note itself.
-- **Stories:** select cards or a group and choose **Step** to add them to the board's story, after the step you're on. While presenting, write each step's label and note in place. **⋯** beside the steps moves or deletes one; beside the story's name it renames or deletes the story.
+- **Stories:** select cards or a section and choose **Step**, or **+ Step** in the tool row, to add them to the board's story, after the step you're on. While presenting, write each step's label and note in place. **⋯** beside the steps moves or deletes one; beside the story's name it renames or deletes the story.
 
-A selected card shows what you can do with it above it, and right-clicking (or ⇧F10) gives the rest: **Align**, **Convert to file…**, **Swap file…**, **Narrow to heading…**, and a group's background. **?** on the board lists the keys. Undo steps back one gesture at a time, through what has already saved, but not through other people's changes. If someone else changes a card while you type in it, the board keeps both versions and says so.
+A selected card shows what you can do with it above it, and right-clicking (or ⇧F10) gives the rest: **Align**, **Convert to file…**, **Swap file…**, **Narrow to heading…**, and a section's background. **?** on the board lists the keys. Undo steps back one gesture at a time, through what has already saved, but not through other people's changes. If someone else changes a card while you type in it, the board keeps both versions and says so.
 
 **Export image…**, in the board's menu or the command palette, saves a PNG on web and desktop. Text cards draw as plain text, and what only a live card can show draws as its name: Mermaid, math, a note's body, a web page, a base, a PDF.
 
 **Settings → Wikis** holds what the wheel does, when card names show, both kinds of snapping, and the zoom at which card content hides. They apply to every board on that computer.
 
-On the phone, drag to pan and pinch to zoom. Tap a card to select it and show its toolbar, tap again to follow a link in it or open a code card, and double-tap to edit. A selected card can be dragged, and shows handles and dots for your finger. Touch and hold a card or the board for its menu, and **Several** in the tool row turns tapping and dragging into selecting several, for **Align** and **Create group**. Tap a selected file card's name to open the file; Back returns to the board. **Jump to group** is in the header. A PDF on a card opens in the app's viewer from its **Open** button, as does audio or video the phone can't play in place, and a link card opens in your browser. The phone doesn't export images or take pasted images.
+On the phone, drag to pan and pinch to zoom. Tap a card to select it and show its toolbar, tap again to follow a link in it or open a code card, and double-tap to edit. A selected card can be dragged, and shows handles and dots for your finger. Touch and hold a card or the board for its menu, and **Several** in the tool row turns tapping and dragging into selecting several, for **Align** and **Create section**. Tap a selected file card's name to open the file; Back returns to the board. **Jump to section** is in the header. A PDF on a card opens in the app's viewer from its **Open** button, as does audio or video the phone can't play in place, and a link card opens in your browser. The phone doesn't export images or take pasted images.
 
 A file card can narrow a note to a heading or block, or pin a base to one view, as in Obsidian. A card linking to code marks when its file has changed or gone at the project's head, and never changes itself.
 
@@ -97,7 +97,7 @@ Merging a pull request merges a canvas card by card, so two people's edits to di
 
 A file card or a link in a text card counts as a backlink, and a link in a text card to something unwritten is a red link. Arrows never count as links. Renaming a note updates the canvases that show it. Link to a canvas with its extension, as `[[Board.canvas]]`: `[[Board]]` doesn't find it. `![[Board.canvas]]` on a line of its own shows a picture of the board, and clicking it opens the canvas.
 
-Agents read a canvas as an outline of its cards, groups and arrows, and their search finds the cards that say something.
+Agents read a canvas as an outline of its cards, sections and arrows, and their search finds the cards that say something.
 
 ## Link types
 

@@ -779,11 +779,11 @@ describe("editing a board", () => {
     await vi.waitFor(() => expect(element("a")).not.toBeNull());
     board().focus();
     await userEvent.keyboard("{Control>}a{/Control}");
-    await userEvent.click(document.querySelector("[aria-label='Create group']")!);
+    await userEvent.click(document.querySelector("[aria-label='Create section']")!);
     await vi.waitFor(() =>
       expect(canvas.getState().data.nodes[2]).toMatchObject({
         type: "group",
-        label: "Untitled group",
+        label: "Untitled section",
         x: 80,
         y: 80,
         width: 540,

@@ -51,7 +51,7 @@ export const linkCard = (
   url: string,
 ): Readonly<Record<string, unknown>> => ({ id, x, y, ...FILE_CARD_SIZE, type: "link", url });
 
-export const UNTITLED_GROUP = "Untitled group";
+export const UNTITLED_GROUP = "Untitled section";
 
 export const groupCard = (id: string, rect: CanvasBounds): Readonly<Record<string, unknown>> => ({
   id,
