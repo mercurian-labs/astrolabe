@@ -4,12 +4,13 @@ import { type ScopedThreadRef, TurnItemId } from "@t3tools/contracts";
 import { MessageSquarePlusIcon } from "lucide-react";
 import type { CanvasBoardHandle } from "@mercurian/wiki-editor/canvas-board";
 import { Suspense, useRef } from "react";
+import { canvasStoryEdit } from "@mercurian/wiki/canvas-edits";
 
 import { TabHeader } from "~/panes/TabHeader";
 
 import { canvasViewsAtom, canvasViewsKey } from "~/state/canvasViews";
 
-import { canvasHost, LazyCanvasBoard, useCanvasEditing } from "./CanvasFrame";
+import { canvasHost, LazyCanvasBoard } from "./CanvasFrame";
 import { CanvasFramePopover } from "./CanvasFramePopover";
 import { CanvasStoryPill, onStepKey } from "./CanvasStoryPill";
 import { KeepCanvasButton } from "./KeepCanvas";
@@ -49,7 +50,8 @@ function CanvasPanelBoard({
   const data = useCanvasDocumentData(canvas, view.data);
   const walk = useCanvasWalk({ title: view.title, data }, { threadId: threadRef.threadId, itemId });
   const board = useRef<CanvasBoardHandle>(null);
-  const editing = useCanvasEditing(canvas, walk);
+  const key = canvasViewsKey(threadRef);
+  const readOnly = useThreadCanvasStore((store) => store.editingByThread[key] !== view.id);
   return (
     <div
       className="flex min-h-0 flex-1 flex-col"
@@ -83,10 +85,27 @@ function CanvasPanelBoard({
             step={walk.step}
             openFrame={walk.frame?.step ?? null}
             onFrame={walk.toggleFrame}
-            {...editing.board}
+            {...(canvas === null
+              ? {}
+              : {
+                  document: canvas,
+                  readOnly,
+                  onReadOnly: (next: boolean) =>
+                    useThreadCanvasStore.getState().setEditing(key, next ? null : view.id),
+                  onStepAdded: (index: number) => {
+                    if (walk.step !== null) walk.go(index);
+                  },
+                })}
             ref={board}
           >
-            <CanvasStoryPill walk={walk} edit={editing.edit} />
+            <CanvasStoryPill
+              walk={walk}
+              edit={
+                canvas === null || readOnly
+                  ? undefined
+                  : (change) => canvas.commit([canvasStoryEdit(canvas.document, change)])
+              }
+            />
           </LazyCanvasBoard>
         </Suspense>
       </div>

@@ -1,4 +1,4 @@
-import { placeCanvas } from "@mercurian/wiki/canvas";
+import { canvasData, canvasDocument, placeCanvas } from "@mercurian/wiki/canvas";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { EnvironmentId, ThreadId, TurnItemId } from "@t3tools/contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
@@ -60,17 +60,32 @@ describe("CanvasFrame", () => {
     await expect.element(screen.getByText("Server")).toBeVisible();
   });
 
-  it("opens the canvas in the thread's right panel", async () => {
+  it("opens the canvas in the thread's right panel, unlocked from its Edit", async () => {
     using open = vi
       .spyOn(useRightPanelStore.getState(), "open")
       .mockImplementation(() => undefined);
+    const board = canvasDocument(view.data);
+    const recorded = {
+      ...view,
+      data: canvasData(board),
+      recorded: { document: board, revision: "1" },
+    };
     await using screen = await render(
-      <CanvasFrame id="item-1" view={view} threadRef={threadRef} source={source} />,
+      <CanvasFrame id="item-1" view={recorded} threadRef={threadRef} source={source} />,
       { router: false }, // The frame reads no route.
     );
+    const key = canvasViewsKey(threadRef);
     await userEvent.click(screen.getByRole("button", { name: `Open ${view.title} in a tab` }));
     expect(open).toHaveBeenCalledExactlyOnceWith(threadRef, "canvas");
-    expect(useThreadCanvasStore.getState().shownByThread[canvasViewsKey(threadRef)]).toBe("item-1");
+    expect(useThreadCanvasStore.getState().shownByThread[key]).toBe("item-1");
+    expect(useThreadCanvasStore.getState().editingByThread[key]).toBeUndefined();
+
+    // The chat card stays read-only: its Edit unlocks the board in the tab instead.
+    await userEvent.click(screen.getByRole("button", { name: "Disable read-only" }));
+    expect(open).toHaveBeenCalledTimes(2);
+    expect(useThreadCanvasStore.getState().editingByThread[key]).toBe("item-1");
+    await expect.element(screen.getByRole("button", { name: "Disable read-only" })).toBeVisible();
+    useThreadCanvasStore.getState().setEditing(key, null);
   });
 
   it("asks about the whole board, or about the step on screen", async () => {

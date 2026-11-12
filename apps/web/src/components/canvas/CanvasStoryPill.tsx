@@ -60,7 +60,10 @@ const onFullscreenChange = (done: () => void) => {
 const NOTE_CLASS =
   "max-w-xl rounded-lg border border-border bg-popover text-sm text-popover-foreground shadow-lg";
 
-/** A step's label and note, written in place; they save as focus leaves them. */
+/**
+ * A step's label and note, written in place; they save as focus leaves them. It stays one line until
+ * it's written in, so the board shows under it.
+ */
 function StepNoteEditor({
   label,
   note,
@@ -71,18 +74,40 @@ function StepNoteEditor({
   readonly onSave: (change: { readonly label: string; readonly note: string }) => void;
 }) {
   const [draft, setDraft] = useState({ label: label ?? "", note });
+  const [open, setOpen] = useState(false);
   const save = () => {
     if (draft.label !== (label ?? "") || draft.note !== note) onSave(draft);
   };
+  if (!open) {
+    return (
+      <button
+        type="button"
+        aria-label="Edit this step's note"
+        className={`${NOTE_CLASS} flex min-w-0 cursor-text items-baseline gap-1.5 px-3 py-1.5 text-left`}
+        onClick={() => setOpen(true)}
+        onFocus={() => setOpen(true)}
+      >
+        {draft.label === "" ? null : (
+          <span className="max-w-[40%] shrink-0 truncate font-medium">{draft.label}</span>
+        )}
+        <span className="min-w-0 truncate text-muted-foreground">
+          {draft.note === "" ? "What this step says" : draft.note}
+        </span>
+      </button>
+    );
+  }
   return (
     <div
       className={`${NOTE_CLASS} flex w-full flex-col gap-1.5 p-2`}
       onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) save();
+        if (event.currentTarget.contains(event.relatedTarget)) return;
+        save();
+        setOpen(false);
       }}
     >
       <Input
         size="sm"
+        autoFocus
         aria-label="Step label"
         placeholder="Label"
         value={draft.label}
@@ -98,6 +123,24 @@ function StepNoteEditor({
         value={draft.note}
         onChange={(event) => setDraft({ ...draft, note: event.target.value })}
       />
+    </div>
+  );
+}
+
+/** A step's note as it reads; on a small board it keeps to two lines until it's clicked open. */
+function StepNote({ label, note }: { readonly label: string | undefined; readonly note: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={`${NOTE_CLASS} px-3 py-2`} aria-live="polite">
+      <button
+        type="button"
+        aria-expanded={open}
+        className={`w-full cursor-default text-left text-pretty ${open ? "" : "@max-[360px]:line-clamp-2 @max-[360px]:cursor-pointer [@container(max-height:420px)]:line-clamp-2 [@container(max-height:420px)]:cursor-pointer"}`}
+        onClick={() => setOpen(!open)}
+      >
+        {label === undefined ? null : <span className="font-medium">{label}. </span>}
+        {note}
+      </button>
     </div>
   );
 }
@@ -170,12 +213,7 @@ export function CanvasStoryPill({
               onSave={(change) => edit({ kind: "edit-step", story, step, ...change })}
             />
           ) : (
-            <p className={`${NOTE_CLASS} px-3 py-2 text-pretty`} aria-live="polite">
-              {current.label === undefined ? null : (
-                <span className="font-medium">{current.label}. </span>
-              )}
-              {current.note}
-            </p>
+            <StepNote key={`${story}:${step}`} label={current.label} note={current.note} />
           )}
         </div>
       )}
@@ -184,7 +222,8 @@ export function CanvasStoryPill({
         tabIndex={-1}
         role="toolbar"
         aria-label="Story"
-        className="flex max-w-full items-center gap-0.5 rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-lg outline-none"
+        // The focused board is the one its keys step, so its pill says so while presenting.
+        className={`flex max-w-full min-w-0 items-center gap-0.5 rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-lg outline-none ${step === null ? "" : "[.cv-board:focus-within_&]:ring-1 [.cv-board:focus-within_&]:ring-inset [.cv-board:focus-within_&]:ring-ring/60"}`}
       >
         {step === null ? (
           <>
@@ -221,7 +260,7 @@ export function CanvasStoryPill({
             ) : (
               <span className="min-w-0 truncate px-2 text-xs">{stories[0]?.title}</span>
             )}
-            <span className="shrink-0 px-1.5 text-xs text-muted-foreground">
+            <span className="shrink-0 px-1.5 text-xs whitespace-nowrap text-muted-foreground @max-[360px]:hidden">
               {`${steps.length} ${steps.length === 1 ? "step" : "steps"}`}
             </span>
             {edit === undefined ? null : (
@@ -242,6 +281,7 @@ export function CanvasStoryPill({
             )}
             <Button
               size="xs"
+              variant="outline"
               className="ms-1 shrink-0"
               onClick={() => {
                 // The pill stays as Present goes, so the arrow keys keep walking from here.
@@ -264,7 +304,7 @@ export function CanvasStoryPill({
               <ChevronLeftIcon />
             </Button>
             {steps.length > MOST_DOTS ? null : (
-              <div className="flex items-center px-1">
+              <div className="flex items-center px-1 @max-[360px]:hidden">
                 {steps.map((each, index) => (
                   <button
                     // oxlint-disable-next-line react/no-array-index-key -- a step is its place in the story; labels can repeat
@@ -281,7 +321,7 @@ export function CanvasStoryPill({
                 ))}
               </div>
             )}
-            <span className="px-1 text-xs text-muted-foreground tabular-nums">
+            <span className="shrink-0 px-1 text-xs whitespace-nowrap text-muted-foreground tabular-nums">
               {step + 1} / {steps.length}
             </span>
             <Button
@@ -293,7 +333,7 @@ export function CanvasStoryPill({
             >
               <ChevronRightIcon />
             </Button>
-            <span className="mx-1 h-4 w-px bg-border" />
+            <span className="mx-1 h-4 w-px shrink-0 bg-border" />
             {edit === undefined ? null : (
               <Menu>
                 <MenuTrigger

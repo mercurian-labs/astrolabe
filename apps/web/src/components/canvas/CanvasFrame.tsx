@@ -3,9 +3,7 @@ import type { CanvasView } from "@t3tools/client-runtime/canvasViews";
 import type { ScopedThreadRef, ThreadId, TurnItemId } from "@t3tools/contracts";
 import { MessageSquarePlusIcon, SquareArrowOutUpRightIcon } from "lucide-react";
 import type { CanvasBoardHandle } from "@mercurian/wiki-editor/canvas-board";
-import { canvasStoryEdit } from "@mercurian/wiki/canvas-edits";
-import type { CanvasDocument } from "@mercurian/wiki-editor/canvas-document";
-import { lazy, Suspense, useRef, useState } from "react";
+import { lazy, Suspense, useRef } from "react";
 
 import { readLocalApi } from "~/localApi";
 import { useRightPanelStore } from "~/rightPanelStore";
@@ -44,32 +42,6 @@ export const canvasHost = (threadRef: ScopedThreadRef | null) => ({
 });
 
 /**
- * A thread's board, which reads until its Edit is pressed: then it takes edits, its stories with
- * them, until it's made read-only again.
- */
-export function useCanvasEditing(
-  canvas: CanvasDocument | null,
-  walk: ReturnType<typeof useCanvasWalk>,
-) {
-  const [readOnly, setReadOnly] = useState(true);
-  if (canvas === null) return { board: {}, edit: undefined };
-  return {
-    board: {
-      document: canvas,
-      readOnly,
-      onReadOnly: setReadOnly,
-      onStepAdded: (index: number) => {
-        if (walk.step !== null) walk.go(index);
-      },
-    },
-    edit: readOnly
-      ? undefined
-      : (change: Parameters<typeof canvasStoryEdit>[1]) =>
-          canvas.commit([canvasStoryEdit(canvas.document, change)]),
-  };
-}
-
-/**
  * A canvas in a thread: the whole board, sized by its own shape so the row never shifts when the
  * board loads. It pans and zooms in place; the wheel scrolls the thread until the board is clicked.
  */
@@ -93,7 +65,6 @@ export function CanvasFrame({
   const data = useCanvasDocumentData(canvas, view.data);
   const walk = useCanvasWalk({ title: view.title, data }, threadRef === null ? null : source);
   const board = useRef<CanvasBoardHandle>(null);
-  const editing = useCanvasEditing(canvas, walk);
   return (
     <figure
       className="m-0 overflow-hidden rounded-lg border border-border"
@@ -163,10 +134,19 @@ export function CanvasFrame({
             step={walk.step}
             openFrame={walk.frame?.step ?? null}
             onFrame={walk.toggleFrame}
-            {...editing.board}
+            {...(canvas === null || threadRef === null
+              ? {}
+              : {
+                  document: canvas,
+                  // The chat column is too narrow to edit in: Edit opens the board in its tab.
+                  readOnly: true,
+                  onReadOnly: (readOnly: boolean) => {
+                    if (!readOnly) showThreadCanvas(threadRef, id, true);
+                  },
+                })}
             ref={board}
           >
-            <CanvasStoryPill walk={walk} edit={editing.edit} />
+            <CanvasStoryPill walk={walk} />
           </LazyCanvasBoard>
         </Suspense>
       </div>

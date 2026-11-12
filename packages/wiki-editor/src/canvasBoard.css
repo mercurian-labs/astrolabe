@@ -15,6 +15,8 @@
   line-height: 22px;
   color: var(--foreground);
   contain: strict;
+  /* A host's overlay fits itself to the board, not the window. */
+  container-type: size;
 }
 .cv-board[data-mode="free"] {
   cursor: grab;
@@ -847,7 +849,8 @@ textarea.cv-label-editor {
   border: 1px solid var(--border);
   border-radius: 6px;
 }
-.cv-moving .cv-toolbar {
+.cv-moving .cv-toolbar,
+.cv-board:has(.cv-overlay > [data-overlay-row]:focus-within) .cv-toolbar {
   visibility: hidden;
 }
 .cv-toolbar > button,
