@@ -1131,6 +1131,51 @@ it.effect("ProviderSessionManagerV2 opens a duplicate session only once", () =>
   }),
 );
 
+it.effect("ProviderSessionManagerV2 restarts a session missing a folder its thread now needs", () =>
+  Effect.gen(function* () {
+    const state = yield* Ref.make(emptyState);
+    const effect = Effect.gen(function* () {
+      const eventSink = yield* EventSink.EventSinkV2;
+      const idAllocator = yield* IdAllocator.IdAllocatorV2;
+      const manager = yield* ProviderSessionManager.ProviderSessionManagerV2;
+      const now = yield* DateTime.now;
+      const threadId = ThreadId.make("thread-provider-session-manager-wiki-linked");
+      const providerSessionId = yield* idAllocator.allocate.providerSession({
+        providerInstanceId: modelSelection.instanceId,
+        threadId,
+      });
+      yield* eventSink.write({
+        events: [yield* makeThreadCreatedEvent({ idAllocator, threadId, now })],
+      });
+      const open = (writableRoots?: ReadonlyArray<string>) =>
+        manager.open({
+          threadId,
+          providerSessionId,
+          modelSelection,
+          runtimePolicy:
+            writableRoots === undefined ? runtimePolicy : { ...runtimePolicy, writableRoots },
+        });
+
+      yield* open();
+      yield* open();
+      assert.equal((yield* Ref.get(state)).openCount, 1);
+      yield* open(["/wiki-checkouts/notes"]);
+      assert.equal((yield* Ref.get(state)).openCount, 2);
+      assert.equal((yield* Ref.get(state)).closeCount, 1);
+      // A folder dropped since needs no restart: the session only reaches one more folder.
+      yield* open(["/wiki-checkouts/notes"]);
+      yield* open();
+      assert.equal((yield* Ref.get(state)).openCount, 2);
+    });
+
+    yield* effect.pipe(
+      Effect.provide(
+        layerTest({ state, idleTimeoutMs: 60_000, capabilities: ExclusiveCapabilities }),
+      ),
+    );
+  }),
+);
+
 it.effect(
   "ProviderSessionManagerV2 starts a thread's session without its last agent's OOM kill",
   () =>

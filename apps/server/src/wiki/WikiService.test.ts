@@ -33,6 +33,7 @@ import * as ServerSettings from "../serverSettings.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
+import * as ThreadWikiCheckouts from "./ThreadWikiCheckouts.ts";
 import * as WikiService from "./WikiService.ts";
 import { WikiRegistryJson } from "./wikiStorage.ts";
 import { withCanvasOutlines } from "./wikiViews.ts";
@@ -84,6 +85,7 @@ const withWikis = <A, E>(
     E,
     | WikiService.WikiService
     | ProjectService.ProjectService
+    | ServerConfig.ServerConfig
     | NodeServices.NodeServices
     | Scope.Scope
   >,
@@ -228,23 +230,36 @@ it.effect("links repositories, and tells their threads which wikis hold their pl
       const { wikiId, summary, wikis } = yield* registeredWiki(harness);
       const repository = ProjectId.make("project-app");
       const other = ProjectId.make("project-other");
-      assert.isNull(yield* wikis.agentNote(repository));
+      const second = yield* wikis.create({ name: "Research" });
+      const checkouts = [
+        { wikiId, folder: "/state/wiki-checkouts/thread-1/vault" },
+        { wikiId: second.wikiId, folder: "/state/wiki-checkouts/thread-1/research" },
+      ];
+      const note = (projectId: ProjectId, checkedOut = checkouts) =>
+        wikis.agentNote({ projectId, checkouts: checkedOut, reach: "edit" });
+      assert.isNull(yield* note(repository));
 
       const linked = yield* wikis.setProjectLink({ wikiId, projectId: repository, linked: true });
       assert.deepEqual(linked.projectIds, [repository]);
       yield* wikis.setProjectLink({ wikiId, projectId: repository, linked: true });
       assert.deepEqual((yield* wikis.list).wikis[0]?.projectIds, [repository]);
-      assert.include(yield* wikis.agentNote(repository), `wiki "${summary.name}"`);
-      assert.isNull(yield* wikis.agentNote(other));
+      const one = yield* note(repository);
+      assert.include(one, `wiki "${summary.name}"`);
+      assert.include(
+        one,
+        `"${summary.name}" is checked out for this thread at ${checkouts[0]!.folder}.`,
+      );
+      assert.isNull(yield* note(other));
 
-      const second = yield* wikis.create({ name: "Research" });
       yield* wikis.setProjectLink({ wikiId: second.wikiId, projectId: repository, linked: true });
-      assert.include(yield* wikis.agentNote(repository), `wikis "${summary.name}" and "Research"`);
+      assert.include(yield* note(repository), `wikis "${summary.name}" and "Research"`);
+      // A wiki the thread has no checkout of is one it cannot reach.
+      assert.notInclude(yield* note(repository, checkouts.slice(0, 1)), "Research");
 
       yield* wikis.setProjectLink({ wikiId, projectId: repository, linked: false });
       yield* wikis.setProjectLink({ wikiId: second.wikiId, projectId: repository, linked: false });
       assert.deepEqual((yield* wikis.list).wikis[0]?.projectIds, []);
-      assert.isNull(yield* wikis.agentNote(repository));
+      assert.isNull(yield* note(repository));
     }),
   ),
 );
@@ -254,23 +269,44 @@ it.effect("tells a conversation with turns only about wikis linked since its las
     Effect.gen(function* () {
       const { wikiId, summary, wikis } = yield* registeredWiki(harness);
       const repository = ProjectId.make("project-app");
+      const note = (linkedSince: DateTime.Utc) =>
+        wikis.agentNote({
+          projectId: repository,
+          linkedSince,
+          checkouts: [{ wikiId, folder: "/state/wiki-checkouts/thread-1/vault" }],
+          reach: "edit",
+        });
       const beforeTheLink = yield* DateTime.now;
       yield* TestClock.adjust("1 minute");
       yield* wikis.setProjectLink({ wikiId, projectId: repository, linked: true });
       yield* TestClock.adjust("1 minute");
       const afterTheLink = yield* DateTime.now;
 
-      assert.include(yield* wikis.agentNote(repository, beforeTheLink), `wiki "${summary.name}"`);
-      assert.isNull(yield* wikis.agentNote(repository, afterTheLink));
+      assert.include(yield* note(beforeTheLink), `wiki "${summary.name}"`);
+      assert.isNull(yield* note(afterTheLink));
 
       // Saving an existing link again is not a new link.
       yield* wikis.setProjectLink({ wikiId, projectId: repository, linked: true });
-      assert.isNull(yield* wikis.agentNote(repository, afterTheLink));
+      assert.isNull(yield* note(afterTheLink));
 
       yield* wikis.setProjectLink({ wikiId, projectId: repository, linked: false });
       yield* TestClock.adjust("1 minute");
       yield* wikis.setProjectLink({ wikiId, projectId: repository, linked: true });
-      assert.include(yield* wikis.agentNote(repository, afterTheLink), `wiki "${summary.name}"`);
+      assert.include(yield* note(afterTheLink), `wiki "${summary.name}"`);
+
+      // A child working in a checkout hears which wiki it is in, once.
+      const inside = (linkedSince?: DateTime.Utc) =>
+        wikis.agentNote({
+          projectId: repository,
+          linkedSince,
+          checkouts: [],
+          reach: "none",
+          workingIn: wikiId,
+        });
+      const first = yield* inside();
+      assert.include(first, `Your working folder is a checkout of the wiki "${summary.name}"`);
+      assert.notInclude(first, "delegate");
+      assert.isNull(yield* inside(beforeTheLink));
     }),
   ),
 );
@@ -397,6 +433,12 @@ it.effect("runs a base by file, by a note's block, or by source, on the line rea
       assert.equal(outside.reason, "invalid");
       // A base's own error names what to fix.
       assert.equal(outside.message, "No formula named “ppu” in view “Table”'s order.");
+      // Another view's error comes back with the view that runs.
+      const other = yield* wikis.query({
+        wikiId,
+        source: "views:\n  - type: table\n  - type: table\n    name: B\n    order: [formula.ppu]\n",
+      });
+      assert.deepEqual(other.warnings, ["No formula named “ppu” in view “B”'s order."]);
     }),
   ),
 );
@@ -522,28 +564,6 @@ it.effect("reads, links and edits documents in folders, two of them sharing a na
       assert.equal((yield* wikis.readNote({ wikiId, name: "/Plan" })).exists, false);
       assert.equal((yield* wikis.readNote({ wikiId, name: "Guide" })).exists, false);
       assert.equal((yield* wikis.readNote({ wikiId, name: ".github/Guide" })).exists, true);
-      assert.deepEqual((yield* wikis.search({ wikiId, query: "Hidden." })).matches, []);
-
-      const { commit: _, ...top } = yield* wikis.listFolder({ wikiId, folder: "" });
-      assert.deepEqual(top, {
-        folder: "",
-        folders: [
-          { path: "a", documents: 2 },
-          { path: "b", documents: 2 },
-          { path: "docs", documents: 1 },
-        ],
-        documents: ["Alpha.md", "Beta.md", "Product.skillmap.md"],
-        files: [],
-        truncated: false,
-      });
-      const deep = yield* wikis.listFolder({ wikiId, folder: "/B/" });
-      assert.equal(deep.folder, "b");
-      assert.deepEqual(deep.folders, [{ path: "b/deep", documents: 1 }]);
-      assert.deepEqual(deep.documents, ["b/Plan.md"]);
-      assert.equal(
-        (yield* failure(wikis.listFolder({ wikiId, folder: ".github" }))).reason,
-        "not-found",
-      );
 
       const saved = yield* wikis.autosave(
         {
@@ -991,7 +1011,7 @@ it.effect("refuses a canvas in an amendment, while a worktree and a revert still
       );
       assert.equal(refused.reason, "invalid");
       assert.include(refused.message, "Board.canvas is a canvas");
-      assert.include(refused.message, "astrolabe_wiki_transform");
+      assert.include(refused.message, '"canvas" transform');
 
       yield* write(worktree, { "Board.canvas": '{"nodes":[],"edges":[]}' });
       const saved = yield* wikis.saveWorktree(
@@ -1238,17 +1258,6 @@ it.effect("indexes a canvas beside the notes, for links, search and agents' read
           ["Board", true],
         ],
       );
-
-      const search = yield* wikis.search({ wikiId, query: "links [[alpha" });
-      assert.deepEqual(search.matches, [
-        {
-          name: "Board.canvas",
-          lines: [],
-          cards: [{ id: "a", text: "Links [[Alpha]] and [[Ghost]]" }],
-        },
-      ]);
-      const arrow = yield* wikis.search({ wikiId, query: "USES" });
-      assert.deepEqual(arrow.matches[0]?.cards, [{ id: "e", text: "[a] -> [b]: uses" }]);
     }),
   ),
 );
@@ -1590,15 +1599,11 @@ it.effect("pushes main to a mirror after a merge and notices overwritten remote 
   ),
 );
 
-it.effect("reads a wiki by name, and searches and links from its index", () =>
+it.effect("reads a wiki by name, and links from its index", () =>
   withWikis((harness) =>
     Effect.gen(function* () {
       const { wikis } = yield* registeredWiki(harness, "Atlas");
       const byName = WikiId.make("atlas");
-      const found = yield* wikis.search({ wikiId: byName, query: "builds on" });
-      assert.deepEqual(found.matches, [
-        { name: "Alpha", lines: [{ line: 3, text: "Alpha builds on [[Beta]]." }] },
-      ]);
       const links = yield* wikis.links({ wikiId: byName, name: "Beta" });
       assert.deepEqual(links.backlinks, ["Alpha"]);
       assert.deepEqual(links.outgoing, []);
@@ -1787,6 +1792,489 @@ it.effect("saves a worktree's documents in folders, and nothing git ignores", ()
       const tree = yield* git(root, ["ls-tree", "-r", "--name-only", saved.commit]);
       assert.notInclude(tree, "Generated.md");
       assert.notInclude(tree, "secret.md");
+    }),
+  ),
+);
+
+it.effect("checks a thread out at main until its first save opens its change request", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const path = yield* Path.Path;
+      const { root, wikiId, wikis } = yield* registeredWiki(harness);
+      const threadId = ThreadId.make("thread-checkout");
+      const folder = path.join(harness.baseDir, "wiki-checkouts", threadId, wikiId);
+      const main = yield* git(root, ["rev-parse", "main"]);
+      const target = { wikiId, threadId, folder };
+      const save = { ...target, title: "Tidy Beta", message: "Tidy Beta" };
+
+      assert.equal(yield* wikis.checkoutForThread(target), folder);
+      assert.equal(yield* wikis.checkoutForThread(target), folder);
+      assert.equal(yield* git(folder, ["rev-parse", "HEAD"]), main);
+      assert.isNull(yield* wikis.saveThreadCheckout(save, agent(threadId)));
+      assert.equal(yield* git(root, ["for-each-ref", "refs/heads/cr/"]), "");
+
+      yield* write(folder, { "Beta.md": "# Beta\n\nTidied.\n" });
+      const saved = yield* wikis.saveThreadCheckout(save, agent(threadId));
+      assert.isNotNull(saved);
+      const { changeRequestId } = saved!.changeRequest;
+      assert.equal(saved!.changeRequest.title, "Tidy Beta");
+      assert.equal(saved!.changeRequest.threadId, threadId);
+      assert.equal(saved!.changeRequest.amendments.length, 1);
+      assert.equal(
+        yield* git(folder, ["symbolic-ref", "HEAD"]),
+        `refs/heads/cr/${changeRequestId}`,
+      );
+      assert.equal(yield* git(folder, ["status", "--porcelain"]), "");
+      assert.isNull(yield* wikis.saveThreadCheckout(save, agent(threadId)));
+
+      // The next turn's edits join the same change request, which a new checkout lands on.
+      yield* write(folder, { "Alpha.md": "# Alpha\n\nAlpha builds on [[Beta]], tidily.\n" });
+      const again = yield* wikis.saveThreadCheckout(save, agent(threadId));
+      assert.equal(again!.changeRequest.changeRequestId, changeRequestId);
+      assert.equal(again!.changeRequest.amendments.length, 2);
+      assert.equal(yield* wikis.checkoutForThread(target), folder);
+      assert.equal(yield* git(folder, ["rev-parse", "HEAD"]), again!.commit);
+
+      // Closed, it leaves the thread with none, so the checkout goes back to main.
+      yield* wikis.setChangeRequestStatus({ wikiId, changeRequestId, status: "closed" });
+      assert.equal(yield* wikis.checkoutForThread(target), folder);
+      assert.equal(yield* git(folder, ["rev-parse", "HEAD"]), main);
+
+      yield* wikis.removeCheckout({ wikiId, folder });
+      assert.notInclude(yield* git(root, ["worktree", "list"]), folder);
+    }),
+  ),
+);
+
+it.effect("saves a checkout onto the change request a tool opened during the turn", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const path = yield* Path.Path;
+      const { wikiId, wikis } = yield* registeredWiki(harness);
+      const threadId = ThreadId.make("thread-tool-opened");
+      const folder = path.join(harness.baseDir, "wiki-checkouts", threadId, wikiId);
+      yield* wikis.checkoutForThread({ wikiId, threadId, folder });
+      yield* write(folder, { "Beta.md": "# Beta\n\nFrom the checkout.\n" });
+      const opened = yield* wikis.amend(
+        {
+          wikiId,
+          message: "Alpha by tool",
+          changes: { "Alpha.md": "# Alpha\n\nAlpha builds on [[Beta]], by tool.\n" },
+        },
+        agent(threadId),
+      );
+      const saved = yield* wikis.saveThreadCheckout(
+        { wikiId, threadId, folder, title: "Turn", message: "Turn" },
+        agent(threadId),
+      );
+      assert.equal(saved!.changeRequest.changeRequestId, opened.changeRequest.changeRequestId);
+      assert.equal(
+        yield* read(folder, "Alpha.md"),
+        "# Alpha\n\nAlpha builds on [[Beta]], by tool.\n",
+      );
+      assert.equal(yield* read(folder, "Beta.md"), "# Beta\n\nFrom the checkout.\n");
+      assert.equal(yield* git(folder, ["rev-parse", "HEAD"]), saved!.commit);
+      assert.equal(yield* git(folder, ["status", "--porcelain"]), "");
+    }),
+  ),
+);
+
+/** A thread with a checkout of the fixture wiki, where the server keeps it. */
+const threadWithCheckout = (harness: Harness, thread: string) =>
+  Effect.gen(function* () {
+    const path = yield* Path.Path;
+    const { stateDir } = yield* ServerConfig.ServerConfig;
+    const registered = yield* registeredWiki(harness);
+    const threadId = ThreadId.make(thread);
+    const folder = path.join(stateDir, "wiki-checkouts", threadId, registered.wikiId);
+    yield* registered.wikis.checkoutForThread({ wikiId: registered.wikiId, threadId, folder });
+    const save = () =>
+      registered.wikis.saveThreadCheckout(
+        { wikiId: registered.wikiId, threadId, folder, title: "Turn", message: "Turn" },
+        agent(threadId),
+      );
+    return { ...registered, threadId, folder, save };
+  });
+
+it.effect("lands commits an agent makes in its checkout with the turn's save", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis, threadId, folder, save } = yield* threadWithCheckout(
+        harness,
+        "thread-git",
+      );
+      const main = yield* git(root, ["rev-parse", "main"]);
+      // Before the first save the checkout sits detached at main.
+      yield* write(folder, { "Beta.md": "# Beta\n\nCommitted by hand.\n" });
+      yield* git(folder, ["commit", "--quiet", "-am", "By hand"]);
+      const first = yield* save();
+      assert.equal(first!.changeRequest.base, main);
+      assert.deepEqual(first!.changeRequest.files, ["Beta.md"]);
+      assert.equal(first!.changeRequest.amendments.length, 1);
+      assert.equal(yield* read(folder, "Beta.md"), "# Beta\n\nCommitted by hand.\n");
+      assert.equal(yield* git(folder, ["status", "--porcelain"]), "");
+
+      // On the change request's branch a commit is its own amendment, under its git author.
+      yield* write(folder, { "Alpha.md": "# Alpha\n\nAlpha builds on [[Beta]], by hand.\n" });
+      yield* git(folder, ["commit", "--quiet", "-am", "Alpha by hand"]);
+      assert.isNull(yield* save());
+      yield* write(folder, { "Beta.md": "# Beta\n\nThen saved.\n" });
+      const second = yield* save();
+      const { amendments } = (yield* wikis.changeRequestsGet({
+        wikiId,
+        changeRequestId: second!.changeRequest.changeRequestId,
+      })).changeRequest;
+      assert.deepEqual(
+        amendments.map((amendment) => amendment.actor),
+        ["test-model", "Fixture", "test-model"],
+      );
+      assert.equal(yield* git(folder, ["rev-parse", "HEAD"]), second!.commit);
+      assert.equal(second!.changeRequest.threadId, threadId);
+    }),
+  ),
+);
+
+it.effect("a child working in a thread's checkout saves onto that thread's change request", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const path = yield* Path.Path;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const { stateDir } = yield* ServerConfig.ServerConfig;
+      const { root, wikiId, summary, wikis } = yield* registeredWiki(harness);
+      const projectId = ProjectId.make("project-app");
+      yield* wikis.setProjectLink({ wikiId, projectId, linked: true });
+      const checkouts = yield* ThreadWikiCheckouts.ThreadWikiCheckouts;
+      const parent = ThreadId.make("thread-parent");
+      const child = ThreadId.make("thread-child");
+      const checkoutFor = (threadId: ThreadId, wiki: string, worktreePath: string | null = null) =>
+        checkouts.checkoutFor({ threadId, projectId, worktreePath, wiki });
+
+      const unknown = yield* failure(checkoutFor(parent, "Research"));
+      assert.equal(
+        unknown.message,
+        `No wiki has this id or name. Its linked wikis: "${summary.name}".`,
+      );
+      yield* wikis.create({ name: "Research" });
+      assert.include(
+        (yield* failure(checkoutFor(parent, "research"))).message,
+        "That wiki is not linked to this project.",
+      );
+
+      const folder = yield* checkoutFor(parent, summary.name.toUpperCase());
+      assert.equal(folder, path.join(stateDir, "wiki-checkouts", parent, wikiId));
+      // The child mounts no checkout of its own, and a task it delegates shares the same one.
+      assert.deepEqual(
+        yield* checkouts.ensure({ threadId: child, projectId, worktreePath: folder }),
+        { checkouts: [], workingIn: wikiId },
+      );
+      assert.equal(yield* checkoutFor(child, wikiId, folder), folder);
+
+      const turn = (threadId: ThreadId, actor: string) =>
+        checkouts.saveTurn({
+          threadId,
+          projectId,
+          worktreePath: threadId === child ? folder : null,
+          title: "Turn",
+          author: { actor, threadId },
+        });
+      const amendments = Effect.gen(function* () {
+        const [open] = (yield* wikis.changeRequestsList({ wikiId })).changeRequests;
+        if (open === undefined) return [];
+        return (yield* wikis.changeRequestsGet({ wikiId, changeRequestId: open.changeRequestId }))
+          .changeRequest.amendments;
+      });
+
+      // The child's turn ends after its parent's: it saves the folder itself.
+      yield* write(folder, { "Beta.md": "# Beta\n\nBy the child.\n" });
+      assert.deepEqual(yield* turn(child, "child-model"), []);
+      const saved = yield* amendments;
+      assert.deepEqual(
+        saved.map((amendment) => amendment.actor),
+        ["child-model"],
+      );
+      const [open] = (yield* wikis.changeRequestsList({ wikiId })).changeRequests;
+      assert.equal(open?.threadId, parent);
+      assert.equal(yield* git(folder, ["rev-parse", "HEAD"]), saved[0]?.commit);
+
+      // Turns ending together save the folder once between them.
+      yield* write(folder, { "Beta.md": "# Beta\n\nBy both.\n" });
+      yield* Effect.all([turn(child, "child-model"), turn(parent, "parent-model")], {
+        concurrency: "unbounded",
+      });
+      assert.equal((yield* amendments).length, 2);
+      yield* Effect.all([turn(child, "child-model"), turn(parent, "parent-model")]);
+      assert.equal((yield* amendments).length, 2);
+      assert.isFalse(yield* fileSystem.exists(path.join(stateDir, "wiki-checkouts", child)));
+      assert.notInclude(yield* git(root, ["worktree", "list"]), child);
+
+      // A base the child's turn breaks comes back to the child's turn, where the edit was made.
+      yield* write(folder, { "Projects.base": "views:\n  - type: table\n    columns: [x]\n" });
+      assert.deepEqual(yield* turn(child, "child-model"), [
+        {
+          wiki: summary.name,
+          file: "Projects.base",
+          path: path.join(folder, "Projects.base"),
+          problems: ["views[0].columns is not a view key and is ignored; did you mean order?"],
+        },
+      ]);
+    }).pipe(Effect.provide(ThreadWikiCheckouts.layer)),
+  ),
+);
+
+it.effect("reads a thread's checkout as it stands, unsaved edits included", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { wikiId, wikis, threadId, folder, save } = yield* threadWithCheckout(
+        harness,
+        "thread-r",
+      );
+      yield* write(folder, {
+        "Beta.md": "---\nstatus: open\n---\n# Beta\n\nBeta now needs [[Delta]].\n",
+        "Open.base":
+          "filters: 'status == \"open\"'\nviews:\n  - type: table\n    name: Open\n    columns: [x]\n",
+        "Product.skillmap.md": MAP.replace("How the product fits together", "Edited on disk"),
+      });
+      const warning = "views[0].columns is not a view key and is ignored; did you mean order?";
+      const inCheckout = { wikiId, threadId, checkout: true };
+      const links = yield* wikis.links({ ...inCheckout, name: "Beta" });
+      assert.deepEqual(links.outgoing, [{ target: "Delta", unresolved: true, types: [] }]);
+      assert.equal(
+        (yield* wikis.orient({ ...inCheckout, map: "Product" })).purpose,
+        "Edited on disk",
+      );
+      const rows = yield* wikis.query({ ...inCheckout, base: "Open" });
+      assert.deepEqual(
+        rows.rows.map((row) => row.file),
+        ["Beta.md"],
+      );
+      assert.deepEqual(rows.warnings, [warning]);
+      const unopened = yield* failure(wikis.changeRequestsGet(inCheckout));
+      assert.include(unopened.message, "Beta.md, Open.base, Product.skillmap.md");
+
+      // Without a checkout, or naming none, a read sees the commit.
+      const committed = { wikiId, threadId: ThreadId.make("thread-elsewhere"), checkout: true };
+      assert.deepEqual((yield* wikis.links({ ...committed, name: "Beta" })).outgoing, []);
+      assert.deepEqual((yield* wikis.links({ wikiId, threadId, name: "Beta" })).outgoing, []);
+
+      const saved = yield* save();
+      const detail = yield* wikis.changeRequestsGet(inCheckout);
+      assert.equal(detail.changeRequest.changeRequestId, saved!.changeRequest.changeRequestId);
+      assert.deepEqual(detail.unsaved, []);
+      assert.deepEqual(detail.warnings, [{ file: "Open.base", warning }]);
+    }),
+  ),
+);
+
+it.effect(
+  "transforms a checkout's files in place, for the turn's save to land as one amendment",
+  () =>
+    withWikis((harness) =>
+      Effect.gen(function* () {
+        const { root, wikiId, wikis, threadId, folder, save } = yield* threadWithCheckout(
+          harness,
+          "thread-t",
+        );
+        const author = agent(threadId);
+        yield* write(folder, {
+          "Beta.md": "# Beta\n\nBeta, edited natively.\n",
+          "area/pic.png": "png",
+        });
+        const renamed = yield* wikis.transformCheckout(
+          {
+            wikiId,
+            message: "Move",
+            transform: { kind: "rename", from: "Beta", to: "area/Gamma" },
+          },
+          author,
+        );
+        assert.notProperty(renamed, "changeRequest");
+        assert.deepEqual(renamed, {
+          written: ["Alpha.md", "Product.skillmap.md", "area/Gamma.md"],
+          removed: ["Beta.md"],
+          errors: [],
+        });
+        assert.equal(yield* read(folder, "area/Gamma.md"), "# Beta\n\nBeta, edited natively.\n");
+        assert.include(yield* read(folder, "Alpha.md"), "[[Gamma]]");
+        assert.equal(yield* git(root, ["for-each-ref", "refs/heads/cr/"]), "");
+        const backlinks = yield* wikis.links({ wikiId, threadId, checkout: true, name: "Gamma" });
+        assert.deepEqual(backlinks.backlinks, ["Alpha"]);
+
+        const moved = yield* wikis.transformCheckout(
+          {
+            wikiId,
+            message: "Move",
+            transform: { kind: "rename", from: "area", to: "zone", folder: true },
+          },
+          author,
+        );
+        assert.includeMembers([...("removed" in moved ? moved.removed : [])], ["area/pic.png"]);
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        assert.isFalse(yield* fileSystem.exists(path.join(folder, "area")).pipe(Effect.orDie));
+
+        const saved = yield* save();
+        assert.equal(saved!.changeRequest.amendments.length, 1);
+        assert.sameMembers(
+          (yield* git(root, ["ls-tree", "-r", "--name-only", saved!.commit])).split("\n"),
+          ["Alpha.md", "Product.skillmap.md", "zone/Gamma.md", "zone/pic.png"],
+        );
+        assert.equal(
+          yield* git(root, ["show", `${saved!.commit}:zone/Gamma.md`]),
+          "# Beta\n\nBeta, edited natively.",
+        );
+        assert.deepEqual(saved!.changeRequest.moves, [{ from: "Beta.md", to: "zone/Gamma.md" }]);
+        assert.equal(yield* git(folder, ["status", "--porcelain"]), "");
+      }),
+    ),
+);
+
+it.effect("stamps a checkout's warnings with the amendment the turn's save lands", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { wikiId, wikis, threadId, folder, save } = yield* threadWithCheckout(
+        harness,
+        "thread-w",
+      );
+      yield* write(folder, { "Alpha.md": "# Alpha\n\nAlpha alone, see [[Delta]].\n" });
+      yield* wikis.transformCheckout(
+        {
+          wikiId,
+          message: "Fill Delta",
+          transform: {
+            kind: "fill",
+            map: "Product",
+            name: "Delta",
+            content: "# Delta\n",
+            edge: { from: "Alpha", type: "needs", to: "Delta", rationale: "Alpha points at Delta" },
+          },
+        },
+        agent(threadId),
+      );
+      const saved = yield* save();
+      const map = yield* read(folder, "Product.skillmap.md");
+      assert.equal(map.match(/amendment: /g)?.length, 1);
+      assert.include(map, `amendment: ${saved!.amendment}`);
+      assert.include(map, `id: ${saved!.amendment}-1`);
+    }),
+  ),
+);
+
+it.effect("lands a transform at once for a thread with no checkout of the wiki", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { wikiId, wikis } = yield* registeredWiki(harness);
+      const landed = yield* wikis.transformCheckout(
+        { wikiId, message: "Rename", transform: { kind: "rename", from: "Beta", to: "Gamma" } },
+        agent("thread-none"),
+      );
+      assert.property(landed, "commit");
+    }),
+  ),
+);
+
+it.effect("reads, searches and writes a checkout's files for the turn's one amendment", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const { root, wikiId, wikis, threadId, folder, save } = yield* threadWithCheckout(
+        harness,
+        "thread-files",
+      );
+      const author = agent(threadId);
+      const edit = (input: Omit<WikiService.WikiCheckoutWriteInput, "wikiId">) =>
+        wikis.checkoutWrite({ wikiId, ...input }, author);
+
+      assert.deepEqual(yield* wikis.checkoutRead({ wikiId, threadId, path: "Alpha.md" }), {
+        path: "Alpha.md",
+        text: FIXTURE["Alpha.md"],
+        startLine: 1,
+        endLine: 3,
+        totalLines: 3,
+      });
+      assert.equal(
+        (yield* wikis.checkoutRead({ wikiId, threadId, path: "Alpha.md", startLine: 3 })).text,
+        "Alpha builds on [[Beta]].",
+      );
+
+      assert.deepEqual(
+        yield* edit({ path: "Beta.md", oldText: "stands alone", newText: "waits" }),
+        {
+          path: "Beta.md",
+          change: "updated",
+        },
+      );
+      assert.equal(yield* read(folder, "Beta.md"), "# Beta\n\nBeta waits.\n");
+      assert.equal(
+        (yield* edit({ path: "area/Gamma.md", content: "Gamma, Gamma.\n" })).change,
+        "created",
+      );
+      assert.include(
+        (yield* failure(edit({ path: "area/Gamma.md", oldText: "Gamma", newText: "G" }))).message,
+        "more than once",
+      );
+      assert.include(
+        (yield* failure(edit({ path: "Beta.md", oldText: "stands alone", newText: "x" }))).message,
+        "is not in Beta.md",
+      );
+      assert.equal((yield* edit({ path: "Draft.md", content: "Gone soon.\n" })).change, "created");
+      assert.equal((yield* edit({ path: "Draft.md", delete: true })).change, "deleted");
+      // A broken base is written all the same, with what is wrong in it.
+      const based = yield* edit({
+        path: "Draft.md",
+        content: "```base\nviews:\n  - type: table\n    columns: [x]\n```\n",
+      });
+      assert.deepEqual(based.warnings, [
+        "views[0].columns is not a view key and is ignored; did you mean order?",
+      ]);
+      yield* edit({ path: "Draft.md", delete: true });
+
+      const found = yield* wikis.checkoutSearch({ wikiId, threadId, query: "WAITS" });
+      assert.deepEqual(found, {
+        matches: [{ path: "Beta.md", lines: [{ line: 3, text: "Beta waits." }] }],
+        truncated: false,
+      });
+
+      // Nothing lands until the turn's save, which carries every write as one amendment.
+      assert.equal(yield* git(root, ["for-each-ref", "refs/heads/cr/"]), "");
+      const saved = yield* save();
+      assert.equal(saved!.changeRequest.amendments.length, 1);
+      assert.sameMembers([...saved!.changeRequest.files], ["Beta.md", "area/Gamma.md"]);
+      assert.equal(yield* git(folder, ["status", "--porcelain"]), "");
+    }),
+  ),
+);
+
+it.effect("keeps the checkout file tools inside the checkout, and bounds a search", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const { wikiId, wikis, threadId, folder } = yield* threadWithCheckout(harness, "thread-out");
+      const outside = yield* harness.folder("outside");
+      yield* fileSystem.symlink(outside, path.join(folder, "link")).pipe(Effect.orDie);
+      for (const file of ["../Escape.md", "/tmp/Escape.md", ".git/Escape.md", "link/Escape.md"]) {
+        const refused = yield* failure(
+          wikis.checkoutWrite({ wikiId, path: file, content: "Out." }, agent(threadId)),
+        );
+        assert.include(refused.message, "is not a path inside the wiki", file);
+      }
+      assert.deepEqual(yield* fileSystem.readDirectory(outside).pipe(Effect.orDie), []);
+      yield* fileSystem.remove(path.join(folder, "link")).pipe(Effect.orDie);
+      assert.equal(
+        (yield* failure(
+          wikis.checkoutRead({ wikiId, threadId: ThreadId.make("thread-none"), path: "Alpha.md" }),
+        )).reason,
+        "not-found",
+      );
+
+      yield* write(
+        folder,
+        Object.fromEntries(
+          Array.from({ length: 41 }, (_, at) => [`many/Note ${at}.md`, `A needle, ${at}.\n`]),
+        ),
+      );
+      const found = yield* wikis.checkoutSearch({ wikiId, threadId, query: "needle" });
+      assert.equal(found.matches.length, 40);
+      assert.isTrue(found.truncated);
     }),
   ),
 );

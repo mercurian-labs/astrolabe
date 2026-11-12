@@ -4,7 +4,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import {
-  describeIndexError,
+  changeRequestProblems,
   describeWikiFailure,
   documentPath,
   hasUnpublishedWork,
@@ -138,7 +138,7 @@ export function WikiChangeRequestRouteScreen({
   const { changeRequest, files, mergePreview } = detail.data;
   const open = changeRequest.status === "open";
   const blocked = mergeBlockedReason({ canWrite: canMerge, preview: mergePreview });
-  const errors = (open ? mergePreview.errors : detail.data.errors).map(describeIndexError);
+  const errors = changeRequestProblems(detail.data);
   const threadId = changeRequest.threadId;
   const pullRequest = changeRequest.pullRequest ?? null;
   const pullRequestHost = pullRequest === null ? null : wikiPullRequestHost(pullRequest.url);

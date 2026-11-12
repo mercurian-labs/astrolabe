@@ -176,6 +176,13 @@ export const OrchestratorMcpDelegateTaskInput = Schema.Struct({
         "'shared' (default): parent checkout. 'worktree': new prepared checkout from the parent commit, for a separate checkout or PR per child. Uncommitted edits stay out.",
     }),
   ),
+  // A plain string: a description on a trimming schema never reaches the agent.
+  wiki: Schema.optional(
+    Schema.NonEmptyString.annotate({
+      description:
+        "A linked wiki, by id or name: the child works in your checkout of it with its own file tools, and its edits join your pull request on it. Not with isolation 'worktree'.",
+    }),
+  ),
   mode: Schema.optional(
     Schema.Literals(["async", "wait"]).annotate({
       description:

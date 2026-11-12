@@ -38,6 +38,7 @@ import * as TestClock from "effect/testing/TestClock";
 
 import * as TestProviderHost from "@t3tools/provider-testing/TestProviderHost";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
+import { T3_CODE_ORCHESTRATION_SECTIONS } from "@t3tools/provider-core/server/orchestrationInstructions";
 import type { MuseItem, MuseSubscriptionUsage } from "./protocol.ts";
 import type { MuseSdkHost, MuseSdkHostOptions } from "./sdk.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
@@ -415,6 +416,42 @@ describe("MuseAdapterV2", () => {
     }).pipe(Effect.scoped, Effect.provide(testLayer)),
   );
 
+  it.effect("tells a session with T3's tools how to use them, on its first turn only", () =>
+    Effect.gen(function* () {
+      const told = (call: { readonly params: Record<string, unknown> } | undefined) =>
+        ((call?.params.input ?? []) as ReadonlyArray<{ readonly text?: string }>).some((part) =>
+          part.text?.includes(T3_CODE_ORCHESTRATION_SECTIONS.at(-1)!),
+        );
+      const turns = (fake: Effect.Success<ReturnType<typeof makeFakeMuse>>) =>
+        fake.calls.filter((call) => call.method === "turn/start");
+
+      const without = yield* makeFakeMuse();
+      yield* startConversation(yield* makeHarness(without), without);
+      assert.isFalse(told(turns(without)[0]));
+
+      yield* (yield* McpProviderSessions.McpProviderSessions).set({
+        environmentId: EnvironmentId.make("test-environment"),
+        threadId: THREAD_ID,
+        providerSessionId: "test-session",
+        providerInstanceId: INSTANCE_ID,
+        endpoint: "http://127.0.0.1:43210/mcp",
+        authorizationHeader: "Bearer thread-scoped-test-token",
+        browserToolsAvailable: true,
+      });
+      const fake = yield* makeFakeMuse();
+      fake.host.initializeResult.grantedCapabilities.push("sessionMcp");
+      const harness = yield* makeHarness(fake);
+      const first = yield* startConversation(harness, fake);
+      yield* fake.emit("turn/completed", { turnId: first.nativeId, terminal: "completed" });
+      yield* harness.takeEvent("turn.terminal");
+      yield* startConversation(harness, fake, 2);
+      assert.deepStrictEqual(turns(fake).map(told), [true, false]);
+      // Muse joins input parts with no separator, so the instructions must end their own line.
+      const parts = turns(fake)[0]!.params.input as ReadonlyArray<{ readonly text?: string }>;
+      assert.match(parts.find((part) => part.text?.includes("Astrolabe wikis"))!.text!, /\n\n$/);
+    }).pipe(Effect.scoped, Effect.provide(testLayer)),
+  );
+
   it.effect("selects the runtime mode's permission profile on native start and resume", () =>
     Effect.gen(function* () {
       for (const [runtimeMode, profile, approvalMode] of [
@@ -574,13 +611,16 @@ describe("MuseAdapterV2", () => {
     ),
   );
 
-  it.effect("pins sessions and turns to native canonical case", () =>
+  it.effect("pins sessions and turns to native canonical case, wiki checkouts included", () =>
     Effect.gen(function* () {
-      using _realpath = vi.spyOn(NodeFSP, "realpath").mockResolvedValue("/workspace/eevee");
+      using _realpath = vi
+        .spyOn(NodeFSP, "realpath")
+        .mockImplementation(async (path) => String(path).toLowerCase());
       const fake = yield* makeFakeMuse();
       const policy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
         ...runtimePolicy,
         cwd: "/workspace/EEVEE",
+        writableRoots: ["/Checkouts/Handbook"],
       });
       const harness = yield* makeHarness(
         fake,
@@ -596,6 +636,7 @@ describe("MuseAdapterV2", () => {
       assert.strictEqual(sessionStart?.params.workspaceRoot, "/workspace/eevee");
       assert.deepStrictEqual(turnStart?.params.workspaceRoots, [
         sessionStart?.params.workspaceRoot,
+        "/checkouts/handbook",
       ]);
     }).pipe(
       Effect.scoped,

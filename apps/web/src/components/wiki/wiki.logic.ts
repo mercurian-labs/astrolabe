@@ -61,6 +61,7 @@ export {
   noteNameOfFile,
   mergeBlockedReason,
   mergeConflictAdvice,
+  changeRequestProblems,
   describeIndexError,
   describeWikiFailure,
   summarizeMirror,

@@ -127,6 +127,10 @@ body {
   color: #b42318;
 }
 
+ul.base-error {
+  padding-left: 1.2em;
+}
+
 /* In reading, a long press on a link opens its preview, not the system's text menu. */
 .cm-content[contenteditable="false"] .cm-md-wikilink {
   -webkit-touch-callout: none;

@@ -7,25 +7,21 @@
 import {
   backlinks,
   baseBlocks,
-  canvasMatches,
   canvasSourceOutline,
   documentFile,
   findMap,
   isCanvasFile,
   isHidden,
-  isWikiDocument,
   key,
   linkDestination,
   linkedDocument,
   noteName,
-  parseCanvas,
   resolveLink,
   support,
   typedLinks,
   typesTo,
   unresolved,
   walk,
-  type CanvasMatch,
   type WikiFiles,
   type WikiIndex,
 } from "@mercurian/wiki";
@@ -187,57 +183,6 @@ export const noteResult = (
   };
 };
 
-const MAX_LISTED_ENTRIES = 200;
-
-/** What's directly in one folder, by path from the root. A subfolder counts all it holds. */
-export interface WikiFolderListing {
-  readonly folder: string;
-  readonly folders: ReadonlyArray<{ readonly path: string; readonly documents: number }>;
-  readonly documents: ReadonlyArray<string>;
-  /** Anything else, such as images a note can embed. */
-  readonly files: ReadonlyArray<string>;
-  /** True when the folder holds more than the listing carries. */
-  readonly truncated: boolean;
-}
-
-/** `folder`'s contents among `files`, the root for `""`; null when nothing is there. */
-export const folderListing = (
-  files: ReadonlyArray<string>,
-  folder: string,
-): WikiFolderListing | null => {
-  const path = folder.trim().replace(/^\/+|\/+$/g, "");
-  const prefix = path === "" ? "" : `${key(path)}/`;
-  const subfolders = new Map<string, number>();
-  const documents: string[] = [];
-  const others: string[] = [];
-  let found: string | undefined;
-  for (const file of files) {
-    if (isHidden(file) || !key(file).startsWith(prefix)) continue;
-    found ??= file.slice(0, prefix.length);
-    const rest = file.slice(prefix.length);
-    const slash = rest.indexOf("/");
-    if (slash >= 0) {
-      const subfolder = file.slice(0, prefix.length + slash);
-      const held = subfolders.get(subfolder) ?? 0;
-      subfolders.set(subfolder, held + (isWikiDocument(file) ? 1 : 0));
-    } else {
-      (isWikiDocument(file) ? documents : others).push(file);
-    }
-  }
-  if (found === undefined && path !== "") return null;
-  const folders = [...subfolders].map(([subfolder, count]) => ({
-    path: subfolder,
-    documents: count,
-  }));
-  return {
-    folder: (found ?? "").replace(/\/$/, ""),
-    folders: folders.slice(0, MAX_LISTED_ENTRIES),
-    documents: documents.slice(0, MAX_LISTED_ENTRIES),
-    files: others.slice(0, MAX_LISTED_ENTRIES),
-    truncated: Math.max(folders.length, documents.length, others.length) > MAX_LISTED_ENTRIES,
-  };
-};
-
 /** Where a query's base comes from: its YAML, and the file `this` names inside it. */
 export type LocatedBase =
   | { readonly source: string; readonly self: string | undefined }
@@ -377,74 +322,6 @@ export const orientResult = (index: WikiIndex, mapName: string): WikiOrientResul
   };
 };
 
-const MAX_SEARCH_NOTES = 40;
-const MAX_LINES_PER_NOTE = 5;
-const MAX_LINE_LENGTH = 240;
-
-export interface WikiSearchResult {
-  readonly matches: ReadonlyArray<{
-    readonly name: string;
-    readonly lines: ReadonlyArray<{ readonly line: number; readonly text: string }>;
-    /** A canvas's matches: cards, which have ids to edit them by, not lines. */
-    readonly cards?: ReadonlyArray<CanvasMatch>;
-  }>;
-  /** True when more documents, lines or cards matched than the result carries. */
-  readonly truncated: boolean;
-}
-
-const clipped = (text: string) =>
-  text.length > MAX_LINE_LENGTH ? `${text.slice(0, MAX_LINE_LENGTH)}…` : text;
-
-/** Case-insensitive substring search over document names and text, bounded for an agent's context. */
-export const searchNotes = (index: WikiIndex, query: string): WikiSearchResult => {
-  const needle = query.toLowerCase();
-  const matches: Array<WikiSearchResult["matches"][number]> = [];
-  let truncated = false;
-  // A hidden document is read only by its exact path, which search never offers.
-  const documents: ReadonlyArray<{ readonly name: string; readonly source: string }> = [
-    ...index.notes.values(),
-    ...[...index.canvases.values()].map(({ file, source }) => ({ name: file, source })),
-  ].filter(({ name }) => !isHidden(name));
-  for (const { name, source } of documents) {
-    const board = isCanvasFile(name) ? parseCanvas(source) : null;
-    if (board?.ok === true) {
-      const cards = canvasMatches(board.data, query);
-      if (cards.length === 0 && !name.toLowerCase().includes(needle)) continue;
-      if (matches.length >= MAX_SEARCH_NOTES) {
-        truncated = true;
-        break;
-      }
-      truncated ||= cards.length > MAX_LINES_PER_NOTE;
-      matches.push({
-        name,
-        lines: [],
-        cards: cards
-          .slice(0, MAX_LINES_PER_NOTE)
-          .map((card) => ({ ...card, text: clipped(card.text) })),
-      });
-      continue;
-    }
-    const lines: Array<{ line: number; text: string }> = [];
-    let more = false;
-    source.split("\n").forEach((text, position) => {
-      if (!text.toLowerCase().includes(needle)) return;
-      if (lines.length >= MAX_LINES_PER_NOTE) {
-        more = true;
-        return;
-      }
-      lines.push({ line: position + 1, text: clipped(text) });
-    });
-    if (!lines.length && !name.toLowerCase().includes(needle)) continue;
-    if (matches.length >= MAX_SEARCH_NOTES) {
-      truncated = true;
-      break;
-    }
-    truncated ||= more;
-    matches.push({ name, lines });
-  }
-  return { matches, truncated };
-};
-
 /** A change request as agents review it: a canvas's files as outlines, not coordinates. */
 export const withCanvasOutlines = (detail: WikiChangeRequestDetail): WikiChangeRequestDetail => ({
   ...detail,
@@ -455,3 +332,48 @@ export const withCanvasOutlines = (detail: WikiChangeRequestDetail): WikiChangeR
     return { ...change, before: outline(change.before), after: outline(change.after) };
   }),
 });
+
+const MAX_SEARCH_FILES = 40;
+const MAX_LINES_PER_FILE = 5;
+const MAX_LINE_LENGTH = 240;
+
+export interface WikiSearchResult {
+  readonly matches: ReadonlyArray<{
+    readonly path: string;
+    readonly lines: ReadonlyArray<{ readonly line: number; readonly text: string }>;
+  }>;
+  /** True when more files or lines matched than the result carries. */
+  readonly truncated: boolean;
+}
+
+/** Case-insensitive substring search over document paths and lines, bounded for an agent's context. */
+export const searchFiles = (files: WikiFiles, query: string): WikiSearchResult => {
+  const needle = query.toLowerCase();
+  const matches: Array<WikiSearchResult["matches"][number]> = [];
+  let truncated = false;
+  // A hidden document is read only by its exact path, which search never offers.
+  for (const [path, source] of Object.entries(files).toSorted(([a], [b]) => a.localeCompare(b))) {
+    if (isHidden(path)) continue;
+    const lines: Array<{ line: number; text: string }> = [];
+    let more = false;
+    source.split("\n").forEach((text, position) => {
+      if (!text.toLowerCase().includes(needle)) return;
+      if (lines.length >= MAX_LINES_PER_FILE) {
+        more = true;
+        return;
+      }
+      lines.push({
+        line: position + 1,
+        text: text.length > MAX_LINE_LENGTH ? `${text.slice(0, MAX_LINE_LENGTH)}…` : text,
+      });
+    });
+    if (lines.length === 0 && !path.toLowerCase().includes(needle)) continue;
+    if (matches.length >= MAX_SEARCH_FILES) {
+      truncated = true;
+      break;
+    }
+    truncated ||= more;
+    matches.push({ path, lines });
+  }
+  return { matches, truncated };
+};

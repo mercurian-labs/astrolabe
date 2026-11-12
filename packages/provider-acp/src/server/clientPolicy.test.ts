@@ -66,6 +66,13 @@ describe("acpPermissionDisposition", () => {
       ),
       "allow",
     );
+    const wikiCheckout = NodePath.resolve(process.cwd(), "acp-wiki-checkout");
+    const edit = permissionRequest("edit", [{ path: NodePath.join(wikiCheckout, "Note.md") }]);
+    assert.equal(acpPermissionDisposition(policy, edit), "deny");
+    assert.equal(
+      acpPermissionDisposition({ ...policy, writableRoots: [wikiCheckout] }, edit),
+      "allow",
+    );
   });
 
   it("denies missing or out-of-root mutation locations", () => {

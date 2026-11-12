@@ -146,12 +146,16 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   Both are lists with **Unlink** and a searchable **Link a project** or **Link a wiki** picker,
   and a chat in a linked project shows a chip per wiki in its header, hidden below `sm`.
 - **Agent note**: the first prompt of every new native conversation in a linked project,
-  including after a provider restart or handoff, gets an `<astrolabe_wikis>` note naming the
-  wikis and the `astrolabe_wiki_*` tools (`WikiService.agentNote`,
-  `ProviderTurnStartService.ts`); a conversation with turns gets it on its next prompt for wikis
+  including after a provider restart or handoff, gets an `<astrolabe_wikis>` note naming each
+  wiki, the absolute path of the thread's checkout of it, and how this session reaches it
+  (edits there; Cursor with its sandbox on writes with a shell command, as its edit tool and every
+  MCP call are refused; Antigravity can't reach it and is told to use `astrolabe_wiki_read`, `_search` and
+  `_write` for a small read or edit, and `delegate_task`'s `wiki` for a larger job: moving, splitting or merging notes, or editing more than three) (`WikiService.agentNote`, `wikiCheckoutReach`,
+  `ProviderTurnStartService.ts`). A conversation with turns gets it on its next prompt for wikis
   linked since its last one (links with no `projectLinkedAt` time never do); a prompt that
-  starts with `/` never does and doesn't count as its last. Only the provider
-  sees it, not the user's bubble. Prove it with a real turn that never names the wiki. The
+  starts with `/` never does and doesn't count as its last. A child started with `wiki` is told
+  once that its working folder is that wiki. Only the provider sees it, not the user's bubble;
+  how to use a wiki is in the fixed **Astrolabe wikis** instructions section. Prove it with a real turn that never names the wiki. The
   host T3 instance you drive from still has its own `t3_wiki_*` tools; don't mix them up.
 - **`[[` in the composer** (web only; `composer-logic.ts` `detectWikiNoteTrigger`,
   `chat/composerWikiNoteItems.ts`): opens `listbox "Wiki notes"` with this server's notes,
@@ -178,8 +182,7 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   error and its raw text. A change landing on the canvas refreshes it with the camera where it was.
 - **Agents on a canvas** (`packages/wiki/src/canvasEdits.ts`, `canvasPlace.ts`, the transform in
   `WikiService.transform`): ask an agent to add to a canvas with the board open in its change
-  request. It calls `astrolabe_wiki_transform` with kind `canvas`, no coordinates; `astrolabe_wiki_amend`
-  refuses and names the transform. No existing card moves, unless a group had to grow, and its
+  request. It calls `astrolabe_wiki_transform` with kind `canvas`, no coordinates. No existing card moves, unless a group had to grow, and its
   cards stay. The camera stays; each changed card highlights once (`.cv-flash`, gone after about a
   second, nothing repainting at rest), then keeps its mark until the pull request is merged or
   closed. On main there are no marks. The tool row's **Open canvas** opens the board in that change
@@ -193,7 +196,14 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   ` ```base ` block in a note shows the same view in place (`.cm-md-host-block`, via the
   editor's `codeBlocks` option) and its YAML once the caret is in it. Row names and `[[links]]`
   in cells open notes: in a base's own tab the note replaces it (Back returns); a view with no name column gets a "Name" column. A base outside the
-  supported subset shows "This base can't be shown" naming the unsupported part. On the phone,
+  supported subset shows "This base can't be shown" naming the unsupported part. One that runs
+  with warnings (`baseWarnings` in `bases.ts`: unknown keys, `properties` or a sort under a view's
+  `order`, a link method on a file) shows "Parts of this base don't work as written" above its
+  view, each warning a line; the phone's `BaseBlock` lists them above the view, and a pull
+  request lists its changed bases' warnings with its standing errors. A turn that saves a broken
+  base gets one system message in its thread, "A base needs fixing", naming each base and problem
+  (`brokenBasesMessage`, `RunFinalizationService.saveWikiEdits`); the turn it starts never gets
+  another. On the phone,
   the page asks the app for each block (`queryBase`/`baseResult` in `wiki-editor/protocol.ts`)
   and draws its first view. A `.base` file lists on the phone too, `button "<name>.base, <wiki>"`
   with a table icon and "Base · read only" under it, and opens in `WikiDocument` (the same

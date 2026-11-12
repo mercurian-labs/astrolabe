@@ -1,18 +1,20 @@
 import { describe, expect, it } from "@effect/vitest";
+import { BASE_SYNTAX_REMINDER, BaseError } from "@mercurian/wiki";
 import {
   EnvironmentId,
-  IsoDateTime,
   ProviderInstanceId,
   ThreadId,
   WikiError,
   WikiId,
-  type WikiListResult,
   type WikiQueryResult,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Path from "effect/Path";
 import { McpSchema, McpServer } from "effect/ai";
 
+import * as ServerConfig from "../../../config.ts";
+import * as ThreadManagement from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as WikiService from "../../../wiki/WikiService.ts";
 import { advertisedJsonSchema } from "../../advertisedJsonSchema.ts";
 import * as McpHttpServer from "../../McpHttpServer.ts";
@@ -62,32 +64,32 @@ const rows: WikiQueryResult = {
 
 const harness = (
   answer: Effect.Effect<WikiQueryResult, WikiError>,
-  listed: WikiListResult = { wikis: [] },
+  /** The calling thread's working folder. */
+  worktreePath: string | null = null,
 ) => {
   const calls: unknown[] = [];
   const layer = McpHttpServer.layerWikiToolkit.pipe(
     Layer.provideMerge(McpHttpServer.layerInProcessMcpServer),
     Layer.provide(
       Layer.mergeAll(
-        McpToolAccessTestkit.liveThreadsLayer,
+        Layer.mock(ThreadManagement.ThreadManagementService)({
+          getThreadShell: (id) =>
+            Effect.succeed({ ...McpToolAccessTestkit.liveThreadShell(id), worktreePath }),
+        }),
         Layer.mock(WikiService.WikiService)({
-          list: Effect.succeed(listed),
-          listFolder: (input) => {
-            calls.push(input);
-            return Effect.succeed({
-              commit: "4f1c2a9",
-              folder: "ops",
-              folders: [],
-              documents: ["ops/Retry policy.md"],
-              files: [],
-              truncated: false,
-            });
-          },
           query: (input) => {
             calls.push(input);
             return answer;
           },
+          linkedWiki: (_projectId, reference) =>
+            reference === "Plans"
+              ? Effect.succeed(WikiId.make("wiki-plans"))
+              : Effect.fail(new WikiError({ reason: "not-found", message: "No wiki." })),
         }),
+        Layer.succeed(ServerConfig.ServerConfig, {
+          stateDir: "/state",
+        } as ServerConfig.ServerConfig["Service"]),
+        Path.layer,
       ),
     ),
   );
@@ -101,44 +103,31 @@ const harness = (
   return { calls, call };
 };
 
-describe("astrolabe_wiki_list", () => {
-  it.effect("leaves out map backgrounds, whose addresses can hold access tokens", () =>
-    Effect.gen(function* () {
-      const tools = harness(Effect.succeed(rows), {
-        wikis: [
-          {
-            wikiId: WikiId.make("plans"),
-            name: "Plans",
-            root: "/wikis/plans",
-            mainBranch: "main",
-            projectIds: [],
-            mirror: null,
-            mapBackgrounds: [
-              { name: "Paid", lightTiles: "https://tiles.test/?key=secret", darkTiles: null },
-            ],
-            openChangeRequests: 0,
-            createdAt: IsoDateTime.make("2026-11-04T00:00:00.000Z"),
-          },
-        ],
-      });
-      const result = yield* tools.call({}, "astrolabe_wiki_list");
-      expect(result.isError).not.toBe(true);
-      expect(JSON.stringify(result)).toContain("Plans");
-      expect(JSON.stringify(result)).not.toContain("secret");
-    }),
-  );
-
-  it.effect("lists one folder of a named wiki from the calling thread's view of it", () =>
-    Effect.gen(function* () {
-      const tools = harness(Effect.succeed(rows));
-      const result = yield* tools.call({ wiki: " Plans ", folder: "ops" }, "astrolabe_wiki_list");
-      expect(result.isError).not.toBe(true);
-      expect(result.structuredContent).toMatchObject({
-        contents: { documents: ["ops/Retry policy.md"] },
-      });
-      expect(tools.calls).toEqual([{ wikiId: "Plans", folder: "ops", threadId }]);
-    }),
-  );
+describe("WikiToolkit", () => {
+  it("lists the checkout tools, and the file fallbacks say who they are for", () => {
+    expect(Object.keys(WikiToolkit.tools).toSorted()).toEqual([
+      "astrolabe_wiki_change_request",
+      "astrolabe_wiki_links",
+      "astrolabe_wiki_orient",
+      "astrolabe_wiki_query",
+      "astrolabe_wiki_read",
+      "astrolabe_wiki_search",
+      "astrolabe_wiki_transform",
+      "astrolabe_wiki_write",
+    ]);
+    const fallbacks = [
+      WikiToolkit.tools.astrolabe_wiki_read,
+      WikiToolkit.tools.astrolabe_wiki_search,
+      WikiToolkit.tools.astrolabe_wiki_write,
+    ];
+    for (const tool of fallbacks) {
+      expect(tool.description).toMatch(/^Only for a session whose file tools can't reach/);
+      const schema = advertisedJsonSchema(tool) as {
+        properties: Record<string, { description?: string }>;
+      };
+      expect(Object.values(schema.properties).every((property) => property.description)).toBe(true);
+    }
+  });
 });
 
 describe("astrolabe_wiki_query", () => {
@@ -149,7 +138,25 @@ describe("astrolabe_wiki_query", () => {
       expect(result.isError).not.toBe(true);
       expect(result.structuredContent).toEqual(rows);
       expect(tools.calls).toEqual([
-        { wikiId: "Plans", base: "Open decisions", view: "Open", threadId },
+        { wikiId: "Plans", base: "Open decisions", view: "Open", threadId, checkout: true },
+      ]);
+      const warnings = ["views[0].columns is not a view key and is ignored; did you mean order?"];
+      const warned = yield* harness(Effect.succeed({ ...rows, warnings })).call({
+        wiki: "Plans",
+        base: "Open decisions",
+      });
+      expect(warned.structuredContent).toEqual({ ...rows, warnings, syntax: BASE_SYNTAX_REMINDER });
+    }),
+  );
+
+  it.effect("reads for the thread whose checkout of the wiki a child works in", () =>
+    Effect.gen(function* () {
+      const tools = harness(Effect.succeed(rows), "/state/wiki-checkouts/thread-parent/wiki-plans");
+      yield* tools.call({ wiki: "Plans", base: "Open" });
+      yield* tools.call({ wiki: "Research", base: "Open" });
+      expect(tools.calls).toMatchObject([
+        { wikiId: "Plans", threadId: "thread-parent" },
+        { wikiId: "Research", threadId },
       ]);
     }),
   );
@@ -158,13 +165,23 @@ describe("astrolabe_wiki_query", () => {
     Effect.gen(function* () {
       const message =
         "Not supported: formula.ppu (formulas) in the base's filters `formula.ppu > 5`.";
-      const tools = harness(Effect.fail(new WikiError({ reason: "invalid", message })));
-      const result = yield* tools.call({ wiki: "Plans", base: "Prices.base" });
-      const text = result.content[0];
-      expect(result.isError).toBe(true);
-      expect(text?.type === "text" ? JSON.parse(text.text) : undefined).toMatchObject({
+      const failed = (error: WikiError) =>
+        harness(Effect.fail(error))
+          .call({ wiki: "Plans", base: "Prices.base" })
+          .pipe(
+            Effect.map((result) => {
+              const text = result.content[0];
+              expect(result.isError).toBe(true);
+              return text?.type === "text" ? JSON.parse(text.text) : undefined;
+            }),
+          );
+      expect(yield* failed(new WikiError({ reason: "invalid", message }))).toMatchObject({
         code: "invalid_request",
         message,
+      });
+      const cause = new BaseError(message);
+      expect(yield* failed(new WikiError({ reason: "invalid", message, cause }))).toMatchObject({
+        message: `${message}\n${BASE_SYNTAX_REMINDER}`,
       });
     }),
   );

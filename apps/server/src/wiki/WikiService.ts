@@ -36,6 +36,8 @@ import {
   parseBase,
   queryBase,
   baseCorpus,
+  checkBase,
+  documentBaseCheck,
   applyBaseEdits,
   applyChanges,
   corpusWithChanges,
@@ -62,6 +64,7 @@ import {
   type WikiChangeRequestListResult,
   type WikiChangeRequestOpenInput,
   type WikiChangeRequestTarget,
+  type WikiCheckoutTransformResult,
   type WikiCodeStatus,
   type WikiCodeStatusInput,
   type WikiCodeStatusResult,
@@ -97,8 +100,10 @@ import {
   type WikiTarget,
   type WikiTransform,
   type WikiTransformInput,
-  wikiAgentGuidance,
+  linkedWikiAgentNote,
   type SourceControlProviderKind,
+  type WikiCheckoutReach,
+  wikiCheckoutAgentNote,
 } from "@t3tools/contracts";
 import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
 import { hostPreviewMimeTypeFromExtension } from "@t3tools/shared/filePreview";
@@ -110,6 +115,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
@@ -145,20 +151,21 @@ import {
   withRecordedMoves,
   type WikiFileTimes,
   parseMergeTree,
+  type PendingCheckoutAmendment,
+  PendingCheckoutAmendmentJson,
+  THREAD_CHECKOUTS_FOLDER,
   type WikiRecord,
   type WikiRegistry,
   WikiRegistryJson,
   wikiTerms,
 } from "./wikiStorage.ts";
 import {
-  folderListing,
   indexResult,
   linksResult,
   locateBase,
   noteResult,
   orientResult,
-  searchNotes,
-  type WikiFolderListing,
+  searchFiles,
   type WikiLinksResult,
   type WikiOrientResult,
   type WikiSearchResult,
@@ -181,16 +188,14 @@ export interface WikiAuthor {
   readonly threadId: ThreadId | null;
 }
 
+/** A thread's checkout of one wiki. */
+export interface WikiCheckout {
+  readonly wikiId: WikiId;
+  readonly folder: string;
+}
+
 /** The person at the keyboard, for changes made from the app. */
 export const person: WikiAuthor = { actor: "You", threadId: null };
-
-/** What a thread's agent is told about the wikis its repository is linked to. */
-const linkedWikiNote = (names: ReadonlyArray<string>): string | null =>
-  names.length === 0
-    ? null
-    : `<astrolabe_wikis>
-${wikiAgentGuidance(names)}
-</astrolabe_wikis>`;
 
 /**
  * Where a read comes from: a named change request's head, else the thread's own open change
@@ -200,6 +205,42 @@ export interface WikiReadTarget {
   readonly wikiId: WikiId;
   readonly changeRequestId?: WikiChangeRequestId | undefined;
   readonly threadId?: ThreadId | undefined;
+  /**
+   * With `threadId` and no `changeRequestId`, read the thread's checkout of the wiki as its files
+   * stand, unsaved edits and all, when it has one. A change request's detail lists them apart.
+   */
+  readonly checkout?: boolean | undefined;
+}
+
+/** The thread whose checkout of a wiki the fallback file tools work in. */
+export interface WikiCheckoutTarget {
+  readonly wikiId: WikiId;
+  readonly threadId?: ThreadId | undefined;
+}
+
+export interface WikiCheckoutReadResult {
+  /** Path from the checkout's root. */
+  readonly path: string;
+  readonly text: string;
+  readonly startLine: number;
+  readonly endLine: number;
+  readonly totalLines: number;
+}
+
+export interface WikiCheckoutWriteInput {
+  readonly wikiId: WikiId;
+  readonly path: string;
+  readonly content?: string | undefined;
+  readonly oldText?: string | undefined;
+  readonly newText?: string | undefined;
+  readonly delete?: boolean | undefined;
+}
+
+export interface WikiCheckoutWriteResult {
+  readonly path: string;
+  readonly change: "created" | "updated" | "deleted";
+  /** The errors and warnings of the bases the file now holds. Absent when none. */
+  readonly warnings?: ReadonlyArray<string>;
 }
 
 export class WikiService extends Context.Service<
@@ -221,12 +262,16 @@ export class WikiService extends Context.Service<
     ) => Effect.Effect<WikiSummary, WikiError>;
     /**
      * The note for a thread in this repository, or null when there is nothing to tell: every
-     * linked wiki, or with `linkedSince` only those linked after it.
+     * linked wiki it has a checkout of, or with `linkedSince` only those linked after it. A
+     * thread working in a checkout hears, on its first message, only which wiki it is in.
      */
-    readonly agentNote: (
-      projectId: ProjectId,
-      linkedSince?: DateTime.Utc,
-    ) => Effect.Effect<string | null, WikiError>;
+    readonly agentNote: (input: {
+      readonly projectId: ProjectId;
+      readonly linkedSince?: DateTime.Utc | undefined;
+      readonly checkouts: ReadonlyArray<WikiCheckout>;
+      readonly reach: WikiCheckoutReach;
+      readonly workingIn?: WikiId | undefined;
+    }) => Effect.Effect<string | null, WikiError>;
     /** The folder holding a wiki's main line, the repository its worktrees belong to. */
     readonly root: (wikiId: WikiId) => Effect.Effect<string, WikiError>;
     /** Pushes main to the mirror now; a failed push is recorded on the summary, not raised. */
@@ -235,9 +280,6 @@ export class WikiService extends Context.Service<
     readonly readNote: (
       input: WikiReadTarget & { readonly name: string },
     ) => Effect.Effect<WikiNoteResult, WikiError>;
-    readonly search: (
-      input: WikiReadTarget & { readonly query: string },
-    ) => Effect.Effect<WikiSearchResult & { readonly commit: string }, WikiError>;
     readonly orient: (
       input: WikiReadTarget & { readonly map: string },
     ) => Effect.Effect<WikiOrientResult & { readonly commit: string }, WikiError>;
@@ -252,10 +294,6 @@ export class WikiService extends Context.Service<
     readonly readFiles: (
       input: WikiReadTarget & Omit<WikiReadFilesInput, "wikiId" | "changeRequestId">,
     ) => Effect.Effect<WikiReadFilesResult, WikiError>;
-    /** One folder's contents for an agent, hidden ones left out; `""` is the root. */
-    readonly listFolder: (
-      input: WikiReadTarget & { readonly folder: string },
-    ) => Effect.Effect<WikiFolderListing & { readonly commit: string }, WikiError>;
     readonly listFiles: (
       input: WikiListFilesInput,
     ) => Effect.Effect<WikiListFilesResult, WikiError>;
@@ -300,6 +338,37 @@ export class WikiService extends Context.Service<
       author: WikiAuthor,
     ) => Effect.Effect<WikiAmendResult, WikiError>;
     /**
+     * An agent's transform: written uncommitted into its thread's checkout of the wiki, for the
+     * turn's save to land, when it has one and names no change request; else as `transform`.
+     */
+    readonly transformCheckout: (
+      input: WikiTransformInput,
+      author: WikiAuthor,
+    ) => Effect.Effect<WikiAmendResult | WikiCheckoutTransformResult, WikiError>;
+    /**
+     * A document in the thread's checkout of the wiki as it stands on disk, whole or lines
+     * `startLine` to `endLine`: for a session whose own file tools can't reach the checkout.
+     */
+    readonly checkoutRead: (
+      input: WikiCheckoutTarget & {
+        readonly path: string;
+        readonly startLine?: number | undefined;
+        readonly endLine?: number | undefined;
+      },
+    ) => Effect.Effect<WikiCheckoutReadResult, WikiError>;
+    /** Searches the paths and lines of the documents in the thread's checkout, unsaved edits included. */
+    readonly checkoutSearch: (
+      input: WikiCheckoutTarget & { readonly query: string },
+    ) => Effect.Effect<WikiSearchResult, WikiError>;
+    /**
+     * Writes a note or a base in the author's thread's checkout, uncommitted, for the turn's save
+     * to land: whole `content`, one exact `oldText` replaced by `newText`, or `delete`.
+     */
+    readonly checkoutWrite: (
+      input: WikiCheckoutWriteInput,
+      author: WikiAuthor,
+    ) => Effect.Effect<WikiCheckoutWriteResult, WikiError>;
+    /**
      * A person's edit landing by itself: in the change request named, else the author's draft,
      * starting one on the first edit. Saves of one document in a run replace each other.
      */
@@ -341,6 +410,42 @@ export class WikiService extends Context.Service<
       input: WikiSaveWorktreeInput,
       author: WikiAuthor,
     ) => Effect.Effect<WikiAmendResult, WikiError>;
+    /** The wikis linked to a project. */
+    readonly linkedTo: (projectId: ProjectId) => Effect.Effect<ReadonlyArray<WikiId>, WikiError>;
+    /** The wiki linked to a project that `reference` names by id or name. */
+    readonly linkedWiki: (
+      projectId: ProjectId,
+      reference: string,
+    ) => Effect.Effect<WikiId, WikiError>;
+    /**
+     * Makes `folder` a worktree of the wiki on the thread's open change request, or detached at
+     * main's tip while it has none; one with unsaved edits stays as it is. Returns the folder
+     * holding the checkout, another one when the change request is checked out elsewhere.
+     */
+    readonly checkoutForThread: (input: {
+      readonly wikiId: WikiId;
+      readonly threadId: ThreadId;
+      readonly folder: string;
+    }) => Effect.Effect<string, WikiError>;
+    /**
+     * Lands a thread's checkout's unsaved document edits as one amendment on its open change
+     * request, opening one titled `title` when it has none. Null when nothing changed.
+     */
+    readonly saveThreadCheckout: (
+      input: {
+        readonly wikiId: WikiId;
+        readonly threadId: ThreadId;
+        readonly folder: string;
+        readonly title: string;
+        readonly message: string;
+      },
+      author: WikiAuthor,
+    ) => Effect.Effect<WikiAmendResult | null, WikiError>;
+    /** Removes a worktree of the wiki, unsaved edits and all. */
+    readonly removeCheckout: (input: {
+      readonly wikiId: WikiId;
+      readonly folder: string;
+    }) => Effect.Effect<void, WikiError>;
     /** A person's act: lands an open change request on main and moves the checkout with it. */
     readonly merge: (input: WikiChangeRequestTarget) => Effect.Effect<WikiMergeResult, WikiError>;
     readonly setChangeRequestStatus: (
@@ -535,6 +640,19 @@ const decodeChangeRequest = Schema.decodeEffect(ChangeRequestRecordJson);
 const encodeChangeRequest = Schema.encodeEffect(ChangeRequestRecordJson);
 
 const isWikiError = Schema.is(WikiError);
+const decodePending = Schema.decodeEffect(PendingCheckoutAmendmentJson);
+const encodePending = Schema.encodeEffect(PendingCheckoutAmendmentJson);
+
+/** Moves after `earlier` ones: a file moved twice moved once, from where it was to where it is. */
+const chainMoves = (earlier: ReadonlyArray<WikiMove>, later: ReadonlyArray<WikiMove>) => {
+  const moves = [...earlier];
+  for (const { from, to } of later) {
+    const position = moves.findIndex((move) => move.to === from);
+    if (position === -1) moves.push({ from, to });
+    else moves[position] = { from: moves[position]!.from, to };
+  }
+  return moves;
+};
 
 const oneLine = (text: string) => text.replace(/[\r\n<>]+/g, " ").trim();
 
@@ -1488,6 +1606,11 @@ const make = Effect.gen(function* () {
       target.wikiId,
       (wiki) =>
         Effect.gen(function* () {
+          const checkout = yield* threadCheckout(wiki, target);
+          if (checkout !== null) {
+            const { head, snapshot } = yield* checkoutSnapshot(wiki, checkout);
+            return read(wiki, head, snapshot);
+          }
           const commit = yield* readCommit(wiki, target);
           return read(wiki, commit, yield* snapshotAt(wiki, commit));
         }),
@@ -1555,19 +1678,21 @@ const make = Effect.gen(function* () {
       readonly onto?: string;
       /** Plans on `onto` too: a whole text replaces what the head's amendment did. */
       readonly planOnto?: boolean;
+      /** The amendment id stamps already written in a checkout carry, and the ids they took. */
+      readonly pending?: Pick<PendingCheckoutAmendment, "amendment" | "minted">;
     } = {},
   ) {
-    const { reverts, follow = true, autosave, onto, planOnto = false } = options;
+    const { reverts, follow = true, autosave, onto, planOnto = false, pending } = options;
     const now = yield* DateTime.now;
     const at = DateTime.formatIso(now);
-    const amendment = yield* newId;
+    const amendment = pending?.amendment ?? (yield* newId);
     const env = identity(author.actor, now);
     const changeRequestId =
       target.kind === "existing" ? target.stored.record.changeRequestId : target.changeRequestId;
     const parent = target.kind === "existing" ? target.stored.head : target.base;
     const from = planOnto ? (onto ?? parent) : parent;
     const snapshot = yield* snapshotAt(wiki, from);
-    let warnings = 0;
+    let warnings = pending?.minted ?? 0;
     const stamp: AmendmentStamp = {
       amendment,
       at,
@@ -1679,7 +1804,7 @@ const make = Effect.gen(function* () {
       return Effect.fail(
         new WikiError({
           reason: "invalid",
-          message: `${canvas} is a canvas, which astrolabe_wiki_amend can't write. Change it with astrolabe_wiki_transform, kind "canvas": say what is on it, and it is placed for you.`,
+          message: `${canvas} is a canvas, which is never written whole. Change it with a "canvas" transform: say what is on it, and it is placed for you.`,
           wikiId: input.wikiId,
         }),
       );
@@ -2378,71 +2503,20 @@ const make = Effect.gen(function* () {
                     message: `The ${wikiTerms(wiki).singular} moved while this ran. Read it again and retry.`,
                   });
                 }
-                const status = yield* runGit("worktreeStatus", at, [
-                  "status",
-                  "--porcelain=v1",
-                  "-z",
-                  "--no-renames",
-                  "--untracked-files=all",
-                ]);
-                const changes: Record<string, string | null> = {};
-                for (const record of status.stdout.split("\0")) {
-                  const file = record.slice(3);
-                  if (record.length < 4 || !isWikiDocument(file)) continue;
-                  changes[file] = record.slice(0, 2).includes("D")
-                    ? null
-                    : yield* fileSystem.readFileString(path.join(at, file)).pipe(
-                        Effect.mapError(
-                          (cause) =>
-                            new WikiError({
-                              reason: "invalid",
-                              message: `${file} could not be read from the worktree.`,
-                              cause,
-                            }),
-                        ),
-                      );
-                }
-                if (Object.keys(changes).length === 0) {
+                const result = yield* landCheckoutEdits(
+                  wiki,
+                  at,
+                  stored.head,
+                  { kind: "existing", stored },
+                  author,
+                  input.message,
+                  false,
+                );
+                if (result === null) {
                   return yield* new WikiError({
                     reason: "invalid",
                     message: "No document in this worktree has unsaved changes.",
                   });
-                }
-                const result = yield* land(
-                  wiki,
-                  { kind: "existing", stored },
-                  author,
-                  input.message,
-                  (files, stamp) => planAmendment(files, changes, stamp),
-                  { follow: false },
-                );
-                // The folder already holds the edits: line its index up with the new head, then
-                // write what the amendment changed besides them (stamps, map warnings).
-                const touched = (yield* runGit("amendedFiles", at, [
-                  "diff",
-                  "--name-status",
-                  "--no-renames",
-                  "-z",
-                  stored.head,
-                  result.commit,
-                ])).stdout
-                  .split("\0")
-                  .filter(Boolean);
-                const written: string[] = [];
-                const removed: string[] = [];
-                for (let position = 0; position + 1 < touched.length; position += 2) {
-                  const file = touched[position + 1]!;
-                  if (touched[position] === "D") removed.push(file);
-                  else written.push(file);
-                }
-                yield* runGit("adoptHead", at, ["read-tree", result.commit]);
-                if (written.length) {
-                  yield* runGit("writeAmended", at, ["checkout-index", "-f", "--", ...written]);
-                }
-                for (const file of removed) {
-                  yield* fileSystem
-                    .remove(path.join(at, file), { force: true })
-                    .pipe(Effect.ignore);
                 }
                 return result;
               }),
@@ -2450,6 +2524,641 @@ const make = Effect.gen(function* () {
           }),
         ),
       input.changeRequestId,
+    );
+
+  /**
+   * A checkout's unsaved edits: documents by text and, with `attachments`, other visible files as
+   * blobs written to the object store; null for a deleted one. With `since`, what commits made
+   * in the folder after it changed counts too.
+   */
+  const checkoutEdits = Effect.fn("WikiService.checkoutEdits")(function* (
+    at: string,
+    attachments: boolean,
+    since?: string,
+  ) {
+    const status = yield* runGit("worktreeStatus", at, [
+      "status",
+      "--porcelain=v1",
+      "-z",
+      "--no-renames",
+      "--untracked-files=all",
+    ]);
+    const entries = new Map<string, boolean>();
+    for (const record of status.stdout.split("\0")) {
+      if (record.length >= 4) entries.set(record.slice(3), record.slice(0, 2).includes("D"));
+    }
+    if (since !== undefined) {
+      const committed = yield* gitOut("committedEdits", at, [
+        "diff",
+        "--name-only",
+        "--no-renames",
+        "-z",
+        since,
+        "HEAD",
+      ]);
+      for (const file of committed.split("\0").filter(Boolean)) {
+        if (entries.has(file)) continue;
+        const exists = yield* fileSystem
+          .exists(path.join(at, file))
+          .pipe(Effect.orElseSucceed(() => false));
+        entries.set(file, !exists);
+      }
+    }
+    const changes: Record<string, string | null> = {};
+    const blobs: Record<string, string | null> = {};
+    const hashed: string[] = [];
+    for (const [file, deleted] of entries) {
+      if (attachments && isAttachmentName(file)) {
+        if (deleted) blobs[file] = null;
+        else hashed.push(file);
+        continue;
+      }
+      if (!isWikiDocument(file)) continue;
+      changes[file] = deleted
+        ? null
+        : yield* fileSystem.readFileString(path.join(at, file)).pipe(
+            Effect.mapError(
+              (cause) =>
+                new WikiError({
+                  reason: "invalid",
+                  message: `${file} could not be read from the worktree.`,
+                  cause,
+                }),
+            ),
+          );
+    }
+    if (hashed.length > 0) {
+      const oids = (yield* gitOut(
+        "hashAttachments",
+        at,
+        ["hash-object", "-w", "--no-filters", "--stdin-paths"],
+        { stdin: `${hashed.join("\n")}\n` },
+      )).split("\n");
+      hashed.forEach((file, position) => {
+        blobs[file] = oids[position] ?? null;
+      });
+    }
+    return { changes, blobs } satisfies CarriedFiles;
+  });
+
+  const pendingFile = (at: string) =>
+    gitOut("checkoutGitDir", at, ["rev-parse", "--absolute-git-dir"]).pipe(
+      Effect.map((gitDir) => path.join(gitDir, "astrolabe-pending-amendment.json")),
+    );
+
+  const readPending = Effect.fn("WikiService.readPending")(function* (at: string) {
+    const file = yield* pendingFile(at);
+    return yield* fileSystem
+      .readFileString(file)
+      .pipe(Effect.flatMap(decodePending), Effect.option);
+  });
+
+  const clearPending = (at: string) =>
+    pendingFile(at).pipe(
+      Effect.flatMap((file) => fileSystem.remove(file, { force: true })),
+      Effect.ignore,
+    );
+
+  /**
+   * Lands the unsaved edits in `at`, whose HEAD is `from`, as one amendment on `target`, then
+   * leaves the folder clean on the target's branch; null when there were none. Callers hold the
+   * wiki's lock and the folder's lease.
+   */
+  const landCheckoutEdits = Effect.fn("WikiService.landCheckoutEdits")(function* (
+    wiki: WikiRecord,
+    at: string,
+    from: string,
+    target: Target,
+    author: WikiAuthor,
+    message: string,
+    /** A thread's checkout saves every visible file; a person's worktree only its documents. */
+    attachments: boolean,
+    /** Where the folder's own commits began, when they are to land as edits too. */
+    since?: string,
+  ) {
+    const edits = yield* checkoutEdits(at, attachments, since);
+    if (carriedNames(edits).length === 0) {
+      yield* clearPending(at);
+      return null;
+    }
+    const pending = Option.getOrUndefined(yield* readPending(at));
+    const gone = (file: string) =>
+      edits.changes[file] === null || (file in edits.blobs && edits.blobs[file] === null);
+    const present = (file: string) =>
+      typeof edits.changes[file] === "string" || typeof edits.blobs[file] === "string";
+    // Only the moves a transform made that still stand: a later edit may have undone one.
+    const moved = (pending?.moved ?? []).filter(({ from, to }) => gone(from) && present(to));
+    const result = yield* land(
+      wiki,
+      target,
+      author,
+      message,
+      (files, stamp) => ({
+        ...(Object.keys(edits.changes).length === 0
+          ? { changes: {}, errors: indexFiles(files).errors }
+          : // A move adds no edge, so an edge that stood unsupported only comes along.
+            planAmendment(files, edits.changes, stamp, { allowUnstamped: moved.length > 0 })),
+        blobs: edits.blobs,
+        ...(moved.length === 0 ? {} : { moved }),
+      }),
+      { follow: false, ...(pending === undefined ? {} : { pending }) },
+    );
+    yield* clearPending(at);
+    const branch = changeRequestBranch(result.changeRequest.changeRequestId);
+    const onBranch = yield* runGit("checkoutBranch", at, ["symbolic-ref", "-q", "HEAD"], {
+      allowExitCodes: [1],
+    });
+    // Moves HEAD alone: the folder already holds the edits the new branch's head has.
+    if (onBranch.stdout.trim() !== branch) {
+      yield* runGit("adoptBranch", at, ["symbolic-ref", "HEAD", branch]);
+    }
+    // The folder already holds the edits: line its index up with the new head, then write what
+    // the amendment changed besides them (stamps, map warnings, a head that moved meanwhile).
+    const touched = (yield* runGit("amendedFiles", at, [
+      "diff",
+      "--name-status",
+      "--no-renames",
+      "-z",
+      from,
+      result.commit,
+    ])).stdout
+      .split("\0")
+      .filter(Boolean);
+    const written: string[] = [];
+    const removed: string[] = [];
+    for (let position = 0; position + 1 < touched.length; position += 2) {
+      const file = touched[position + 1]!;
+      if (touched[position] === "D") removed.push(file);
+      else written.push(file);
+    }
+    yield* runGit("adoptHead", at, ["read-tree", result.commit]);
+    if (written.length) {
+      yield* runGit("writeAmended", at, ["checkout-index", "-f", "--", ...written]);
+    }
+    for (const file of removed) {
+      yield* fileSystem.remove(path.join(at, file), { force: true }).pipe(Effect.ignore);
+    }
+    return result;
+  });
+
+  /** Where a checkout's own commits began: the last commit `head` shares with main. */
+  const checkoutBase = (wiki: WikiRecord, head: string) =>
+    runGit("checkoutBase", wiki.root, ["merge-base", head, mainRef(wiki)], {
+      allowExitCodes: [1],
+    }).pipe(Effect.map((result) => (result.exitCode === 0 ? result.stdout.trim() : head)));
+
+  /** Whether `folder` is one of the wiki's worktrees, with the branch it has checked out. */
+  const listedCheckout = Effect.fn("WikiService.listedCheckout")(function* (
+    wiki: WikiRecord,
+    folder: string,
+  ) {
+    const listed = yield* runGit("worktreeList", wiki.root, [
+      "worktree",
+      "list",
+      "--porcelain",
+      "-z",
+    ]);
+    // git lists real paths, which a symlinked temp folder (macOS /var) is not.
+    const real = yield* fileSystem
+      .realPath(folder)
+      .pipe(Effect.orElseSucceed(() => path.resolve(folder)));
+    return parseWorktreeList(listed.stdout).find((entry) => path.resolve(entry.path) === real);
+  });
+
+  /** The thread's checkout of the wiki a read or an agent's transform works in, if it has one. */
+  const threadCheckout = Effect.fn("WikiService.threadCheckout")(function* (
+    wiki: WikiRecord,
+    target: WikiReadTarget,
+  ) {
+    if (!target.checkout || target.threadId === undefined) return null;
+    if (target.changeRequestId !== undefined) return null;
+    const folder = path.join(
+      config.stateDir,
+      THREAD_CHECKOUTS_FOLDER,
+      target.threadId,
+      wiki.wikiId,
+    );
+    if (!(yield* fileSystem.exists(folder).pipe(Effect.orElseSucceed(() => false)))) return null;
+    return (yield* listedCheckout(wiki, folder)) === undefined ? null : folder;
+  });
+
+  /** A checkout's files as they stand: its HEAD's snapshot with the unsaved edits over it. */
+  const checkoutSnapshot = Effect.fn("WikiService.checkoutSnapshot")(function* (
+    wiki: WikiRecord,
+    folder: string,
+  ) {
+    const head = yield* gitOut("worktreeHead", folder, ["rev-parse", "HEAD"]);
+    const committed = yield* snapshotAt(wiki, head);
+    const edits = yield* checkoutEdits(folder, true);
+    if (carriedNames(edits).length === 0) return { head, edits, snapshot: committed };
+    const files = applyChanges(committed.files, edits.changes);
+    const snapshot: Snapshot = {
+      files,
+      index: yield* Effect.try({ try: () => indexFiles(files), catch: planningError }),
+      others: [
+        ...committed.others.filter(({ file }) => !(file in edits.blobs)),
+        ...Object.entries(edits.blobs).flatMap(([file, oid]) =>
+          oid === null ? [] : [{ file, oid }],
+        ),
+      ],
+    };
+    return { head, edits, snapshot };
+  });
+
+  const ioError = (message: string) => (cause: unknown) =>
+    new WikiError({ reason: "git-failed", message, cause });
+
+  /**
+   * Plans a transform on a checkout's files and writes the result there, uncommitted. Its stamps
+   * carry the amendment id the turn's save will land under. Callers hold the lock and the lease.
+   */
+  const transformInCheckout = Effect.fn("WikiService.transformInCheckout")(function* (
+    wiki: WikiRecord,
+    folder: string,
+    change: WikiTransform,
+  ): Effect.fn.Return<WikiCheckoutTransformResult, WikiError> {
+    const { snapshot } = yield* checkoutSnapshot(wiki, folder);
+    const stored = yield* readPending(folder);
+    const pending = Option.isSome(stored)
+      ? stored.value
+      : { amendment: yield* newId, minted: 0, moved: [] };
+    let minted = pending.minted;
+    const stamp: AmendmentStamp = {
+      amendment: pending.amendment,
+      at: yield* nowIso,
+      newId: () => `${pending.amendment}-${++minted}`,
+    };
+    const planned = yield* Effect.try({
+      try: () => planWikiTransform(change)(snapshot.files, stamp, snapshot.others),
+      catch: planningError,
+    });
+    const blobs = planned.blobs ?? {};
+    if (carriedNames({ changes: planned.changes, blobs }).length === 0) {
+      return yield* new WikiError({ reason: "invalid", message: NOTHING_CHANGED });
+    }
+    const on = (file: string) => path.join(folder, file);
+    const place = (file: string) =>
+      fileSystem.makeDirectory(path.dirname(on(file)), { recursive: true });
+    const movedFrom = new Map((planned.moved ?? []).map(({ from, to }) => [to, from]));
+    const removed: string[] = [];
+    const written: string[] = [];
+    yield* Effect.gen(function* () {
+      // Bytes that aren't a document only ever move; removals go before writes, so a rename
+      // that changes only case survives a case-blind disk.
+      for (const [file, oid] of Object.entries(blobs)) {
+        const from = movedFrom.get(file);
+        if (oid === null || from === undefined) continue;
+        yield* place(file);
+        yield* fileSystem.rename(on(from), on(file));
+      }
+      const renamed = new Set(movedFrom.values());
+      for (const [file, content] of [
+        ...Object.entries(planned.changes),
+        ...Object.entries(blobs),
+      ]) {
+        if (content !== null) continue;
+        removed.push(file);
+        if (!(file in blobs && renamed.has(file)))
+          yield* fileSystem.remove(on(file), { force: true });
+      }
+      for (const [file, content] of Object.entries(planned.changes)) {
+        if (content === null) continue;
+        yield* place(file);
+        yield* fileSystem.writeFileString(on(file), content);
+        written.push(file);
+      }
+      written.push(...Object.keys(blobs).filter((file) => blobs[file] !== null));
+      // A folder a move emptied goes too; one still holding anything refuses.
+      for (const file of removed) {
+        for (let dir = path.dirname(file); dir !== "."; dir = path.dirname(dir)) {
+          const left = yield* fileSystem
+            .readDirectory(on(dir))
+            .pipe(Effect.orElseSucceed(() => [""]));
+          if (left.length > 0) break;
+          yield* fileSystem.remove(on(dir), { recursive: true });
+        }
+      }
+      yield* fileSystem.writeFileString(
+        yield* pendingFile(folder),
+        yield* encodePending({
+          amendment: pending.amendment,
+          minted,
+          moved: chainMoves(pending.moved, planned.moved ?? []),
+        }),
+      );
+    }).pipe(
+      Effect.mapError((cause) =>
+        isWikiError(cause)
+          ? cause
+          : ioError("Could not write the change into the checkout.")(cause),
+      ),
+    );
+    return {
+      written: written.toSorted(),
+      removed: removed.toSorted(),
+      errors: planned.errors,
+      ...(planned.canvas === undefined ? {} : { canvas: planned.canvas }),
+    };
+  });
+
+  const transformCheckout: WikiService["Service"]["transformCheckout"] = (input, author) =>
+    withWiki(
+      input.wikiId,
+      (wiki) =>
+        Effect.gen(function* () {
+          const folder =
+            author.threadId === null
+              ? null
+              : yield* threadCheckout(wiki, {
+                  wikiId: wiki.wikiId,
+                  threadId: author.threadId,
+                  changeRequestId: input.changeRequestId,
+                  checkout: true,
+                });
+          if (folder === null) return yield* transform(input, author);
+          return yield* locked(
+            wiki,
+            withWorkspaceLease(folder, transformInCheckout(wiki, folder, input.transform)),
+          );
+        }),
+      input.changeRequestId,
+    );
+
+  /** The thread's checkout of the wiki, which the fallback file tools work in alone. */
+  const requireCheckout = Effect.fn("WikiService.requireCheckout")(function* (
+    wiki: WikiRecord,
+    threadId: ThreadId | null | undefined,
+  ) {
+    const folder =
+      threadId == null
+        ? null
+        : yield* threadCheckout(wiki, { wikiId: wiki.wikiId, threadId, checkout: true });
+    if (folder === null) {
+      return yield* new WikiError({
+        reason: "not-found",
+        message: `Your thread has no checkout of this ${wikiTerms(wiki).singular}.`,
+      });
+    }
+    return folder;
+  });
+
+  const outsideCheckout = (file: string) =>
+    new WikiError({
+      reason: "invalid",
+      message: `${file} is not a path inside the wiki: give one from its root, as in area/Name.md.`,
+    });
+
+  /** Where `file`, a wiki path, sits in a checkout. A link on disk leading out of it is refused. */
+  const checkoutFile = Effect.fn("WikiService.checkoutFile")(function* (
+    folder: string,
+    file: string,
+  ) {
+    const at = path.join(folder, file);
+    const root = yield* fileSystem
+      .realPath(folder)
+      .pipe(Effect.mapError(ioError("Could not read the checkout.")));
+    let probe = at;
+    while (
+      probe !== folder &&
+      !(yield* fileSystem.exists(probe).pipe(Effect.orElseSucceed(() => false)))
+    ) {
+      probe = path.dirname(probe);
+    }
+    const real = yield* fileSystem.realPath(probe).pipe(Effect.orElseSucceed(() => probe));
+    if (real !== root && !real.startsWith(`${root}${path.sep}`)) {
+      return yield* outsideCheckout(file);
+    }
+    return at;
+  });
+
+  const checkoutRead: WikiService["Service"]["checkoutRead"] = (input) =>
+    withWiki(input.wikiId, (wiki) =>
+      Effect.gen(function* () {
+        if (!isWikiPath(input.path)) return yield* outsideCheckout(input.path);
+        if (!isWikiDocument(input.path)) {
+          return yield* new WikiError({
+            reason: "invalid",
+            message: `${input.path} is not a note, base or canvas.`,
+          });
+        }
+        const folder = yield* requireCheckout(wiki, input.threadId);
+        const text = yield* fileSystem.readFileString(yield* checkoutFile(folder, input.path)).pipe(
+          Effect.mapError(
+            (cause) =>
+              new WikiError({
+                reason: "not-found",
+                message: `${input.path} is not in the wiki.`,
+                cause,
+              }),
+          ),
+        );
+        const lines = text.split("\n");
+        if (lines.at(-1) === "") lines.pop();
+        const startLine = Math.max(1, input.startLine ?? 1);
+        const endLine = Math.min(lines.length, input.endLine ?? lines.length);
+        return {
+          path: input.path,
+          text:
+            startLine === 1 && endLine === lines.length
+              ? text
+              : lines.slice(startLine - 1, endLine).join("\n"),
+          startLine,
+          endLine,
+          totalLines: lines.length,
+        };
+      }),
+    );
+
+  const checkoutSearch: WikiService["Service"]["checkoutSearch"] = (input) =>
+    withWiki(input.wikiId, (wiki) =>
+      Effect.gen(function* () {
+        const folder = yield* requireCheckout(wiki, input.threadId);
+        const { snapshot } = yield* checkoutSnapshot(wiki, folder);
+        return searchFiles(snapshot.files, input.query);
+      }),
+    );
+
+  const checkoutWrite: WikiService["Service"]["checkoutWrite"] = (input, author) =>
+    withWiki(input.wikiId, (wiki) =>
+      Effect.gen(function* () {
+        const file = input.path;
+        const refuse = (message: string) => new WikiError({ reason: "invalid", message });
+        if (!isWikiPath(file)) return yield* outsideCheckout(file);
+        if (isCanvasFile(file)) {
+          return yield* refuse("A canvas changes through a canvas transform, never its JSON.");
+        }
+        if (!isWikiDocument(file)) return yield* refuse(`${file} is not a note (.md) or a base.`);
+        const replacing = input.oldText !== undefined || input.newText !== undefined;
+        const modes = [input.content !== undefined, replacing, input.delete === true];
+        if (modes.filter(Boolean).length !== 1) {
+          return yield* refuse("Give one of content, oldText with newText, or delete.");
+        }
+        if (replacing && (input.oldText === undefined || input.newText === undefined)) {
+          return yield* refuse("oldText and newText go together.");
+        }
+        if (input.oldText === "") return yield* refuse("oldText cannot be empty.");
+        const folder = yield* requireCheckout(wiki, author.threadId);
+        return yield* locked(
+          wiki,
+          withWorkspaceLease(
+            folder,
+            Effect.gen(function* () {
+              const at = yield* checkoutFile(folder, file);
+              const existing = Option.getOrUndefined(
+                yield* fileSystem.readFileString(at).pipe(Effect.option),
+              );
+              const missing = new WikiError({
+                reason: "not-found",
+                message: `${file} is not in the wiki.`,
+              });
+              if (input.delete === true) {
+                if (existing === undefined) return yield* missing;
+                yield* fileSystem.remove(at);
+                return { path: file, change: "deleted" as const };
+              }
+              let next = input.content;
+              if (next === undefined) {
+                const oldText = input.oldText ?? "";
+                if (existing === undefined) return yield* missing;
+                const first = existing.indexOf(oldText);
+                if (first === -1) return yield* refuse(`oldText is not in ${file}.`);
+                if (existing.indexOf(oldText, first + 1) !== -1) {
+                  return yield* refuse(
+                    `oldText is in ${file} more than once: include more of the text around it.`,
+                  );
+                }
+                next = `${existing.slice(0, first)}${input.newText ?? ""}${existing.slice(first + oldText.length)}`;
+              }
+              yield* fileSystem.makeDirectory(path.dirname(at), { recursive: true });
+              yield* fileSystem.writeFileString(at, next);
+              const check = documentBaseCheck(file, next);
+              const warnings = [...check.errors, ...check.warnings];
+              return {
+                path: file,
+                change: existing === undefined ? "created" : "updated",
+                ...(warnings.length ? { warnings } : {}),
+              } as const;
+            }).pipe(
+              Effect.mapError((cause) =>
+                isWikiError(cause)
+                  ? cause
+                  : ioError("Could not write the note into the checkout.")(cause),
+              ),
+            ),
+          ),
+        );
+      }),
+    );
+
+  const checkoutForThread: WikiService["Service"]["checkoutForThread"] = (input) =>
+    withWiki(input.wikiId, (wiki) =>
+      locked(
+        wiki,
+        Effect.gen(function* () {
+          const own = yield* threadChangeRequest(wiki, input.threadId);
+          const branch = own === undefined ? null : changeRequestBranch(own.record.changeRequestId);
+          const listed = yield* listedCheckout(wiki, input.folder);
+          const elsewhere = branch === null ? null : yield* checkoutHolding(wiki, branch);
+          if (elsewhere !== null && elsewhere !== listed?.path) return elsewhere;
+          const main = yield* mainTip(wiki);
+          if (listed === undefined) {
+            yield* runGit("pruneWorktrees", wiki.root, ["worktree", "prune"]);
+            yield* fileSystem
+              .makeDirectory(path.dirname(input.folder), { recursive: true })
+              .pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new WikiError({ reason: "invalid", message: "No folder for it.", cause }),
+                ),
+              );
+            yield* runGit(
+              "addThreadCheckout",
+              wiki.root,
+              branch === null
+                ? ["worktree", "add", "--quiet", "--detach", input.folder, main]
+                : ["worktree", "add", "--quiet", input.folder, branch.slice("refs/heads/".length)],
+            );
+            return input.folder;
+          }
+          const current = listed.branch === null ? null : `refs/heads/${listed.branch}`;
+          if (current === branch && (branch !== null || listed.head === main)) return input.folder;
+          // Unsaved edits and commits stay where they are; the turn-end save lands them.
+          const since =
+            listed.branch === null && listed.head !== null
+              ? yield* checkoutBase(wiki, listed.head)
+              : undefined;
+          if (carriedNames(yield* checkoutEdits(input.folder, true, since)).length > 0)
+            return input.folder;
+          yield* withWorkspaceLease(
+            input.folder,
+            runGit(
+              "switchThreadCheckout",
+              input.folder,
+              branch === null
+                ? ["checkout", "--quiet", "--detach", main]
+                : ["checkout", "--quiet", branch.slice("refs/heads/".length)],
+            ),
+          );
+          return input.folder;
+        }),
+      ),
+    );
+
+  const saveThreadCheckout: WikiService["Service"]["saveThreadCheckout"] = (input, author) =>
+    withWiki(input.wikiId, (wiki) =>
+      locked(
+        wiki,
+        withWorkspaceLease(
+          input.folder,
+          Effect.gen(function* () {
+            const listed = yield* listedCheckout(wiki, input.folder);
+            if (listed === undefined) return null;
+            const from = yield* gitOut("worktreeHead", input.folder, ["rev-parse", "HEAD"]);
+            const own = yield* threadChangeRequest(wiki, input.threadId);
+            // Commits made on a detached checkout belong to no branch: they land in this amendment.
+            const since = listed.branch === null ? yield* checkoutBase(wiki, from) : from;
+            const target: Target =
+              own !== undefined
+                ? { kind: "existing", stored: own }
+                : {
+                    kind: "new",
+                    changeRequestId: WikiChangeRequestId.make(yield* newId),
+                    base: since,
+                    title: oneLine(input.title) || subjectOf(input.message) || "Wiki change",
+                    draft: false,
+                  };
+            return yield* landCheckoutEdits(
+              wiki,
+              input.folder,
+              from,
+              target,
+              author,
+              input.message,
+              true,
+              since === from ? undefined : since,
+            );
+          }),
+        ),
+      ),
+    );
+
+  const removeCheckout: WikiService["Service"]["removeCheckout"] = (input) =>
+    withWiki(input.wikiId, (wiki) =>
+      locked(
+        wiki,
+        runGit("removeThreadCheckout", wiki.root, [
+          "worktree",
+          "remove",
+          "--force",
+          input.folder,
+        ]).pipe(
+          Effect.catchIf(
+            (error) => error.reason === "git-failed",
+            () => runGit("pruneWorktrees", wiki.root, ["worktree", "prune"]),
+          ),
+          Effect.asVoid,
+        ),
+      ),
     );
 
   const merge: WikiService["Service"]["merge"] = (input) =>
@@ -2632,12 +3341,6 @@ const make = Effect.gen(function* () {
       noteResult(wiki.wikiId, commit, snapshot.index, snapshot.files, input.name),
     );
 
-  const search: WikiService["Service"]["search"] = (input) =>
-    readAt(input, (_wiki, commit, snapshot) => ({
-      commit,
-      ...searchNotes(snapshot.index, input.query),
-    }));
-
   const links: WikiService["Service"]["links"] = (input) =>
     readAt(input, (_wiki, commit, snapshot) => ({
       commit,
@@ -2649,10 +3352,12 @@ const make = Effect.gen(function* () {
       input.wikiId,
       (wiki) =>
         Effect.gen(function* () {
-          const commit = yield* readCommit(wiki, input);
-          const snapshot = yield* snapshotAt(wiki, commit);
+          const checkout = yield* threadCheckout(wiki, input);
+          const inCheckout = checkout === null ? null : yield* checkoutSnapshot(wiki, checkout);
+          const commit = inCheckout?.head ?? (yield* readCommit(wiki, input));
+          const snapshot = inCheckout?.snapshot ?? (yield* snapshotAt(wiki, commit));
           // Unsaved edits from the view are read as if they had landed.
-          const changes = yield* Effect.try({
+          const viewed = yield* Effect.try({
             try: () => (input.edits?.length ? applyBaseEdits(snapshot.files, input.edits) : {}),
             catch: (cause) =>
               new WikiError({
@@ -2661,14 +3366,16 @@ const make = Effect.gen(function* () {
                 cause,
               }),
           });
-          const edited = Object.keys(changes).length > 0;
-          const index = edited ? indexFiles(applyChanges(snapshot.files, changes)) : snapshot.index;
+          const edited = Object.keys(viewed).length > 0;
+          const index = edited ? indexFiles(applyChanges(snapshot.files, viewed)) : snapshot.index;
+          const changes = { ...inCheckout?.edits.changes, ...viewed };
           const located = locateBase(index, input);
           if ("problem" in located) {
             return yield* new WikiError({ reason: located.problem, message: located.message });
           }
           const committed = yield* corpusAt(wiki, commit);
-          const corpus = edited ? corpusWithChanges(committed, changes) : committed;
+          const corpus =
+            Object.keys(changes).length > 0 ? corpusWithChanges(committed, changes) : committed;
           const now = yield* Clock.currentTimeMillis;
           const result = yield* Effect.try({
             try: () =>
@@ -2686,7 +3393,10 @@ const make = Effect.gen(function* () {
                 cause,
               }),
           });
-          return { commit, ...result };
+          // The view ran, so any error is another view's.
+          const { errors, warnings } = checkBase(located.source);
+          const problems = [...errors, ...warnings];
+          return { commit, ...result, ...(problems.length ? { warnings: problems } : {}) };
         }),
       input.changeRequestId,
     );
@@ -2779,29 +3489,6 @@ const make = Effect.gen(function* () {
         }
         return { root: wiki.root, commit, path: entry.file };
       }),
-    );
-
-  const listFolder: WikiService["Service"]["listFolder"] = (input) =>
-    withWiki(
-      input.wikiId,
-      (wiki) =>
-        Effect.gen(function* () {
-          const commit = yield* readCommit(wiki, input);
-          const { entries } = yield* fileListingAt(wiki, commit);
-          const listing = folderListing(
-            entries.map((entry) => entry.file),
-            input.folder,
-          );
-          if (listing === null) {
-            return yield* new WikiError({
-              reason: "not-found",
-              message: `No folder named ${input.folder}.`,
-              wikiId: wiki.wikiId,
-            });
-          }
-          return { commit, ...listing };
-        }),
-      input.changeRequestId,
     );
 
   /** Each active project, by the repository it checks out. */
@@ -2942,6 +3629,11 @@ const make = Effect.gen(function* () {
       input.wikiId,
       (wiki) =>
         Effect.gen(function* () {
+          const checkout = yield* threadCheckout(wiki, input);
+          const unsaved =
+            checkout === null
+              ? undefined
+              : carriedNames(yield* checkoutEdits(checkout, true)).toSorted();
           const stored =
             input.changeRequestId !== undefined
               ? yield* loadChangeRequest(wiki, input.changeRequestId)
@@ -2949,9 +3641,12 @@ const make = Effect.gen(function* () {
                 ? yield* threadChangeRequest(wiki, input.threadId)
                 : undefined;
           if (stored === undefined) {
+            const { singular } = wikiTerms(wiki);
             return yield* new WikiError({
               reason: "not-found",
-              message: `This thread has no open ${wikiTerms(wiki).singular} on this wiki.`,
+              message: unsaved?.length
+                ? `This thread has no open ${singular} on this wiki yet. The turn's end opens one with its unsaved files: ${unsaved.join(", ")}.`
+                : `This thread has no open ${singular} on this wiki.`,
             });
           }
           const main = yield* mainTip(wiki);
@@ -2969,6 +3664,12 @@ const make = Effect.gen(function* () {
             ...listed.map(({ file, movedFrom }) => `${from}:${movedFrom ?? file}`),
             ...listed.map(({ file }) => `${stored.head}:${file}`),
           ]);
+          const warnings = listed.flatMap(({ file }, position) => {
+            const after = contents[listed.length + position];
+            return after == null
+              ? []
+              : documentBaseCheck(file, after).warnings.map((warning) => ({ file, warning }));
+          });
           return {
             changeRequest: yield* view(wiki, stored),
             files: listed.map(({ file, movedFrom }, position) => ({
@@ -2982,6 +3683,8 @@ const make = Effect.gen(function* () {
                 ? { status: "up-to-date" as const, conflicts: [], errors: [], canvases: [] }
                 : yield* mergePreview(wiki, stored, main),
             errors: (yield* snapshotAt(wiki, stored.head)).index.errors,
+            ...(warnings.length ? { warnings } : {}),
+            ...(unsaved === undefined ? {} : { unsaved }),
           } satisfies WikiChangeRequestDetail;
         }),
       input.changeRequestId,
@@ -3321,22 +4024,64 @@ const make = Effect.gen(function* () {
       ),
     );
 
-  const agentNote: WikiService["Service"]["agentNote"] = (projectId, linkedSince) =>
+  const linkedTo: WikiService["Service"]["linkedTo"] = (projectId) =>
+    Effect.map(loadRegistry, (registry) =>
+      registry.wikis
+        .filter((wiki) => wiki.projectIds.includes(projectId))
+        .map((wiki) => wiki.wikiId),
+    );
+
+  const linkedWiki: WikiService["Service"]["linkedWiki"] = Effect.fn("WikiService.linkedWiki")(
+    function* (projectId, reference) {
+      const { wikis } = yield* loadRegistry;
+      const names = (wiki: WikiRecord) =>
+        wiki.wikiId === reference || wiki.name.toLowerCase() === reference.toLowerCase();
+      const linked = wikis.filter((wiki) => wiki.projectIds.includes(projectId));
+      const byId = linked.find((wiki) => wiki.wikiId === reference);
+      if (byId !== undefined) return byId.wikiId;
+      const found = linked.filter(names);
+      if (found.length === 1) return found[0]!.wikiId;
+      const listed = linked.map((wiki) => `"${wiki.name}"`).join(", ");
+      return yield* new WikiError({
+        reason: found.length > 1 ? "invalid" : "not-found",
+        message: `${
+          found.length > 1
+            ? "Several wikis linked to this project have this name; use the wiki's id."
+            : wikis.some(names)
+              ? "That wiki is not linked to this project."
+              : "No wiki has this id or name."
+        } ${linked.length === 0 ? "This project has no linked wikis." : `Its linked wikis: ${listed}.`}`,
+      });
+    },
+  );
+
+  const agentNote: WikiService["Service"]["agentNote"] = (input) =>
     loadRegistry.pipe(
-      Effect.map((registry) =>
-        linkedWikiNote(
-          registry.wikis
-            .filter((wiki) => {
-              if (!wiki.projectIds.includes(projectId)) return false;
-              if (linkedSince === undefined) return true;
-              const linkedAt = wiki.projectLinkedAt[projectId];
-              return (
-                linkedAt !== undefined && Date.parse(linkedAt) > DateTime.toEpochMillis(linkedSince)
-              );
-            })
-            .map((wiki) => wiki.name),
-        ),
-      ),
+      Effect.map((registry) => {
+        if (input.workingIn !== undefined) {
+          const wiki = registry.wikis.find((candidate) => candidate.wikiId === input.workingIn);
+          return wiki === undefined || input.linkedSince !== undefined
+            ? null
+            : wikiCheckoutAgentNote(wiki.name);
+        }
+        const linkedSince = input.linkedSince;
+        return linkedWikiAgentNote(
+          registry.wikis.flatMap((wiki) => {
+            if (!wiki.projectIds.includes(input.projectId)) return [];
+            const linkedAt = wiki.projectLinkedAt[input.projectId];
+            if (
+              linkedSince !== undefined &&
+              (linkedAt === undefined ||
+                Date.parse(linkedAt) <= DateTime.toEpochMillis(linkedSince))
+            )
+              return [];
+            const checkout = input.checkouts.find((candidate) => candidate.wikiId === wiki.wikiId);
+            return checkout === undefined
+              ? []
+              : [{ name: wiki.name, folder: checkout.folder, reach: input.reach }];
+          }),
+        );
+      }),
     );
 
   const pushMirror: WikiService["Service"]["pushMirror"] = (input) =>
@@ -3861,10 +4606,8 @@ const make = Effect.gen(function* () {
     pushMirror,
     index,
     readNote,
-    search,
     query,
     readFiles,
-    listFolder,
     locateFile,
     codeStatus,
     orient,
@@ -3874,6 +4617,10 @@ const make = Effect.gen(function* () {
     changeRequestsOpen,
     amend,
     transform,
+    transformCheckout,
+    checkoutRead,
+    checkoutSearch,
+    checkoutWrite,
     autosave,
     listFiles,
     draftPromote,
@@ -3881,6 +4628,11 @@ const make = Effect.gen(function* () {
     move,
     revertAmendment,
     saveWorktree,
+    linkedTo,
+    linkedWiki,
+    checkoutForThread,
+    saveThreadCheckout,
+    removeCheckout,
     merge,
     setChangeRequestStatus,
   });

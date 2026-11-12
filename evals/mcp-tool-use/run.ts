@@ -38,6 +38,7 @@ import * as McpInvocationContext from "../../apps/server/src/mcp/McpInvocationCo
 import { advertisedJsonSchema } from "../../apps/server/src/mcp/advertisedJsonSchema.ts";
 import {
   EnvironmentId,
+  linkedWikiAgentNote,
   ORCHESTRATOR_MCP_RUNNING_TASK_NEXT,
   PullRequestState,
   ThreadId,
@@ -63,6 +64,7 @@ import {
 } from "../../apps/server/src/mcp/toolkits/pullRequests/tools.ts";
 import { ThreadToolkit } from "../../apps/server/src/mcp/toolkits/thread/tools.ts";
 import { WikiToolkit } from "../../apps/server/src/mcp/toolkits/wiki/tools.ts";
+import { brokenBasesMessage } from "../../apps/server/src/wiki/ThreadWikiCheckouts.ts";
 import { WorktreeToolkit } from "../../apps/server/src/mcp/toolkits/worktree/tools.ts";
 import {
   CLAUDE_PROVIDER,
@@ -149,7 +151,7 @@ const PriorToolCall = Schema.Struct({
 
 /**
  * One expected call. `args` match partially: `~text` is a case-insensitive substring,
- * `"<=N"` / `">=N"` bound a number, and keys may be dotted paths.
+ * `"<=N"` / `">=N"` bound a number, and keys may be dotted paths or `|`-separated alternatives.
  */
 const McpToolUseCall = Schema.Struct({
   tool: Schema.String,
@@ -274,6 +276,34 @@ export const McpToolUseCase = Schema.Struct({
     /** Regexes on one part of a shell command. A match wins over the shell simulator. */
     shellMocks: Schema.optional(
       Schema.Array(Schema.Struct({ match: Schema.String, output: Schema.String })),
+    ),
+    /**
+     * Wikis linked to the thread's repository. T3 appends their note to `prompt`. `folder` is the
+     * thread's checkout of it: the repository itself for a project wiki. `reach` is how the
+     * session's file tools reach it, as `wikiCheckoutReach` decides per provider; default `edit`.
+     */
+    linkedWikis: Schema.optional(
+      Schema.Array(
+        Schema.Struct({
+          name: Schema.String,
+          folder: Schema.String,
+          reach: Schema.optional(Schema.Literals(["edit", "shell", "none"])),
+        }),
+      ),
+    ),
+    /**
+     * The turn is T3's follow-up to one that left these bases broken: T3's message is what the
+     * agent gets, and `prompt` only tells the shell simulator what happened.
+     */
+    brokenBases: Schema.optional(
+      Schema.Array(
+        Schema.Struct({
+          wiki: Schema.String,
+          file: Schema.String,
+          path: Schema.String,
+          problems: Schema.Array(Schema.String),
+        }),
+      ),
     ),
     /** The thread is a side chat's first turn: T3 puts the parent's digest ahead of `prompt`. */
     sideChat: Schema.optional(
@@ -944,10 +974,17 @@ export const buildMessages = (sample: Sample) => {
     }
     if (turn.text) push(turn.role, text(turn.text));
   }
-  const userText =
-    testCase.promptContext === undefined
-      ? testCase.prompt
-      : projectComposerContextForProvider({ text: testCase.prompt, ...testCase.promptContext });
+  const brokenBases = testCase.setup.brokenBases;
+  const composed =
+    brokenBases !== undefined
+      ? brokenBasesMessage(brokenBases)
+      : testCase.promptContext === undefined
+        ? testCase.prompt
+        : projectComposerContextForProvider({ text: testCase.prompt, ...testCase.promptContext });
+  const wikiNote = linkedWikiAgentNote(
+    (testCase.setup.linkedWikis ?? []).map((wiki) => ({ ...wiki, reach: wiki.reach ?? "edit" })),
+  );
+  const userText = wikiNote === null ? composed : `${composed}\n\n${wikiNote}`;
   const prompt =
     sideChatContext === undefined ? userText : withInlineContext(sideChatContext, userText);
   const childPrompt = () => taskPrompt({ task: prompt, role: delegateRole });
@@ -1505,7 +1542,10 @@ const matches = (expected: unknown, actual: unknown): boolean => {
     path
       .split(".")
       .reduce<unknown>((value, key) => (isRecord(value) ? value[key] : undefined), actual);
-  return Object.entries(expected).every(([path, value]) => matches(value, at(path)));
+  // A key may list alternative paths, as in "content|new_string|patch".
+  return Object.entries(expected).every(([paths, value]) =>
+    paths.split("|").some((path) => matches(value, at(path))),
+  );
 };
 
 /** Each new top-level thread request in a run; a failed call created nothing. */

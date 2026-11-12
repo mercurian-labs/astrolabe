@@ -152,8 +152,13 @@ export function planAmendment(
         throw new AmendmentError(`New map edge lacks prose support: ${edge.from} ↔ ${edge.to}`);
       }
       const brokenNow = existing !== undefined && support(oldIndex, existing, mapFile).length > 0;
-      const alreadyStanding = warnings.some((w) => sameEdge(w.edge, edge) && !w.resolution);
-      if (brokenNow || !alreadyStanding) {
+      const standing = warnings.filter((w) => sameEdge(w.edge, edge) && !w.resolution);
+      // A change that already carries a new warning for the break, stamped while it was planned
+      // in a checkout, needs no second one.
+      const carried = standing.some(
+        (w) => !previous?.warnings?.some((earlier) => earlier.id === w.id),
+      );
+      if ((brokenNow && !carried) || standing.length === 0) {
         warnings.push({
           id: stamp.newId(),
           amendment: stamp.amendment,

@@ -8,6 +8,7 @@ import {
   callGlobal,
   callMethod,
   FILE_FIELDS,
+  FILE_METHODS,
   GLOBALS,
   index as indexValue,
   member,
@@ -22,6 +23,55 @@ export { BaseError } from "./baseValues.ts";
 
 export const unsupported = (what: string, where: string, why?: string): BaseError =>
   new BaseError(`Not supported: ${what}${why ? ` (${why})` : ""} in ${where}.`);
+
+const editDistance = (a: string, b: string): number => {
+  let previous = Array.from({ length: b.length + 1 }, (_, at) => at);
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j++) {
+      row[j] = Math.min(
+        previous[j]! + 1,
+        row[j - 1]! + 1,
+        previous[j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+    }
+    previous = row;
+  }
+  return previous[b.length]!;
+};
+
+/** The one of `names` a typo of `name` most likely meant, ignoring case; none when nothing is close. */
+export function nearest(name: string, names: Iterable<string>): string | undefined {
+  const wanted = name.toLowerCase();
+  let best: string | undefined;
+  let reach = wanted.length <= 4 ? 1 : 2;
+  for (const candidate of names) {
+    const distance = editDistance(wanted, candidate.toLowerCase());
+    if (distance <= reach) {
+      best = candidate;
+      reach = distance - 1;
+    }
+  }
+  return best;
+}
+
+/** `text` as a sentence, offering `suggestion` when there is one. */
+export const sentence = (text: string, suggestion: string | undefined): string =>
+  suggestion === undefined ? `${text}.` : `${text}; did you mean ${suggestion}?`;
+
+const notSupported = (what: string, where: string, suggestion: string | undefined) =>
+  new BaseError(sentence(`Not supported: ${what} in ${where}`, suggestion));
+
+/** Methods models reach for that a file doesn't have, and the one that does that job. */
+const FILE_METHOD_ALIASES: Readonly<Record<string, string>> = {
+  linksTo: "hasLink",
+  linkTo: "hasLink",
+  links: "hasLink",
+  tagged: "hasTag",
+};
+
+const fileMethodHint = (name: string): string | undefined =>
+  FILE_METHOD_ALIASES[name] ?? nearest(name, FILE_METHODS);
 
 type Token =
   | { readonly kind: "number"; readonly value: number; readonly at: number; readonly end: number }
@@ -351,9 +401,18 @@ function check(expr: Expr, source: string, where: string, context: CompileContex
       case "call": {
         const { callee } = node;
         if (callee.kind === "name") {
-          if (!GLOBALS.has(callee.name)) throw unsupported(`${callee.name}()`, where);
+          if (!GLOBALS.has(callee.name)) {
+            const near = nearest(callee.name, GLOBALS);
+            throw notSupported(`${callee.name}()`, where, near && `${near}()`);
+          }
         } else if (callee.kind === "member") {
-          if (!METHODS.has(callee.name)) throw unsupported(`${text(callee)}()`, where);
+          if (!METHODS.has(callee.name)) {
+            const near = isFileRef(callee.object)
+              ? fileMethodHint(callee.name)
+              : nearest(callee.name, METHODS);
+            const object = text(callee.object);
+            throw notSupported(`${text(callee)}()`, where, near && `${object}.${near}()`);
+          }
           visit(callee.object);
         } else {
           throw unsupported(text(node), where);
@@ -368,6 +427,62 @@ function check(expr: Expr, source: string, where: string, context: CompileContex
     }
   };
   visit(expr);
+}
+
+/**
+ * What runs but can't be meant: a method other values have, called on a file, where it gives
+ * nothing, as `file.linksTo()` does. One sentence each; an expression that doesn't parse gives none.
+ */
+export function expressionWarnings(source: string): ReadonlyArray<string> {
+  let expression: Expr;
+  try {
+    expression = parseExpression(source, "a base");
+  } catch {
+    return [];
+  }
+  const found: string[] = [];
+  const visit = (node: Expr): void => {
+    switch (node.kind) {
+      case "literal":
+      case "regex":
+      case "name":
+        return;
+      case "list":
+        return node.items.forEach(visit);
+      case "member":
+        return visit(node.object);
+      case "index":
+        visit(node.object);
+        return visit(node.index);
+      case "call": {
+        const { callee } = node;
+        if (
+          callee.kind === "member" &&
+          isFileRef(callee.object) &&
+          METHODS.has(callee.name) &&
+          !FILE_METHODS.has(callee.name)
+        ) {
+          const object = source.slice(callee.object.from, callee.object.to);
+          const near = fileMethodHint(callee.name);
+          found.push(
+            sentence(
+              `${object}.${callee.name}() is not a file method, so it gives nothing`,
+              near && `${object}.${near}()`,
+            ),
+          );
+        }
+        visit(callee);
+        return node.args.forEach(visit);
+      }
+      case "unary":
+        return visit(node.operand);
+      case "binary":
+        visit(node.left);
+        return visit(node.right);
+    }
+  };
+  visit(expression);
+  return found;
 }
 
 /** Parses an expression without checking it, to read it rather than run it. */
