@@ -48,7 +48,7 @@ import { CANVAS_CLIP_TYPE, parseClip, serializeClip } from "./canvasActions";
 import { lineDirectionOf, type CanvasHandle, type CanvasPoint } from "./canvasArrange";
 import {
   arrangementEntries,
-  CanvasBottomBar,
+  CANVAS_TOOL_KEYS,
   CanvasColorPicker,
   CanvasEmptyHint,
   CanvasHelp,
@@ -56,6 +56,7 @@ import {
   CanvasPicker,
   CanvasPrompt,
   CanvasToolbarButton,
+  CanvasToolRow,
   useRestoreFocus,
   type CanvasMenuEntry,
 } from "./CanvasChrome";
@@ -73,6 +74,7 @@ import {
   NO_SELECTION,
   type CanvasLooseEnd,
   type CanvasSelection,
+  type CanvasTool,
 } from "./canvasGestures";
 import {
   cameraWindow,
@@ -1246,6 +1248,7 @@ class BoardLive {
   settings = DEFAULT_SETTINGS;
   host: CanvasBoardHost = NO_HOST;
   selecting = false;
+  tool: CanvasTool = "select";
   revision: string | undefined = undefined;
   editing: CanvasEditing | null = null;
   openMenu: OpenMenu | null = null;
@@ -1479,6 +1482,10 @@ export function CanvasBoard({
   const [popover, setPopover] = useState<ToolbarPopover>(null);
   const [raised, setRaised] = useState<ReadonlyMap<string, number>>(new Map());
   const [selecting, setSelecting] = useState(false);
+  const [toolChosen, setTool] = useState<CanvasTool>("select");
+  // Leaving editing puts the tools down: a board opened for editing again starts on Select.
+  if (!editable && toolChosen !== "select") setTool("select");
+  const tool = editable ? toolChosen : "select";
   const [localNotice, setNotice] = useState<string | null>(null);
   const notice = localNotice ?? documentState?.notice ?? null;
   const [reads] = useState(() => ({
@@ -1709,6 +1716,17 @@ export function CanvasBoard({
         editGroupLabel: (id) => setEditing({ kind: "group", id }),
         editArrowLabel: (id) => setEditing({ kind: "arrow", id }),
         addTextAt: (point) => commands.addTextAt(point),
+        tool: () => live.tool,
+        drawn: (tool, box, at) => {
+          if (tool === "card") commands.drawCard(box, at);
+          else commands.drawSection(box, at);
+          live.update({ tool: "select" });
+          setTool("select");
+        },
+        toolDone: () => {
+          live.update({ tool: "select" });
+          setTool("select");
+        },
         fitToContent: (id, handle) => commands.fitToContent(id, handle),
         looseEnd: (end, at, clientX, clientY, done) =>
           live.openLooseEnd(end, at, clientX, clientY, done),
@@ -1760,6 +1778,7 @@ export function CanvasBoard({
       settings,
       host,
       selecting,
+      tool,
       revision,
       editing,
       openMenu: menu,
@@ -2146,12 +2165,16 @@ export function CanvasBoard({
       commands.zoomToSelection();
     } else if (event.code === "Digit0" && event.shiftKey) {
       view.resetZoom();
+    } else if (plain && canEdit && CANVAS_TOOL_KEYS[key.toLowerCase()] !== undefined) {
+      setTool(CANVAS_TOOL_KEYS[key.toLowerCase()]!);
     } else if (plain && key.toLowerCase() === "e" && canToggleEdit) {
       onReadOnly?.(!readOnly);
     } else if (plain && key.toLowerCase() === "p" && canPresent) {
       onPresent?.();
     } else if (key === "?" && !mod && host.touch !== true) {
       setDialog({ kind: "help" });
+    } else if (key === "Escape" && tool !== "select") {
+      setTool("select");
     } else if (key === "Escape" && anything) {
       commands.select(NO_SELECTION);
     } else if (key === "ContextMenu" || (key === "F10" && event.shiftKey)) {
@@ -2274,9 +2297,29 @@ export function CanvasBoard({
       ? layout.shapes.find((shape) => shape.edge.id === editing.id)
       : undefined;
   const closeDialog = () => setDialog(null);
+  const addStep =
+    canvasDocument === null || onStepAdded === undefined
+      ? undefined
+      : () => {
+          const pick = canvasStepPick(data, selection.cards);
+          if (pick === null) return;
+          const at = step === null ? steps.length : step + 1;
+          canvasDocument.commit([
+            canvasStoryEdit(canvasDocument.document, { kind: "add-step", story, at, step: pick }),
+          ]);
+          onStepAdded(at);
+        };
   const addBar =
     mode === "free" && canvasDocument !== null && editable ? (
-      <CanvasBottomBar
+      <CanvasToolRow
+        tool={tool}
+        onTool={(next) => {
+          setTool(next);
+          boardRef.current?.focus({ preventScroll: true });
+        }}
+        onStep={addStep}
+        stepReady={selection.cards.size > 0}
+        onDone={canToggleEdit ? () => onReadOnly?.(true) : undefined}
         files={host.listFiles !== undefined}
         toBoard={(clientX, clientY) => {
           const rect = boardRef.current?.getBoundingClientRect();
@@ -2288,19 +2331,18 @@ export function CanvasBoard({
             clientY <= rect.bottom;
           return inside ? view.toWorld(clientX, clientY) : null;
         }}
-        onAdd={(kind, at) => {
-          if (kind === "text") commands.addTextAt(at);
-          else void commands.addFile(kind, at);
-        }}
+        onAdd={(kind, at) => void commands.addFile(kind, at)}
       >
-        {host.touch === true ? (
+        {host.touch === true && tool === "select" ? (
           <CanvasToolbarButton
-            label="Select"
+            label="Select several"
             pressed={selecting}
             onClick={() => setSelecting((on) => !on)}
-          />
+          >
+            Several
+          </CanvasToolbarButton>
         ) : null}
-      </CanvasBottomBar>
+      </CanvasToolRow>
     ) : null;
 
   return (
@@ -2315,6 +2357,7 @@ export function CanvasBoard({
       data-walkable={steps.length > 0 || undefined}
       data-walking={active !== null || undefined}
       data-touch={host.touch === true || undefined}
+      data-tool={editable && tool !== "select" ? tool : undefined}
       // A board inline in a scrolling page keeps its zoom out of the way until it's pointed at.
       data-zoom-hover={(wheelOnceFocused && host.touch !== true) || undefined}
       data-peeking={peeked !== null || undefined}
@@ -2418,24 +2461,7 @@ export function CanvasBoard({
           count={selection.cards.size}
           popover={popover}
           setPopover={setPopover}
-          onStep={
-            canvasDocument === null || onStepAdded === undefined
-              ? undefined
-              : () => {
-                  const pick = canvasStepPick(data, selection.cards);
-                  if (pick === null) return;
-                  const at = step === null ? steps.length : step + 1;
-                  canvasDocument.commit([
-                    canvasStoryEdit(canvasDocument.document, {
-                      kind: "add-step",
-                      story,
-                      at,
-                      step: pick,
-                    }),
-                  ]);
-                  onStepAdded(at);
-                }
-          }
+          onStep={addStep}
         />
       ) : null}
       {overlaid ? null : addBar}

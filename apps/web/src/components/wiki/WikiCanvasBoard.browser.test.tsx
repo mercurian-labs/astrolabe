@@ -421,10 +421,12 @@ describe("editing a board", () => {
     canvas,
     readOnly = false,
     host,
+    boardRef,
   }: {
     readonly canvas: CanvasDocument;
     readonly readOnly?: boolean;
     readonly host?: CanvasBoardHost;
+    readonly boardRef?: Parameters<typeof CanvasBoard>[0]["ref"];
   }) => (
     <div style={{ width: 1000, height: 700 }}>
       <CanvasBoard
@@ -435,6 +437,7 @@ describe("editing a board", () => {
         readOnly={readOnly}
         camera={{ x: 0, y: 0, zoom: 1 }}
         {...(host === undefined ? {} : { host })}
+        {...(boardRef === undefined ? {} : { ref: boardRef })}
       />
     </div>
   );
@@ -649,12 +652,52 @@ describe("editing a board", () => {
     expect(canvas.getState().data.edges).toHaveLength(1);
   });
 
+  it("draws a card with the Card tool, and joins two cards with the Arrow tool", async () => {
+    using _capture = setup();
+    const canvas = newCanvas([text("a", 0, 0), text("b", 500, 0)]);
+    await using screen = await render(<Editing canvas={canvas} />, { router: false });
+    await vi.waitFor(() => expect(element("a")).not.toBeNull());
+    const select = screen.getByLabelText("Select (V)");
+    await userEvent.click(screen.getByLabelText("Card (C)"));
+    drag(board(), { x: 100, y: 300 }, { x: 150, y: 330 }, { x: 400, y: 420 });
+    await vi.waitFor(() =>
+      expect(canvas.getState().data.nodes[2]).toMatchObject({
+        type: "text",
+        x: 100,
+        y: 300,
+        width: 300,
+        height: 120,
+      }),
+    );
+    await vi.waitFor(() => expect(document.querySelector(".cv-plain-editor")).not.toBeNull());
+    await expect.element(select).toHaveAttribute("aria-pressed", "true");
+    await userEvent.keyboard("{Escape}");
+    await vi.waitFor(() => expect(document.activeElement).toBe(board()));
+
+    await userEvent.keyboard("a");
+    await expect
+      .element(screen.getByLabelText("Arrow (A)"))
+      .toHaveAttribute("aria-pressed", "true");
+    drag(element("a"), { x: 100, y: 50 }, { x: 200, y: 60 }, { x: 600, y: 50 });
+    await vi.waitFor(() => expect(canvas.getState().data.edges).toHaveLength(1));
+    expect(canvas.getState().data.edges[0]).toMatchObject({
+      fromNode: "a",
+      fromSide: "right",
+      toNode: "b",
+      toSide: "left",
+    });
+    await expect.element(select).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("finds room for a card added without a point", async () => {
     using _capture = setup();
     const canvas = newCanvas([text("a", -1000, -1000, { width: 2000, height: 2000 })]);
-    await using screen = await render(<Editing canvas={canvas} />, { router: false });
+    const handle = createRef<CanvasBoardHandle>();
+    await using _screen = await render(<Editing canvas={canvas} boardRef={handle} />, {
+      router: false,
+    });
     await vi.waitFor(() => expect(element("a")).not.toBeNull());
-    await userEvent.click(screen.getByLabelText("Drag to add a card"));
+    handle.current?.run("add-card");
     await vi.waitFor(() => expect(canvas.getState().data.nodes).toHaveLength(2));
     const [first, added] = canvas.getState().data.nodes;
     expect(overlaps(first!, added!)).toBe(false);

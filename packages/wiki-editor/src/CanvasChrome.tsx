@@ -11,6 +11,7 @@ import {
 
 import type { CanvasArrangement, CanvasPoint } from "./canvasArrange";
 import type { CanvasPicked, CanvasPickerRequest, CanvasPromptRequest } from "./canvasCommands";
+import type { CanvasTool } from "./canvasGestures";
 
 /**
  * A board's own controls, for the web app and the phone's page alike: no component library reaches
@@ -369,6 +370,12 @@ export function CanvasPicker({
 
 /** What the board's keys and gestures are, as the app's own words for them. */
 const HELP: ReadonlyArray<readonly [string, string]> = [
+  ["Hand: drag to pan", "H"],
+  ["Select", "V"],
+  ["Card: drag or click to add", "C"],
+  ["Section: drag around cards", "S"],
+  ["Arrow: drag from card to card", "A"],
+  ["Back to Select", "Escape"],
   ["Pan", "Space-drag, or scroll"],
   ["Pan sideways", "⇧ scroll"],
   ["Zoom", "⌘ scroll, or Space scroll"],
@@ -448,29 +455,90 @@ export function CanvasToolbarButton({
   );
 }
 
-type BarKind = "text" | "note" | "media";
+type DragInKind = "note" | "media";
 
-const BAR: ReadonlyArray<readonly [BarKind, string, string]> = [
-  ["text", "Card", "Drag to add a card"],
+const DRAG_IN: ReadonlyArray<readonly [DragInKind, string, string]> = [
   ["note", "Note", "Drag to add a note from this wiki"],
   ["media", "Media", "Drag to add media from this wiki"],
 ];
 
-/** Drag from here onto the board, or press to add in the middle of the view. */
-export function CanvasBottomBar({
+/** A tool's key, its name and its icon's strokes, on a 24-unit grid. */
+const TOOLS: ReadonlyArray<
+  readonly [CanvasTool, string, string, ReadonlyArray<string>] | "separator"
+> = [
+  [
+    "hand",
+    "Hand",
+    "H",
+    [
+      "M18 11V6a2 2 0 0 0-4 0",
+      "M14 10V4a2 2 0 0 0-4 0v2",
+      "M10 10.5V6a2 2 0 0 0-4 0v8",
+      "M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-6-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15",
+    ],
+  ],
+  [
+    "select",
+    "Select",
+    "V",
+    [
+      "M4.04 4.69a.5.5 0 0 1 .65-.65l16 6.5a.5.5 0 0 1-.06.95l-6.13 1.58a2 2 0 0 0-1.43 1.43l-1.58 6.13a.5.5 0 0 1-.95.06z",
+    ],
+  ],
+  "separator",
+  [
+    "card",
+    "Card",
+    "C",
+    ["M5 5h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z", "M7 10h10M7 14h6"],
+  ],
+  [
+    "section",
+    "Section",
+    "S",
+    [
+      "M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2",
+      "M11 3h2M11 21h2M3 11v2M21 11v2",
+    ],
+  ],
+  ["arrow", "Arrow", "A", ["M5 19 19 5", "M9 5h10v10"]],
+];
+
+/** Each tool's key, as the board hears it. */
+export const CANVAS_TOOL_KEYS: Readonly<Record<string, CanvasTool>> = Object.fromEntries(
+  TOOLS.flatMap((tool) => (tool === "separator" ? [] : [[tool[2].toLowerCase(), tool[0]]])),
+);
+
+/**
+ * An editable board's tools, floating at its foot. Notes and media are dragged from here onto the
+ * board, or pressed to land in the middle of the view.
+ */
+export function CanvasToolRow({
+  tool,
+  onTool,
   toBoard,
   onAdd,
   files = true,
+  onStep,
+  stepReady,
+  onDone,
   children,
 }: {
+  readonly tool: CanvasTool;
+  readonly onTool: (tool: CanvasTool) => void;
   readonly toBoard: (clientX: number, clientY: number) => CanvasPoint | null;
-  readonly onAdd: (kind: BarKind, at: CanvasPoint | null) => void;
+  readonly onAdd: (kind: DragInKind, at: CanvasPoint | null) => void;
   /** Whether there's a wiki to add notes and media from. */
   readonly files?: boolean;
+  /** Adds what's selected to the story; left out where there's no story to add to. */
+  readonly onStep?: (() => void) | undefined;
+  readonly stepReady: boolean;
+  /** Stops editing; left out where editing can't be turned off. */
+  readonly onDone?: (() => void) | undefined;
   readonly children?: ReactNode;
 }) {
   const start = useRef<{ readonly x: number; readonly y: number } | null>(null);
-  const finish = (kind: BarKind, event: PointerEvent<HTMLButtonElement>) => {
+  const finish = (kind: DragInKind, event: PointerEvent<HTMLButtonElement>) => {
     const from = start.current;
     start.current = null;
     if (from === null) return;
@@ -478,39 +546,86 @@ export function CanvasBottomBar({
     onAdd(kind, dragged ? toBoard(event.clientX, event.clientY) : null);
   };
   return (
-    <div className="cv-chrome cv-bar" role="toolbar" aria-label="Add to the board">
-      {(files ? BAR : BAR.slice(0, 1)).map(([kind, label, title]) => (
-        <button
-          key={kind}
-          type="button"
-          aria-label={title}
-          onPointerDown={(event) => {
-            event.currentTarget.setPointerCapture(event.pointerId);
-            start.current = { x: event.clientX, y: event.clientY };
-          }}
-          onPointerUp={(event) => finish(kind, event)}
-          onPointerCancel={() => {
-            start.current = null;
-          }}
-          onKeyDown={(event) => {
-            if (event.key !== "Enter" && event.key !== " ") return;
-            event.preventDefault();
-            event.stopPropagation();
-            onAdd(kind, null);
-          }}
-        >
-          {label}
-        </button>
-      ))}
+    <div className="cv-chrome cv-bar cv-tools" role="toolbar" aria-label="Tools">
+      {TOOLS.map((each, at) =>
+        each === "separator" ? (
+          // oxlint-disable-next-line react/no-array-index-key -- the list is fixed
+          <span key={at} className="cv-tools-separator" />
+        ) : (
+          <button
+            key={each[0]}
+            type="button"
+            data-tool={each[0]}
+            aria-pressed={tool === each[0]}
+            aria-label={`${each[1]} (${each[2]})`}
+            onClick={() => onTool(each[0])}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              {each[3].map((d) => (
+                <path key={d} d={d} />
+              ))}
+            </svg>
+            <kbd aria-hidden="true">{each[2]}</kbd>
+          </button>
+        ),
+      )}
+      {files ? <span className="cv-tools-separator" /> : null}
+      {files
+        ? DRAG_IN.map(([kind, label, title]) => (
+            <button
+              key={kind}
+              type="button"
+              data-drag-in
+              aria-label={title}
+              onPointerDown={(event) => {
+                event.currentTarget.setPointerCapture(event.pointerId);
+                start.current = { x: event.clientX, y: event.clientY };
+              }}
+              onPointerUp={(event) => finish(kind, event)}
+              onPointerCancel={() => {
+                start.current = null;
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter" && event.key !== " ") return;
+                event.preventDefault();
+                event.stopPropagation();
+                onAdd(kind, null);
+              }}
+            >
+              {label}
+            </button>
+          ))
+        : null}
       {children}
+      {onStep === undefined ? null : (
+        <>
+          <span className="cv-tools-separator" />
+          <button
+            type="button"
+            aria-label="Step from selection"
+            disabled={!stepReady}
+            onClick={onStep}
+          >
+            + Step<span data-wide> from selection</span>
+          </button>
+        </>
+      )}
+      {onDone === undefined ? null : (
+        <>
+          <span className="cv-tools-separator" />
+          <button type="button" data-done aria-label="Done editing (E)" onClick={onDone}>
+            Done
+          </button>
+        </>
+      )}
     </div>
   );
 }
 
 export const CanvasEmptyHint = () => (
   <div className="cv-hint">
-    <p>Drag from below, or double-click, to add a card</p>
-    <p>Space and drag to pan</p>
+    <p>Press C and drag, or double-click, to add a card</p>
+    <p>H, or Space and drag, to pan</p>
     <p>⌘ and scroll to zoom</p>
   </div>
 );

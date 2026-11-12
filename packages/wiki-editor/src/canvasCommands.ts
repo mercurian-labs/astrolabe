@@ -57,6 +57,22 @@ import type { CanvasLooseEnd, CanvasSelection } from "./canvasGestures";
 import { baseViewNames, noteBlocks, noteHeadings, noteWithBlockId } from "./canvasNote";
 import type { CanvasView } from "./canvasView";
 
+/** Smaller than this, a drawn box was meant as a click with a wobble. */
+const DRAWN_CARD_LEAST = { width: 100, height: 50 };
+const DRAWN_SECTION_LEAST = { width: 160, height: 100 };
+
+type Size = { readonly width: number; readonly height: number };
+
+const drawnBox = (box: CanvasBounds | null, at: CanvasPoint, size: Size, least: Size) =>
+  box === null
+    ? { ...centeredOn(at, size), ...size }
+    : {
+        x: Math.round(box.x),
+        y: Math.round(box.y),
+        width: Math.round(Math.max(least.width, box.width)),
+        height: Math.round(Math.max(least.height, box.height)),
+      };
+
 /** A board's clipboard for what a system clipboard won't carry, as on a phone's page. */
 let lastClip: { readonly clip: CanvasClip; readonly text: string } | null = null;
 
@@ -190,6 +206,32 @@ export class CanvasCommands {
     document.commit([{ op: "put-card", node: textCard(id, at) }]);
     this.#selectOne(id);
     this.editCard(id);
+  }
+
+  /** Drawn with the Card tool; a click drops one of the usual size centred on `at`. */
+  drawCard(box: CanvasBounds | null, at: CanvasPoint) {
+    const document = this.#document;
+    if (document === null) return;
+    const id = document.mint();
+    const rect = drawnBox(box, at, TEXT_CARD_SIZE, DRAWN_CARD_LEAST);
+    document.commit([{ op: "put-card", node: { ...textCard(id, rect), ...rect } }]);
+    this.#selectOne(id);
+    this.editCard(id);
+  }
+
+  /** Drawn with the Section tool: what's wholly inside it is in it, as for any group. */
+  drawSection(box: CanvasBounds | null, at: CanvasPoint) {
+    const document = this.#document;
+    if (document === null) return;
+    const id = document.mint();
+    document.commit([
+      {
+        op: "put-card",
+        node: groupCard(id, drawnBox(box, at, FILE_CARD_SIZE, DRAWN_SECTION_LEAST)),
+      },
+    ]);
+    this.#selectOne(id);
+    this.#board.edit({ kind: "group", id });
   }
 
   /** From a menu: its top-left at the click. */

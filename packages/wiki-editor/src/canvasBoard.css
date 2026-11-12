@@ -878,6 +878,23 @@ textarea.cv-label-editor {
   background: color-mix(in srgb, var(--ring, var(--primary)) 12%, transparent);
   border: 1px solid var(--ring, var(--primary));
 }
+.cv-marquee[data-draw] {
+  background: color-mix(in srgb, var(--popover, var(--background)) 70%, transparent);
+  border-radius: 8px;
+}
+.cv-marquee[data-draw="section"] {
+  background: color-mix(in srgb, var(--foreground) 4%, transparent);
+  border-style: dashed;
+}
+/* The cursor says what a drag will do. */
+.cv-board[data-tool="hand"],
+.cv-board[data-tool="hand"] .cv-world * {
+  cursor: grab;
+}
+.cv-board:is([data-tool="card"], [data-tool="section"], [data-tool="arrow"]),
+.cv-board:is([data-tool="card"], [data-tool="section"], [data-tool="arrow"]) .cv-world * {
+  cursor: crosshair;
+}
 .cv-hint {
   position: absolute;
   top: 50%;
@@ -1069,6 +1086,96 @@ textarea.cv-label-editor {
 }
 .cv-bar button {
   cursor: grab;
+}
+/* An editable board's tools, in the story pill's chip. */
+.cv-tools {
+  align-items: center;
+  max-width: 100%;
+}
+.cv-tools button {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+  align-items: center;
+  height: 28px;
+  padding: 0 8px;
+  white-space: nowrap;
+  cursor: pointer;
+  border-radius: 8px;
+}
+.cv-tools button[data-tool] {
+  padding: 0 5px 0 6px;
+}
+.cv-tools button[data-drag-in] {
+  cursor: grab;
+}
+.cv-tools button[aria-pressed="true"],
+.cv-tools button[aria-pressed="true"]:hover {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+}
+.cv-tools button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+.cv-tools button:disabled:hover {
+  background: none;
+}
+.cv-tools button[data-done] {
+  font-weight: 500;
+  border: 1px solid var(--border);
+}
+.cv-tools svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.75;
+}
+.cv-tools kbd {
+  align-self: flex-end;
+  margin-bottom: 5px;
+  font: inherit;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--muted-foreground);
+}
+.cv-tools-separator {
+  flex: none;
+  align-self: stretch;
+  width: 1px;
+  margin: 5px 3px;
+  background: var(--border);
+}
+.cv-board[data-touch] .cv-tools button {
+  height: 36px;
+}
+.cv-board[data-touch] .cv-tools kbd {
+  display: none;
+}
+/* While editing, the tools sit under the story's pill rather than beside it. */
+.cv-board[data-editable] .cv-overlay {
+  flex-flow: column nowrap;
+  align-items: center;
+}
+.cv-board[data-editable] .cv-overlay > [data-overlay-row] {
+  flex-basis: auto;
+  align-self: stretch;
+}
+@container (max-width: 1000px) {
+  .cv-tools [data-wide] {
+    display: none;
+  }
+}
+@container (max-width: 520px) {
+  .cv-tools kbd {
+    display: none;
+  }
+  .cv-tools button {
+    padding: 0 6px;
+  }
 }
 .cv-menu {
   position: absolute;

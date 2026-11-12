@@ -1,10 +1,11 @@
 import type { CanvasHandEdit } from "@mercurian/wiki/canvas-edits";
-import type {
-  CanvasBounds,
-  CanvasData,
-  CanvasEdge,
-  CanvasNode,
-  CanvasSide,
+import {
+  canvasArrowSides,
+  type CanvasBounds,
+  type CanvasData,
+  type CanvasEdge,
+  type CanvasNode,
+  type CanvasSide,
 } from "@mercurian/wiki/canvas";
 
 import { arrowBetween, canvasClip, placeClip } from "./canvasActions";
@@ -47,6 +48,9 @@ export interface CanvasSelection {
 
 export const NO_SELECTION: CanvasSelection = { cards: new Set(), arrow: null };
 
+/** What a plain drag on an editable board does. Space-drag pans in every one. */
+export type CanvasTool = "hand" | "select" | "card" | "section" | "arrow";
+
 /** A line dropped where there's no card: the host asks what to do with it. */
 export type CanvasLooseEnd =
   | {
@@ -87,6 +91,11 @@ export interface CanvasGestureHost {
   readonly editGroupLabel: (id: string) => void;
   readonly editArrowLabel: (id: string) => void;
   readonly addTextAt: (point: CanvasPoint) => void;
+  readonly tool: () => CanvasTool;
+  /** A box drawn with the Card or Section tool; null for a click, which drops one at `at`. */
+  readonly drawn: (tool: "card" | "section", box: CanvasBounds | null, at: CanvasPoint) => void;
+  /** A tool's one gesture is over: the pointer selects again. */
+  readonly toolDone: () => void;
   readonly fitToContent: (id: string, handle: CanvasHandle) => void;
   /** Resolve with `done` once it's dealt with; the line is drawn until then. */
   readonly looseEnd: (
@@ -114,6 +123,7 @@ interface Followers {
 type Session =
   | { readonly kind: "pan" }
   | { readonly kind: "marquee"; element: HTMLElement | null; readonly additive: boolean }
+  | { readonly kind: "draw"; readonly tool: "card" | "section"; element: HTMLElement | null }
   | {
       readonly kind: "drag";
       readonly card: string;
@@ -141,6 +151,8 @@ type Session =
       readonly kind: "connect";
       readonly from: CanvasNode;
       readonly side: CanvasSide;
+      /** Drawn with the Arrow tool from anywhere on the card: its sides face each other. */
+      readonly tool: boolean;
       draft: SVGPathElement | null;
     }
   | {
@@ -289,7 +301,7 @@ export class CanvasGestures {
     if (press.session.kind === "pan") {
       host.view.press(event.pointerId, event.clientX, event.clientY);
     }
-    if (touch && press.session.kind !== "resize" && press.session.kind !== "connect") {
+    if (touch && !["resize", "connect", "draw"].includes(press.session.kind)) {
       this.#longPress = setTimeout(() => this.#openMenuFromPress(), LONG_PRESS_MS);
     }
   }
@@ -305,6 +317,15 @@ export class CanvasGestures {
     const touch = event.pointerType === "touch";
     if (document === null) return { kind: "pan" };
     if (event.button === 1 || host.spaceHeld()) return { kind: "pan" };
+    const tool = host.tool();
+    if (tool === "hand") return { kind: "pan" };
+    if (tool === "card" || tool === "section") return { kind: "draw", tool, element: null };
+    if (tool === "arrow") {
+      const from = this.#cardAt(host.view.toWorld(event.clientX, event.clientY));
+      return from === undefined
+        ? { kind: "none" }
+        : { kind: "connect", from, side: "right", tool: true, draft: null };
+    }
 
     const handle = handleOf(target);
     if (handle !== null) {
@@ -316,7 +337,8 @@ export class CanvasGestures {
     if (side !== null) {
       const id = cardIdOf(target);
       const node = host.data().nodes.find((each) => each.id === id);
-      if (node !== undefined) return { kind: "connect", from: node, side, draft: null };
+      if (node !== undefined)
+        return { kind: "connect", from: node, side, tool: false, draft: null };
     }
     const arrow = arrowOf(target);
     if (arrow !== null) {
@@ -540,9 +562,11 @@ export class CanvasGestures {
         }
         return;
       }
-      case "marquee": {
+      case "marquee":
+      case "draw": {
         const element = document.createElement("div");
         element.className = "cv-marquee";
+        if (session.kind === "draw") element.dataset.draw = session.tool;
         host.board()?.append(element);
         session.element = element;
         return;
@@ -627,12 +651,16 @@ export class CanvasGestures {
         return;
       }
       case "connect":
-        session.draft?.setAttribute("d", canvasDraftPath(session.from, session.side, point));
+        session.draft?.setAttribute(
+          "d",
+          canvasDraftPath(session.from, this.#fromSide(session, point), point),
+        );
         return;
       case "retarget":
         session.draft?.setAttribute("d", canvasDraftPath(session.fixed, session.fixedSide, point));
         return;
-      case "marquee": {
+      case "marquee":
+      case "draw": {
         const { element } = session;
         const rect = host.board()?.getBoundingClientRect();
         if (element === null || rect === undefined) return;
@@ -669,7 +697,8 @@ export class CanvasGestures {
     const press = this.#press;
     if (press === null || press.id !== event.pointerId) return;
     this.#press = null;
-    if (press.moved) {
+    // A click with the Card or Section tool drops one: it isn't a click on what's under it.
+    if (press.moved || press.session.kind === "draw") {
       this.#draw(press);
       this.#finish(press, event);
       return;
@@ -725,6 +754,7 @@ export class CanvasGestures {
         if (session.hidden !== null) session.hidden.style.visibility = "";
         return;
       case "marquee":
+      case "draw":
         session.element?.remove();
         return;
       default:
@@ -758,6 +788,21 @@ export class CanvasGestures {
       case "retarget":
         this.#finishLine(press, session, event);
         return;
+      case "draw": {
+        session.element?.remove();
+        const a = press.start;
+        const b = host.view.toWorld(press.x, press.y);
+        const box = press.moved
+          ? {
+              x: Math.min(a.x, b.x),
+              y: Math.min(a.y, b.y),
+              width: Math.abs(a.x - b.x),
+              height: Math.abs(a.y - b.y),
+            }
+          : null;
+        host.drawn(session.tool, box, a);
+        return;
+      }
       case "marquee": {
         session.element?.remove();
         const a = press.start;
@@ -836,9 +881,10 @@ export class CanvasGestures {
     const point = host.view.toWorld(press.x, press.y);
     const target = this.#cardAt(point);
     if (session.kind === "connect") {
+      if (session.tool) host.toolDone();
       if (target === undefined) {
         host.looseEnd(
-          { kind: "new", from: { node: session.from.id, side: session.side } },
+          { kind: "new", from: { node: session.from.id, side: this.#fromSide(session, point) } },
           point,
           event.clientX,
           event.clientY,
@@ -848,10 +894,13 @@ export class CanvasGestures {
       }
       this.#abandon(press);
       if (target.id === session.from.id || document === null) return;
+      const [fromSide, toSide] = session.tool
+        ? canvasArrowSides(session.from, target)
+        : [session.side, nearestSide(target, point)];
       const arrow = arrowBetween(
         document.mint(),
-        { node: session.from.id, side: session.side },
-        { node: target.id, side: nearestSide(target, point) },
+        { node: session.from.id, side: fromSide },
+        { node: target.id, side: toSide },
       );
       document.commit([{ op: "put-arrow", edge: arrow }]);
       return;
@@ -879,6 +928,13 @@ export class CanvasGestures {
             : { toNode: target.id, toSide: nearestSide(target, point) },
       },
     ]);
+  }
+
+  /** A line from a card's dot leaves by that side; the Arrow tool's, by the side facing the pointer. */
+  #fromSide(session: Extract<Session, { kind: "connect" }>, point: CanvasPoint) {
+    return session.tool
+      ? canvasArrowSides(session.from, { ...point, width: 0, height: 0 })[0]
+      : session.side;
   }
 
   #clicked(press: Press, event: PointerEvent) {
