@@ -120,7 +120,7 @@ describe("AcpSessionRuntime", () => {
         expect((payloads[0] as { additionalDirectories?: unknown }).additionalDirectories).toEqual(
           supported ? ["/state/wiki-checkouts/notes"] : undefined,
         );
-      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+      }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("publishes model changes returned by a config request and live notifications", () =>
