@@ -12,7 +12,7 @@ Notes are the repository's `.md` files, in any folder, and `[[Name]]` finds a no
 
 Link a wiki to the projects it plans, so their agents know where research and plans live. After you add a wiki or a project, the command palette offers to link it to one on the same computer; **Not now** skips it. Change links any time under **Projects** on a wiki's page in **Settings → Wikis**, or **Wikis** in a project's settings (**Settings → Projects**). A wiki can plan several projects, and a project can have several wikis.
 
-A linked project's chats show each of its wikis in the header; click one to open it.
+A linked project's threads list each of its wikis under **Wikis** in the thread details card, with the thread's pull request on it; click either to open it.
 
 When a conversation starts in a linked project, its agent is told which wikis hold that project's research and plans: to look there first when it researches, plans, or builds a feature, and to write what it learns back to the wiki. A thread that already exists hears about a new link with its next message, never during a turn. Unlinking stops new threads hearing about the wiki; a thread that already heard keeps what it knows. **What agents are told** on a wiki's page shows the exact words.
 

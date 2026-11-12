@@ -29,6 +29,7 @@ export const COMPOSER_CONTEXT_KINDS = [
   "wiki-note",
   "canvas",
   "environment",
+  "change-group",
 ] as const;
 export type KnownComposerContextKind = (typeof COMPOSER_CONTEXT_KINDS)[number];
 
@@ -241,7 +242,26 @@ export const CanvasContextRecord = Schema.Struct({
 });
 export type CanvasContextRecord = typeof CanvasContextRecord.Type;
 
-export const WikiContextRecord = Schema.Union([WikiNoteContextRecord, CanvasContextRecord]);
+/**
+ * Astrolabe: a change group, named rather than copied since it changes as its members do; the
+ * agent reads it live. Its member keys as of sending find it again if its root thread changed.
+ */
+export const ChangeGroupContextRecord = Schema.Struct({
+  ...recordBase,
+  kind: Schema.Literal("change-group"),
+  environmentId: EnvironmentId,
+  groupId: TrimmedNonEmptyString.check(Schema.isMaxLength(255)),
+  title: ContextLabel,
+  memberKeys: Schema.Array(ShortString).check(Schema.isMaxLength(100)),
+});
+export type ChangeGroupContextRecord = typeof ChangeGroupContextRecord.Type;
+
+/** Astrolabe's named-not-copied records, which share a draft's one slot. */
+export const WikiContextRecord = Schema.Union([
+  WikiNoteContextRecord,
+  CanvasContextRecord,
+  ChangeGroupContextRecord,
+]);
 export type WikiContextRecord = typeof WikiContextRecord.Type;
 
 /**
@@ -289,6 +309,7 @@ export const KnownComposerContextRecord = Schema.Union([
   WikiNoteContextRecord,
   CanvasContextRecord,
   EnvironmentContextRecord,
+  ChangeGroupContextRecord,
 ]);
 export type KnownComposerContextRecord = typeof KnownComposerContextRecord.Type;
 

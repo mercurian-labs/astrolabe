@@ -8,6 +8,7 @@ import {
   useRightPanelStore,
 } from "../rightPanelStore";
 import type { TurnDiffSummary } from "../types";
+import { showChangeGroupTab } from "../components/changeRequests/groups/openThreadChangeRequests";
 import {
   observeProactivePanelUserChoice,
   resolveProactiveTurnDiffAction,
@@ -37,12 +38,12 @@ export function useProactivePanels(input: {
   readonly turnDiffSummaries: ReadonlyArray<TurnDiffSummary>;
   readonly isGitRepo: boolean | undefined;
   readonly linkedPullRequest: ThreadLinkedPullRequest | null;
-  readonly hasLinkedPullRequestDetail: boolean;
   readonly pullRequestsKey: string | null;
   readonly pullRequestsCapabilityKnown: boolean;
   readonly supportsPullRequests: boolean;
   readonly pullRequestsSurfaceAvailable: boolean;
-  readonly visiblePullRequestCount: number;
+  /** Astrolabe: the thread's change group, which opens in place of T3 Code's linked list. */
+  readonly changeGroupId: string | null;
   readonly onDiffPanelOpen: (() => void) | undefined;
 }) {
   const {
@@ -56,12 +57,11 @@ export function useProactivePanels(input: {
     turnDiffSummaries,
     isGitRepo,
     linkedPullRequest: linkedThreadPullRequest,
-    hasLinkedPullRequestDetail,
     pullRequestsKey: proactivePullRequestsKey,
     pullRequestsCapabilityKnown,
     supportsPullRequests,
     pullRequestsSurfaceAvailable,
-    visiblePullRequestCount,
+    changeGroupId,
     onDiffPanelOpen,
   } = input;
   const proactivePanelObservationRef = useRef<ReturnType<
@@ -120,16 +120,8 @@ export function useProactivePanels(input: {
       targetKey: shouldDeferLink ? (previousTargetKey ?? null) : proactivePullRequestsKey,
     };
     if (eligibleLink && pullRequestsCapabilityKnown) {
-      if (
-        !followSelectedPullRequest &&
-        pullRequestsSurfaceAvailable &&
-        (visiblePullRequestCount > 1 || !hasLinkedPullRequestDetail || !supportsPullRequests)
-      ) {
-        panels.openProactive(
-          threadRef,
-          { id: "pull-requests", kind: "pull-requests" },
-          userActionRevision,
-        );
+      if (!followSelectedPullRequest && pullRequestsSurfaceAvailable && changeGroupId !== null) {
+        showChangeGroupTab({ environmentId: threadRef.environmentId, groupId: changeGroupId });
       } else if (
         !followSelectedPullRequest &&
         supportsPullRequests &&
@@ -191,8 +183,8 @@ export function useProactivePanels(input: {
     activeLatestRun?.runId,
     activeLatestRun?.status,
     activeRunningTurnId,
+    changeGroupId,
     clientSettingsHydrated,
-    hasLinkedPullRequestDetail,
     isGitRepo,
     latestRunSettled,
     linkedThreadPullRequest,
@@ -206,6 +198,5 @@ export function useProactivePanels(input: {
     threadKey,
     threadRef,
     turnDiffSummaries,
-    visiblePullRequestCount,
   ]);
 }

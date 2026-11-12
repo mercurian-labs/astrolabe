@@ -24,6 +24,7 @@ import { Badge } from "../ui/badge";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
 import { useThreadActionMenu } from "~/hooks/useThreadActionMenu";
+import { useChatOwner } from "~/panes/PaneSurfaceHost";
 import { readLocalApi } from "~/localApi";
 import { threadEnvironment } from "../../state/threads";
 import { canShareWithGuestAtom } from "./guestShareAvailability";
@@ -41,9 +42,7 @@ import { observeResize } from "~/lib/observeResize";
 import { cn } from "~/lib/utils";
 import { textDirection } from "~/textDirection";
 import { useClientSettings } from "../../hooks/useSettings";
-import { LinkedWikiChips } from "../wiki/LinkedWikiChips";
 import { GuestShareIndicator } from "./GuestShareControls";
-import { ThreadChangeGroupPill } from "../changeRequests/groups/ThreadChangeGroupPill";
 
 interface ChatHeaderProps {
   activeThreadEnvironmentId: EnvironmentId;
@@ -90,6 +89,7 @@ export const ChatHeader = memo(function ChatHeader({
   const activeProjectCwd = activeProject?.workspaceRoot ?? null;
   const interfaceFont = useClientSettings((settings) => settings.fontFamilySans);
   const breadcrumbContainerRef = useRef<HTMLDivElement>(null);
+  const inPanes = useChatOwner() !== null;
   const [collapseParentTitle, setCollapseParentTitle] = useState(false);
   const activeThreadRef = scopeThreadRef(activeThreadEnvironmentId, activeThreadId);
   const canOperateThread = useEnvironmentScope(
@@ -286,7 +286,8 @@ export const ChatHeader = memo(function ChatHeader({
       ref={breadcrumbContainerRef}
       className={cn(
         "flex min-w-0 flex-1 items-center gap-2 sm:gap-3",
-        rightPanelOpen ? "pr-10" : "pr-24",
+        // Outside the panes the window's controls float over this corner; in a pane they follow.
+        inPanes ? null : rightPanelOpen ? "pr-10" : "pr-24",
       )}
       onContextMenu={handleHeaderContextMenu}
     >
@@ -432,16 +433,7 @@ export const ChatHeader = memo(function ChatHeader({
           ) : null}
         </WorkspaceBreadcrumbItem>
       </WorkspaceBreadcrumb>
-      {activeProject && !activeProject.isScratch ? (
-        <LinkedWikiChips environmentId={activeProject.environmentId} projectId={activeProject.id} />
-      ) : null}
       {isServerThread ? <GuestShareIndicator threadRef={activeThreadRef} /> : null}
-      {isServerThread ? (
-        <ThreadChangeGroupPill
-          environmentId={activeThreadEnvironmentId}
-          threadId={activeThreadId}
-        />
-      ) : null}
     </div>
   );
 });

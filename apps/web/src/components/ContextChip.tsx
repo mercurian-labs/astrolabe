@@ -29,6 +29,7 @@ const contextChipVariants = cva(
         thread: "[--context-chip-accent:var(--context-chip-thread)]",
         "wiki-note": "[--context-chip-accent:var(--context-chip-wiki-note)]",
         canvas: "[--context-chip-accent:var(--context-chip-wiki-note)]",
+        "change-group": "[--context-chip-accent:var(--context-chip-pull-request)]",
         environment: "[--context-chip-accent:var(--context-chip-environment)]",
         citation: "[--context-chip-accent:var(--context-chip-citation)]",
         "doc-pdf": "[--context-chip-accent:var(--context-chip-doc-pdf)]",

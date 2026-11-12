@@ -23,6 +23,8 @@ import { ThreadDetailsSection } from "./ThreadDetailsSection";
 import { ThreadAutomationsPanel } from "./ThreadAutomationsPanel";
 import { ThreadRelationshipsPanel } from "./ThreadRelationshipsControl";
 import { ThreadServersPanel } from "./ThreadServersPanel";
+import { ThreadWikisSection } from "./ThreadWikisSection";
+import { ThreadChangeGroupRows } from "../changeRequests/groups/ThreadChangeGroupRows";
 import {
   ThreadDetailsContext,
   ThreadDetailsUsage,
@@ -223,6 +225,12 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                     {show.branch ? (
                       <BranchToolbar layout="panel" panelSection="branch" {...branchToolbarProps} />
                     ) : null}
+                    {show.branch && !props.draftId ? (
+                      <ThreadChangeGroupRows
+                        environmentId={props.environmentId}
+                        threadId={props.threadId}
+                      />
+                    ) : null}
                     {show.git ? (
                       <GitActionsControl
                         compact={density !== "full"}
@@ -236,6 +244,14 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                     ) : null}
                   </div>
                 </ThreadDetailsSection>
+              ) : null}
+
+              {!props.draftId && visible.wikis ? (
+                <ThreadWikisSection
+                  environmentId={props.environmentId}
+                  projectId={props.projectId}
+                  threadId={props.threadId}
+                />
               ) : null}
 
               {density === "full" && !props.draftId && visible.servers ? (

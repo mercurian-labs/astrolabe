@@ -2,7 +2,7 @@ import { ThreadDetailsControl } from "./chat/ThreadDetailsControl";
 import { ComposerContextLabel } from "./ComposerContextLabel";
 import { useSupportsMultiplePullRequests } from "~/hooks/useSupportsMultiplePullRequests";
 import { resolveThreadCurrentPullRequestLink } from "@t3tools/client-runtime/thread-pull-requests";
-import { useRightPanelStore } from "../rightPanelStore";
+import { openThreadChangeRequests } from "./changeRequests/groups/openThreadChangeRequests";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   isAtomCommandInterrupted,
@@ -698,7 +698,7 @@ export function BranchToolbarBranchSelector({
             number={prNumber}
             url={prUrl}
             status={displayedPrStatus}
-            onOpenList={() => useRightPanelStore.getState().open(threadRef, "pull-requests")}
+            onOpenList={() => openThreadChangeRequests(threadRef)}
             onOpenPullRequest={(event, targetUrl = prUrl) => {
               if (targetUrl) openPrLink(event, targetUrl);
             }}

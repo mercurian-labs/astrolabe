@@ -309,6 +309,8 @@ import {
 import { QueuedRunsControl, type QueuedRunsControlHandle } from "./chat/QueuedRunsControl";
 import { useThreadLinkedPullRequest } from "./pullRequest/useThreadLinkedPullRequest";
 import { useProactivePanels } from "../hooks/useProactivePanels";
+import { useThreadChangeGroupId } from "../state/changeGroups";
+import { showChangeGroupTab } from "./changeRequests/groups/openThreadChangeRequests";
 import { useIncrementalTimelineEntries } from "../hooks/useIncrementalTimelineEntries";
 import { useRightPanelSurfaceClose } from "../hooks/useRightPanelSurfaceClose";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/ComposerBannerStack";
@@ -1992,21 +1994,19 @@ export default function ChatView(props: ChatViewProps) {
   const activeProjectRepository = sourceControlClients.repositorySelector(
     activeProject?.repositoryIdentity,
   );
-  const {
-    linked: linkedThreadPullRequest,
-    linkedKey: linkedThreadPullRequestKey,
-    hasDetail: hasLinkedPullRequestDetail,
-  } = useThreadLinkedPullRequest({
-    serverThreadRef: isServerThread ? activeThreadRef : null,
-    environmentId: activeThreadRef?.environmentId ?? null,
-    persisted: isServerThread
-      ? (activeThreadShell?.linkedPullRequest ?? activeThread?.linkedPullRequest ?? null)
-      : (activeThread?.linkedPullRequest ?? null),
-    projectId: activeProject?.id ?? null,
-    projectRepository: activeProjectRepository,
-    threadBranch: activeThread?.branch ?? null,
-    gitStatus: gitStatusQuery.data ?? null,
-  });
+  const { linked: linkedThreadPullRequest, linkedKey: linkedThreadPullRequestKey } =
+    useThreadLinkedPullRequest({
+      serverThreadRef: isServerThread ? activeThreadRef : null,
+      environmentId: activeThreadRef?.environmentId ?? null,
+      persisted: isServerThread
+        ? (activeThreadShell?.linkedPullRequest ?? activeThread?.linkedPullRequest ?? null)
+        : (activeThread?.linkedPullRequest ?? null),
+      projectId: activeProject?.id ?? null,
+      projectRepository: activeProjectRepository,
+      threadBranch: activeThread?.branch ?? null,
+      gitStatus: gitStatusQuery.data ?? null,
+    });
+  const activeChangeGroupId = useThreadChangeGroupId(isServerThread ? activeThreadRef : null);
   const proactivePullRequestsKey = pullRequestsSurfaceAvailable
     ? JSON.stringify(
         visiblePullRequests.map((link) => [link.host, link.repository, link.number]).sort(),
@@ -2024,12 +2024,11 @@ export default function ChatView(props: ChatViewProps) {
     turnDiffSummaries,
     isGitRepo: gitStatusQuery.data?.isRepo,
     linkedPullRequest: linkedThreadPullRequest,
-    hasLinkedPullRequestDetail,
     pullRequestsKey: proactivePullRequestsKey,
     pullRequestsCapabilityKnown,
     supportsPullRequests,
     pullRequestsSurfaceAvailable,
-    visiblePullRequestCount,
+    changeGroupId: activeChangeGroupId,
     onDiffPanelOpen,
   });
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- consumes a pending maximize request from the right panel store once the panel can maximize
@@ -2402,7 +2401,6 @@ export default function ChatView(props: ChatViewProps) {
     addGraphSurfaceStable,
     addLineageSurfaceStable,
     addPullRequestSurfaceStable,
-    addPullRequestsSurfaceStable,
     closePreviewPanelStable,
     copyRightPanelFilePathStable,
     createBrowserSurface,
@@ -2436,7 +2434,6 @@ export default function ChatView(props: ChatViewProps) {
     canMaximizeRightPanel,
     rightPanelMaximized,
     supportsPullRequests,
-    pullRequestsSurfaceAvailable,
     gitCwd,
     activeProjectCwd,
     explicitDiffOpenRef,
@@ -3287,9 +3284,14 @@ export default function ChatView(props: ChatViewProps) {
           pullRequests: visiblePullRequests,
           linkedPullRequest: linkedThreadPullRequest,
           branchPullRequest: activeThreadShell?.branchPullRequest ?? activeThread.branchPullRequest,
+          // Astrolabe: back to the thread's change group, where T3 Code lists its pull requests.
           onBack:
-            pullRequestsSurfaceAvailable && visiblePullRequestCount > 1
-              ? addPullRequestsSurfaceStable
+            activeChangeGroupId !== null && activeThreadRef
+              ? () =>
+                  showChangeGroupTab({
+                    environmentId: activeThreadRef.environmentId,
+                    groupId: activeChangeGroupId,
+                  })
               : undefined,
         }}
         files={{
@@ -3388,7 +3390,6 @@ export default function ChatView(props: ChatViewProps) {
                 className="pointer-events-none fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] h-[var(--workspace-topbar-height)] w-28 [-webkit-app-region:no-drag]"
               />
             ) : null}
-            {!rightPanelControlsAtRoot && !rightPanelControlsInPanel ? panelLayoutControls : null}
             {inlineRightPanelOwnsTitleBar ? threadPanelHeaderControl : null}
             <ChatHeader
               activeThreadEnvironmentId={activeThread.environmentId}
@@ -3406,6 +3407,7 @@ export default function ChatView(props: ChatViewProps) {
                 : {})}
               {...(threadFindEnabled ? { onFindInThread: openThreadFindStable } : {})}
             />
+            {!rightPanelControlsAtRoot && !rightPanelControlsInPanel ? panelLayoutControls : null}
           </PaneChatHeader>
         )}
 
@@ -4050,7 +4052,6 @@ export default function ChatView(props: ChatViewProps) {
           onAddDiff={addDiffSurfaceStable}
           onAddFiles={addFilesSurfaceStable}
           onAddPullRequest={addPullRequestSurfaceStable}
-          onAddPullRequests={addPullRequestsSurfaceStable}
           onAddDevice={addDeviceSurfaceStable}
           onAddGraph={addGraphSurfaceStable}
           onAddLineage={addLineageSurfaceStable}
@@ -4060,7 +4061,6 @@ export default function ChatView(props: ChatViewProps) {
           diffAvailable={isServerThread && isGitRepo}
           filesAvailable={activeProject !== null}
           pullRequestAvailable={pullRequestSurfaceAvailable}
-          pullRequestsAvailable={pullRequestsSurfaceAvailable}
           deviceAvailable={activeThreadRef !== null}
           graphAvailable={graphSurfaceAvailable}
           lineageAvailable={lineageSurfaceAvailable}

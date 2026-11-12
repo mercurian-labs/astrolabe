@@ -133,7 +133,8 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   (`chat:<env>:<thread>` tab), as a sidebar click does. See panes.md, "Chats as tabs".
 - **Pull requests** open as tabs with the shared tab header
   (`nav[aria-label='Pull request breadcrumb']`: the wiki, muted / the title; the state as
-  quiet status; **Open thread**, **Close pull request** / **Reopen pull request** and
+  quiet status, after `button "Change group: <title>"` when it is in a change group (opens
+  the group's tab, pull-requests.md); **Open thread**, **Close pull request** / **Reopen pull request** and
   **Merge**), then who opened it, amendments with Revert, and files that open inside the
   pull request.
 - **Deep links**: `/wikis/<wikiId>?environmentId=…&note=…` show
@@ -148,7 +149,11 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   (`/settings/wikis?wiki=<environmentId>:<wikiId>`, the filter's gear opens it) and in
   Settings → a project's **Wikis** section (**Add a wiki** when its servers have no wikis).
   Both are lists with **Unlink** and a searchable **Link a project** or **Link a wiki** picker,
-  and a chat in a linked project shows a chip per wiki in its header, hidden below `sm`.
+  and a thread in a linked project lists each wiki under **Wikis** in thread details
+  (`button "Open the wiki <name>"`, then one `button "<title>, <Open|Draft|Merged|Closed>"`
+  per wiki pull request this thread opened there; none on a draft thread or in a project
+  with no linked wiki; **Choose what to show** → Wikis hides it). The chat header has no
+  wiki chips.
 - **Settings → Wikis** also holds **New files** (`WikiLocationSettings.tsx`: Attachments,
   default Wiki root; New notes, default Beside the linking file) and **Canvases**
   (`WikiCanvasSettings.tsx`: New canvases, Mouse wheel, Card names, Snap to grid, Snap to
@@ -399,8 +404,8 @@ Changes), `wiki/wikiFilter.ts` and `components/projects/storedChoice.ts` (behind
 and the palette's link step in `CommandPalette.tsx`, the Wikis section in
 `settings/ProjectSettingsPanel.tsx`, server `wiki/WikiService.ts` and
 `orchestration-v2/ProviderTurnStartService.ts`. Settings → Wikis:
-`settings/WikisSettings.tsx`, `routes/_chat.settings.wikis.tsx`. The chat header's chips:
-`wiki/LinkedWikiChips.tsx`. `[[`: `composer-logic.ts`
+`settings/WikisSettings.tsx`, `routes/_chat.settings.wikis.tsx`. Thread details' Wikis section:
+`chat/ThreadWikisSection.tsx` (its toggle in `chat/threadDetailsItems.ts`). `[[`: `composer-logic.ts`
 (`detectWikiNoteTrigger`), `chat/composerWikiNoteItems.ts`, `WikiNoteContextChip.tsx`, and
 mobile `features/threads/ThreadFeed.tsx` (the sent chip). Bases: `wiki/WikiBaseView.tsx`,
 `packages/wiki/src/bases.ts`, `baseExpression.ts` and `properties.ts`,

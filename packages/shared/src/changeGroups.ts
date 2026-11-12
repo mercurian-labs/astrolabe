@@ -287,6 +287,30 @@ export function deriveChangeGroups(input: {
       });
     }
   }
+  // A thread added to a group brings its own pull requests, to the group it joined last; one
+  // added somewhere by itself stays there.
+  const brought = new Map<
+    string,
+    { readonly groupId: string; readonly reason: ChangeGroupReason; readonly note: string }
+  >();
+  for (const decision of input.decisions) {
+    for (const entry of decision.added) {
+      if (entry.member.kind !== "thread") continue;
+      if (decision.removed.includes(changeGroupMemberKey(entry.member))) continue;
+      for (const link of threads.get(entry.member.threadId)?.pullRequests ?? []) {
+        if (link.source === "stack-dismissed") continue;
+        const key = changeGroupMemberKey({
+          kind: "pull-request",
+          host: link.host,
+          repository: link.repository,
+          number: link.number,
+        });
+        if (!added.has(key))
+          brought.set(key, { groupId: decision.groupId, reason: "same-thread", note: "" });
+      }
+    }
+  }
+  for (const [key, entry] of brought) added.set(key, entry);
 
   const members = new Map<string, ChangeGroupMember[]>();
   const threadIds = new Map<string, string[]>();
@@ -398,6 +422,31 @@ export function deriveChangeGroups(input: {
     (newest(b.members.map((m) => m.updatedAt)) ?? "").localeCompare(
       newest(a.members.map((m) => m.updatedAt)) ?? "",
     ),
+  );
+}
+
+/**
+ * The group `groupId` names, else, once its root changed and its id with it, the one holding any
+ * of `memberKeys` now (as a context record sent earlier remembers them): a change request first,
+ * as it is in one group only, then a thread.
+ */
+export function findChangeGroup<Group extends ChangeGroup>(
+  groups: ReadonlyArray<Group>,
+  groupId: string | null,
+  memberKeys: ReadonlyArray<string>,
+): Group | null {
+  const byId = groupId === null ? undefined : groups.find((group) => group.groupId === groupId);
+  if (byId !== undefined) return byId;
+  const keys = new Set(memberKeys);
+  if (keys.size === 0) return null;
+  return (
+    groups.find((group) => group.members.some((member) => keys.has(member.key))) ??
+    groups.find((group) =>
+      group.threadIds.some((threadId) =>
+        keys.has(changeGroupMemberKey({ kind: "thread", threadId })),
+      ),
+    ) ??
+    null
   );
 }
 

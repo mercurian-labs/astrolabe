@@ -9,6 +9,7 @@ import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/reactivity";
 
 import { connectionAtomRuntime } from "../connection/runtime";
+import { appAtomRegistry } from "./atom-registry";
 import { serverEnvironment } from "./server";
 import { environmentThreadShells } from "./threads";
 import { wikiEnvironment } from "./wiki";
@@ -50,4 +51,11 @@ export function useChangeGroups(): ReadonlyArray<EnvironmentChangeGroup> {
       .map((environment) => environment.environmentId),
   );
   return useAtomValue(changeGroupsAtom(key));
+}
+
+/** One environment's change groups, read once rather than followed, as a tapped chip needs them. */
+export function readEnvironmentChangeGroups(
+  environmentId: EnvironmentId,
+): ReadonlyArray<EnvironmentChangeGroup> {
+  return appAtomRegistry.get(changeGroupsAtom(JSON.stringify([environmentId])));
 }

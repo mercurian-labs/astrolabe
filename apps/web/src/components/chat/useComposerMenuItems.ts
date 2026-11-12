@@ -1,4 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
+import { matchComposerChangeGroupItems } from "@t3tools/client-runtime/changeGroups";
 import {
   matchComposerEnvironmentItems,
   matchComposerThreadItems,
@@ -38,6 +39,7 @@ import {
   type EnvironmentQueryTarget,
 } from "~/state/pullRequests";
 import { useEnvironmentQuery } from "~/state/query";
+import { useChangeGroupsWhile } from "~/state/changeGroups";
 import { useComposerPathSearch, useDebouncedValue, useThreadSearch } from "~/state/queries";
 import { wikiEnvironment, wikiOverviewsAtom } from "~/state/wiki";
 import {
@@ -115,6 +117,7 @@ export function useComposerMenuItems({
     pullRequestTextQuery === debouncedPullRequestTextQuery ? pullRequestTextQuery : null;
   const isPathTrigger = composerTriggerKind === "path";
   const environmentThreadShells = useVisibleThreadShells(isPathTrigger);
+  const changeGroups = useChangeGroupsWhile(isPathTrigger);
   // Mounts older settled threads matching the mention, which shells may leave out.
   useThreadSearch(isPathTrigger ? [environmentId] : [], pathTriggerQuery, { titlesOnly: true });
   // The user's machines feed `@` machine matches; the catalog summary is cheap and stable.
@@ -214,6 +217,12 @@ export function useComposerMenuItems({
           excludeThreadId: activeThreadId,
           query: composerTrigger.query,
           now,
+        }),
+        ...matchComposerChangeGroupItems({
+          groups: changeGroups,
+          environmentId,
+          threadId: activeThreadId,
+          query: composerTrigger.query,
         }),
         // An answer to an agent's question carries thread links, not machines.
         ...(questionAttachmentTarget === null && offersMachines

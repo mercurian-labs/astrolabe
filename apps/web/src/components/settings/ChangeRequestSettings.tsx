@@ -39,12 +39,6 @@ const GROUPING_ROWS: ReadonlyArray<{
     description: "A thread working on a group's pull request branch joins the group.",
   },
   {
-    key: "agentSuggestions",
-    title: "Agent suggestions",
-    description:
-      "An agent can suggest pull requests and threads, each with its reason, for you to accept or dismiss.",
-  },
-  {
     key: "flagDocsBehind",
     title: "Flag documentation that falls behind",
     description: "A group says Docs behind when its code changed after its documentation.",
@@ -52,7 +46,7 @@ const GROUPING_ROWS: ReadonlyArray<{
   {
     key: "offerDocDrafts",
     title: "Offer drafts for missing documentation",
-    description: "A group whose code has no documentation offers to ask its thread to draft some.",
+    description: "A group whose code has no documentation offers a new thread to draft some.",
   },
   {
     key: "armByDefault",
@@ -64,7 +58,7 @@ const GROUPING_ROWS: ReadonlyArray<{
 
 /**
  * Astrolabe: Settings › Change Requests. Grouping: the rules that add change requests to a
- * change group on their own, what an agent may do, and whether new groups merge together. Kept by
+ * change group on their own, what a group offers, and whether new groups merge together. Kept by
  * the environment, where groups are derived and merged. Turning a rule off stops new members
  * joining by it; members already in a group stay until taken out by hand.
  */

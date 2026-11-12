@@ -143,7 +143,6 @@ export interface RightPanelTabsProps {
   onAddDiff: () => void;
   onAddFiles: () => void;
   onAddPullRequest: () => void;
-  onAddPullRequests: () => void;
   onAddDevice: () => void;
   onAddGraph: () => void;
   onAddLineage: () => void;
@@ -154,7 +153,6 @@ export interface RightPanelTabsProps {
   diffAvailable: boolean;
   filesAvailable: boolean;
   pullRequestAvailable: boolean;
-  pullRequestsAvailable: boolean;
   deviceAvailable: boolean;
   graphAvailable: boolean;
   lineageAvailable: boolean;
@@ -185,7 +183,6 @@ const SURFACE_DISABLED_REASONS = {
   files: "Files are only available when a project is open.",
   diff: "Diff is only available for server threads in Git repositories.",
   pullRequest: "This thread's branch has no pull request yet.",
-  pullRequests: "No linked pull requests are available for this thread.",
   device: "Devices are only available from a thread.",
   graph: "The graph is only available from a thread.",
   lineage: "Lineage is only available for a thread that has started.",
@@ -212,7 +209,6 @@ const SURFACE_UNAVAILABLE_HINTS = {
   files: "Available when a project is open.",
   diff: "Available for Git repositories.",
   pullRequest: "No pull request on this branch yet.",
-  pullRequests: "No linked pull requests available.",
   device: "Available from a thread.",
   graph: "Available from a thread.",
   lineage: "Available once the thread has started.",
@@ -347,7 +343,6 @@ export function RightPanelEmptyState(props: {
   onAddDiff: () => void;
   onAddFiles: () => void;
   onAddPullRequest: () => void;
-  onAddPullRequests: () => void;
   onAddDevice: () => void;
   onAddGraph: () => void;
   onAddLineage: () => void;
@@ -358,7 +353,6 @@ export function RightPanelEmptyState(props: {
   diffAvailable: boolean;
   filesAvailable: boolean;
   pullRequestAvailable: boolean;
-  pullRequestsAvailable: boolean;
   deviceAvailable: boolean;
   graphAvailable: boolean;
   lineageAvailable: boolean;
@@ -407,14 +401,6 @@ export function RightPanelEmptyState(props: {
       available: props.pullRequestAvailable,
       disabledReason: SURFACE_UNAVAILABLE_HINTS.pullRequest,
       onClick: props.onAddPullRequest,
-    },
-    {
-      label: "Linked pull requests",
-      icon: PullRequestGlyph.link,
-      shortcut: "L",
-      available: props.pullRequestsAvailable,
-      disabledReason: SURFACE_UNAVAILABLE_HINTS.pullRequests,
-      onClick: props.onAddPullRequests,
     },
     {
       label: "Device",
@@ -1193,14 +1179,6 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       onClick: props.onAddPullRequest,
     },
     {
-      label: "Linked pull requests",
-      icon: PullRequestGlyph.link,
-      shortcut: "L",
-      available: props.pullRequestsAvailable,
-      disabledReason: SURFACE_DISABLED_REASONS.pullRequests,
-      onClick: props.onAddPullRequests,
-    },
-    {
       label: "Device",
       icon: Smartphone,
       shortcut: "M",
@@ -1608,7 +1586,6 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             onAddDiff={props.onAddDiff}
             onAddFiles={props.onAddFiles}
             onAddPullRequest={props.onAddPullRequest}
-            onAddPullRequests={props.onAddPullRequests}
             onAddDevice={props.onAddDevice}
             onAddGraph={props.onAddGraph}
             onAddLineage={props.onAddLineage}
@@ -1618,7 +1595,6 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             diffAvailable={props.diffAvailable}
             filesAvailable={props.filesAvailable}
             pullRequestAvailable={props.pullRequestAvailable}
-            pullRequestsAvailable={props.pullRequestsAvailable}
             deviceAvailable={props.deviceAvailable}
             graphAvailable={props.graphAvailable}
             lineageAvailable={props.lineageAvailable}

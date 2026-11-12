@@ -47,7 +47,7 @@ import { useThreadShell } from "~/state/entities";
 import { chatTabKey, parseChatTabKey } from "./sectionTabs";
 
 /** An arrangement showing `key`: brought forward where it is, else opened in the focused pane. */
-export function showKeyIn(
+function showKeyIn(
   arrangement: Arrangement,
   key: string,
   placement: "tab" | "beside" = "tab",
@@ -151,6 +151,24 @@ export function SectionTabContent({
           if (thread !== null) workspace.openChat(chatTabKey(thread));
           else store.update((arrangement) => showKeyIn(arrangement, key, "beside"));
         }}
+        showBeside={(key) =>
+          store.update((arrangement) => {
+            const groupPane = leafWithTab(arrangement.root, tabKey);
+            const pane = leafWithTab(arrangement.root, key);
+            // A tab standing alone in a pane of its own is beside the group already.
+            if (pane && pane.id !== groupPane?.id && pane.tabs.length === 1) {
+              return activateTab(arrangement, key);
+            }
+            const beside = openBeside(
+              arrangement,
+              key,
+              groupPane?.id ?? arrangement.focused,
+              "right",
+            );
+            // A new chat opens in front of the group first; moving it out leaves the group in front.
+            return activateTab(beside, tabKey, false);
+          })
+        }
         openAll={
           openAll ??
           (shared

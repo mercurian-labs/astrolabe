@@ -1,7 +1,10 @@
 import {
   ChangeGroupDecisions,
   ChangeGroupError,
+  ChangeGroupReason,
   changeGroupMemberKey,
+  PullRequestChecksState,
+  PullRequestReviewDecision,
   type ChangeGroupListResult,
   type ChangeGroupUpdateInput,
   type WikiChangeRequestId,
@@ -9,6 +12,7 @@ import {
 import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
 import {
   deriveChangeGroups,
+  findChangeGroup,
   type ChangeGroup,
   type ChangeGroupThread,
   type ChangeGroupWikiChange,
@@ -49,6 +53,14 @@ export class ChangeGroupService extends Context.Service<
     ) => Effect.Effect<ChangeGroupDecisions, ChangeGroupError>;
     /** Every group on this environment, as the rules and the decisions make them. */
     readonly groups: Effect.Effect<ReadonlyArray<ChangeGroup>, ChangeGroupError>;
+    /**
+     * One group in full, by its id, else by any member it holds now (`findChangeGroup`), as a
+     * context record sent before its root changed names it; null when neither finds one.
+     */
+    readonly group: (input: {
+      readonly groupId: string | null;
+      readonly memberKeys: ReadonlyArray<string>;
+    }) => Effect.Effect<ChangeGroupDetail | null, ChangeGroupError>;
     /** Merges the documentation of armed groups whose code has merged. */
     readonly mergeArmed: Effect.Effect<void>;
   }
@@ -91,6 +103,107 @@ export function foldThreadBranches(
     next[threadId] = [...known, branch];
   }
   return next ?? threads;
+}
+
+const nullable = Schema.NullOr(Schema.String);
+
+/** One group as an agent reads it: each member's branches, state, checks and link, its threads. */
+export const ChangeGroupDetail = Schema.Struct({
+  groupId: Schema.String,
+  title: Schema.String,
+  state: Schema.Literals(["in-sync", "docs-behind", "waiting-on-code", "docs-missing", "merged"]),
+  armed: Schema.Boolean,
+  members: Schema.Array(
+    Schema.Struct({
+      key: Schema.String,
+      side: Schema.Literals(["code", "docs"]),
+      title: Schema.String,
+      place: Schema.String,
+      state: Schema.Literals(["open", "draft", "merged", "closed"]),
+      reason: ChangeGroupReason,
+      note: Schema.String,
+      url: nullable,
+      branch: nullable,
+      baseBranch: nullable,
+      checks: Schema.NullOr(PullRequestChecksState),
+      review: Schema.NullOr(PullRequestReviewDecision),
+      /** The thread that opened it. */
+      threadId: nullable,
+    }),
+  ),
+  threads: Schema.Array(
+    Schema.Struct({
+      threadId: Schema.String,
+      title: Schema.String,
+      reason: Schema.Literals([
+        "root",
+        "opened",
+        "fork",
+        "coordinator",
+        "same-branch",
+        "reference",
+        "manual",
+        "suggested",
+      ]),
+      note: Schema.String,
+      branch: nullable,
+    }),
+  ),
+  /** A coordinator's children working on it, counted rather than listed. */
+  agentRuns: Schema.Number,
+});
+export type ChangeGroupDetail = typeof ChangeGroupDetail.Type;
+
+/** A group in full, from the threads it was derived from; agent runs fold into a count. */
+export function describeChangeGroup(
+  group: ChangeGroup,
+  threads: ReadonlyArray<ChangeGroupThread>,
+): ChangeGroupDetail {
+  const byId = new Map(threads.map((thread) => [thread.id, thread]));
+  const linkOf = (member: ChangeGroup["members"][number]) => {
+    const { ref } = member;
+    if (ref.kind !== "pull-request" || member.threadId === null) return null;
+    return (
+      byId
+        .get(member.threadId)
+        ?.pullRequests.find(
+          (link) =>
+            link.host === ref.host &&
+            link.repository === ref.repository &&
+            link.number === ref.number,
+        ) ?? null
+    );
+  };
+  const isAgentRun = (threadId: string) =>
+    byId.get(threadId)?.lineage.relationshipToParent === "subagent";
+  return {
+    groupId: group.groupId,
+    title: group.title,
+    state: group.state,
+    armed: group.armed,
+    members: group.members.map((member) => {
+      const snapshot = linkOf(member)?.snapshot ?? null;
+      return {
+        key: member.key,
+        side: member.side,
+        title: member.title,
+        place: member.place,
+        state: member.state,
+        reason: member.reason,
+        note: member.note,
+        url: member.url,
+        branch: member.branch,
+        baseBranch: member.baseBranch,
+        checks: snapshot?.checksState ?? null,
+        review: snapshot?.reviewDecision ?? null,
+        threadId: member.threadId,
+      };
+    }),
+    threads: group.threads
+      .filter((entry) => !isAgentRun(entry.threadId))
+      .map((entry) => ({ ...entry, branch: byId.get(entry.threadId)?.branch ?? null })),
+    agentRuns: group.threads.filter((entry) => isAgentRun(entry.threadId)).length,
+  };
 }
 
 const storeError = (cause: unknown) =>
@@ -278,7 +391,7 @@ const make = Effect.gen(function* () {
       }),
     );
 
-  const groups: ChangeGroupService["Service"]["groups"] = Effect.gen(function* () {
+  const derived = Effect.gen(function* () {
     const snapshot = yield* projections.getShellSnapshot().pipe(Effect.mapError(storeError));
     const branches = yield* threadBranches;
     // Archived threads leave their groups, as the clients' do.
@@ -303,8 +416,26 @@ const make = Effect.gen(function* () {
     }));
     const { decisions } = yield* load;
     const { changeGroupGrouping } = yield* settings.getSettings.pipe(Effect.mapError(storeError));
-    return deriveChangeGroups({ threads, wikiChanges, decisions, settings: changeGroupGrouping });
+    const groups = deriveChangeGroups({
+      threads,
+      wikiChanges,
+      decisions,
+      settings: changeGroupGrouping,
+    });
+    return { groups, threads };
   });
+
+  const groups: ChangeGroupService["Service"]["groups"] = derived.pipe(
+    Effect.map((result) => result.groups),
+  );
+
+  const group: ChangeGroupService["Service"]["group"] = Effect.fn("ChangeGroupService.group")(
+    function* (input) {
+      const { groups, threads } = yield* derived;
+      const found = findChangeGroup(groups, input.groupId, input.memberKeys);
+      return found === null ? null : describeChangeGroup(found, threads);
+    },
+  );
 
   // An armed group's documentation merges once all of its open code has merged. A merge the
   // wiki refuses (a conflict, a busy checkout) stays open for the person to finish.
@@ -344,7 +475,7 @@ const make = Effect.gen(function* () {
   // sweep follows a merge closely without watching each one.
   yield* forkParked(mergeArmed.pipe(Effect.repeat(Schedule.spaced("1 minute")), Effect.asVoid));
 
-  return ChangeGroupService.of({ list, update, groups, mergeArmed });
+  return ChangeGroupService.of({ list, update, groups, group, mergeArmed });
 });
 
 export const layer = Layer.effect(ChangeGroupService, make);

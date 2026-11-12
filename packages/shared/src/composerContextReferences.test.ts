@@ -1,13 +1,16 @@
 import {
+  ChangeGroupContextRecord,
   ComposerContextId,
   type ComposerContextRecord,
   EnvironmentId,
   ThreadId,
 } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   canvasContextRecord,
+  changeGroupContextRecord,
   formatComposerContextReference,
   ATTACHMENT_ONLY_BOOTSTRAP_PROMPT,
   collectComposerContextReferences,
@@ -25,6 +28,7 @@ import {
 } from "./composerContextReferences.ts";
 
 const ctx = (value: string) => value as ComposerContextId;
+const isChangeGroupContextRecord = Schema.is(ChangeGroupContextRecord);
 
 describe("href codec", () => {
   it("round-trips kind and id", () => {
@@ -384,6 +388,28 @@ describe("provider projection", () => {
     });
     expect(projected).toContain("threadId: thread-1\nitemId: item-1\ncomment: the agreed version");
     expect(projected).toContain("astrolabe_canvas_keep");
+  });
+
+  it("projects a change group as its identity and how to read it live, never its members", () => {
+    const record = changeGroupContextRecord({
+      environmentId: EnvironmentId.make("env-1"),
+      groupId: "thread-root",
+      title: "Refunds [v2]",
+      members: [{ key: "pr:github.com/acme/app#12" }, { key: "wiki:w1/cr1" }],
+    });
+    expect(record.contextId).toBe(
+      changeGroupContextRecord({ ...record, title: "Renamed", members: [] }).contextId,
+    );
+    expect(isChangeGroupContextRecord(record)).toBe(true);
+    const projected = projectComposerContextForProvider({
+      text: `Update ${formatComposerContextReference(record)}`,
+      records: [record],
+    });
+    expect(projected).toContain(`[Change group: Refunds v2; ref=${record.contextId}]`);
+    expect(projected).toContain("groupId: thread-root\nenvironmentId: env-1");
+    expect(projected).toContain(
+      'astrolabe_change_groups({"groupId":"thread-root","memberKeys":["pr:github.com/acme/app#12","wiki:w1/cr1"]})',
+    );
   });
 
   it("projects a mentioned machine as its identity and how to use it, never an address", () => {

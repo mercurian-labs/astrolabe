@@ -135,6 +135,14 @@ const knownRecords: Record<(typeof COMPOSER_CONTEXT_KINDS)[number], Record<strin
     label: "vps",
     environmentId: "environment-vps",
   },
+  "change-group": {
+    ...base,
+    kind: "change-group",
+    environmentId: "environment-1",
+    groupId: "thread-root",
+    title: "Refunds",
+    memberKeys: ["pr:github.com/acme/app#12"],
+  },
 };
 
 describe("ComposerContextRecord", () => {
