@@ -5,6 +5,8 @@
  */
 .cv-board {
   --cv-tint: var(--muted-foreground);
+  /* Drawings sit above every card, however far a click has raised one. */
+  --cv-ink-layer: 100000;
   /* What the zoom chip at the foot's corner takes, and the gap beside it. */
   --cv-zoom-room: 116px;
   --cv-chip-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
@@ -557,6 +559,130 @@ span.cv-wikilink {
   font-size: calc(12px * var(--cv-ui, 1));
 }
 
+/* A shaped card: its outline drawn to its box, its text inside the shape. */
+.cv-card[data-shape] {
+  background: none;
+  border-color: transparent;
+}
+.cv-shape {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  fill: var(--background);
+  stroke: var(--border);
+  stroke-width: calc(1px * var(--cv-ui, 1));
+}
+.cv-card[data-shape]:is([data-color], [style*="--cv-tint"]) .cv-shape {
+  fill: color-mix(in srgb, var(--cv-tint) 10%, var(--background));
+  stroke: color-mix(in srgb, var(--cv-tint) 55%, var(--border));
+}
+.cv-card[data-shape][data-mark] .cv-shape {
+  stroke: var(--cv-mark);
+}
+.cv-card[data-shape] .cv-card-content {
+  position: absolute;
+  inset: 14.6%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  width: auto;
+  height: auto;
+}
+.cv-card[data-shape="diamond"] .cv-card-content {
+  inset: 25%;
+}
+.cv-card[data-shape] .cv-card-body {
+  min-height: 0;
+  padding: 0;
+  text-align: center;
+}
+
+/* Strokes and drawn arrows. Only their lines take a press, and only while editing. */
+.cv-inks {
+  z-index: var(--cv-ink-layer);
+}
+.cv-world > [data-drawing-label] {
+  z-index: var(--cv-ink-layer);
+}
+.cv-ink {
+  color: var(--foreground);
+}
+.cv-ink[data-kind="arrow"] {
+  color: var(--cv-line);
+}
+.cv-ink[data-color],
+.cv-ink[style*="--cv-tint"] {
+  color: var(--cv-tint);
+}
+.cv-ink-line,
+.cv-ink-draft {
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: calc(2.5px * var(--cv-ui, 1));
+}
+.cv-ink-draft {
+  stroke: var(--foreground);
+}
+.cv-ink[data-kind="arrow"] .cv-ink-line {
+  stroke-width: calc(1.5px * var(--cv-ui, 1));
+  stroke-linecap: butt;
+}
+.cv-ink-head {
+  fill: currentcolor;
+}
+.cv-ink-hit {
+  fill: none;
+  pointer-events: none;
+  stroke: transparent;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: calc(12px * var(--cv-ui, 1));
+}
+.cv-board[data-editable] .cv-ink-hit {
+  cursor: pointer;
+  pointer-events: stroke;
+}
+.cv-ink[data-selected] .cv-ink-hit {
+  stroke: color-mix(in srgb, var(--ring, var(--primary)) 35%, transparent);
+  stroke-width: calc(8px * var(--cv-ui, 1));
+}
+@media (pointer: coarse) {
+  .cv-ink-hit {
+    stroke-width: calc(24px * var(--cv-ui, 1));
+  }
+}
+/* The Shape tool's choice, above its button. */
+.cv-tool {
+  position: relative;
+  display: inline-flex;
+}
+.cv-shape-picker {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  pointer-events: auto;
+  background: var(--popover, var(--background));
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--cv-chip-shadow);
+  transform: translateX(-50%);
+}
+.cv-tools .cv-shape-picker button {
+  padding: 0 6px;
+}
+.cv-tools .cv-shape-picker button[aria-checked="true"] {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+}
+
 .cv-minimap {
   display: block;
   width: 100%;
@@ -697,7 +823,7 @@ span.cv-wikilink {
   display: none;
 }
 .cv-card[data-editing] {
-  z-index: 2;
+  z-index: calc(var(--cv-ink-layer) + 1);
 }
 .cv-card-editor {
   box-sizing: border-box;
@@ -891,8 +1017,22 @@ textarea.cv-label-editor {
 .cv-board[data-tool="hand"] .cv-world * {
   cursor: grab;
 }
-.cv-board:is([data-tool="card"], [data-tool="section"], [data-tool="arrow"]),
-.cv-board:is([data-tool="card"], [data-tool="section"], [data-tool="arrow"]) .cv-world * {
+.cv-board:is(
+  [data-tool="card"],
+  [data-tool="section"],
+  [data-tool="arrow"],
+  [data-tool="pen"],
+  [data-tool="shape"]
+),
+.cv-board:is(
+    [data-tool="card"],
+    [data-tool="section"],
+    [data-tool="arrow"],
+    [data-tool="pen"],
+    [data-tool="shape"]
+  )
+  .cv-world
+  * {
   cursor: crosshair;
 }
 .cv-hint {
@@ -1341,11 +1481,11 @@ textarea.cv-label-editor {
 .cv-board[data-mode="fit"][data-walkable] .cv-world {
   transition: transform 320ms cubic-bezier(0.2, 0.7, 0.2, 1);
 }
-.cv-board[data-walkable] :is(.cv-card, .cv-group, .cv-edge, .cv-edge-label) {
+.cv-board[data-walkable] :is(.cv-card, .cv-group, .cv-edge, .cv-edge-label, .cv-ink) {
   transition: opacity 200ms ease;
 }
 /* The rest stays in sight, so a step is always seen in its place. */
-.cv-board[data-walking] :is(.cv-card, .cv-edge, .cv-edge-label)[data-lit="false"] {
+.cv-board[data-walking] :is(.cv-card, .cv-edge, .cv-edge-label, .cv-ink)[data-lit="false"] {
   opacity: 0.15;
 }
 .cv-board[data-walking] .cv-group[data-lit="false"] {
@@ -1353,7 +1493,7 @@ textarea.cv-label-editor {
 }
 /* Only a board being edited picks what's dimmed, to make it a step. */
 .cv-board[data-walking]:not([data-editable])
-  :is(.cv-card, .cv-group, .cv-edge, .cv-edge-label)[data-lit="false"] {
+  :is(.cv-card, .cv-group, .cv-edge, .cv-edge-label, .cv-ink)[data-lit="false"] {
   pointer-events: none;
 }
 .cv-board[data-walking] .cv-card[data-lit="true"] {
@@ -1504,7 +1644,7 @@ button.cv-frame-chip:focus-visible {
   opacity: 0.4;
 }
 /* Hovering a step's number: what it covers stays, the rest steps back without leaving. */
-.cv-board[data-peeking] :is(.cv-card, .cv-edge, .cv-edge-label)[data-lit="false"] {
+.cv-board[data-peeking] :is(.cv-card, .cv-edge, .cv-edge-label, .cv-ink)[data-lit="false"] {
   opacity: 0.25;
 }
 .cv-board[data-peeking] .cv-group[data-lit="false"] {

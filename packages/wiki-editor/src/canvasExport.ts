@@ -1,7 +1,12 @@
-import type { CanvasBounds, CanvasData, CanvasNode } from "@mercurian/wiki/canvas";
+import {
+  canvasBounds,
+  type CanvasBounds,
+  type CanvasData,
+  type CanvasNode,
+} from "@mercurian/wiki/canvas";
 
-import { boundsOfRects } from "./canvasArrange";
 import { canvasColor, canvasEdgeShapes, canvasFileKind, cardFileName } from "./canvasGeometry";
+import { canvasInkShapes } from "./canvasInk";
 
 const PADDING = 40;
 /** Browsers stop drawing past this on a side. */
@@ -39,7 +44,7 @@ export function canvasExportArea(
   options: Pick<CanvasExportOptions, "area">,
 ): CanvasBounds {
   if (options.area === "viewport") return viewport;
-  const { x, y, width, height } = boundsOfRects(data.nodes);
+  const { x, y, width, height } = canvasBounds(data);
   return {
     x: x - PADDING,
     y: y - PADDING,
@@ -82,6 +87,35 @@ export function canvasPlainLines(text: string): ReadonlyArray<{
 function roundedRect(context: CanvasRenderingContext2D, rect: CanvasBounds, radius: number) {
   context.beginPath();
   context.roundRect(rect.x, rect.y, rect.width, rect.height, radius);
+}
+
+/** A card's outline: a shaped card's ellipse or diamond, or the usual rounded box. */
+function outline(context: CanvasRenderingContext2D, node: CanvasNode) {
+  const shape = node.type === "text" ? node.astrolabe?.shape : undefined;
+  const { x, y, width, height } = node;
+  if (shape === undefined) {
+    roundedRect(context, node, 8);
+    return node;
+  }
+  context.beginPath();
+  if (shape === "ellipse") {
+    context.ellipse(x + width / 2, y + height / 2, width / 2, height / 2, 0, 0, Math.PI * 2);
+  } else {
+    context.moveTo(x + width / 2, y);
+    context.lineTo(x + width, y + height / 2);
+    context.lineTo(x + width / 2, y + height);
+    context.lineTo(x, y + height / 2);
+    context.closePath();
+  }
+  // Where its text goes: the box inside the shape.
+  const inset = shape === "ellipse" ? 0.146 : 0.25;
+  return {
+    ...node,
+    x: x + width * inset,
+    y: y + height * inset,
+    width: width * (1 - inset * 2),
+    height: height * (1 - inset * 2),
+  };
 }
 
 function wrapped(context: CanvasRenderingContext2D, text: string, width: number) {
@@ -224,7 +258,7 @@ export function drawCanvasExport(
   for (const node of data.nodes) {
     if (node.type === "group") continue;
     const tint = tintOf(node.color);
-    roundedRect(context, node, 8);
+    const inside = outline(context, node);
     context.fillStyle = colors.background;
     context.fill();
     if (tint !== undefined) {
@@ -244,9 +278,9 @@ export function drawCanvasExport(
       context.drawImage(image, node.x, node.y, node.width, node.height);
       context.restore();
     } else if (options.privacy) {
-      drawBars(context, node, colors.muted);
+      drawBars(context, inside, colors.muted);
     } else if (node.type === "text") {
-      drawText(context, node, node.text, colors);
+      drawText(context, inside, node.text, colors);
     } else {
       context.fillStyle = colors.foreground;
       context.font = "600 14px sans-serif";
@@ -257,6 +291,26 @@ export function drawCanvasExport(
       }
     }
   }
+
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  for (const shape of canvasInkShapes(data)) {
+    const { ink } = shape;
+    const tint = tintOf(ink.color) ?? (ink.type === "stroke" ? colors.foreground : colors.line);
+    context.strokeStyle = tint;
+    context.fillStyle = tint;
+    context.lineWidth = ink.type === "stroke" ? 2.5 : 1.5;
+    context.stroke(new Path2D(shape.path));
+    if (shape.head !== undefined) context.fill(new Path2D(shape.head));
+    if (ink.type === "arrow" && ink.label !== undefined && !options.privacy) {
+      context.font = "12px sans-serif";
+      context.fillStyle = colors.muted;
+      context.textAlign = "center";
+      context.fillText(ink.label, shape.labelAt.x, shape.labelAt.y);
+      context.textAlign = "start";
+    }
+  }
+  context.lineCap = "butt";
 
   if (options.showLogo) {
     context.fillStyle = colors.muted;

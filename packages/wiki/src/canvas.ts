@@ -180,7 +180,7 @@ const sideMiddle = (node: CanvasBounds, side: CanvasSide) => {
 /** Where an arrow's end is now; none when the node it was on is gone. */
 export function canvasInkEnd(
   end: CanvasInkEnd,
-  nodes: ReadonlyMap<string, CanvasBounds>,
+  nodes: Pick<ReadonlyMap<string, CanvasBounds>, "get">,
 ): { readonly x: number; readonly y: number } | undefined {
   if (!("node" in end)) return end;
   const node = nodes.get(end.node);
@@ -190,7 +190,7 @@ export function canvasInkEnd(
 /** What a drawing covers; none for an arrow whose node is gone, which isn't drawn. */
 export function canvasInkBounds(
   ink: CanvasInk,
-  nodes: ReadonlyMap<string, CanvasBounds>,
+  nodes: Pick<ReadonlyMap<string, CanvasBounds>, "get">,
 ): CanvasBounds | undefined {
   const xs: number[] = [];
   const ys: number[] = [];

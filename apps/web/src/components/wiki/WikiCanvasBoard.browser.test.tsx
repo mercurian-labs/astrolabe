@@ -689,6 +689,40 @@ describe("editing a board", () => {
     await expect.element(select).toHaveAttribute("aria-pressed", "true");
   });
 
+  it("draws with the Pen and draws an arrow from empty board, then removes the stroke", async () => {
+    using _capture = setup();
+    const canvas = newCanvas([text("a", 0, 0)]);
+    await using screen = await render(<Editing canvas={canvas} />, { router: false });
+    await vi.waitFor(() => expect(element("a")).not.toBeNull());
+    const drawings = () => canvas.getState().data.drawings ?? [];
+    const pen = screen.getByLabelText("Pen (D)");
+    await userEvent.click(pen);
+    drag(board(), { x: 300, y: 300 }, { x: 320, y: 310 }, { x: 360, y: 330 }, { x: 400, y: 300 });
+    await vi.waitFor(() => expect(drawings()).toHaveLength(1));
+    const [stroke] = drawings();
+    expect(stroke).toMatchObject({ type: "stroke", x: 300, y: 300 });
+    // The Pen stays in hand for the next stroke.
+    await expect.element(pen).toHaveAttribute("aria-pressed", "true");
+
+    await userEvent.keyboard("a");
+    drag(board(), { x: 300, y: 500 }, { x: 250, y: 400 }, { x: 100, y: 60 });
+    await vi.waitFor(() => expect(drawings()).toHaveLength(2));
+    expect(drawings()[1]).toMatchObject({
+      type: "arrow",
+      from: { x: 300, y: 500 },
+      to: { node: "a", side: "bottom" },
+    });
+    await expect
+      .element(screen.getByLabelText("Select (V)"))
+      .toHaveAttribute("aria-pressed", "true");
+
+    const line = document.querySelector(`[data-drawing-id="${stroke!.id}"] .cv-ink-hit`)!;
+    click(line, { x: 320, y: 310 });
+    await vi.waitFor(() => expect(line.parentElement?.hasAttribute("data-selected")).toBe(true));
+    await userEvent.keyboard("{Backspace}");
+    await vi.waitFor(() => expect(drawings().map((ink) => ink.type)).toEqual(["arrow"]));
+  });
+
   it("finds room for a card added without a point", async () => {
     using _capture = setup();
     const canvas = newCanvas([text("a", -1000, -1000, { width: 2000, height: 2000 })]);

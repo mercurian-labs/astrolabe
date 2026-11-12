@@ -4,6 +4,9 @@ import {
   type CanvasBounds,
   type CanvasData,
   type CanvasEdge,
+  type CanvasInk,
+  type CanvasInkArrow,
+  type CanvasInkEnd,
   type CanvasNode,
   type CanvasSide,
 } from "@mercurian/wiki/canvas";
@@ -29,6 +32,14 @@ import {
   overlaps,
   type CanvasEdgeShape,
 } from "./canvasGeometry";
+import {
+  canvasInkShape,
+  canvasInkTouches,
+  canvasStrokePath,
+  inkArrowEndAt,
+  movedInk,
+  type CanvasInkShape,
+} from "./canvasInk";
 import type { CanvasView } from "./canvasView";
 
 /** Between 3 and 5 pixels in Obsidian. */
@@ -44,12 +55,21 @@ const CONTENT = "a[href],button,input,textarea,select,summary,iframe,video,audio
 export interface CanvasSelection {
   readonly cards: ReadonlySet<string>;
   readonly arrow: string | null;
+  /** Strokes and drawn arrows, which go with the cards: left out, none is selected. */
+  readonly drawings?: ReadonlySet<string>;
 }
 
 export const NO_SELECTION: CanvasSelection = { cards: new Set(), arrow: null };
 
+const NO_DRAWINGS: ReadonlySet<string> = new Set();
+export const selectedDrawings = (selection: CanvasSelection): ReadonlySet<string> =>
+  selection.drawings ?? NO_DRAWINGS;
+
 /** What a plain drag on an editable board does. Space-drag pans in every one. */
-export type CanvasTool = "hand" | "select" | "card" | "section" | "arrow";
+export type CanvasTool = "hand" | "select" | "card" | "section" | "arrow" | "pen" | "shape";
+
+/** A press this near an arrow's end, on screen, takes that end. */
+const END_REACH = 10;
 
 /** A line dropped where there's no card: the host asks what to do with it. */
 export type CanvasLooseEnd =
@@ -71,6 +91,7 @@ export interface CanvasGestureHost {
   readonly world: () => HTMLElement | null;
   readonly data: () => CanvasData;
   readonly shapes: () => ReadonlyArray<CanvasEdgeShape>;
+  readonly inks: () => ReadonlyArray<CanvasInkShape>;
   readonly selection: () => CanvasSelection;
   readonly select: (selection: CanvasSelection) => void;
   /** A card clicked: it comes up for the session. */
@@ -92,8 +113,15 @@ export interface CanvasGestureHost {
   readonly editArrowLabel: (id: string) => void;
   readonly addTextAt: (point: CanvasPoint) => void;
   readonly tool: () => CanvasTool;
-  /** A box drawn with the Card or Section tool; null for a click, which drops one at `at`. */
-  readonly drawn: (tool: "card" | "section", box: CanvasBounds | null, at: CanvasPoint) => void;
+  /** A box drawn with the Card, Section or Shape tool; null for a click, which drops one at `at`. */
+  readonly drawn: (
+    tool: "card" | "section" | "shape",
+    box: CanvasBounds | null,
+    at: CanvasPoint,
+  ) => void;
+  /** A stroke drawn with the Pen: x, y pairs on the board, as the pointer went. */
+  readonly inked: (points: ReadonlyArray<number>) => void;
+  readonly editInkLabel: (id: string) => void;
   /** A tool's one gesture is over: the pointer selects again. */
   readonly toolDone: () => void;
   readonly fitToContent: (id: string, handle: CanvasHandle) => void;
@@ -112,21 +140,51 @@ interface MovedElement {
   readonly node: CanvasNode;
 }
 
+/** A drawing's elements, redrawn as a gesture moves it or the cards it's on. */
+interface InkElement {
+  readonly shape: CanvasInkShape;
+  readonly group: Element;
+  readonly label: HTMLElement | null;
+}
+
 interface Followers {
   readonly arrows: ReadonlyArray<{
     readonly shape: CanvasEdgeShape;
     readonly group: Element;
     readonly label: HTMLElement | null;
   }>;
+  /** Drawn arrows with an end on what moves. */
+  readonly inks: ReadonlyArray<InkElement>;
 }
+
+const NO_FOLLOWERS: Followers = { arrows: [], inks: [] };
 
 type Session =
   | { readonly kind: "pan" }
   | { readonly kind: "marquee"; element: HTMLElement | null; readonly additive: boolean }
-  | { readonly kind: "draw"; readonly tool: "card" | "section"; element: HTMLElement | null }
+  | {
+      readonly kind: "draw";
+      readonly tool: "card" | "section" | "shape";
+      element: HTMLElement | null;
+    }
+  /** The Pen's line, one path updated as it goes; the board draws nothing new until it lifts. */
+  | { readonly kind: "ink"; readonly points: number[]; draft: SVGPathElement | null }
+  /** The Arrow tool from where there's no card. */
+  | { readonly kind: "free-arrow"; readonly from: CanvasPoint; draft: SVGPathElement | null }
+  /** A drawn arrow's end, dragged: onto a card it holds there. */
+  | {
+      readonly kind: "ink-end";
+      readonly ink: CanvasInkArrow;
+      readonly end: "from" | "to";
+      element: InkElement | null;
+    }
   | {
       readonly kind: "drag";
+      /** What was pressed: a card's id, or a drawing's. */
       readonly card: string;
+      readonly ink: boolean;
+      drawings: ReadonlySet<string>;
+      inks: ReadonlyArray<InkElement>;
       started: boolean;
       moved: ReadonlySet<string>;
       elements: ReadonlyArray<MovedElement>;
@@ -194,6 +252,13 @@ const arrowOf = (target: Element) => {
   const hit = target.closest("[data-edge-id], [data-edge-label]");
   return hit?.getAttribute("data-edge-id") ?? hit?.getAttribute("data-edge-label") ?? null;
 };
+
+const inkOf = (target: Element) => {
+  const hit = target.closest("[data-drawing-id], [data-drawing-label]");
+  return hit?.getAttribute("data-drawing-id") ?? hit?.getAttribute("data-drawing-label") ?? null;
+};
+
+const NO_DELTA = { x: 0, y: 0 };
 
 const handleOf = (target: Element) =>
   (target.closest("[data-handle]")?.getAttribute("data-handle") ?? null) as CanvasHandle | null;
@@ -277,7 +342,10 @@ export class CanvasGestures {
       groupBody !== null && selection.cards.has(cardIdOf(groupBody) ?? "")
         ? cardIdOf(groupBody)
         : cardIdOf(target.closest(".cv-card, .cv-group-label") ?? board);
-    const wasSelected = card !== null && selection.cards.has(card);
+    const drawing = inkOf(target);
+    const wasSelected =
+      (card !== null && selection.cards.has(card)) ||
+      (drawing !== null && selectedDrawings(selection).has(drawing));
     const press: Press = {
       id: event.pointerId,
       touch,
@@ -301,7 +369,7 @@ export class CanvasGestures {
     if (press.session.kind === "pan") {
       host.view.press(event.pointerId, event.clientX, event.clientY);
     }
-    if (touch && !["resize", "connect", "draw"].includes(press.session.kind)) {
+    if (touch && !["resize", "connect", "draw", "ink", "free-arrow"].includes(press.session.kind)) {
       this.#longPress = setTimeout(() => this.#openMenuFromPress(), LONG_PRESS_MS);
     }
   }
@@ -319,11 +387,15 @@ export class CanvasGestures {
     if (event.button === 1 || host.spaceHeld()) return { kind: "pan" };
     const tool = host.tool();
     if (tool === "hand") return { kind: "pan" };
-    if (tool === "card" || tool === "section") return { kind: "draw", tool, element: null };
+    if (tool === "card" || tool === "section" || tool === "shape") {
+      return { kind: "draw", tool, element: null };
+    }
+    const at = host.view.toWorld(event.clientX, event.clientY);
+    if (tool === "pen") return { kind: "ink", points: [at.x, at.y], draft: null };
     if (tool === "arrow") {
-      const from = this.#cardAt(host.view.toWorld(event.clientX, event.clientY));
+      const from = this.#cardAt(at);
       return from === undefined
-        ? { kind: "none" }
+        ? { kind: "free-arrow", from: at, draft: null }
         : { kind: "connect", from, side: "right", tool: true, draft: null };
     }
 
@@ -345,6 +417,30 @@ export class CanvasGestures {
       const session = this.#retargetSession(arrow, event);
       if (session !== null) return session;
     }
+    const drawing = inkOf(target);
+    const shape =
+      drawing === null ? undefined : host.inks().find((each) => each.ink.id === drawing);
+    if (shape !== undefined) {
+      const { ink } = shape;
+      if (ink.type === "arrow") {
+        const rects = new Map(host.data().nodes.map((node) => [node.id, node]));
+        const end = inkArrowEndAt(ink, at, rects, END_REACH / host.view.camera.zoom);
+        if (end !== null) {
+          host.select({ cards: new Set(), arrow: null, drawings: new Set([ink.id]) });
+          return { kind: "ink-end", ink, end, element: null };
+        }
+      }
+      const selection = host.selection();
+      const drawings = selectedDrawings(selection);
+      if (!drawings.has(ink.id)) {
+        host.select(
+          event.shiftKey
+            ? { ...selection, arrow: null, drawings: new Set([...drawings, ink.id]) }
+            : { cards: new Set(), arrow: null, drawings: new Set([ink.id]) },
+        );
+      }
+      return this.#dragSession(ink.id, true);
+    }
     if (card !== null) {
       if (touch && !wasSelected) return { kind: "pan" };
       if (!wasSelected && !event.shiftKey) {
@@ -354,22 +450,29 @@ export class CanvasGestures {
         host.select({ cards: new Set([...cards, card]), arrow: null });
       }
       host.raise(card);
-      return {
-        kind: "drag",
-        card,
-        started: false,
-        moved: new Set(),
-        elements: [],
-        ghosts: [],
-        others: [],
-        box: { x: 0, y: 0, width: 0, height: 0 },
-        followers: { arrows: [] },
-        rects: new Map(),
-        delta: { x: 0, y: 0 },
-      };
+      return this.#dragSession(card, false);
     }
     if (touch && !host.selectMode()) return { kind: "pan" };
     return { kind: "marquee", element: null, additive: event.shiftKey };
+  }
+
+  #dragSession(card: string, ink: boolean): Session {
+    return {
+      kind: "drag",
+      card,
+      ink,
+      drawings: NO_DRAWINGS,
+      inks: [],
+      started: false,
+      moved: new Set(),
+      elements: [],
+      ghosts: [],
+      others: [],
+      box: { x: 0, y: 0, width: 0, height: 0 },
+      followers: NO_FOLLOWERS,
+      rects: new Map(),
+      delta: { x: 0, y: 0 },
+    };
   }
 
   #resizeSession(node: CanvasNode, handle: CanvasHandle): Session {
@@ -459,6 +562,7 @@ export class CanvasGestures {
     press.ctrl = event.ctrlKey;
     press.alt = event.altKey;
     press.shifted = event.shiftKey;
+    if (press.session.kind === "ink") this.#addInk(press.session.points, event);
     if (!press.moved) {
       press.moved = Math.hypot(press.x - press.startX, press.y - press.startY) > DRAG_SLOP;
       if (!press.moved) return;
@@ -472,15 +576,42 @@ export class CanvasGestures {
     });
   }
 
+  /** Every point the pointer went through, not only the last of each frame. */
+  #addInk(points: number[], event: PointerEvent) {
+    const { view } = this.#host;
+    const least = 1 / view.camera.zoom;
+    // A synthetic event has none, a real one at least itself.
+    const coalesced = event.getCoalescedEvents?.() ?? [];
+    for (const each of coalesced.length > 0 ? coalesced : [event]) {
+      const { x, y } = view.toWorld(each.clientX, each.clientY);
+      const lastX = points.at(-2) ?? x;
+      const lastY = points.at(-1) ?? y;
+      if (points.length > 0 && Math.hypot(x - lastX, y - lastY) < least) continue;
+      points.push(x, y);
+    }
+  }
+
+  #inkElement(shape: CanvasInkShape): InkElement | null {
+    const world = this.#host.world();
+    const id = CSS.escape(shape.ink.id);
+    const group = world?.querySelector(`g[data-drawing-id="${id}"]`);
+    if (world === null || group === null || group === undefined) return null;
+    return {
+      shape,
+      group,
+      label: world.querySelector<HTMLElement>(`[data-drawing-label="${id}"]`),
+    };
+  }
+
   #elementOf(id: string) {
     return (
       this.#host.world()?.querySelector<HTMLElement>(`[data-card-id="${CSS.escape(id)}"]`) ?? null
     );
   }
 
-  #followers(ids: ReadonlySet<string>): Followers {
+  #followers(ids: ReadonlySet<string>, skip: ReadonlySet<string> = NO_DRAWINGS): Followers {
     const world = this.#host.world();
-    if (world === null) return { arrows: [] };
+    if (world === null) return NO_FOLLOWERS;
     const shapes = new Map(this.#host.shapes().map((shape) => [shape.edge.id, shape]));
     const arrows: Array<Followers["arrows"][number]> = [];
     for (const group of world.querySelectorAll("g[data-edge-id]")) {
@@ -494,10 +625,51 @@ export class CanvasGestures {
         label: world.querySelector<HTMLElement>(`[data-edge-label="${CSS.escape(id)}"]`),
       });
     }
-    return { arrows };
+    const on = (end: CanvasInkEnd) => "node" in end && ids.has(end.node);
+    const inks = this.#host.inks().flatMap((shape) => {
+      const { ink } = shape;
+      if (ink.type !== "arrow" || skip.has(ink.id) || !(on(ink.from) || on(ink.to))) return [];
+      return this.#inkElement(shape) ?? [];
+    });
+    return { arrows, inks };
+  }
+
+  /** Drawings redrawn where a gesture has them: `moved` are dragged by `delta`, the rest follow. */
+  #drawInks(
+    items: ReadonlyArray<InkElement>,
+    rectOf: (id: string) => CanvasBounds | undefined,
+    delta: CanvasPoint,
+    moved: boolean,
+  ) {
+    const rects = { get: rectOf };
+    for (const { shape, group, label } of items) {
+      const { ink } = shape;
+      if (ink.type === "stroke") {
+        if (!moved) continue;
+        const shifted = delta.x !== 0 || delta.y !== 0;
+        if (shifted) group.setAttribute("transform", `translate(${delta.x} ${delta.y})`);
+        else group.removeAttribute("transform");
+        continue;
+      }
+      const next = moved ? ({ ...ink, ...movedInk(ink, delta.x, delta.y) } as CanvasInk) : ink;
+      const drawn = canvasInkShape(next, rects);
+      if (drawn !== undefined) this.#setInk({ shape, group, label }, drawn);
+    }
+  }
+
+  #setInk({ group, label }: InkElement, drawn: Pick<CanvasInkShape, "path" | "head" | "labelAt">) {
+    for (const line of group.querySelectorAll(".cv-ink-line, .cv-ink-hit")) {
+      line.setAttribute("d", drawn.path);
+    }
+    group.querySelector(".cv-ink-head")?.setAttribute("d", drawn.head ?? "");
+    if (label !== null) {
+      label.style.left = `${drawn.labelAt.x}px`;
+      label.style.top = `${drawn.labelAt.y}px`;
+    }
   }
 
   #drawArrows(followers: Followers, rectOf: (id: string) => CanvasBounds | undefined) {
+    this.#drawInks(followers.inks, rectOf, NO_DELTA, false);
     for (const { shape, group, label } of followers.arrows) {
       const from = rectOf(shape.edge.fromNode);
       const to = rectOf(shape.edge.toNode);
@@ -524,8 +696,20 @@ export class CanvasGestures {
     switch (session.kind) {
       case "drag": {
         const { nodes } = host.data();
-        const selected = host.selection().cards;
-        const pressed = selected.has(session.card) ? selected : new Set([session.card]);
+        const selection = host.selection();
+        const drawings = selectedDrawings(selection);
+        const held = selection.cards.has(session.card) || drawings.has(session.card);
+        const pressed = held
+          ? selection.cards
+          : session.ink
+            ? NO_DRAWINGS
+            : new Set([session.card]);
+        session.drawings = held ? drawings : session.ink ? new Set([session.card]) : NO_DRAWINGS;
+        session.inks = host
+          .inks()
+          .flatMap((shape) =>
+            session.drawings.has(shape.ink.id) ? (this.#inkElement(shape) ?? []) : [],
+          );
         session.moved = movedWith(nodes, pressed);
         const moving = nodes.filter((node) => session.moved.has(node.id));
         session.box = boundsOfRects(moving);
@@ -542,15 +726,24 @@ export class CanvasGestures {
         session.others = nodes.filter(
           (node) => !session.moved.has(node.id) && overlaps(node, inView),
         );
-        session.followers = this.#followers(session.moved);
+        session.followers = this.#followers(session.moved, session.drawings);
         session.started = true;
         host.board()?.classList.add("cv-moving");
         if (press.alt) this.#addGhosts(session);
         return;
       }
       case "connect":
+      case "free-arrow":
         session.draft = this.#newDraft();
         return;
+      case "ink":
+        session.draft = this.#newDraft(".cv-inks", "cv-ink-draft");
+        return;
+      case "ink-end": {
+        const shape = host.inks().find((each) => each.ink.id === session.ink.id);
+        session.element = shape === undefined ? null : this.#inkElement(shape);
+        return;
+      }
       case "retarget": {
         session.draft = this.#newDraft();
         const shown = host
@@ -589,11 +782,11 @@ export class CanvasGestures {
     });
   }
 
-  #newDraft() {
-    const svg = this.#host.world()?.querySelector(".cv-edges");
+  #newDraft(layer = ".cv-edges", className = "cv-edge-draft") {
+    const svg = this.#host.world()?.querySelector(layer);
     if (svg === undefined || svg === null) return null;
     const draft = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    draft.setAttribute("class", "cv-edge-draft");
+    draft.setAttribute("class", className);
     svg.append(draft);
     return draft;
   }
@@ -626,12 +819,14 @@ export class CanvasGestures {
           (mover instanceof HTMLElement ? mover : mover.element).style.transform = transform;
         }
         if (session.ghosts.length === 0) {
-          this.#drawArrows(session.followers, (id) => {
+          const rectOf = (id: string) => {
             const rect = session.rects.get(id);
             return rect !== undefined && session.moved.has(id)
               ? offset(rect, delta.x, delta.y)
               : rect;
-          });
+          };
+          this.#drawArrows(session.followers, rectOf);
+          this.#drawInks(session.inks, rectOf, delta, true);
         }
         return;
       }
@@ -659,6 +854,24 @@ export class CanvasGestures {
       case "retarget":
         session.draft?.setAttribute("d", canvasDraftPath(session.fixed, session.fixedSide, point));
         return;
+      case "ink":
+        session.draft?.setAttribute("d", canvasStrokePath(0, 0, session.points));
+        return;
+      case "free-arrow":
+        session.draft?.setAttribute(
+          "d",
+          `M${session.from.x} ${session.from.y}L${point.x} ${point.y}`,
+        );
+        return;
+      case "ink-end": {
+        const { element, ink, end } = session;
+        if (element === null) return;
+        const rects = new Map(host.data().nodes.map((node) => [node.id, node]));
+        const next = { ...ink, [end]: point };
+        const drawn = canvasInkShape(next, rects);
+        if (drawn !== undefined) this.#setInk(element, drawn);
+        return;
+      }
       case "marquee":
       case "draw": {
         const { element } = session;
@@ -697,8 +910,8 @@ export class CanvasGestures {
     const press = this.#press;
     if (press === null || press.id !== event.pointerId) return;
     this.#press = null;
-    // A click with the Card or Section tool drops one: it isn't a click on what's under it.
-    if (press.moved || press.session.kind === "draw") {
+    // A click with a tool that draws drops one, or a dot: it isn't a click on what's under it.
+    if (press.moved || press.session.kind === "draw" || press.session.kind === "ink") {
       this.#draw(press);
       this.#finish(press, event);
       return;
@@ -738,7 +951,11 @@ export class CanvasGestures {
         host.board()?.classList.remove("cv-moving");
         for (const { element } of session.elements) element.style.transform = "";
         for (const ghost of session.ghosts) ghost.remove();
-        if (session.started) this.#drawArrows(session.followers, (id) => session.rects.get(id));
+        if (session.started) {
+          const rectOf = (id: string) => session.rects.get(id);
+          this.#drawArrows(session.followers, rectOf);
+          this.#drawInks(session.inks, rectOf, NO_DELTA, true);
+        }
         return;
       case "resize": {
         this.#setBox(session.element, session.card);
@@ -747,7 +964,12 @@ export class CanvasGestures {
         return;
       }
       case "connect":
+      case "free-arrow":
+      case "ink":
         session.draft?.remove();
+        return;
+      case "ink-end":
+        if (session.element !== null) this.#setInk(session.element, session.element.shape);
         return;
       case "retarget":
         session.draft?.remove();
@@ -788,6 +1010,24 @@ export class CanvasGestures {
       case "retarget":
         this.#finishLine(press, session, event);
         return;
+      case "ink":
+        session.draft?.remove();
+        host.inked(session.points);
+        return;
+      case "free-arrow": {
+        this.#abandon(press);
+        host.toolDone();
+        const point = host.view.toWorld(press.x, press.y);
+        const target = this.#cardAt(point);
+        const to: CanvasInkEnd =
+          target === undefined ? point : { node: target.id, side: nearestSide(target, point) };
+        this.#putInkArrow(session.from, to);
+        return;
+      }
+      case "ink-end":
+        this.#abandon(press);
+        this.#finishInkEnd(session, host.view.toWorld(press.x, press.y));
+        return;
       case "draw": {
         session.element?.remove();
         const a = press.start;
@@ -813,13 +1053,19 @@ export class CanvasGestures {
           width: Math.abs(a.x - b.x),
           height: Math.abs(a.y - b.y),
         };
-        const touched = host
-          .data()
-          .nodes.filter((node) => overlaps(node, area))
-          .map((node) => node.id);
+        const { nodes } = host.data();
+        const touched = nodes.filter((node) => overlaps(node, area)).map((node) => node.id);
+        const rects = new Map(nodes.map((node) => [node.id, node]));
+        const inked = host
+          .inks()
+          .filter((shape) => overlaps(shape.bounds, area) && canvasInkTouches(shape, area, rects))
+          .map((shape) => shape.ink.id);
+        const before = host.selection();
+        const drawings = [...(session.additive ? selectedDrawings(before) : []), ...inked];
         host.select({
-          cards: new Set([...(session.additive ? host.selection().cards : []), ...touched]),
+          cards: new Set([...(session.additive ? before.cards : []), ...touched]),
           arrow: null,
+          ...(drawings.length === 0 ? {} : { drawings: new Set(drawings) }),
         });
         return;
       }
@@ -840,10 +1086,34 @@ export class CanvasGestures {
     const moved = session.moved;
     this.#abandon(press);
     if (document === null || (dx === 0 && dy === 0)) return;
+    const inks = (host.data().drawings ?? []).filter((ink) => session.drawings.has(ink.id));
     if (press.alt) {
-      const placed = placeClip(canvasClip(document.document, nodes, moved), dx, dy, document.mint);
-      document.commit(placed.edits);
-      host.select({ cards: new Set(placed.cards), arrow: null });
+      const clip = canvasClip(document.document, nodes, moved);
+      const placed = placeClip(clip, dx, dy, document.mint);
+      const copies = new Map(clip.nodes.map((node, at) => [node.id, placed.cards[at]]));
+      const copied = (end: CanvasInkEnd): CanvasInkEnd => {
+        if (!("node" in end)) return end;
+        const node = copies.get(end.node);
+        return node === undefined ? end : { ...end, node };
+      };
+      const drawings = inks.map((ink) => {
+        const next = { ...ink, id: document.mint(), ...movedInk(ink, dx, dy) } as CanvasInk;
+        return next.type === "arrow"
+          ? { ...next, from: copied(next.from), to: copied(next.to) }
+          : next;
+      });
+      document.commit([
+        ...placed.edits,
+        ...drawings.map((drawing): CanvasHandEdit => ({
+          op: "put-drawing",
+          drawing: { ...drawing },
+        })),
+      ]);
+      host.select({
+        cards: new Set(placed.cards),
+        arrow: null,
+        drawings: new Set(drawings.map((drawing) => drawing.id)),
+      });
       return;
     }
     const moving = nodes.filter((node) => moved.has(node.id));
@@ -854,8 +1124,72 @@ export class CanvasGestures {
         x: node.x + dx,
         y: node.y + dy,
       })),
-      { op: "reorder", cards: moving.map((node) => node.id) },
+      ...(moving.length === 0
+        ? []
+        : [{ op: "reorder", cards: moving.map((node) => node.id) } as const]),
+      ...inks.flatMap((ink): CanvasHandEdit[] => {
+        const keys = movedInk(ink, dx, dy);
+        return Object.keys(keys).length === 0 ? [] : [{ op: "set-drawing", drawing: ink.id, keys }];
+      }),
     ]);
+  }
+
+  /** A drawn arrow, unless both its ends are on cards: then it's a card's arrow, as the file has. */
+  #putInkArrow(from: CanvasInkEnd, to: CanvasInkEnd) {
+    const host = this.#host;
+    const document = host.document();
+    if (document === null) return;
+    if ("node" in from && "node" in to) {
+      if (from.node !== to.node) {
+        document.commit([{ op: "put-arrow", edge: arrowBetween(document.mint(), from, to) }]);
+      }
+      return;
+    }
+    // A line too short to see was meant as a click.
+    const zoom = host.view.camera.zoom;
+    if (!("node" in from) && !("node" in to)) {
+      if (Math.hypot(from.x - to.x, from.y - to.y) * zoom < 8) return;
+    }
+    const whole = (end: CanvasInkEnd): CanvasInkEnd =>
+      "node" in end ? end : { x: Math.round(end.x), y: Math.round(end.y) };
+    const id = document.mint();
+    document.commit([
+      { op: "put-drawing", drawing: { id, type: "arrow", from: whole(from), to: whole(to) } },
+    ]);
+    host.select({ cards: new Set(), arrow: null, drawings: new Set([id]) });
+  }
+
+  /** An end dropped on a card holds there; with the other on a card too, it's a card's arrow. */
+  #finishInkEnd(session: Extract<Session, { kind: "ink-end" }>, point: CanvasPoint) {
+    const host = this.#host;
+    const document = host.document();
+    if (document === null) return;
+    const { ink, end } = session;
+    const target = this.#cardAt(point);
+    const other = end === "from" ? ink.to : ink.from;
+    const placed: CanvasInkEnd =
+      target === undefined
+        ? { x: Math.round(point.x), y: Math.round(point.y) }
+        : { node: target.id, side: nearestSide(target, point) };
+    if ("node" in placed && "node" in other && placed.node !== other.node) {
+      const [from, to] = end === "from" ? [placed, other] : [other, placed];
+      const id = document.mint();
+      document.commit([
+        { op: "remove-drawing", drawing: ink.id },
+        {
+          op: "put-arrow",
+          edge: {
+            ...arrowBetween(id, from, to),
+            ...(ink.color === undefined ? {} : { color: ink.color }),
+            ...(ink.label === undefined ? {} : { label: ink.label }),
+          },
+        },
+      ]);
+      host.select({ cards: new Set(), arrow: id });
+      return;
+    }
+    if ("node" in placed && "node" in other) return;
+    document.commit([{ op: "set-drawing", drawing: ink.id, keys: { [end]: placed } }]);
   }
 
   /** The card a drop lands on: a card first, then the smallest group around the point. */
@@ -882,6 +1216,11 @@ export class CanvasGestures {
     const target = this.#cardAt(point);
     if (session.kind === "connect") {
       if (session.tool) host.toolDone();
+      if (target === undefined && session.tool) {
+        this.#abandon(press);
+        this.#putInkArrow({ node: session.from.id, side: this.#fromSide(session, point) }, point);
+        return;
+      }
       if (target === undefined) {
         host.looseEnd(
           { kind: "new", from: { node: session.from.id, side: this.#fromSide(session, point) } },
@@ -944,17 +1283,17 @@ export class CanvasGestures {
     const now = event.timeStamp;
     const handle = handleOf(target);
     const arrow = arrowOf(target);
+    const drawing = inkOf(target);
     const hit = target.closest(".cv-card, .cv-group-label");
     const id = hit === null ? null : cardIdOf(hit);
+    const named = handle ?? arrow ?? drawing ?? id;
     const last = this.#lastClick;
     const double =
       last !== null &&
       now - last.at < DOUBLE_MS &&
-      last.id === (handle ?? arrow ?? id) &&
+      last.id === named &&
       Math.hypot(press.x - last.x, press.y - last.y) < DOUBLE_SLOP;
-    this.#lastClick = double
-      ? null
-      : { at: now, x: press.x, y: press.y, id: handle ?? arrow ?? id };
+    this.#lastClick = double ? null : { at: now, x: press.x, y: press.y, id: named };
 
     if (handle !== null) {
       const card = cardIdOf(target);
@@ -964,6 +1303,20 @@ export class CanvasGestures {
     if (arrow !== null) {
       host.select({ cards: new Set(), arrow });
       if (double && editable) host.editArrowLabel(arrow);
+      return;
+    }
+    if (drawing !== null) {
+      const selection = host.selection();
+      const drawings = new Set(selectedDrawings(selection));
+      if (press.shift || host.selectMode()) {
+        if (press.wasSelected) drawings.delete(drawing);
+        else drawings.add(drawing);
+        host.select({ ...selection, arrow: null, drawings });
+        return;
+      }
+      host.select({ cards: new Set(), arrow: null, drawings: new Set([drawing]) });
+      const ink = host.inks().find((shape) => shape.ink.id === drawing)?.ink;
+      if (double && editable && ink?.type === "arrow") host.editInkLabel(drawing);
       return;
     }
     const onLabel = target.closest(".cv-card-label") !== null;

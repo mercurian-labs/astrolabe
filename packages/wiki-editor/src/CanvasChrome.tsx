@@ -9,6 +9,8 @@ import {
   type ReactNode,
 } from "react";
 
+import type { CanvasShape } from "@mercurian/wiki/canvas";
+
 import type { CanvasArrangement, CanvasPoint } from "./canvasArrange";
 import type { CanvasPicked, CanvasPickerRequest, CanvasPromptRequest } from "./canvasCommands";
 import type { CanvasTool } from "./canvasGestures";
@@ -374,7 +376,9 @@ const HELP: ReadonlyArray<readonly [string, string]> = [
   ["Select", "V"],
   ["Card: drag or click to add", "C"],
   ["Section: drag around cards", "S"],
-  ["Arrow: drag from card to card", "A"],
+  ["Arrow: drag between cards, or anywhere", "A"],
+  ["Pen: draw freehand, as often as you like", "D"],
+  ["Shape: an ellipse or diamond, drag or click", "O"],
   ["Back to Select", "Escape"],
   ["Pan", "Space-drag, or scroll"],
   ["Pan sideways", "⇧ scroll"],
@@ -502,7 +506,28 @@ const TOOLS: ReadonlyArray<
     ],
   ],
   ["arrow", "Arrow", "A", ["M5 19 19 5", "M9 5h10v10"]],
+  [
+    "pen",
+    "Pen",
+    "D",
+    [
+      "M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z",
+      "m15 5 4 4",
+    ],
+  ],
+  ["shape", "Shape", "O", []],
 ];
+
+const SHAPES: ReadonlyArray<readonly [CanvasShape, string, string]> = [
+  ["ellipse", "Ellipse", "M12 5c4.97 0 9 3.13 9 7s-4.03 7-9 7-9-3.13-9-7 4.03-7 9-7z"],
+  [
+    "diamond",
+    "Diamond",
+    "M10.6 3.4a2 2 0 0 1 2.8 0l7.2 7.2a2 2 0 0 1 0 2.8l-7.2 7.2a2 2 0 0 1-2.8 0l-7.2-7.2a2 2 0 0 1 0-2.8z",
+  ],
+];
+
+const shapeIcon = (shape: CanvasShape) => SHAPES.find(([each]) => each === shape)?.[2] ?? "";
 
 /** Each tool's key, as the board hears it. */
 export const CANVAS_TOOL_KEYS: Readonly<Record<string, CanvasTool>> = Object.fromEntries(
@@ -516,6 +541,8 @@ export const CANVAS_TOOL_KEYS: Readonly<Record<string, CanvasTool>> = Object.fro
 export function CanvasToolRow({
   tool,
   onTool,
+  shape,
+  onShape,
   toBoard,
   onAdd,
   files = true,
@@ -526,6 +553,9 @@ export function CanvasToolRow({
 }: {
   readonly tool: CanvasTool;
   readonly onTool: (tool: CanvasTool) => void;
+  /** What the Shape tool draws: the last one picked. */
+  readonly shape: CanvasShape;
+  readonly onShape: (shape: CanvasShape) => void;
   readonly toBoard: (clientX: number, clientY: number) => CanvasPoint | null;
   readonly onAdd: (kind: DragInKind, at: CanvasPoint | null) => void;
   /** Whether there's a wiki to add notes and media from. */
@@ -538,6 +568,9 @@ export function CanvasToolRow({
   readonly children?: ReactNode;
 }) {
   const start = useRef<{ readonly x: number; readonly y: number } | null>(null);
+  const [picking, setPicking] = useState(false);
+  // Putting the Shape tool down closes its choice: picked up again by its key, it stays shut.
+  if (picking && tool !== "shape") setPicking(false);
   const finish = (kind: DragInKind, event: PointerEvent<HTMLButtonElement>) => {
     const from = start.current;
     start.current = null;
@@ -552,21 +585,49 @@ export function CanvasToolRow({
           // oxlint-disable-next-line react/no-array-index-key -- the list is fixed
           <span key={at} className="cv-tools-separator" />
         ) : (
-          <button
-            key={each[0]}
-            type="button"
-            data-tool={each[0]}
-            aria-pressed={tool === each[0]}
-            aria-label={`${each[1]} (${each[2]})`}
-            onClick={() => onTool(each[0])}
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              {each[3].map((d) => (
-                <path key={d} d={d} />
-              ))}
-            </svg>
-            <kbd aria-hidden="true">{each[2]}</kbd>
-          </button>
+          <span key={each[0]} className="cv-tool">
+            <button
+              type="button"
+              data-tool={each[0]}
+              aria-pressed={tool === each[0]}
+              aria-label={`${each[1]} (${each[2]})`}
+              {...(each[0] === "shape"
+                ? { "aria-haspopup": "menu" as const, "aria-expanded": picking }
+                : {})}
+              onClick={() => {
+                onTool(each[0]);
+                setPicking(each[0] === "shape" && !picking);
+              }}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                {(each[0] === "shape" ? [shapeIcon(shape)] : each[3]).map((d) => (
+                  <path key={d} d={d} />
+                ))}
+              </svg>
+              <kbd aria-hidden="true">{each[2]}</kbd>
+            </button>
+            {each[0] === "shape" && picking ? (
+              <span className="cv-chrome cv-shape-picker" role="menu" aria-label="Shape">
+                {SHAPES.map(([kind, name, d]) => (
+                  <button
+                    key={kind}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={shape === kind}
+                    aria-label={name}
+                    onClick={() => {
+                      onShape(kind);
+                      setPicking(false);
+                    }}
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d={d} />
+                    </svg>
+                  </button>
+                ))}
+              </span>
+            ) : null}
+          </span>
         ),
       )}
       {files ? <span className="cv-tools-separator" /> : null}

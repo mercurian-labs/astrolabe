@@ -1,7 +1,8 @@
-import type { CanvasHandEdit } from "@mercurian/wiki/canvas-edits";
+import { CANVAS_MAX_DRAWINGS, type CanvasHandEdit } from "@mercurian/wiki/canvas-edits";
 import {
   canvasArrowSides,
   canvasCardName,
+  canvasInkBounds,
   type CanvasBounds,
   type CanvasData,
   type CanvasEdge,
@@ -9,6 +10,7 @@ import {
   type CanvasGroupNode,
   type CanvasLinkNode,
   type CanvasNode,
+  type CanvasShape,
 } from "@mercurian/wiki/canvas";
 
 import {
@@ -53,7 +55,8 @@ import {
 } from "./canvasArrange";
 import type { CanvasDocument } from "./canvasDocument";
 import { canvasFileKind, cardFileName, overlaps } from "./canvasGeometry";
-import type { CanvasLooseEnd, CanvasSelection } from "./canvasGestures";
+import { selectedDrawings, type CanvasLooseEnd, type CanvasSelection } from "./canvasGestures";
+import { canvasStroke } from "./canvasInk";
 import { baseViewNames, noteBlocks, noteHeadings, noteWithBlockId } from "./canvasNote";
 import type { CanvasView } from "./canvasView";
 
@@ -80,7 +83,9 @@ export type CanvasEditing =
   | { readonly kind: "card"; readonly id: string }
   | { readonly kind: "note"; readonly id: string; readonly file: string }
   | { readonly kind: "group"; readonly id: string }
-  | { readonly kind: "arrow"; readonly id: string };
+  | { readonly kind: "arrow"; readonly id: string }
+  /** A drawn arrow's label. */
+  | { readonly kind: "drawing"; readonly id: string };
 
 export interface CanvasPickerRequest {
   readonly title: string;
@@ -173,6 +178,12 @@ export class CanvasCommands {
     return this.#board.data().edges.find((edge) => edge.id === id);
   }
 
+  /** The drawings selected, as the board draws them. */
+  get selectedDrawings() {
+    const drawings = selectedDrawings(this.#board.selection());
+    return (this.#board.data().drawings ?? []).filter((ink) => drawings.has(ink.id));
+  }
+
   get selected(): ReadonlyArray<CanvasNode> {
     const { cards } = this.#board.selection();
     return this.#board.data().nodes.filter((node) => cards.has(node.id));
@@ -232,6 +243,30 @@ export class CanvasCommands {
     ]);
     this.#selectOne(id);
     this.#board.edit({ kind: "group", id });
+  }
+
+  /** Drawn with the Shape tool: a text card with an outline, typed in once it's there. */
+  drawShape(shape: CanvasShape, box: CanvasBounds | null, at: CanvasPoint) {
+    const document = this.#document;
+    if (document === null) return;
+    const id = document.mint();
+    const rect = drawnBox(box, at, TEXT_CARD_SIZE, DRAWN_CARD_LEAST);
+    document.commit([
+      { op: "put-card", node: { ...textCard(id, rect), ...rect, astrolabe: { shape } } },
+    ]);
+    this.#selectOne(id);
+    this.editCard(id);
+  }
+
+  /** A Pen stroke as it lifted. The Pen stays in hand, so nothing is selected. */
+  addStroke(points: ReadonlyArray<number>) {
+    const document = this.#document;
+    if (document === null) return;
+    if ((this.#board.data().drawings?.length ?? 0) >= CANVAS_MAX_DRAWINGS) {
+      this.#board.notify(`A board holds at most ${CANVAS_MAX_DRAWINGS} drawings.`);
+      return;
+    }
+    document.commit([{ op: "put-drawing", drawing: canvasStroke(document.mint(), points) }]);
   }
 
   /** From a menu: its top-left at the click. */
@@ -392,9 +427,13 @@ export class CanvasCommands {
       document.commit([{ op: "remove-arrow", arrow }]);
     } else {
       // A group goes alone: what's in it stays on the board.
-      document.commit(
-        this.selected.map((node): CanvasHandEdit => ({ op: "remove-card", card: node.id })),
-      );
+      document.commit([
+        ...this.selectedDrawings.map((ink): CanvasHandEdit => ({
+          op: "remove-drawing",
+          drawing: ink.id,
+        })),
+        ...this.selected.map((node): CanvasHandEdit => ({ op: "remove-card", card: node.id })),
+      ]);
     }
     this.#board.select({ cards: new Set(), arrow: null });
   }
@@ -407,7 +446,18 @@ export class CanvasCommands {
     document.commit(
       arrow !== null
         ? [{ op: "set-arrow", arrow, keys }]
-        : this.selected.map((node): CanvasHandEdit => ({ op: "set-card", card: node.id, keys })),
+        : [
+            ...this.selected.map((node): CanvasHandEdit => ({
+              op: "set-card",
+              card: node.id,
+              keys,
+            })),
+            ...this.selectedDrawings.map((ink): CanvasHandEdit => ({
+              op: "set-drawing",
+              drawing: ink.id,
+              keys,
+            })),
+          ],
     );
   }
 
@@ -415,8 +465,10 @@ export class CanvasCommands {
     const { arrow } = this.#board.selection();
     const { view } = this.#board;
     const { selected } = this;
-    if (selected.length > 0) {
-      view.focus(boundsOfRects(selected));
+    const rects = new Map(this.#board.data().nodes.map((node) => [node.id, node]));
+    const drawn = this.selectedDrawings.flatMap((ink) => canvasInkBounds(ink, rects) ?? []);
+    if (selected.length > 0 || drawn.length > 0) {
+      view.focus(boundsOfRects([...selected, ...drawn]));
       return;
     }
     const edge = arrow === null ? undefined : this.#edge(arrow);
@@ -444,8 +496,11 @@ export class CanvasCommands {
   editSelected() {
     const [only, more] = this.selected;
     const { arrow } = this.#board.selection();
+    const [drawn, another] = this.selectedDrawings;
     if (arrow !== null) {
       this.#board.edit({ kind: "arrow", id: arrow });
+    } else if (only === undefined && drawn?.type === "arrow" && another === undefined) {
+      this.#board.edit({ kind: "drawing", id: drawn.id });
     } else if (only !== undefined && more === undefined) {
       if (only.type === "group") this.#board.edit({ kind: "group", id: only.id });
       else this.editCard(only.id);
@@ -523,9 +578,11 @@ export class CanvasCommands {
   }
 
   selectAll() {
+    const { nodes, drawings = [] } = this.#board.data();
     this.#board.select({
-      cards: new Set(this.#board.data().nodes.map((node) => node.id)),
+      cards: new Set(nodes.map((node) => node.id)),
       arrow: null,
+      drawings: new Set(drawings.map((ink) => ink.id)),
     });
   }
 

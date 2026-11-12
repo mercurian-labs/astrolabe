@@ -13,10 +13,12 @@ import {
   type CanvasEdge,
   type CanvasFileNode,
   type CanvasGroupNode,
+  type CanvasInk,
   type CanvasLinkNode,
   type CanvasMark,
   type CanvasMarks,
   type CanvasNode,
+  type CanvasShape,
   type CanvasSide,
   type CanvasStep,
   canvasStepData,
@@ -72,10 +74,12 @@ import type { CanvasDocument, CanvasDocumentState } from "./canvasDocument";
 import {
   CanvasGestures,
   NO_SELECTION,
+  selectedDrawings,
   type CanvasLooseEnd,
   type CanvasSelection,
   type CanvasTool,
 } from "./canvasGestures";
+import { canvasInkShapes, type CanvasInkShape } from "./canvasInk";
 import {
   cameraWindow,
   canvasColor,
@@ -754,6 +758,17 @@ const Dots = () => (
   </>
 );
 
+/** A shaped card's outline, stretched to its box with the line's width kept. */
+const ShapeOutline = ({ shape }: { readonly shape: CanvasShape }) => (
+  <svg className="cv-shape" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+    {shape === "ellipse" ? (
+      <ellipse cx="50" cy="50" rx="50" ry="50" vectorEffect="non-scaling-stroke" />
+    ) : (
+      <polygon points="50,0 100,50 50,100 0,50" vectorEffect="non-scaling-stroke" />
+    )}
+  </svg>
+);
+
 const CardNode = memo(function CardNode({
   node,
   selected,
@@ -789,10 +804,12 @@ const CardNode = memo(function CardNode({
   const live = mode === "fit" || selected;
   const noteFile =
     editing && node.type === "file" && canvasFileKind(node.file) === "note" ? node.file : null;
+  const shape = node.type === "text" ? node.astrolabe?.shape : undefined;
   return (
     <article
       className="cv-card"
       data-kind={node.type}
+      data-shape={shape}
       data-card-id={node.id}
       data-selected={selected || undefined}
       data-mark={mark}
@@ -803,6 +820,7 @@ const CardNode = memo(function CardNode({
       {...color}
     >
       {node.type === "file" ? <FileCardLabel node={node} /> : null}
+      {shape === undefined ? null : <ShapeOutline shape={shape} />}
       <MarkBadge mark={mark} />
       <Flash revision={flash} />
       <div className="cv-card-content" data-live={(live && !simple) || undefined}>
@@ -1117,11 +1135,11 @@ function EdgeLabel({
 
 /** An arrow's label. Enter makes a new line, so Escape, Tab or clicking away commits it. */
 function EdgeLabelEditor({
-  edge,
+  label,
   at,
   onDone,
 }: {
-  readonly edge: CanvasEdge;
+  readonly label: string | undefined;
   readonly at: CanvasEdgeShape["labelAt"];
   readonly onDone: (label: string) => void;
 }) {
@@ -1132,7 +1150,7 @@ function EdgeLabelEditor({
       aria-label="Connection label"
       style={{ left: at.x, top: at.y }}
       autoFocus
-      defaultValue={edge.label ?? ""}
+      defaultValue={label ?? ""}
       onBlur={(event) => onDone(event.target.value)}
       onKeyDown={(event) => {
         event.stopPropagation();
@@ -1145,11 +1163,41 @@ function EdgeLabelEditor({
   );
 }
 
+/** A stroke or drawn arrow: one path to see, one wider to hit, and an arrow's head. */
+const InkNode = memo(function InkNode({
+  shape,
+  selected,
+  lit,
+}: {
+  readonly shape: CanvasInkShape;
+  readonly selected: boolean;
+  readonly lit: boolean | undefined;
+}) {
+  const { ink, path, head } = shape;
+  const { style, ...color } = colorProps(ink.color);
+  return (
+    <g
+      className="cv-ink"
+      data-kind={ink.type}
+      data-drawing-id={ink.id}
+      data-selected={selected || undefined}
+      data-lit={lit}
+      style={style}
+      {...color}
+    >
+      <path className="cv-ink-hit" d={path} />
+      <path className="cv-ink-line" d={path} />
+      {head === undefined ? null : <path className="cv-ink-head" d={head} />}
+    </g>
+  );
+});
+
 interface Layout {
   /** Largest first, so each draws above those it sits in. */
   readonly groups: ReadonlyArray<CanvasGroupNode>;
   readonly cards: ReadonlyArray<Exclude<CanvasNode, CanvasGroupNode>>;
   readonly shapes: ReadonlyArray<CanvasEdgeShape>;
+  readonly inks: ReadonlyArray<CanvasInkShape>;
   readonly byId: ReadonlyMap<string, CanvasNode>;
 }
 
@@ -1174,6 +1222,7 @@ function layoutOf(data: CanvasData, previous: Layout | null): Layout {
     return before !== undefined && sameFields(before, node) ? before : node;
   });
   const shapesBefore = new Map(previous?.shapes.map((shape) => [shape.edge.id, shape]));
+  const inksBefore = new Map(previous?.inks.map((shape) => [shape.ink.id, shape]));
   return {
     groups: nodes
       .filter((node): node is CanvasGroupNode => node.type === "group")
@@ -1190,6 +1239,15 @@ function layoutOf(data: CanvasData, previous: Layout | null): Layout {
         ? before
         : shape;
     }),
+    inks: canvasInkShapes(data).map((shape) => {
+      const before = inksBefore.get(shape.ink.id);
+      return before !== undefined &&
+        before.path === shape.path &&
+        before.head === shape.head &&
+        sameFields(before.ink, shape.ink)
+        ? before
+        : shape;
+    }),
     byId: new Map(nodes.map((node) => [node.id, node])),
   };
 }
@@ -1198,6 +1256,7 @@ interface Shown {
   readonly groups: ReadonlyArray<CanvasGroupNode>;
   readonly cards: ReadonlyArray<Exclude<CanvasNode, CanvasGroupNode>>;
   readonly shapes: ReadonlyArray<CanvasEdgeShape>;
+  readonly inks: ReadonlyArray<CanvasInkShape>;
   readonly simple: boolean;
 }
 
@@ -1209,7 +1268,7 @@ const dockedLabel = (step: CanvasStep | null, id: string) => {
   return docked.group === undefined ? "" : `From ${docked.group}`;
 };
 
-const NOTHING: Shown = { groups: [], cards: [], shapes: [], simple: false };
+const NOTHING: Shown = { groups: [], cards: [], shapes: [], inks: [], simple: false };
 const NO_MARKS: CanvasMarks = { cards: {}, arrows: {} };
 /** As long as `.cv-flash` plays, and a little over. */
 const FLASH_MS = 1400;
@@ -1225,6 +1284,7 @@ function inView(layout: Layout, view: CanvasBounds, simple: boolean): Shown {
     groups: layout.groups.filter((node) => overlaps(node, view)),
     cards: layout.cards.filter((node) => overlaps(node, view)),
     shapes: layout.shapes.filter((shape) => overlaps(shape.bounds, view)),
+    inks: layout.inks.filter((shape) => overlaps(shape.bounds, view)),
     simple,
   };
 }
@@ -1236,7 +1296,8 @@ const sameShown = (a: Shown, b: Shown) =>
   a.simple === b.simple &&
   sameItems(a.cards, b.cards) &&
   sameItems(a.groups, b.groups) &&
-  sameItems(a.shapes, b.shapes);
+  sameItems(a.shapes, b.shapes) &&
+  sameItems(a.inks, b.inks);
 
 /** What gestures and commands read at the moment they act, outside any render. */
 class BoardLive {
@@ -1251,6 +1312,7 @@ class BoardLive {
   host: CanvasBoardHost = NO_HOST;
   selecting = false;
   tool: CanvasTool = "select";
+  shape: CanvasShape = "ellipse";
   revision: string | undefined = undefined;
   editing: CanvasEditing | null = null;
   openMenu: OpenMenu | null = null;
@@ -1488,6 +1550,7 @@ export function CanvasBoard({
   // Leaving editing puts the tools down: a board opened for editing again starts on Select.
   if (!editable && toolChosen !== "select") setTool("select");
   const tool = editable ? toolChosen : "select";
+  const [shapeKind, setShapeKind] = useState<CanvasShape>("ellipse");
   const [localNotice, setNotice] = useState<string | null>(null);
   const notice = localNotice ?? documentState?.notice ?? null;
   const [reads] = useState(() => ({
@@ -1508,7 +1571,11 @@ export function CanvasBoard({
       current.arrow === null
         ? undefined
         : live.layout.shapes.find((shape) => shape.edge.id === current.arrow);
-    const rects = arrow === undefined ? nodes : [arrow.bounds];
+    const drawings = selectedDrawings(current);
+    const inks = live.layout.inks.flatMap((shape) =>
+      drawings.has(shape.ink.id) ? [shape.bounds] : [],
+    );
+    const rects = arrow === undefined ? [...nodes, ...inks] : [arrow.bounds];
     if (rects.length === 0) return;
     const top = Math.min(...rects.map((rect) => rect.y));
     const left = Math.min(...rects.map((rect) => rect.x));
@@ -1676,6 +1743,7 @@ export function CanvasBoard({
         world: () => live.world,
         data: live.currentData,
         shapes: () => live.layout.shapes,
+        inks: () => live.layout.inks,
         selection: () => live.selection,
         select: commands.select,
         raise: (id) =>
@@ -1717,10 +1785,13 @@ export function CanvasBoard({
         editCard: (id) => commands.editCard(id),
         editGroupLabel: (id) => setEditing({ kind: "group", id }),
         editArrowLabel: (id) => setEditing({ kind: "arrow", id }),
+        editInkLabel: (id) => setEditing({ kind: "drawing", id }),
         addTextAt: (point) => commands.addTextAt(point),
         tool: () => live.tool,
+        inked: (points) => commands.addStroke(points),
         drawn: (tool, box, at) => {
           if (tool === "card") commands.drawCard(box, at);
+          else if (tool === "shape") commands.drawShape(live.shape, box, at);
           else commands.drawSection(box, at);
           live.update({ tool: "select" });
           setTool("select");
@@ -1740,6 +1811,16 @@ export function CanvasBoard({
       const trimmed = label.trim();
       live.canvasDocument?.commit([
         { op: "set-card", card: id, keys: { label: trimmed === "" ? null : trimmed } },
+      ]);
+      setEditing(null);
+      boardRef.current?.focus({ preventScroll: true });
+    },
+    [live],
+  );
+  const finishInkLabel = useCallback(
+    (id: string, label: string) => {
+      live.canvasDocument?.commit([
+        { op: "set-drawing", drawing: id, keys: { label: label === "" ? null : label } },
       ]);
       setEditing(null);
       boardRef.current?.focus({ preventScroll: true });
@@ -1781,6 +1862,7 @@ export function CanvasBoard({
       host,
       selecting,
       tool,
+      shape: shapeKind,
       revision,
       editing,
       openMenu: menu,
@@ -2133,7 +2215,8 @@ export function CanvasBoard({
     const canEdit = live.editable;
     const arrows = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
     const arrow = arrows[key as keyof typeof arrows];
-    const anything = selection.cards.size > 0 || selection.arrow !== null;
+    const anything =
+      selection.cards.size > 0 || selection.arrow !== null || drawingsSelected.size > 0;
     if (key === " ") {
       if (!event.repeat) {
         live.update({ spaceHeld: true, spaceUsed: false });
@@ -2274,22 +2357,31 @@ export function CanvasBoard({
 
   const board = useCallback(() => boardRef.current, []);
   useRestoreFocus(board, menu !== null || dialog !== null || popover !== null);
-  useRestoreFocus(board, selection.cards.size > 0 || selection.arrow !== null);
+  useRestoreFocus(
+    board,
+    selection.cards.size > 0 || selection.arrow !== null || selectedDrawings(selection).size > 0,
+  );
 
   // What's selected can go in a commit from elsewhere: the toolbar goes with it.
+  const drawingsSelected = selectedDrawings(selection);
+  const inkIds = new Set(layout.inks.map((shape) => shape.ink.id));
   const gone =
     [...selection.cards].some((id) => !layout.byId.has(id)) ||
+    [...drawingsSelected].some((id) => !inkIds.has(id)) ||
     (selection.arrow !== null && !layout.shapes.some((shape) => shape.edge.id === selection.arrow));
   if (gone) {
+    const drawings = [...drawingsSelected].filter((id) => inkIds.has(id));
     setSelection({
       cards: new Set([...selection.cards].filter((id) => layout.byId.has(id))),
       arrow: null,
+      ...(drawings.length === 0 ? {} : { drawings: new Set(drawings) }),
     });
   }
 
   const [lone] = selection.cards;
   const single = selection.cards.size === 1 ? layout.byId.get(lone ?? "") : undefined;
-  const hasSelection = selection.cards.size > 0 || selection.arrow !== null;
+  const hasSelection =
+    selection.cards.size > 0 || selection.arrow !== null || drawingsSelected.size > 0;
   const showToolbar = mode === "free" && hasSelection && editing === null;
   const selectedEdge =
     selection.arrow === null
@@ -2298,6 +2390,10 @@ export function CanvasBoard({
   const editedArrow =
     editing?.kind === "arrow"
       ? layout.shapes.find((shape) => shape.edge.id === editing.id)
+      : undefined;
+  const editedInk =
+    editing?.kind === "drawing"
+      ? layout.inks.find((shape) => shape.ink.id === editing.id)
       : undefined;
   const closeDialog = () => setDialog(null);
   const addStep =
@@ -2323,6 +2419,12 @@ export function CanvasBoard({
         onStep={addStep}
         stepReady={selection.cards.size > 0}
         onDone={canToggleEdit ? () => onReadOnly?.(true) : undefined}
+        shape={shapeKind}
+        onShape={(next) => {
+          setShapeKind(next);
+          setTool("shape");
+          boardRef.current?.focus({ preventScroll: true });
+        }}
         files={host.listFiles !== undefined}
         toBoard={(clientX, clientY) => {
           const rect = boardRef.current?.getBoundingClientRect();
@@ -2427,7 +2529,7 @@ export function CanvasBoard({
           )}
           {editedArrow === undefined ? null : (
             <EdgeLabelEditor
-              edge={editedArrow.edge}
+              label={editedArrow.edge.label}
               at={editedArrow.labelAt}
               onDone={(text) => finishArrowLabel(editedArrow.edge.id, text)}
             />
@@ -2450,6 +2552,40 @@ export function CanvasBoard({
               from={dockedLabel(active, node.id)}
             />
           ))}
+          {/* Drawings sit above the cards; only their lines take a press. */}
+          <svg className="cv-edges cv-inks" aria-hidden="true" width="1" height="1">
+            {shown.inks.map((shape) => (
+              <InkNode
+                key={shape.ink.id}
+                shape={shape}
+                selected={drawingsSelected.has(shape.ink.id)}
+                // A step holds cards, never drawings: they dim with what it leaves out.
+                lit={shines === null ? undefined : false}
+              />
+            ))}
+          </svg>
+          {shown.inks.flatMap(({ ink, labelAt }) =>
+            ink.type !== "arrow" || ink.label === undefined || editedInk?.ink.id === ink.id
+              ? []
+              : [
+                  <span
+                    key={ink.id}
+                    className="cv-edge-label"
+                    data-drawing-label={ink.id}
+                    data-lit={shines === null ? undefined : false}
+                    style={{ left: labelAt.x, top: labelAt.y }}
+                  >
+                    {ink.label}
+                  </span>,
+                ],
+          )}
+          {editedInk?.ink.type === "arrow" ? (
+            <EdgeLabelEditor
+              label={editedInk.ink.label}
+              at={editedInk.labelAt}
+              onDone={(text) => finishInkLabel(editedInk.ink.id, text)}
+            />
+          ) : null}
         </div>
       </Board.Provider>
       <canvas ref={overviewRef} className="cv-overview" hidden={shown !== OVERVIEW} />
@@ -2462,6 +2598,7 @@ export function CanvasBoard({
           single={single}
           edge={selectedEdge}
           count={selection.cards.size}
+          drawings={commands.selectedDrawings}
           popover={popover}
           setPopover={setPopover}
           onStep={addStep}
@@ -2600,6 +2737,7 @@ function SelectionToolbar({
   single,
   edge,
   count,
+  drawings,
   popover,
   setPopover,
   onStep,
@@ -2610,6 +2748,8 @@ function SelectionToolbar({
   readonly single: CanvasNode | undefined;
   readonly edge: CanvasEdge | undefined;
   readonly count: number;
+  /** The strokes and drawn arrows selected with the cards. */
+  readonly drawings: ReadonlyArray<CanvasInk>;
   readonly popover: ToolbarPopover;
   readonly setPopover: (popover: ToolbarPopover) => void;
   readonly onStep: (() => void) | undefined;
@@ -2627,7 +2767,9 @@ function SelectionToolbar({
       </div>
     );
   }
-  const color = edge?.color ?? single?.color;
+  const [drawn, another] = drawings;
+  const color = edge?.color ?? single?.color ?? (count === 0 ? drawn?.color : undefined);
+  const inkArrow = count === 0 && another === undefined && drawn?.type === "arrow";
   const group = single?.type === "group" ? single : undefined;
   const editsText =
     single?.type === "text" || (single?.type === "file" && canvasFileKind(single.file) === "note");
@@ -2646,13 +2788,16 @@ function SelectionToolbar({
         Color
       </CanvasToolbarButton>
       {zoom}
-      {onStep === undefined || edge !== undefined ? null : (
+      {onStep === undefined || edge !== undefined || count === 0 ? null : (
         <CanvasToolbarButton label="Add as a step" onClick={closeThen(onStep)}>
           Step
         </CanvasToolbarButton>
       )}
       {editsText ? (
         <CanvasToolbarButton label="Edit" onClick={() => commands.editSelected()} />
+      ) : null}
+      {inkArrow ? (
+        <CanvasToolbarButton label="Edit label" onClick={() => commands.editSelected()} />
       ) : null}
       {count > 1 ? (
         <CanvasToolbarButton
