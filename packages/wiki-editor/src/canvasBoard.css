@@ -929,10 +929,31 @@ textarea.cv-label-editor {
   bottom: calc(12px + env(safe-area-inset-bottom, 0px));
   left: 12px;
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   gap: 8px;
-  align-items: center;
+  align-items: flex-end;
+  justify-content: center;
   pointer-events: none;
+}
+/* A host's row of its own, above the controls: only what's in it takes the pointer. */
+.cv-overlay > [data-overlay-row] {
+  display: flex;
+  flex-basis: 100%;
+  justify-content: center;
+  pointer-events: none;
+}
+[data-overlay-row] > * {
+  pointer-events: auto;
+}
+.cv-overlay .cv-bar {
+  position: static;
+  align-items: center;
+  padding: 4px;
+  border-radius: 12px;
+  box-shadow:
+    0 10px 15px -3px rgb(0 0 0 / 0.1),
+    0 4px 6px -4px rgb(0 0 0 / 0.1);
+  transform: none;
 }
 .cv-overlay > * {
   pointer-events: auto;
@@ -1111,10 +1132,13 @@ textarea.cv-label-editor {
 /* The rest stays in sight, so a step is always seen in its place. */
 .cv-board[data-walking] :is(.cv-card, .cv-edge, .cv-edge-label)[data-lit="false"] {
   opacity: 0.15;
-  pointer-events: none;
 }
 .cv-board[data-walking] .cv-group[data-lit="false"] {
   opacity: 0.35;
+}
+/* Only a board being edited picks what's dimmed, to make it a step. */
+.cv-board[data-walking]:not([data-editable])
+  :is(.cv-card, .cv-group, .cv-edge, .cv-edge-label)[data-lit="false"] {
   pointer-events: none;
 }
 .cv-board[data-walking] .cv-card[data-lit="true"] {

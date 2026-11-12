@@ -1,15 +1,20 @@
+import type { CanvasStoryChange } from "@mercurian/wiki/canvas-edits";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
+  EllipsisIcon,
   MaximizeIcon,
   MinimizeIcon,
   PlayIcon,
   XIcon,
 } from "lucide-react";
-import { type KeyboardEvent, useRef, useSyncExternalStore } from "react";
+import { type KeyboardEvent, useRef, useState, useSyncExternalStore } from "react";
 
 import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
+import { Textarea } from "../ui/textarea";
 import type { useCanvasWalk } from "./useCanvasWalk";
 
 const FORWARD = new Set(["ArrowRight", "PageDown"]);
@@ -52,13 +57,95 @@ const onFullscreenChange = (done: () => void) => {
   return () => document.removeEventListener("fullscreenchange", done);
 };
 
+const NOTE_CLASS =
+  "max-w-xl rounded-lg border border-border bg-popover text-sm text-popover-foreground shadow-lg";
+
+/** A step's label and note, written in place; they save as focus leaves them. */
+function StepNoteEditor({
+  label,
+  note,
+  onSave,
+}: {
+  readonly label: string | undefined;
+  readonly note: string;
+  readonly onSave: (change: { readonly label: string; readonly note: string }) => void;
+}) {
+  const [draft, setDraft] = useState({ label: label ?? "", note });
+  const save = () => {
+    if (draft.label !== (label ?? "") || draft.note !== note) onSave(draft);
+  };
+  return (
+    <div
+      className={`${NOTE_CLASS} flex w-full flex-col gap-1.5 p-2`}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) save();
+      }}
+    >
+      <Input
+        size="sm"
+        aria-label="Step label"
+        placeholder="Label"
+        value={draft.label}
+        onChange={(event) => setDraft({ ...draft, label: event.target.value })}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") event.currentTarget.blur();
+        }}
+      />
+      <Textarea
+        size="sm"
+        aria-label="What this step says"
+        placeholder="What this step says"
+        value={draft.note}
+        onChange={(event) => setDraft({ ...draft, note: event.target.value })}
+      />
+    </div>
+  );
+}
+
+/** A story's new name, written in the pill where its name was. */
+function StoryTitleEditor({
+  title,
+  onDone,
+}: {
+  readonly title: string;
+  readonly onDone: (title: string | null) => void;
+}) {
+  const [draft, setDraft] = useState(title);
+  return (
+    <Input
+      size="sm"
+      autoFocus
+      aria-label="Story name"
+      className="w-48"
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={() => onDone(draft.trim() === "" ? null : draft.trim())}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") event.currentTarget.blur();
+        if (event.key === "Escape") {
+          event.stopPropagation();
+          onDone(null);
+        }
+      }}
+    />
+  );
+}
+
 /**
  * A board's stories, floating over its foot: the story and Present at rest; while presenting, the
- * step's note above a pill that moves through the steps and can take the board full screen.
+ * step's note above a pill that moves through the steps and can take the board full screen. With
+ * `edit`, a story is renamed or removed from here, and each step's note is written in place.
  */
-export function CanvasStoryPill({ walk }: { readonly walk: ReturnType<typeof useCanvasWalk> }) {
+export function CanvasStoryPill({
+  walk,
+  edit,
+}: {
+  readonly walk: ReturnType<typeof useCanvasWalk>;
+  readonly edit?: ((change: CanvasStoryChange) => void) | undefined;
+}) {
   const { stories, story, pick, steps, step, go } = walk;
   const pill = useRef<HTMLDivElement>(null);
+  const [renaming, setRenaming] = useState(false);
   const board = () => pill.current?.closest<HTMLElement>(".cv-board") ?? null;
   const fullscreen = useSyncExternalStore(
     onFullscreenChange,
@@ -72,16 +159,25 @@ export function CanvasStoryPill({ walk }: { readonly walk: ReturnType<typeof use
   };
   return (
     <>
-      {current === undefined ? null : (
-        <p
-          className="max-w-[min(36rem,100%)] rounded-lg border border-border bg-popover px-3 py-2 text-sm text-pretty text-popover-foreground shadow-lg"
-          aria-live="polite"
-        >
-          {current.label === undefined ? null : (
-            <span className="font-medium">{current.label}. </span>
+      {current === undefined || step === null ? null : (
+        // The board's own row for it, so the controls stay on one line beneath.
+        <div data-overlay-row>
+          {edit !== undefined ? (
+            <StepNoteEditor
+              key={`${story}:${step}`}
+              label={current.label}
+              note={current.note}
+              onSave={(change) => edit({ kind: "edit-step", story, step, ...change })}
+            />
+          ) : (
+            <p className={`${NOTE_CLASS} px-3 py-2 text-pretty`} aria-live="polite">
+              {current.label === undefined ? null : (
+                <span className="font-medium">{current.label}. </span>
+              )}
+              {current.note}
+            </p>
           )}
-          {current.note}
-        </p>
+        </div>
       )}
       <div
         ref={pill}
@@ -92,7 +188,15 @@ export function CanvasStoryPill({ walk }: { readonly walk: ReturnType<typeof use
       >
         {step === null ? (
           <>
-            {stories.length > 1 ? (
+            {renaming && edit !== undefined ? (
+              <StoryTitleEditor
+                title={stories[story]?.title ?? ""}
+                onDone={(title) => {
+                  setRenaming(false);
+                  if (title !== null) edit({ kind: "rename-story", story, title });
+                }}
+              />
+            ) : stories.length > 1 ? (
               <Select
                 value={String(story)}
                 items={Object.fromEntries(
@@ -120,6 +224,22 @@ export function CanvasStoryPill({ walk }: { readonly walk: ReturnType<typeof use
             <span className="shrink-0 px-1.5 text-xs text-muted-foreground">
               {`${steps.length} ${steps.length === 1 ? "step" : "steps"}`}
             </span>
+            {edit === undefined ? null : (
+              <Menu>
+                <MenuTrigger
+                  render={<Button size="icon-xs" variant="ghost" />}
+                  aria-label="Story options"
+                >
+                  <EllipsisIcon />
+                </MenuTrigger>
+                <MenuPopup align="end" side="top">
+                  <MenuItem onClick={() => setRenaming(true)}>Rename story</MenuItem>
+                  <MenuItem onClick={() => edit({ kind: "remove-story", story })}>
+                    Delete story
+                  </MenuItem>
+                </MenuPopup>
+              </Menu>
+            )}
             <Button
               size="xs"
               className="ms-1 shrink-0"
@@ -174,6 +294,44 @@ export function CanvasStoryPill({ walk }: { readonly walk: ReturnType<typeof use
               <ChevronRightIcon />
             </Button>
             <span className="mx-1 h-4 w-px bg-border" />
+            {edit === undefined ? null : (
+              <Menu>
+                <MenuTrigger
+                  render={<Button size="icon-xs" variant="ghost" />}
+                  aria-label="Step options"
+                >
+                  <EllipsisIcon />
+                </MenuTrigger>
+                <MenuPopup align="end" side="top">
+                  <MenuItem
+                    disabled={step === 0}
+                    onClick={() => {
+                      edit({ kind: "move-step", story, step, to: step - 1 });
+                      go(step - 1);
+                    }}
+                  >
+                    Move earlier
+                  </MenuItem>
+                  <MenuItem
+                    disabled={step === steps.length - 1}
+                    onClick={() => {
+                      edit({ kind: "move-step", story, step, to: step + 1 });
+                      go(step + 1);
+                    }}
+                  >
+                    Move later
+                  </MenuItem>
+                  <MenuItem
+                    onClick={() => {
+                      edit({ kind: "remove-step", story, step });
+                      go(steps.length === 1 ? null : Math.min(step, steps.length - 2));
+                    }}
+                  >
+                    Delete step
+                  </MenuItem>
+                </MenuPopup>
+              </Menu>
+            )}
             {document.fullscreenEnabled ? (
               <Button
                 size="icon-xs"

@@ -21,6 +21,7 @@ import {
   canvasStepData,
   canvasSteps,
 } from "@mercurian/wiki/canvas";
+import { canvasStepPick, canvasStoryEdit } from "@mercurian/wiki/canvas-edits";
 import { pastedFileName } from "@mercurian/wiki/placement";
 import {
   createContext,
@@ -1376,6 +1377,7 @@ export function CanvasBoard({
   step = null,
   openFrame = null,
   onFrame,
+  onStepAdded,
   children,
   ref,
 }: {
@@ -1408,6 +1410,8 @@ export function CanvasBoard({
   readonly openFrame?: number | null;
   /** Asked for a step's details, as its frame's number is clicked, beside that number. */
   readonly onFrame?: ((step: number, chip: HTMLElement) => void) | undefined;
+  /** Lets a board being edited add what's selected to its story, as the step after the one shown. */
+  readonly onStepAdded?: ((step: number) => void) | undefined;
   /** The host's controls, floating over the board's foot; what fits stays clear of them. */
   readonly children?: ReactNode;
   readonly ref?: Ref<CanvasBoardHandle>;
@@ -2167,6 +2171,33 @@ export function CanvasBoard({
       ? layout.shapes.find((shape) => shape.edge.id === editing.id)
       : undefined;
   const closeDialog = () => setDialog(null);
+  const addBar =
+    mode === "free" && canvasDocument !== null && editable ? (
+      <CanvasBottomBar
+        toBoard={(clientX, clientY) => {
+          const rect = boardRef.current?.getBoundingClientRect();
+          const inside =
+            rect !== undefined &&
+            clientX >= rect.left &&
+            clientX <= rect.right &&
+            clientY >= rect.top &&
+            clientY <= rect.bottom;
+          return inside ? view.toWorld(clientX, clientY) : null;
+        }}
+        onAdd={(kind, at) => {
+          if (kind === "text") commands.addTextAt(at);
+          else void commands.addFile(kind, at);
+        }}
+      >
+        {host.touch === true ? (
+          <CanvasToolbarButton
+            label="Select"
+            pressed={selecting}
+            onClick={() => setSelecting((on) => !on)}
+          />
+        ) : null}
+      </CanvasBottomBar>
+    ) : null;
 
   return (
     <div
@@ -2280,36 +2311,27 @@ export function CanvasBoard({
           count={selection.cards.size}
           popover={popover}
           setPopover={setPopover}
+          onStep={
+            canvasDocument === null || onStepAdded === undefined
+              ? undefined
+              : () => {
+                  const pick = canvasStepPick(data, selection.cards);
+                  if (pick === null) return;
+                  const at = step === null ? steps.length : step + 1;
+                  canvasDocument.commit([
+                    canvasStoryEdit(canvasDocument.document, {
+                      kind: "add-step",
+                      story,
+                      at,
+                      step: pick,
+                    }),
+                  ]);
+                  onStepAdded(at);
+                }
+          }
         />
       ) : null}
-      {mode === "free" && canvasDocument !== null ? (
-        editable ? (
-          <CanvasBottomBar
-            toBoard={(clientX, clientY) => {
-              const rect = boardRef.current?.getBoundingClientRect();
-              const inside =
-                rect !== undefined &&
-                clientX >= rect.left &&
-                clientX <= rect.right &&
-                clientY >= rect.top &&
-                clientY <= rect.bottom;
-              return inside ? view.toWorld(clientX, clientY) : null;
-            }}
-            onAdd={(kind, at) => {
-              if (kind === "text") commands.addTextAt(at);
-              else void commands.addFile(kind, at);
-            }}
-          >
-            {host.touch === true ? (
-              <CanvasToolbarButton
-                label="Select"
-                pressed={selecting}
-                onClick={() => setSelecting((on) => !on)}
-              />
-            ) : null}
-          </CanvasBottomBar>
-        ) : null
-      ) : null}
+      {overlaid ? null : addBar}
       {mode === "free" ? (
         <div className="cv-chrome cv-controls">
           {canvasDocument === null ? null : readOnly ? (
@@ -2401,6 +2423,7 @@ export function CanvasBoard({
           onContextMenu={(event) => event.stopPropagation()}
         >
           {children}
+          {addBar}
         </div>
       )}
       {notice === null ? null : (
@@ -2469,6 +2492,7 @@ function SelectionToolbar({
   count,
   popover,
   setPopover,
+  onStep,
 }: {
   readonly ref: Ref<HTMLDivElement>;
   readonly commands: CanvasCommands;
@@ -2478,6 +2502,7 @@ function SelectionToolbar({
   readonly count: number;
   readonly popover: ToolbarPopover;
   readonly setPopover: (popover: ToolbarPopover) => void;
+  readonly onStep: (() => void) | undefined;
 }) {
   const toggle = (next: ToolbarPopover) => setPopover(popover === next ? null : next);
   const zoom = (
@@ -2511,6 +2536,11 @@ function SelectionToolbar({
         Color
       </CanvasToolbarButton>
       {zoom}
+      {onStep === undefined || edge !== undefined ? null : (
+        <CanvasToolbarButton label="Add as a step" onClick={closeThen(onStep)}>
+          Step
+        </CanvasToolbarButton>
+      )}
       {editsText ? (
         <CanvasToolbarButton label="Edit" onClick={() => commands.editSelected()} />
       ) : null}

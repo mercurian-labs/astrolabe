@@ -13,7 +13,7 @@ import { toastManager } from "../ui/toast";
  * its frame, and asking about the board, or a step, in the composer.
  */
 export function useCanvasWalk(
-  view: CanvasView,
+  view: Pick<CanvasView, "title" | "data">,
   source: { readonly threadId: ThreadId; readonly itemId: TurnItemId } | null,
 ) {
   const stories = view.data.stories ?? [];

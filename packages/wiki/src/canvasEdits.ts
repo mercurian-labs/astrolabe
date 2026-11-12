@@ -3,12 +3,21 @@
  * board, never where. New cards find room through `canvasPlace`. Whatever an edit doesn't name
  * stays as the file has it, understood or not, in the serializer's bytes.
  */
-import { canvasEntries, parseCanvas, serializeCanvas, type CanvasSide } from "./canvas.ts";
+import {
+  canvasData,
+  canvasEntries,
+  parseCanvas,
+  serializeCanvas,
+  type CanvasData,
+  type CanvasGroupNode,
+  type CanvasSide,
+} from "./canvas.ts";
 import {
   canvasArrowSides,
   canvasCardSize,
   canvasPlace,
   CANVAS_PRESETS,
+  insideGroup,
   type CanvasNewCard,
   type CanvasNewGroup,
 } from "./canvasPlace.ts";
@@ -121,7 +130,9 @@ export type CanvasHandEdit =
       readonly edge: Readonly<Record<string, unknown>>;
       readonly at?: number | undefined;
     }
-  | { readonly op: "remove-arrow"; readonly arrow: string };
+  | { readonly op: "remove-arrow"; readonly arrow: string }
+  /** The board's stories, whole, as the file holds them; none removes them. */
+  | { readonly op: "set-stories"; readonly stories: ReadonlyArray<unknown> };
 
 export type CanvasEdit = CanvasStructureEdit | CanvasHandEdit;
 
@@ -153,6 +164,7 @@ const HAND_OPS: ReadonlySet<string> = new Set([
   "set-arrow",
   "put-arrow",
   "remove-arrow",
+  "set-stories",
 ]);
 
 const isHandEdit = (edit: CanvasEdit): edit is CanvasHandEdit => HAND_OPS.has(edit.op);
@@ -321,9 +333,21 @@ export function applyCanvasHandEdits(
     return end;
   };
 
+  let astrolabe = isRecord(document.astrolabe) ? document.astrolabe : undefined;
+
   for (let index = 0; index < edits.length;) {
     const edit = edits[index] as CanvasHandEdit;
     switch (edit.op) {
+      case "set-stories": {
+        others.push({ op: "set-stories", stories: given(astrolabe?.stories) });
+        const kept = withKey(
+          astrolabe ?? {},
+          "stories",
+          edit.stories.length === 0 ? null : edit.stories,
+        );
+        astrolabe = Object.keys(kept).length === 0 ? undefined : kept;
+        break;
+      }
       case "move":
         patch(edit.card, { x: edit.x, y: edit.y });
         break;
@@ -424,7 +448,8 @@ export function applyCanvasHandEdits(
   }
   closeHoles();
   restored.sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
-  return { document: { ...document, nodes, edges }, inverse: [...restored, ...others.reverse()] };
+  const rest = withKey({ ...document, nodes, edges }, "astrolabe", astrolabe ?? null);
+  return { document: rest, inverse: [...restored, ...others.reverse()] };
 }
 
 function replay(file: string, source: string, edits: ReadonlyArray<CanvasEdit>, seed: string) {
@@ -760,3 +785,122 @@ export function applyCanvasEdits(
   }
   return replay(file, source, edits, seed);
 }
+
+/** A change a person makes to a board's stories, by their places as `canvasData` reads them. */
+export type CanvasStoryChange =
+  /** `story` one past the last starts a new story, titled `title`. */
+  | {
+      readonly kind: "add-step";
+      readonly story: number;
+      readonly at: number;
+      readonly step: CanvasStepPick;
+      readonly title?: string;
+    }
+  | {
+      readonly kind: "edit-step";
+      readonly story: number;
+      readonly step: number;
+      readonly label?: string;
+      readonly note?: string;
+    }
+  | {
+      readonly kind: "move-step";
+      readonly story: number;
+      readonly step: number;
+      readonly to: number;
+    }
+  | { readonly kind: "remove-step"; readonly story: number; readonly step: number }
+  | { readonly kind: "rename-story"; readonly story: number; readonly title: string }
+  | { readonly kind: "remove-story"; readonly story: number };
+
+/** What a new step shows: a group, or cards across groups. */
+export type CanvasStepPick = { readonly group: string } | { readonly cards: ReadonlyArray<string> };
+
+/**
+ * What a selection makes a step of: a group picked alone is that group; otherwise its cards, and a
+ * picked group brings the cards inside it. Nothing for a selection that shows no card.
+ */
+export function canvasStepPick(data: CanvasData, picked: Iterable<string>): CanvasStepPick | null {
+  const ids = new Set(picked);
+  const nodes = data.nodes.filter((node) => ids.has(node.id));
+  const groups = nodes.filter((node): node is CanvasGroupNode => node.type === "group");
+  const [only] = nodes;
+  if (nodes.length === 1 && only?.type === "group") return { group: only.id };
+  const cards = new Set(nodes.filter((node) => node.type !== "group").map((node) => node.id));
+  for (const group of groups) {
+    for (const node of data.nodes) {
+      if (node.type !== "group" && insideGroup(group, node)) cards.add(node.id);
+    }
+  }
+  return cards.size === 0 ? null : { cards: [...cards] };
+}
+
+/** The places in `list` of the entries `read` keeps, so places as drawn find their raw entry. */
+const shownPlaces = (list: ReadonlyArray<unknown>, read: (raw: unknown) => boolean) =>
+  list.flatMap((raw, place) => (read(raw) ? [place] : []));
+
+const isStory = (raw: unknown) =>
+  canvasData({ astrolabe: { stories: [raw] } }).stories !== undefined;
+const isStep = (raw: unknown) => isStory({ steps: [raw] });
+
+/**
+ * The `set-stories` edit that makes `change` to the board `document` holds. Whatever a story or
+ * step holds that this version doesn't read stays as the file has it.
+ */
+export function canvasStoryEdit(document: unknown, change: CanvasStoryChange): CanvasHandEdit {
+  const astrolabe = isRecord(document) && isRecord(document.astrolabe) ? document.astrolabe : {};
+  const stories = given(astrolabe.stories);
+  const storyPlaces = shownPlaces(stories, isStory);
+  const set = (next: unknown[]) => ({ op: "set-stories", stories: next }) as const;
+  const storyAt = storyPlaces[change.story];
+  if (change.kind === "add-step" && storyAt === undefined) {
+    const title = change.title ?? `Story ${storyPlaces.length + 1}`;
+    return set([...stories, { title, steps: [newStep(change.step)] }]);
+  }
+  const story = storyAt === undefined ? undefined : stories[storyAt];
+  if (storyAt === undefined || !isRecord(story)) return set(stories);
+  const withStory = (next: Raw | null) =>
+    set(spliced(stories, storyAt, 1, ...(next === null ? [] : [next])));
+  const steps = given(story.steps);
+  const stepPlaces = shownPlaces(steps, isStep);
+  const withSteps = (next: unknown[]) =>
+    withStory(next.some(isStep) ? { ...story, steps: next } : null);
+  switch (change.kind) {
+    case "rename-story":
+      return withStory({ ...story, title: change.title });
+    case "remove-story":
+      return withStory(null);
+    case "add-step": {
+      const before = stepPlaces[change.at] ?? steps.length;
+      return withSteps(spliced(steps, before, 0, newStep(change.step)));
+    }
+  }
+  const stepAt = stepPlaces[change.step];
+  const step = stepAt === undefined ? undefined : steps[stepAt];
+  if (stepAt === undefined || !isRecord(step)) return set(stories);
+  switch (change.kind) {
+    case "edit-step": {
+      let next: Raw = step;
+      if (change.note !== undefined) next = withKey(next, "note", change.note);
+      if (change.label !== undefined) {
+        next = withKey(next, "label", change.label.trim() === "" ? null : change.label);
+      }
+      return withSteps(spliced(steps, stepAt, 1, next));
+    }
+    case "remove-step":
+      return withSteps(spliced(steps, stepAt, 1));
+    case "move-step": {
+      const to = stepPlaces[Math.max(0, Math.min(change.to, stepPlaces.length - 1))] ?? stepAt;
+      return withSteps(spliced(spliced(steps, stepAt, 1), to, 0, step));
+    }
+  }
+}
+
+const spliced = (list: ReadonlyArray<unknown>, at: number, remove: number, ...add: unknown[]) => {
+  const next = [...list];
+  next.splice(at, remove, ...add);
+  return next;
+};
+
+const newStep = (pick: CanvasStepPick): Raw =>
+  "group" in pick ? { note: "", group: pick.group } : { note: "", cards: [...pick.cards] };

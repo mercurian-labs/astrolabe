@@ -9,6 +9,7 @@ import {
   type CanvasBoardHandle,
   type CanvasBoardSettings,
 } from "@mercurian/wiki-editor/canvas-board";
+import { canvasStoryEdit } from "@mercurian/wiki/canvas-edits";
 import { CanvasDocument } from "@mercurian/wiki-editor/canvas-document";
 import { useAtomValue } from "@effect/atom-react";
 import { changeRequestCanvasReview } from "@t3tools/client-runtime/wikiLogic";
@@ -21,7 +22,7 @@ import type {
 import { useBlocker } from "@tanstack/react-router";
 import { ChevronDownIcon, TriangleAlertIcon } from "lucide-react";
 import * as Schema from "effect/Schema";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "~/hooks/useSettings";
@@ -34,6 +35,8 @@ import { Button } from "../ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Spinner } from "../ui/spinner";
+import { CanvasStoryPill, onStepKey } from "../canvas/CanvasStoryPill";
+import { useCanvasWalk } from "../canvas/useCanvasWalk";
 import {
   describeWikiFailure,
   documentPath,
@@ -119,6 +122,11 @@ function CanvasBoardPane({
 
   const board = useRef<CanvasBoardHandle>(null);
   const editable = canvas !== null && !readOnly;
+  const shown = useSyncExternalStore(
+    canvas?.subscribe ?? noSubscription,
+    () => canvas?.getState().data ?? data,
+  );
+  const walk = useCanvasWalk({ title: documentTitle(file), data: shown }, null);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the command palette reaches this canvas through a registry outside React
   useEffect(
     () =>
@@ -132,7 +140,10 @@ function CanvasBoardPane({
   );
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+    <div
+      className="flex min-h-0 min-w-0 flex-1 flex-col"
+      onKeyDown={(event) => onStepKey(event, walk.steps.length, walk.step, walk.go)}
+    >
       {groups.length > 0 ? (
         <div className="flex shrink-0 justify-end border-b border-border px-3 py-1">
           <Menu>
@@ -163,12 +174,28 @@ function CanvasBoardPane({
           onReadOnly={onReadOnly}
           settings={settings}
           onSettings={onSettings}
+          story={walk.story}
+          step={walk.step}
+          onStepAdded={(index) => {
+            if (walk.step !== null) walk.go(index);
+          }}
           {...(marks === undefined ? {} : { marks })}
-        />
+        >
+          <CanvasStoryPill
+            walk={walk}
+            edit={
+              canvas === null || !editable
+                ? undefined
+                : (change) => canvas.commit([canvasStoryEdit(canvas.document, change)])
+            }
+          />
+        </CanvasBoard>
       </div>
     </div>
   );
 }
+
+const noSubscription = () => () => {};
 
 const selectCanvasSettings = (settings: UnifiedSettings) => settings.wikiCanvas;
 

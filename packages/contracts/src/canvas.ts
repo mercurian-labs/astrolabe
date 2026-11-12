@@ -232,6 +232,7 @@ const CanvasHandEdits = [
     at: Schema.optional(Schema.Int),
   }),
   Schema.Struct({ op: Schema.Literal("remove-arrow"), arrow: Schema.String }),
+  Schema.Struct({ op: Schema.Literal("set-stories"), stories: Schema.Array(Schema.Unknown) }),
 ] as const;
 
 export const CanvasEdit = Schema.Union([...CanvasAgentEdits, ...CanvasHandEdits]);
