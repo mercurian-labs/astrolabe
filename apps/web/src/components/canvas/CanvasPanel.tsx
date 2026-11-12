@@ -11,7 +11,7 @@ import { canvasViewsAtom, canvasViewsKey } from "~/state/canvasViews";
 
 import { canvasHost, LazyCanvasBoard } from "./CanvasFrame";
 import { CanvasFramePopover } from "./CanvasFramePopover";
-import { CanvasStepBar, onStepKey } from "./CanvasStepBar";
+import { CanvasStoryPill, onStepKey } from "./CanvasStoryPill";
 import { KeepCanvasButton } from "./KeepCanvas";
 import { useThreadCanvasStore } from "./threadCanvasStore";
 import { useCanvasWalk } from "./useCanvasWalk";
@@ -76,10 +76,11 @@ function CanvasPanelBoard({
             openFrame={walk.frame?.step ?? null}
             onFrame={walk.toggleFrame}
             ref={board}
-          />
+          >
+            {walk.steps.length === 0 ? null : <CanvasStoryPill walk={walk} />}
+          </LazyCanvasBoard>
         </Suspense>
       </div>
-      <CanvasStepBar walk={walk} />
       <CanvasFramePopover view={view} walk={walk} onCard={(id) => board.current?.focusCard(id)} />
     </div>
   );

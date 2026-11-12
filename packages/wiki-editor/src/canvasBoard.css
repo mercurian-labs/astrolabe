@@ -915,6 +915,28 @@ textarea.cv-label-editor {
   border: 1px solid var(--border);
   border-radius: 4px;
 }
+/* Presenting moves the camera for the reader. */
+.cv-board[data-walking] .cv-controls {
+  display: none;
+}
+.cv-board:fullscreen {
+  background: var(--background);
+}
+/* A host's controls float over the board's foot; only they take the pointer. */
+.cv-overlay {
+  position: absolute;
+  right: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  left: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  pointer-events: none;
+}
+.cv-overlay > * {
+  pointer-events: auto;
+}
 .cv-bar {
   position: absolute;
   bottom: calc(12px + env(safe-area-inset-bottom, 0px));
@@ -1086,13 +1108,20 @@ textarea.cv-label-editor {
 .cv-board[data-walkable] :is(.cv-card, .cv-group, .cv-edge, .cv-edge-label) {
   transition: opacity 200ms ease;
 }
+/* The rest stays in sight, so a step is always seen in its place. */
 .cv-board[data-walking] :is(.cv-card, .cv-edge, .cv-edge-label)[data-lit="false"] {
-  opacity: 0;
+  opacity: 0.15;
   pointer-events: none;
 }
 .cv-board[data-walking] .cv-group[data-lit="false"] {
-  opacity: 0;
+  opacity: 0.35;
   pointer-events: none;
+}
+.cv-board[data-walking] .cv-card[data-lit="true"] {
+  z-index: 1;
+}
+.cv-world[data-gliding] {
+  transition: transform 320ms cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 /* A card a step brings back from elsewhere, shown beside the frame with where it's from. */
 .cv-card[data-from] {

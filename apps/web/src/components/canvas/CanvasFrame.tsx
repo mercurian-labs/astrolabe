@@ -11,7 +11,7 @@ import { useRightPanelStore } from "~/rightPanelStore";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { CanvasFramePopover } from "./CanvasFramePopover";
-import { CanvasStepBar, onStepKey } from "./CanvasStepBar";
+import { CanvasStoryPill, onStepKey } from "./CanvasStoryPill";
 import { KeepCanvasButton } from "./KeepCanvas";
 import { showThreadCanvas } from "./threadCanvasStore";
 import { useCanvasWalk } from "./useCanvasWalk";
@@ -112,8 +112,9 @@ export function CanvasFrame({
           )}
         </div>
       </figcaption>
+      {/* A story's note and controls float over the board, which keeps room to show it beside them. */}
       <div
-        className="max-h-[520px] min-h-40 w-full"
+        className={`max-h-[520px] w-full ${walk.steps.length === 0 ? "min-h-40" : "min-h-80"}`}
         style={{ aspectRatio: `${width} / ${height}` }}
       >
         <Suspense fallback={null}>
@@ -128,10 +129,11 @@ export function CanvasFrame({
             openFrame={walk.frame?.step ?? null}
             onFrame={walk.toggleFrame}
             ref={board}
-          />
+          >
+            {walk.steps.length === 0 ? null : <CanvasStoryPill walk={walk} />}
+          </LazyCanvasBoard>
         </Suspense>
       </div>
-      <CanvasStepBar walk={walk} />
       <CanvasFramePopover view={view} walk={walk} onCard={(id) => board.current?.focusCard(id)} />
     </figure>
   );

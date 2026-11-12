@@ -3,6 +3,7 @@ import type { CanvasBounds } from "@mercurian/wiki/canvas";
 import { cameraWindow, fitCamera, zoomAt, ZOOM_STEP, type CanvasCamera } from "./canvasGeometry";
 
 const WHEEL_ZOOM_SPEED = 0.01;
+const GLIDE_MS = 320;
 
 /** Told where the camera ended up, each time it draws. */
 export type CanvasPaint = (camera: CanvasCamera, width: number, height: number) => void;
@@ -16,6 +17,9 @@ export class CanvasView {
   #world: HTMLElement | null = null;
   #bounds: CanvasBounds = { x: 0, y: 0, width: 0, height: 0 };
   #padding = 0;
+  /** Screen pixels at the frame's foot that the host's controls cover. */
+  #inset = 0;
+  #glide: ReturnType<typeof setTimeout> | undefined;
   #camera: CanvasCamera = { x: 0, y: 0, zoom: 1 };
   /** Until the reader moves it, the board keeps fitting as its frame resizes. */
   #fitted = true;
@@ -45,6 +49,7 @@ export class CanvasView {
     return () => {
       observer.disconnect();
       if (this.#frame !== null) cancelAnimationFrame(this.#frame);
+      clearTimeout(this.#glide);
       this.#frame = null;
       this.#board = null;
       this.#world = null;
@@ -97,22 +102,40 @@ export class CanvasView {
     else this.#paint();
   }
 
-  fit() {
-    if (this.#board === null) return;
+  /** Keeps what fits clear of the controls laid over the frame's foot. */
+  setInset(inset: number, refit = true) {
+    if (inset === this.#inset) return;
+    this.#inset = inset;
+    if (refit && this.#fitted) this.fit();
+  }
+
+  /** `glide` eases the camera there, as a story moves from step to step. */
+  fit(glide = false) {
+    const board = this.#board;
+    const world = this.#world;
+    if (board === null) return;
     this.#camera = fitCamera(
       this.#bounds,
-      this.#board.clientWidth,
-      this.#board.clientHeight,
+      board.clientWidth,
+      Math.max(0, board.clientHeight - this.#inset),
       this.#padding,
     );
     this.#fitted = true;
+    if (glide && world !== null && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      world.dataset.gliding = "";
+      clearTimeout(this.#glide);
+      this.#glide = setTimeout(() => delete world.dataset.gliding, GLIDE_MS);
+    }
     this.#paint();
   }
 
   /** Shows `rect` whole, never closer than actual size. */
   focus(rect: CanvasBounds) {
     if (this.#board === null) return;
-    this.#move(fitCamera(rect, this.#board.clientWidth, this.#board.clientHeight, this.#padding));
+    const { clientWidth, clientHeight } = this.#board;
+    this.#move(
+      fitCamera(rect, clientWidth, Math.max(0, clientHeight - this.#inset), this.#padding),
+    );
   }
 
   /** `rect` in the middle of the frame at actual size, as Follow connection lands. */

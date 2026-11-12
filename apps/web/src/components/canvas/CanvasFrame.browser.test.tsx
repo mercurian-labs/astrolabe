@@ -104,7 +104,7 @@ describe("CanvasFrame", () => {
       expect.not.objectContaining({ step: expect.anything() }),
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "Walk through" }));
+    await userEvent.click(screen.getByRole("button", { name: "Present" }));
     await userEvent.click(screen.getByRole("button", { name: "Next step" }));
     await userEvent.click(screen.getByRole("button", { name: "Ask about step 2" }));
     expect(addCanvas).toHaveBeenLastCalledWith(
@@ -115,7 +115,7 @@ describe("CanvasFrame", () => {
     );
 
     // A step's frame opens its details: asking from there asks about that step, not the walk's.
-    await userEvent.click(screen.getByRole("button", { name: "Show the whole board" }));
+    await userEvent.click(screen.getByRole("button", { name: "Stop presenting" }));
     await userEvent.click(screen.getByRole("button", { name: "Step 1" }));
     await expect.element(screen.getByText("It starts here.").last()).toBeVisible();
     await userEvent.click(screen.getByRole("button", { name: "Ask about this step" }));

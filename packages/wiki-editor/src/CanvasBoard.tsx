@@ -1376,6 +1376,7 @@ export function CanvasBoard({
   step = null,
   openFrame = null,
   onFrame,
+  children,
   ref,
 }: {
   readonly data: CanvasData;
@@ -1407,9 +1408,12 @@ export function CanvasBoard({
   readonly openFrame?: number | null;
   /** Asked for a step's details, as its frame's number is clicked, beside that number. */
   readonly onFrame?: ((step: number, chip: HTMLElement) => void) | undefined;
+  /** The host's controls, floating over the board's foot; what fits stays clear of them. */
+  readonly children?: ReactNode;
   readonly ref?: Ref<CanvasBoardHandle>;
 }) {
   const boardRef = useRef<HTMLDivElement>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
   const worldRef = useRef<HTMLDivElement>(null);
   const overviewRef = useRef<HTMLCanvasElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -1773,12 +1777,30 @@ export function CanvasBoard({
   }, [view, reads, host, layout, marks, bounds, whole, steps, mode, onCamera, live]);
 
   const activeFrame = active === null ? null : `${story}:${step}`;
+  // A step's note grows the host's controls in the same commit that moves to it.
+  const overlayInset = useCallback(() => {
+    const board = boardRef.current;
+    const overlay = overlayRef.current;
+    return board === null || overlay === null ? 0 : board.clientHeight - overlay.offsetTop;
+  }, []);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a free board's camera is the reader's: only a change of step moves it, outside React
   useLayoutEffect(() => {
     if (mode !== "free" || live.walkedTo === activeFrame) return;
     live.update({ walkedTo: activeFrame });
-    view.fit();
-  }, [activeFrame, mode, view, live]);
+    view.setInset(overlayInset(), false);
+    view.fit(true);
+  }, [activeFrame, mode, view, live, overlayInset]);
+
+  const overlaid = children !== undefined && children !== null;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the host's controls are laid out by the browser and change size as a story is walked
+  useLayoutEffect(() => {
+    const measure = () => view.setInset(overlayInset());
+    measure();
+    if (!overlaid) return;
+    const observer = new ResizeObserver(measure);
+    for (const each of [overlayRef.current, boardRef.current]) if (each) observer.observe(each);
+    return () => observer.disconnect();
+  }, [view, overlaid, overlayInset]);
 
   // Changing a commit's cards catches the eye once; the marks are what stay. A board with no
   // revision never changes under its reader, and one being edited says which cards came from
@@ -2369,6 +2391,18 @@ export function CanvasBoard({
           )}
         </div>
       ) : null}
+      {children === undefined || children === null ? null : (
+        <div
+          ref={overlayRef}
+          className="cv-chrome cv-overlay"
+          // Its popups portal out, though their events still bubble here through React.
+          onPointerDown={(event) => event.stopPropagation()}
+          onDoubleClick={(event) => event.stopPropagation()}
+          onContextMenu={(event) => event.stopPropagation()}
+        >
+          {children}
+        </div>
+      )}
       {notice === null ? null : (
         <div className="cv-chrome cv-notice" role="status">
           <span>{notice}</span>
