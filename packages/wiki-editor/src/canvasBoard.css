@@ -1187,8 +1187,14 @@ textarea.cv-label-editor {
   padding: 4px;
   overflow: auto;
   background: var(--popover, var(--background));
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: 1px solid
+    color-mix(in srgb, var(--contrast-foreground, var(--foreground)) 10%, transparent);
+  /* The app's menus: `rounded-lg` popups of `rounded-sm` items, and their shadow. */
+  border-radius: var(--radius, 8px);
+  box-shadow: 0 16px 40px -18px rgb(0 0 0 / 55%);
+}
+:is(.dark, .dark *) .cv-menu {
+  box-shadow: 0 18px 44px -18px rgb(0 0 0 / 80%);
 }
 .cv-menu button {
   display: flex;
@@ -1201,7 +1207,7 @@ textarea.cv-label-editor {
   outline: none;
   background: none;
   border: 0;
-  border-radius: 4px;
+  border-radius: calc(var(--radius, 8px) - 4px);
 }
 .cv-menu button[data-destructive] {
   color: var(--destructive, #e5484d);

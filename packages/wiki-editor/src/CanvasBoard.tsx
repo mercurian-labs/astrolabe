@@ -250,6 +250,8 @@ export interface CanvasBoardHandle {
 }
 
 const FIT_PADDING = { fit: 8, free: 32 };
+/** Between a button and the menu it opens, as the app's menus keep. */
+const MENU_GAP = 6;
 const PAN_STEP = 60;
 /** More cards in view than this, and a pan would stall mounting them: they draw on one canvas. */
 const OVERVIEW_CARDS = 600;
@@ -2110,13 +2112,14 @@ export function CanvasBoard({
       return;
     }
     const frame = boardRef.current?.getBoundingClientRect();
-    const button = menuButtonRef.current?.getBoundingClientRect();
-    if (frame === undefined || button === undefined) return;
+    // The chip the button sits in, which is what the menu keeps its distance from.
+    const chip = menuButtonRef.current?.parentElement?.getBoundingClientRect();
+    if (frame === undefined || chip === undefined) return;
     setMenu({
       label: "Canvas menu",
       items: canvasMenu(),
-      x: button.right - frame.left,
-      y: button.bottom - frame.top + 4,
+      x: chip.right - frame.left,
+      y: chip.bottom - frame.top + MENU_GAP,
       alignEnd: true,
     });
   };

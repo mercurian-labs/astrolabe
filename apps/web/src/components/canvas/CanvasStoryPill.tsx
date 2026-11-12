@@ -19,6 +19,8 @@ import type { useCanvasWalk } from "./useCanvasWalk";
 
 const FORWARD = new Set(["ArrowRight", "PageDown"]);
 const BACK = new Set(["ArrowLeft", "PageUp"]);
+/** 6px clear of the pill, past the pill's own padding and border around the button. */
+const PILL_MENU_GAP = 11;
 /** Past this, a dot per step stops being something to aim at. */
 const MOST_DOTS = 12;
 
@@ -271,7 +273,7 @@ export function CanvasStoryPill({
                 >
                   <EllipsisIcon />
                 </MenuTrigger>
-                <MenuPopup align="end" side="top">
+                <MenuPopup align="end" side="top" sideOffset={PILL_MENU_GAP}>
                   <MenuItem onClick={() => setRenaming(true)}>Rename story</MenuItem>
                   <MenuItem onClick={() => edit({ kind: "remove-story", story })}>
                     Delete story
@@ -342,7 +344,7 @@ export function CanvasStoryPill({
                 >
                   <EllipsisIcon />
                 </MenuTrigger>
-                <MenuPopup align="end" side="top">
+                <MenuPopup align="end" side="top" sideOffset={PILL_MENU_GAP}>
                   <MenuItem
                     disabled={step === 0}
                     onClick={() => {
