@@ -8,7 +8,7 @@
 import * as Alchemy from "alchemy";
 import * as AWS from "@alchemy.run/aws";
 import * as Docker from "@alchemy.run/docker";
-import * as Test from "alchemy/Test/Vitest";
+import * as Test from "@alchemy.run/test/Vitest";
 import { PgClient } from "@effect/sql-pg";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";

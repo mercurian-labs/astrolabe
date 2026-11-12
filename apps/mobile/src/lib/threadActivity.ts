@@ -755,7 +755,7 @@ function toWorkLogEntry(
     case "file_change":
       return {
         ...common,
-        changedFiles: [item.fileName],
+        changedFiles: item.changes?.map((change) => change.path) ?? [item.fileName],
         toolTitle: title ?? "File change",
         toolData: item,
       };
@@ -1552,9 +1552,12 @@ export function deriveThreadFeedPresentation(
       (row) =>
         row.id === LIVE_ACTIVITY_ROW_ID ||
         (row.type === "activity-group" &&
-          isContextCompactionActivityGroup(row) &&
           row.runId === activeRunId &&
-          row.activities[0]?.projectedItem.item.status === "running"),
+          ((isContextCompactionActivityGroup(row) &&
+            row.activities[0]?.projectedItem.item.status === "running") ||
+            row.activities.some((activity) =>
+              isLiveSubagentTurnItem(activity.projectedItem.item),
+            ))),
     )
   ) {
     result.push(thinkingRow(activeWorkStartedAt, activeRunId));
@@ -1800,7 +1803,7 @@ function appendToolGroupRows(
             (activity.workEntry.detail?.trim() ?? "") !== "",
         )?.workEntry.detail
       : undefined;
-  const thought = latestThought ? liveThoughtLine(latestThought) : "";
+  const thought = latestThought ? compactWorkEntryText(liveThoughtLine(latestThought)) : "";
   const summary = live
     ? (expanded || thought) && latestActivity.workEntry.itemType === "reasoning"
       ? latestActivity.lifecycleStatus === "inProgress"
@@ -1898,9 +1901,8 @@ function appendToolGroupRows(
 function liveToolActivitySummary(activity: ThreadFeedActivity, presentTense: boolean): string {
   const status = liveActivityToolStatus(activity.lifecycleStatus, presentTense);
   if (activity.workEntry.itemType === "reasoning") {
-    return (
-      activity.workEntry.detail?.trim().replace(/\s+/g, " ") ||
-      (status === "inProgress" ? "Thinking" : "Thought")
+    return compactWorkEntryText(
+      activity.workEntry.detail?.trim() || (status === "inProgress" ? "Thinking" : "Thought"),
     );
   }
   const presentation = resolveWorkEntryToolPresentation({
@@ -1923,7 +1925,7 @@ function liveToolActivitySummary(activity: ThreadFeedActivity, presentTense: boo
               : "Ran";
     return `${verb} ${program ?? "command"}`;
   }
-  return activity.detail ?? activity.summary;
+  return compactWorkEntryText(activity.detail ?? activity.summary);
 }
 
 interface ThreadFeedBuild {

@@ -1,25 +1,44 @@
-// A language server for tests, configured by `fake-server.json` in its working directory:
-// `crashTimes` exits at `initialize` on that many starts (counted in `starts.log`), `waitFor`
-// answers `initialize` once that file exists, `watch` registers those file watchers (a base uri
-// of "." is its working directory). Every "bad" is an error diagnostic.
+// A language server for tests, configured by `fake-server.json`. `pushes` publishes instead of
+// answering pulls, nothing at first and the real ones `pushes.after` ms later; `quiescentOn` answers
+// pulls with nothing until that file exists; `unchanged` answers every pull so; `quietUnchanged`
+// publishes only what differs; `chatter` writes that many stderr lines. Every "bad" is an error.
 import * as NodeFS from "node:fs";
 import * as NodeURL from "node:url";
 
-const config = NodeFS.existsSync("fake-server.json")
+// One server of several on a file: `roles[name]` overrides the config, and `word` (what it
+// reports), `source`, `without` (capabilities it lacks), `hoverNull`, `completions`, `replacement`,
+// `formatInsert` and `slow` (methods answered only when cancelled) tell it from the others.
+const role = process.argv.find((arg) => arg.startsWith("--role="))?.slice("--role=".length);
+const shared = NodeFS.existsSync("fake-server.json")
   ? JSON.parse(NodeFS.readFileSync("fake-server.json", "utf8"))
   : {};
-NodeFS.appendFileSync("starts.log", "start\n");
-const starts = NodeFS.readFileSync("starts.log", "utf8").trim().split("\n").length;
+const config = role === undefined ? shared : { ...shared, ...shared.roles?.[role] };
+const startsLog = role === undefined ? "starts.log" : `starts-${role}.log`;
+NodeFS.appendFileSync(startsLog, "start\n");
+const starts = NodeFS.readFileSync(startsLog, "utf8").trim().split("\n").length;
+const word = config.word ?? "bad";
+const lastSaid = new Map();
 
 const docs = new Map();
 const received = [];
+let initializationOptions;
 const slow = new Map();
 // The server's own requests to the client, by id: what to do with each answer.
 const asked = new Map();
+const notified = [];
 let askedCount = 0;
 // Each `workspace/didChangeWatchedFiles`'s changes, and `test/watched` requests waiting for more.
 const watched = [];
 const watchedWaiting = [];
+// Each `textDocument/didSave`'s uri, and `test/saved` requests waiting for more.
+const saved = [];
+const savedWaiting = [];
+const answerSaved = () => {
+  for (const waiting of savedWaiting.filter(({ count }) => saved.length >= count)) {
+    savedWaiting.splice(savedWaiting.indexOf(waiting), 1);
+    write({ id: waiting.id, result: saved });
+  }
+};
 const answerWatched = () => {
   for (const waiting of watchedWaiting.filter(({ count }) => watched.length >= count)) {
     watchedWaiting.splice(watchedWaiting.indexOf(waiting), 1);
@@ -59,36 +78,98 @@ const occurrences = (text, word) => {
   return found;
 };
 
+const diagnosticsOf = (text) =>
+  occurrences(text, word).map((offset) => ({
+    range: rangeOf(text, offset, offset + word.length),
+    severity: 1,
+    message: `${word} is not allowed`,
+    code: 7,
+    ...(config.source === null ? {} : { source: config.source ?? "fake" }),
+  }));
+
+const publish = (uri, version, diagnostics) =>
+  write({ method: "textDocument/publishDiagnostics", params: { uri, version, diagnostics } });
+
+const pushDiagnostics = (uri, version) => {
+  if (!config.quietUnchanged) publish(uri, version, []);
+  setTimeout(() => {
+    const diagnostics = diagnosticsOf(docs.get(uri).text);
+    const said = JSON.stringify(diagnostics);
+    if (config.quietUnchanged && said === (lastSaid.get(uri) ?? "[]")) return;
+    lastSaid.set(uri, said);
+    publish(uri, version, diagnostics);
+  }, config.pushes.after);
+};
+
+if (config.quiescentOn) {
+  const watcher = NodeFS.watch(".", () => {
+    if (!NodeFS.existsSync(config.quiescentOn)) return;
+    watcher.close();
+    write({ method: "experimental/serverStatus", params: { health: "ok", quiescent: true } });
+  });
+}
+
 const handle = (message) => {
   received.push(message.method ?? `response:${message.id}`);
   const { id, method, params } = message;
   const reply = (result) => write({ id, result });
   if (method === undefined && asked.has(id)) {
-    asked.get(id)(message.result);
+    asked.get(id)(message.result, message.error);
     asked.delete(id);
+    return;
+  }
+  if (config.slow?.includes(method)) {
+    slow.set(id, true);
     return;
   }
   switch (method) {
     case "initialize": {
+      initializationOptions = params.initializationOptions;
       if (starts <= (config.crashTimes ?? 0)) {
         process.stderr.write("boom\n", () => process.exit(1));
         return;
       }
+      for (let line = 1; line <= (config.chatter ?? 0); line++) {
+        process.stderr.write(`chatter ${line}\n`);
+      }
+      write({ method: "window/logMessage", params: { type: 3, message: "fake is starting" } });
+      write({ method: "window/showMessage", params: { type: 2, message: "fake wants a look" } });
       const answer = () => {
-        reply({
-          capabilities: {
-            textDocumentSync: 2,
-            diagnosticProvider: { interFileDependencies: false, workspaceDiagnostics: false },
-            hoverProvider: true,
-            renameProvider: true,
-            definitionProvider: true,
-            documentFormattingProvider: true,
-            codeActionProvider: { resolveProvider: true },
-            executeCommandProvider: { commands: ["fake.removeLine"] },
-            referencesProvider: true,
-            completionProvider: { resolveProvider: true, triggerCharacters: ["."] },
+        const capabilities = {
+          textDocumentSync: config.fullSync
+            ? 1
+            : config.save
+              ? { openClose: true, change: 2, save: true }
+              : 2,
+          ...(config.pushes
+            ? {}
+            : {
+                diagnosticProvider: { interFileDependencies: false, workspaceDiagnostics: false },
+              }),
+          hoverProvider: true,
+          renameProvider: true,
+          definitionProvider: true,
+          documentFormattingProvider: true,
+          codeActionProvider: { resolveProvider: true },
+          executeCommandProvider: { commands: ["fake.removeLine"] },
+          referencesProvider: true,
+          inlayHintProvider: true,
+          documentHighlightProvider: true,
+          linkedEditingRangeProvider: true,
+          callHierarchyProvider: true,
+          codeLensProvider: { resolveProvider: true },
+          workspaceSymbolProvider: true,
+          semanticTokensProvider: {
+            legend: { tokenTypes: ["variable"], tokenModifiers: [] },
+            full: { delta: true },
           },
-        });
+          completionProvider: {
+            resolveProvider: true,
+            triggerCharacters: config.triggerCharacters ?? ["."],
+          },
+        };
+        for (const capability of config.without ?? []) delete capabilities[capability];
+        reply({ serverInfo: { name: "fake", version: "9.9.9" }, capabilities });
       };
       if (config.waitFor && !NodeFS.existsSync(config.waitFor)) {
         let answered = false;
@@ -135,6 +216,22 @@ const handle = (message) => {
       // Answers once `count` notifications have come, with all of them.
       watchedWaiting.push({ id, count: params.count });
       return answerWatched();
+    case "textDocument/didSave":
+      saved.push(params.textDocument.uri);
+      return answerSaved();
+    case "test/push":
+      publish(params.uri, params.version, params.diagnostics);
+      return reply(null);
+    case "test/saved":
+      savedWaiting.push({ id, count: params.count });
+      return answerSaved();
+    case "test/configuration": {
+      // Asks the client for these sections, and answers with what it said.
+      const askId = `fake-${++askedCount}`;
+      asked.set(askId, (result) => reply(result));
+      write({ id: askId, method: "workspace/configuration", params: { items: params.items } });
+      return;
+    }
     case "shutdown":
       return reply(null);
     case "exit":
@@ -143,11 +240,18 @@ const handle = (message) => {
       docs.set(params.textDocument.uri, {
         version: params.textDocument.version,
         text: params.textDocument.text,
+        languageId: params.textDocument.languageId,
       });
+      if (config.pushes) pushDiagnostics(params.textDocument.uri, params.textDocument.version);
       return;
     case "textDocument/didChange": {
       const doc = docs.get(params.textDocument.uri);
       for (const change of params.contentChanges) {
+        if (config.fullSync) {
+          if (change.range) throw new Error("This server takes whole texts.");
+          doc.text = change.text;
+          continue;
+        }
         const from = offsetOf(doc.text, change.range.start);
         const to = offsetOf(doc.text, change.range.end);
         doc.text = doc.text.slice(0, from) + change.text + doc.text.slice(to);
@@ -159,43 +263,42 @@ const handle = (message) => {
       docs.delete(params.textDocument.uri);
       return;
     case "textDocument/diagnostic": {
+      if (config.unchanged) return reply({ kind: "unchanged", resultId: "same" });
       const { text } = docs.get(params.textDocument.uri);
-      return reply({
-        kind: "full",
-        items: occurrences(text, "bad").map((offset) => ({
-          range: rangeOf(text, offset, offset + 3),
-          severity: 1,
-          message: "bad is not allowed",
-          code: 7,
-          source: "fake",
-        })),
-      });
+      const loading = config.quiescentOn && !NodeFS.existsSync(config.quiescentOn);
+      return reply({ kind: "full", items: loading ? [] : diagnosticsOf(text) });
     }
     case "textDocument/hover": {
+      if (config.hoverNull) return reply(null);
       const { text } = docs.get(params.textDocument.uri);
-      const { from, to, word } = wordAt(text, offsetOf(text, params.position));
+      const hovered = wordAt(text, offsetOf(text, params.position));
       // A word named `huge` answers with more than a hover may carry.
-      const contents = word === "huge" ? `\`\`\`ts\n${"x".repeat(200_000)}\n\`\`\`` : word;
-      return reply({ contents, range: rangeOf(text, from, to) });
+      const contents =
+        hovered.word === "huge"
+          ? `\`\`\`ts\n${"x".repeat(200_000)}\n\`\`\``
+          : role === undefined
+            ? hovered.word
+            : `${role}: ${hovered.word}`;
+      return reply({ contents, range: rangeOf(text, hovered.from, hovered.to) });
     }
     case "textDocument/definition":
     case "textDocument/references": {
       // A word's definition is its first use; `elsewhere` in the config places one in another
       // file, given as a path in the checkout and the 0-based line and character there.
       const { text } = docs.get(params.textDocument.uri);
-      const { word } = wordAt(text, offsetOf(text, params.position));
-      const found = occurrences(text, word).map((offset) => ({
+      const target = wordAt(text, offsetOf(text, params.position)).word;
+      const found = occurrences(text, target).map((offset) => ({
         uri: params.textDocument.uri,
-        range: rangeOf(text, offset, offset + word.length),
+        range: rangeOf(text, offset, offset + target.length),
       }));
-      const elsewhere = config.elsewhere?.[word];
+      const elsewhere = config.elsewhere?.[target];
       const outside = elsewhere
         ? [
             {
               uri: new URL(elsewhere.path, `file://${process.cwd()}/`).href,
               range: {
                 start: { line: elsewhere.line, character: elsewhere.character },
-                end: { line: elsewhere.line, character: elsewhere.character + word.length },
+                end: { line: elsewhere.line, character: elsewhere.character + target.length },
               },
             },
           ]
@@ -203,12 +306,169 @@ const handle = (message) => {
       if (method === "textDocument/references") return reply([...found, ...outside]);
       return reply(outside.length > 0 ? outside : found.slice(0, 1));
     }
+    case "textDocument/inlayHint": {
+      // After each `point`, a type its click writes.
+      const { text } = docs.get(params.textDocument.uri);
+      const from = offsetOf(text, params.range.start);
+      const to = offsetOf(text, params.range.end);
+      return reply(
+        occurrences(text, "point")
+          .map((offset) => offset + "point".length)
+          .filter((offset) => from <= offset && offset <= to)
+          .map((offset) => ({
+            position: positionOf(text, offset),
+            label: ": Point",
+            kind: 1,
+            textEdits: [{ range: rangeOf(text, offset, offset), newText: ": Point" }],
+          })),
+      );
+    }
+    case "textDocument/documentHighlight": {
+      // The word's first use is its write.
+      const { text } = docs.get(params.textDocument.uri);
+      const target = wordAt(text, offsetOf(text, params.position)).word;
+      return reply(
+        occurrences(text, target).map((offset, index) => ({
+          range: rangeOf(text, offset, offset + target.length),
+          kind: index === 0 ? 3 : 2,
+        })),
+      );
+    }
+    case "textDocument/linkedEditingRange": {
+      const { text } = docs.get(params.textDocument.uri);
+      const target = wordAt(text, offsetOf(text, params.position)).word;
+      return reply({
+        ranges: occurrences(text, target).map((offset) =>
+          rangeOf(text, offset, offset + target.length),
+        ),
+      });
+    }
+    case "textDocument/semanticTokens/full": {
+      // Each `point`, as a variable.
+      const { text } = docs.get(params.textDocument.uri);
+      let line = 0;
+      let character = 0;
+      const data = occurrences(text, "point").flatMap((offset) => {
+        const at = positionOf(text, offset);
+        const token = [
+          at.line - line,
+          at.line === line ? at.character - character : at.character,
+          "point".length,
+          0,
+          0,
+        ];
+        line = at.line;
+        character = at.character;
+        return token;
+      });
+      return reply({ resultId: "1", data });
+    }
+    case "textDocument/prepareCallHierarchy": {
+      const { text } = docs.get(params.textDocument.uri);
+      const found = wordAt(text, offsetOf(text, params.position));
+      const range = rangeOf(text, found.from, found.to);
+      return reply([
+        {
+          name: found.word,
+          kind: 12,
+          uri: params.textDocument.uri,
+          range,
+          selectionRange: range,
+          data: { server: role ?? "primary" },
+        },
+      ]);
+    }
+    case "callHierarchy/incomingCalls": {
+      // Every use of the word is a call; the item must come back as it went out.
+      const { uri, name, data } = params.item;
+      const { text } = docs.get(uri);
+      const range = rangeOf(text, 0, 0);
+      return reply([
+        {
+          from: { name: data.server, kind: 2, uri, range, selectionRange: range },
+          fromRanges: occurrences(text, name).map((offset) =>
+            rangeOf(text, offset, offset + name.length),
+          ),
+        },
+      ]);
+    }
+    case "callHierarchy/outgoingCalls": {
+      const { uri, data } = params.item;
+      const { text } = docs.get(uri);
+      const range = rangeOf(text, 0, data.server.length);
+      return reply([
+        {
+          to: { name: data.server, kind: 12, uri, range, selectionRange: range },
+          fromRanges: [range],
+        },
+      ]);
+    }
+    case "textDocument/codeLens": {
+      // Over each `point`; resolving one gives it the command that removes its line.
+      const { text } = docs.get(params.textDocument.uri);
+      return reply(
+        occurrences(text, "point").map((offset) => ({
+          range: rangeOf(text, offset, offset + "point".length),
+          data: { uri: params.textDocument.uri },
+        })),
+      );
+    }
+    case "experimental/runnables": {
+      // One per `point`, shaped as rust-analyzer answers.
+      const { text } = docs.get(params.textDocument.uri);
+      return reply(
+        occurrences(text, "point").map((offset) => {
+          const range = rangeOf(text, offset, offset + "point".length);
+          return {
+            label: "test point",
+            kind: "cargo",
+            location: {
+              targetUri: params.textDocument.uri,
+              targetRange: range,
+              targetSelectionRange: range,
+            },
+            args: { cargoArgs: ["test"], executableArgs: [] },
+          };
+        }),
+      );
+    }
+    case "codeLens/resolve":
+      return reply({
+        ...params,
+        command: {
+          title: "Remove the line",
+          command: "fake.removeLine",
+          arguments: [params.data.uri, params.range.start.line],
+        },
+      });
+    case "workspace/symbol":
+      // `symbols` lists the names it knows, each in `src/<name>.ts` at line 3.
+      return reply(
+        (config.symbols ?? [])
+          .filter((name) => name.includes(params.query))
+          .map((name) => ({
+            name,
+            kind: 12,
+            containerName: role ?? "primary",
+            location: {
+              uri: new URL(`src/${name}.ts`, `file://${process.cwd()}/`).href,
+              range: rangeOf("\n\n  x", 4, 5),
+            },
+          })),
+      );
+    case "test/refresh": {
+      const askId = `fake-${++askedCount}`;
+      asked.set(askId, () => {});
+      reply(null);
+      write({ id: askId, method: params.method });
+      return;
+    }
     case "textDocument/formatting": {
       // Formatting puts one space after each comma; `formatDelay` (ms) makes it slow.
       const { text } = docs.get(params.textDocument.uri);
       const edits = [...text.matchAll(/,(?! )/g)].map((match) => ({
         range: rangeOf(text, match.index + 1, match.index + 1),
-        newText: " ",
+        newText: config.formatInsert ?? " ",
       }));
       if (config.formatDelay) setTimeout(() => reply(edits), config.formatDelay);
       else reply(edits);
@@ -217,11 +477,11 @@ const handle = (message) => {
     case "textDocument/codeAction": {
       // Each "bad" diagnostic offers a fix that needs resolving, and a command that edits.
       const actions = (params.context?.diagnostics ?? []).flatMap((diagnostic) =>
-        diagnostic.message !== "bad is not allowed"
+        diagnostic.message !== `${word} is not allowed`
           ? []
           : [
               {
-                title: "Replace bad with good",
+                title: `Replace ${word} with ${config.replacement ?? "good"}`,
                 kind: "quickfix",
                 isPreferred: true,
                 data: { uri: params.textDocument.uri, range: diagnostic.range },
@@ -238,7 +498,13 @@ const handle = (message) => {
     case "codeAction/resolve":
       return reply({
         ...params,
-        edit: { changes: { [params.data.uri]: [{ range: params.data.range, newText: "good" }] } },
+        edit: {
+          changes: {
+            [params.data.uri]: [
+              { range: params.data.range, newText: config.replacement ?? "good" },
+            ],
+          },
+        },
       });
     case "workspace/executeCommand": {
       const [uri, line] = params.arguments;
@@ -264,10 +530,10 @@ const handle = (message) => {
     }
     case "textDocument/rename": {
       const { text } = docs.get(params.textDocument.uri);
-      const { word } = wordAt(text, offsetOf(text, params.position));
+      const target = wordAt(text, offsetOf(text, params.position)).word;
       const editsIn = (fileText) =>
-        occurrences(fileText, word).map((offset) => ({
-          range: rangeOf(fileText, offset, offset + word.length),
+        occurrences(fileText, target).map((offset) => ({
+          range: rangeOf(fileText, offset, offset + target.length),
           newText: params.newName,
         }));
       const changes = { [params.textDocument.uri]: editsIn(text) };
@@ -280,18 +546,20 @@ const handle = (message) => {
     }
     case "textDocument/completion":
       return reply({
-        isIncomplete: false,
-        items: Array.from({ length: 500 }, (_, index) => ({
-          label: `item${index}`,
-          sortText: String(index).padStart(4, "0"),
-          documentation: "x".repeat(100),
-        })),
+        isIncomplete: config.incomplete === true,
+        items:
+          config.completions?.map((label) => ({ label })) ??
+          Array.from({ length: 500 }, (_, index) => ({
+            label: `item${index}`,
+            sortText: String(index).padStart(4, "0"),
+            documentation: "x".repeat(100),
+          })),
       });
     case "completionItem/resolve":
       // An auto-import: the edit lands at the top of the file the completion list was for.
       return reply({
         ...params,
-        documentation: `About ${params.label}`,
+        documentation: `About ${params.label}${role === undefined ? "" : ` from ${role}`}`,
         additionalTextEdits: [
           {
             range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
@@ -307,14 +575,26 @@ const handle = (message) => {
         write({ id: params.id, error: { code: -32800, message: "Cancelled by the server" } });
       }
       return;
+    case "test/ask": {
+      const askId = `fake-${++askedCount}`;
+      asked.set(askId, (result, error) => reply({ result, error }));
+      write({ id: askId, method: params.method, params: params.params });
+      return;
+    }
     case "test/state":
       return reply({
         docs: Object.fromEntries(docs),
         received,
+        notified,
+        initializationOptions,
+        args: process.argv.slice(2),
+        env: process.env.FAKE_SETTING,
       });
     default:
       if (id !== undefined && method !== undefined) {
         write({ id, error: { code: -32601, message: "Not supported" } });
+      } else if (method !== undefined) {
+        notified.push(method);
       }
   }
 };

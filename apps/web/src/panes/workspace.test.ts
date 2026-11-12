@@ -11,7 +11,9 @@ import {
 import { chatSurfaceKey, chatTabKey } from "../sectionTabs/sectionTabs";
 import type { ChatRoute } from "../chatTabs/chatTabLabel";
 import { agentsRoute } from "./agentsRoute";
-import { activateTab, focusPane, newTab, splitTab, surfaceKey } from "./arrangement";
+import { repositoryFileReveal } from "../components/repositories/repositoryFileReveal";
+import { activateTab, focusedPane, focusPane, newTab, splitTab, surfaceKey } from "./arrangement";
+import { recordJump, trackJumpCursor } from "./jumpHistory";
 import type { StorageLike } from "./persistence";
 import { leaves } from "./tree";
 import { linkTab } from "./linkedTabs";
@@ -770,5 +772,28 @@ describe("results tabs", () => {
     workspace.open(problems);
     workspace.step("back");
     expect(panes(workspace)).toEqual([[problems, file("a.ts"), file("c.ts")]]);
+  });
+
+  it("step back through a jump to its line first, then through the tab's own history", () => {
+    const workspace = createWorkspace(() => memoryStorage());
+    const from = file("jump-from.ts");
+    const landed = file("jump-landed.ts");
+    workspace.show(file("before.ts"));
+    workspace.show(from);
+    using _cursor = { [Symbol.dispose]: trackJumpCursor(from, () => ({ line: 7, column: 3 })) };
+    recordJump(from, landed);
+    workspace.open(landed);
+    expect(workspace.canStep("back", landed)).toBe(true);
+
+    workspace.step("back");
+    expect(focusedPane(workspace.arrangement()).active).toBe(from);
+    expect(repositoryFileReveal.get()).toMatchObject({ tabKey: from, line: 7, column: 3 });
+
+    workspace.step("forward");
+    expect(focusedPane(workspace.arrangement()).active).toBe(landed);
+
+    workspace.step("back");
+    workspace.step("back");
+    expect(focusedPane(workspace.arrangement()).active).toBe(file("before.ts"));
   });
 });

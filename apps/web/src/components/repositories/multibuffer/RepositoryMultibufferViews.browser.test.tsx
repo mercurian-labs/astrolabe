@@ -12,7 +12,7 @@ import {
   type DocumentTarget,
 } from "@t3tools/contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { userEvent } from "vite-plus/test/browser";
+import { page, userEvent } from "vite-plus/test/browser";
 
 import { render } from "../../../../test/render";
 
@@ -140,6 +140,7 @@ import { RepositoryFileView } from "../RepositoryFileView";
 import { workspace } from "~/panes/workspace";
 import { repositoryTabKey } from "../repositoryTabs";
 import { rememberLocationList } from "./openMultibuffer";
+import { undoableEdit } from "../renameUndo";
 import { RepositoryLocationsView } from "./RepositoryMultibufferViews";
 
 const checkout = {
@@ -227,5 +228,32 @@ describe("RepositoryLocationsView", () => {
         path: "a.ts",
       }),
     );
+  });
+
+  it("takes a rename back from its one Undo, and says what it left", async () => {
+    setup({ "a.ts": lines(40, "alpha") });
+    const undo = vi.fn(() => Promise.resolve({ files: ["a.ts"], skipped: ["b.ts", "c.ts"] }));
+    const id = rememberLocationList({
+      title: "Renamed old to new",
+      locations: [{ path: "a.ts", line: 5, column: 0, endLine: 5, endColumn: 5 }],
+      edit: {
+        edits: 300,
+        files: 12,
+        undoLabel: "Undo rename",
+        undo: undoableEdit("Undo rename of old to new", undo),
+      },
+    });
+    await using screen = await render(
+      <div style={{ height: 600, display: "flex" }}>
+        <RepositoryLocationsView tabKey="results" tab={{ kind: "locations", ...checkout, id }} />
+      </div>,
+    );
+    await expect
+      .element(screen.getByText("300 places in 12 files, the first 1 shown", { exact: false }))
+      .toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Undo rename" }));
+    await userEvent.hover(screen.getByText("Undone, except 2 files changed since"));
+    await expect.element(page.getByText("c.ts")).toBeVisible();
+    expect(undo).toHaveBeenCalledOnce();
   });
 });

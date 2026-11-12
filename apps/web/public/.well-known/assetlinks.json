@@ -1,0 +1,26 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.mercurian.astrolabe",
+      "sha256_cert_fingerprints": []
+    }
+  },
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.mercurian.astrolabe.preview",
+      "sha256_cert_fingerprints": []
+    }
+  },
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.mercurian.astrolabe.dev",
+      "sha256_cert_fingerprints": []
+    }
+  }
+]

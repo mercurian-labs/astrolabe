@@ -68,10 +68,11 @@ export function classifyReachability(
   const restart = "Restart Astrolabe. If it stays, run `astrolabe connect` again.";
 
   if (!facts.managedTunnelConfigured) {
+    // A running server reads the link `astrolabe connect` stores only at startup.
     return fail(
       "not_linked",
       "The server has not set up a remote access tunnel.",
-      "Run `astrolabe connect`, then restart the server (`astrolabe service restart`) so it applies the link.",
+      "Run `astrolabe connect`, then restart Astrolabe so it applies the link.",
     );
   }
   if (connector === null) {

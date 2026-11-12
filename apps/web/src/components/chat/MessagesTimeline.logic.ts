@@ -1997,6 +1997,12 @@ export function deriveMessagesTimelineRows(input: {
     }
 
     if (timelineEntry.kind === "event") {
+      if (
+        index >= activeTurnHeaderIndex &&
+        isLiveSubagentTurnItem(timelineEntry.projectedItem.item)
+      ) {
+        hasActivityRow = true;
+      }
       const previous = nextRows.at(-1);
       if (
         timelineEntry.projectedItem.item.type === "subagent" &&

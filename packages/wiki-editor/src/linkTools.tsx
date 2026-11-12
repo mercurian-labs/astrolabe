@@ -183,7 +183,24 @@ const previewTheme = EditorView.baseTheme({
     fontSize: "0.875rem",
     lineHeight: "1.4",
   },
-  ".cm-wiki-link-preview-name": { fontWeight: "600" },
+  ".cm-wiki-link-preview-head": { display: "flex", alignItems: "center", gap: "8px" },
+  ".cm-wiki-link-preview-name": { flex: "1", minWidth: "0", fontWeight: "600" },
+  ".cm-wiki-link-preview-open": {
+    flexShrink: "0",
+    padding: "2px 8px",
+    border: "1px solid var(--atlas-md-border-color)",
+    borderRadius: "6px",
+    background: "transparent",
+    color: "inherit",
+    font: "inherit",
+    fontSize: "0.8125rem",
+    cursor: "pointer",
+  },
+  ".cm-wiki-link-preview-open:hover": { backgroundColor: "var(--atlas-md-menu-hover-bg)" },
+  ".cm-wiki-link-preview-open:focus-visible": {
+    outline: "2px solid var(--atlas-md-focus-ring)",
+    outlineOffset: "1px",
+  },
   ".cm-wiki-link-preview-types": { display: "flex", flexWrap: "wrap", gap: "4px" },
   ".cm-wiki-link-preview-type": {
     padding: "0 6px",
@@ -267,6 +284,10 @@ export function wikiLinkTools(host: WikiLinkToolsHost): Extension {
       touchstart(event, view) {
         release();
         opened = false;
+        // A touch inside the preview is on its Open button; closing here would drop that tap.
+        if (event.target instanceof Element && event.target.closest(".cm-wiki-link-preview")) {
+          return false;
+        }
         if (view.state.field(pressed)) view.dispatch({ effects: openPress.of(null) });
         if (event.touches.length !== 1 || view.state.facet(EditorView.editable)) return false;
         const { clientX: x, clientY: y } = event.touches[0] ?? { clientX: 0, clientY: 0 };
@@ -337,11 +358,15 @@ export function useWikiLinkTools(
   };
 }
 
-/** A link's preview: its note's name and text, and what this note says the link means. */
+/**
+ * A link's preview: its note's name and text, what this note says the link means, and a way to
+ * follow it.
+ */
 export function WikiLinkPreview({
   link,
   source,
   resolved,
+  onOpen,
 }: {
   readonly link: WikiLinkPeek;
   /** The note's text; null when it isn't written, undefined while it loads. */
@@ -350,12 +375,25 @@ export function WikiLinkPreview({
   readonly resolved?:
     | { readonly file: string | null; readonly others: ReadonlyArray<string> }
     | undefined;
+  readonly onOpen?: (() => void) | undefined;
 }) {
   const excerpt = typeof source === "string" ? noteExcerpt(source) : "";
   const ambiguous = resolved === undefined ? undefined : ambiguousLink(resolved);
   return (
     <div className="cm-wiki-link-preview">
-      <div className="cm-wiki-link-preview-name">{link.name}</div>
+      <div className="cm-wiki-link-preview-head">
+        <div className="cm-wiki-link-preview-name">{link.name}</div>
+        {onOpen === undefined ? null : (
+          <button
+            type="button"
+            className="cm-wiki-link-preview-open"
+            aria-label={`Open ${link.name}`}
+            onClick={onOpen}
+          >
+            Open
+          </button>
+        )}
+      </div>
       {link.types.length > 0 ? (
         <div className="cm-wiki-link-preview-types">
           {link.types.map((type) => (

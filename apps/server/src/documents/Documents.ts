@@ -28,7 +28,7 @@ import {
 } from "@t3tools/shared/textReplace";
 import * as KeyedLock from "@t3tools/shared/KeyedLock";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -193,7 +193,7 @@ const strandedEdits = (document: LoadedDocument) =>
 const make = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
   const workspacePaths = yield* WorkspacePaths.WorkspacePaths;
   const knownWorkspaces = yield* KnownWorkspaces.KnownWorkspaces;
   const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
@@ -448,7 +448,7 @@ const make = Effect.gen(function* () {
     const doc = Text.of(text.split("\n"));
     const document: LoadedDocument = {
       target,
-      loadId: yield* crypto.randomUUIDv4().pipe(Effect.orDie),
+      loadId: yield* random.uuidV4(),
       scope: yield* Scope.fork(serviceScope),
       events: yield* PubSub.unbounded<DocumentStreamItem>(),
       updates: [],
@@ -717,7 +717,7 @@ const make = Effect.gen(function* () {
         replacements += result.count;
       }
       if (files.length === 0) return { files: 0, replacements, failed };
-      const id = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
+      const id = yield* random.uuidV4();
       const record: ReplaceAllRecord = { id, clientId: input.clientId, files };
       replaceAlls.set(id, record);
       yield* Effect.sleep(REPLACE_ALL_UNDO_TIMEOUT).pipe(

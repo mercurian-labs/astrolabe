@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import {
@@ -186,7 +187,7 @@ const makeLayers = (baseDir: string, bare: string, clone: string, host: FakeHost
     Layer.provideMerge(SqlitePersistence.layerMemory),
     Layer.provideMerge(ServerSettings.layerTest()),
     Layer.provideMerge(ServerConfig.layerTest(baseDir, baseDir)),
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
   );
 };
 
@@ -274,7 +275,7 @@ const withFixture = <A, E>(
       }
       return yield* body({ root, bare, clone, host, wikiId, wikis, hosts, commitOnHost, write });
     }).pipe(Effect.provide(makeLayers(baseDir, bare, clone, host)));
-  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer));
+  }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)));
 
 const amendment = (fixture: Fixture, file: string, thread = "thread-a") =>
   fixture.wikis

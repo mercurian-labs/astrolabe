@@ -2,14 +2,14 @@
 
 Astrolabe is an agent development environment. Run Claude Code, Codex and the rest side by side, hand work from one agent to the next, and ship what you and your agents build as one change, code and docs together.
 
-It works with the subscriptions you already have for Claude Code, Codex, Cursor, Grok Build, OpenCode and Google Antigravity. If they're set up on your computer, Astrolabe can run them. Your prompts and code go from your computer to those providers, never through us.
+It works with the subscriptions you already have for Claude Code, Codex, Cursor, Grok Build, OpenCode, Google Antigravity and fx. If they're set up on your computer, Astrolabe can run them. Your prompts and code go from your computer to those providers, never through us.
 
 Astrolabe is made by [Mercurian, Inc.](https://mercurian.ai) and is built on [T3 Code](https://github.com/pingdotgg/t3code). Learn more at [astrolabe.sh](https://astrolabe.sh).
 
 ## Installation
 
 > [!WARNING]
-> Astrolabe currently supports Codex, Claude, Cursor, Grok Build, OpenCode, and Antigravity. Install and authenticate at least one provider before use:
+> Astrolabe currently supports Codex, Claude, Cursor, Grok Build, OpenCode, Antigravity, and fx. Install and authenticate at least one provider before use:
 >
 > - Codex: install [Codex CLI](https://developers.openai.com/codex/cli) and run `codex login`
 > - Claude: install [Claude Code](https://claude.com/product/claude-code) and run `claude auth login`
@@ -17,6 +17,7 @@ Astrolabe is made by [Mercurian, Inc.](https://mercurian.ai) and is built on [T3
 > - Grok Build: install [Grok Build CLI](https://x.ai/cli) and run `grok login`
 > - OpenCode: install [OpenCode](https://opencode.ai) and run `opencode auth login`
 > - Antigravity: enable it in Settings, then use **Install Antigravity** and **Sign in with Google**. No CLI is required.
+> - fx: install [fx](https://fx.sh) and run `fx login` on the machine running the T3 Code server ([setup guide](./docs/user/providers-fx.md))
 
 ### Command line
 

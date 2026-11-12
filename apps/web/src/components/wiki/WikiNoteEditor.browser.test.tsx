@@ -50,17 +50,22 @@ describe("WikiNoteEditor", () => {
     buffer.release();
   });
 
-  it("reads a type where it's written, and hovering a link previews it with all its types", async () => {
+  it("reads a type where it's written, and hovering a link previews it with all its types and opens it", async () => {
     const buffer = new WikiNoteBuffer();
     buffer.receive("Uses [[Auth|the login @depends_on]] and [[Auth#Top|@blocks]].\n");
+    const onOpenNote = vi.fn();
     await using screen = await render(
       <WikiNoteEditor
         session={buffer.getSnapshot().session!}
         readOnly
-        onOpenNote={vi.fn()}
+        onOpenNote={onOpenNote}
         linkTypes={[]}
         renderLinkPreview={(link) => (
-          <WikiLinkPreview link={link} source={"# Auth\n\nSign in with [[Passkeys|a @key]]."} />
+          <WikiLinkPreview
+            link={link}
+            source={"# Auth\n\nSign in with [[Passkeys|a @key]]."}
+            onOpen={() => onOpenNote(link.name)}
+          />
         )}
         renderBase={() => null}
       />,
@@ -72,6 +77,8 @@ describe("WikiNoteEditor", () => {
     await expect.element(screen.getByText("Sign in with a key.")).toBeVisible();
     const types = screen.container.querySelectorAll(".cm-wiki-link-preview-type");
     expect([...types].map((type) => type.textContent)).toEqual(["depends_on", "blocks"]);
+    await userEvent.click(screen.getByRole("button", { name: "Open Auth" }));
+    expect(onOpenNote).toHaveBeenCalledWith("Auth");
     buffer.release();
   });
 

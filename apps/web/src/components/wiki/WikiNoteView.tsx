@@ -80,6 +80,7 @@ function LinkPreview({
   linkScope,
   from,
   link,
+  onOpen,
 }: {
   readonly environmentId: EnvironmentId;
   readonly wikiId: WikiId;
@@ -90,6 +91,7 @@ function LinkPreview({
   /** The file the link is written in. */
   readonly from: string;
   readonly link: WikiLinkPeek;
+  readonly onOpen: () => void;
 }) {
   const resolved = linkScope === null ? undefined : resolveLink(link.name, from, linkScope.files);
   const file = resolved?.file ?? wikiLinkFile(index, link.name, from);
@@ -109,6 +111,7 @@ function LinkPreview({
       link={link}
       source={data === null ? undefined : data.exists ? data.source : null}
       resolved={resolved}
+      onOpen={onOpen}
     />
   );
 }
@@ -363,6 +366,7 @@ export function WikiNoteView({
                   linkScope={linkScope}
                   from={data.file}
                   link={link}
+                  onOpen={() => onOpenNote(link.name)}
                 />
               )}
               renderBase={(source) => (

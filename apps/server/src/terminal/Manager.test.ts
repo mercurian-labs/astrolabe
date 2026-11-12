@@ -1,5 +1,6 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { assert, it } from "@effect/vitest";
+import { assert, describe, it } from "@effect/vitest";
 import {
   DEFAULT_TERMINAL_ID,
   type TerminalAttachStreamEvent,
@@ -200,6 +201,22 @@ class GatedPtyAdapter extends FakePtyAdapter {
     );
   }
 }
+
+describe("terminalShellFamily", () => {
+  it.effect("reads the family from what the terminal would start", () =>
+    Effect.gen(function* () {
+      expect(yield* TerminalManager.terminalShellFamily("darwin", { SHELL: "/bin/zsh" })).toBe(
+        "posix",
+      );
+      expect(yield* TerminalManager.terminalShellFamily("linux", {})).toBe("posix");
+      expect(yield* TerminalManager.terminalShellFamily("linux", { SHELL: "/opt/bin/fish" })).toBe(
+        "fish",
+      );
+      // No Windows here to hold PowerShell, which is the case that ends at cmd.
+      expect(yield* TerminalManager.terminalShellFamily("win32", {})).toBe("cmd");
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+});
 
 function openInput(overrides: Partial<TerminalOpenInput> = {}): TerminalOpenInput {
   return {
@@ -406,7 +423,11 @@ it("bounds long partial lines and joins surrogate pairs across chunk boundaries"
 });
 
 it.layer(
-  Layer.merge(NodeServices.layer, ProcessRunner.layer.pipe(Layer.provide(NodeServices.layer))),
+  Layer.mergeAll(
+    NodeServices.layer,
+    NodeCrypto.layer,
+    ProcessRunner.layer.pipe(Layer.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
+  ),
   { excludeTestServices: true },
 )("TerminalManager", (it) => {
   it.effect("spawns lazily and reuses running terminal per thread", () =>
@@ -765,6 +786,30 @@ it.layer(
     }),
   );
 
+  it.effect("labels a running command by its whole process name, spaces included", () =>
+    Effect.gen(function* () {
+      const { manager } = yield* createManager(5, {
+        subprocessPollIntervalMs: 1_000,
+        processKillGraceMs: 0,
+        processTable: Effect.succeed([
+          { pid: 9000, ppid: 1, name: "zsh" },
+          { pid: 200, ppid: 9000, name: "Google Chrome" },
+        ]),
+      }).pipe(Effect.provide(layerWithHostPlatform("darwin")));
+      const label = yield* Deferred.make<string>();
+      const unsubscribe = yield* manager.subscribe((event) =>
+        event.type === "activity"
+          ? Deferred.succeed(label, event.label).pipe(Effect.asVoid)
+          : Effect.void,
+      );
+      yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
+      yield* manager.open(openInput());
+      yield* TestClock.adjust("1 second");
+
+      expect(yield* Deferred.await(label)).toBe("Google Chrome");
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
   // Answers process-table queries after `queryDuration`, honoring the caller's
   // timeout the way ProcessRunner's `timedOutResult` mode does.
   const slowProcessTable = (
@@ -911,6 +956,48 @@ it.layer(
         expect(ptyAdapter.processes[0]!.killed).toBe(false);
         yield* manager.close({ threadId: "thread-1" });
       }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("types pasted text as text, bracketed only for a shell that asked", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager();
+      yield* manager.open(openInput());
+      const process = ptyAdapter.processes[0]!;
+      const input = { threadId: "thread-1", terminalId: DEFAULT_TERMINAL_ID };
+      const pasted = (data: string) => manager.write({ ...input, data, paste: true });
+      const output = (data: string) =>
+        Effect.gen(function* () {
+          const seen = yield* Deferred.make<void>();
+          const stop = yield* manager.subscribe((event) =>
+            event.type === "output"
+              ? Deferred.succeed(seen, undefined).pipe(Effect.asVoid)
+              : Effect.void,
+          );
+          process.emitData(data);
+          yield* Deferred.await(seen);
+          stop();
+        });
+
+      // bash 3.2, PowerShell and cmd never ask, and would read the markers as keys.
+      yield* pasted("echo a\u0015rm\tb\u001b[201~");
+      yield* output("\u001b[?2004h% ");
+      yield* pasted("echo b\u001b[201~; rm");
+      yield* output("\u001b[?2004l\r\n");
+      yield* pasted("echo c");
+      // Split across chunks, as a pty may.
+      yield* output("\u001b[?20");
+      yield* output("04h% ");
+      yield* pasted("echo d");
+      yield* manager.write({ ...input, data: "\r" });
+
+      expect(process.writes).toEqual([
+        "echo armb[201~",
+        "\u001b[200~echo b[201~; rm\u001b[201~",
+        "echo c",
+        "\u001b[200~echo d\u001b[201~",
+        "\r",
+      ]);
+    }).pipe(Effect.scoped),
   );
 
   it.effect("keeps terminals that get input or output while closeIdle checks them", () =>
@@ -1086,7 +1173,8 @@ it.layer(
       const { manager, ptyAdapter } = yield* createManager();
       yield* manager.open(openInput());
       const process = ptyAdapter.processes[0]!;
-      const before = "café\t界🙂\u0007\u009c\u0085";
+      // Mojibake like "â€\u009d" (for ”) carries C1 code points that libghostty prints as text.
+      const before = "café\t界🙂\u0007\u009c\u0085 â€\u009d Ð\u0090 \u009e\u009f\u009b6n";
       const after = "e\u0301\r\n";
 
       process.emitData(before);
@@ -1110,17 +1198,18 @@ it.layer(
       process.emitData("\u001b[?2026$p\u001b[?2026;2$y\u001b[>q\u001b[?u\u001b[?31u");
       process.emitData("\u001bP$q m\u001b\\\u001bP1$r0m\u001b\\");
       process.emitData("\u001bP+q544e\u001b\\\u001bP1+r544e=1b\u001b\\");
-      process.emitData("\u0090$q m\u009c\u00901$r0m\u009c");
-      process.emitData("\u0090+q544e\u009c\u00901+r544e=1b\u009c");
       process.emitData('\u001b[!p\u001b["p\u001b[4 q\u001b[u');
+      process.emitData("\u001b]0;x\u001b\u001b[?2026$p");
       process.emitData("done\n");
 
       yield* manager.close({ threadId: "thread-1" });
 
       const reopened = yield* manager.open(openInput());
-      expect(reopened.history.startsWith('prompt \u001b[!p\u001b["p\u001b[4 q\u001b[udone\n')).toBe(
-        true,
-      );
+      expect(
+        reopened.history.startsWith(
+          'prompt \u001b[!p\u001b["p\u001b[4 q\u001b[u\u001b]0;x\u001bdone\n',
+        ),
+      ).toBe(true);
     }),
   );
 
@@ -1130,17 +1219,13 @@ it.layer(
     { name: "PM", sequence: "\u001b^unfinished" },
     { name: "APC", sequence: "\u001b_unfinished" },
     { name: "CSI", sequence: "\u001b[5" },
-    { name: "C1 OSC", sequence: "\u009d0;unfinished" },
-    { name: "C1 DCS", sequence: "\u0090unfinished" },
-    { name: "C1 PM", sequence: "\u009eunfinished" },
-    { name: "C1 APC", sequence: "\u009funfinished" },
-    { name: "C1 CSI", sequence: "\u009b5" },
   ])("keeps output after a cancelled $name sequence in history", ({ sequence }) =>
     Effect.gen(function* () {
-      const { manager, ptyAdapter } = yield* createManager();
+      const { manager, ptyAdapter } = yield* createManager(10);
       yield* manager.open(openInput());
       const process = ptyAdapter.processes[0]!;
-      for (const cancel of ["\u0018", "\u001a"]) {
+      // A new escape sequence also aborts one, as in xterm.js; keep it last so CAN cannot end it.
+      for (const cancel of ["\u0018", "\u001a", "\u001b[0m"]) {
         process.emitData(sequence);
         process.emitData(cancel);
         process.emitData("next line\n");
@@ -1149,7 +1234,7 @@ it.layer(
       yield* manager.close({ threadId: "thread-1" });
 
       const reopened = yield* manager.open(openInput());
-      expect(reopened.history.match(/next line/g)).toHaveLength(4);
+      expect(reopened.history.match(/next line/g)).toHaveLength(6);
     }),
   );
 
@@ -1167,10 +1252,10 @@ it.layer(
       process.emitData("\u001bP$q ");
       process.emitData("m\u001b");
       process.emitData("\\after ");
-      process.emitData("\u009b?3");
+      process.emitData("\u001b[?3");
       process.emitData("1uafter ");
-      process.emitData("\u0090+q544e");
-      process.emitData("\u009cafter\n");
+      process.emitData("\u001bP+q544e");
+      process.emitData("\u001b\\after\n");
 
       yield* manager.close({ threadId: "thread-1" });
 
@@ -1193,10 +1278,10 @@ it.layer(
       yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
       const sequences = [
         { prefix: `\u001b]52;c;${"YWJj".repeat(16_384)}\u001b`, terminator: "\\" },
-        { prefix: `\u0090q${"?".repeat(65_536)}`, terminator: "\u009c" },
+        { prefix: `\u001bPq${"?".repeat(65_536)}`, terminator: "\u001b\\" },
       ];
-      const stripped = "\u001b]11;?\u0007\u0090$q m\u009c";
-      const preserved = "\u001b[31m\u009d52;c;YWJj\u009c";
+      const stripped = "\u001b]11;?\u0007\u001bP$q m\u001b\\";
+      const preserved = "\u001b[31m\u001b]52;c;YWJj\u0007";
       const expected =
         sequences.map(({ prefix, terminator }) => prefix + terminator + preserved).join("") +
         "done\n";

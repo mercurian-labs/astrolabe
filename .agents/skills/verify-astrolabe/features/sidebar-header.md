@@ -103,25 +103,17 @@ actions at its right end.
   none. Collapsed, the main title bar holds no sidebar actions: not Back/Forward, Search or
   the filter. Settings and Usage have no tabs: their headers
   (Settings / page, Usage / environment / provider) sit inside their modals.
-- **Thread rows** (`[data-testid=sidebar-row-card]`): one line with the project picture, the
-  title, the terminal and machine glyphs, and the age or status; a smaller second line only when
-  the thread has something particular, its parts joined by `·`: `Draft`
-  (`sidebar-draft-indicator-<id>`); the branch without its `<repository>/` prefix, hidden on the
-  default branch (main or master, or what the row's git status reports), after the worktree glyph
-  (`thread-worktree-<id>`) when the thread has its own worktree; the pull request as
-  `PR #130 open` (still the badge link, with its tooltip); and the agent's name when it is not
-  its project's usual one (the default the project's new threads start with, its own or its
-  environment's, else the most common among the environment's listed threads). In a repository
-  whose default branch is not main or master, a row on it shows the branch until its git status
-  arrives, then drops to one line. `components/sidebar/agentRowSummary.ts` decides the second
-  line; `AgentRowDetails.tsx` and `SidebarCard.tsx`'s `SidebarAgentRowItem`/
-  `SidebarAgentRowContent` draw it. Pinned rows sit under a resting **Pinned** heading
+- **Thread rows** (`[data-testid=sidebar-row-card]`): upstream's three lines with the first two
+  swapped. The title leads, with the age or status beside it (hover swaps it for Snooze, Settle
+  and Unpin); then the project picture and name, a repository-named project without its owner;
+  then upstream's branch line (worktree glyph, branch, terminal, pull request, machine and agent
+  icons), which a row with none of those drops, moving the icons up a line. Pinned rows sit under a resting **Pinned** heading
   (`[data-testid=sidebar-pinned-header]`, 24px tall, holding a `role=heading`) with no pin glyph, and an
   **Active** one (`sidebar-pinned-divider`) closes them while active rows follow. With nothing
   pinned both items still exist but are empty and 0px tall; the heading shows only once a row
   is pinned. Hovering a pinned
   row offers `button "Unpin thread"` beside Snooze and Settle. Draft-session rows
-  (`sidebar-draft-row`) take the same two lines (the preview, then Draft) and stay above the
+  (`sidebar-draft-row`) take the same order (pen and preview, then the project) and stay above the
   Pinned heading, outside the sortable rows the drag projection measures. Snoozed and settled
   rows stay slim (`sidebar-row-slim`, with their pin glyph), and mobile rows are upstream's.
 - **No folder mode**: upstream's boring sidebar (project folders, `SidebarProjectFolderHeader`,
@@ -166,7 +158,7 @@ the first search result, take the `getBoundingClientRect` centre (nonzero height
 `document.elementFromPoint(cx, cy).closest(...)` returns that element. The borders are visual-only:
 read `getComputedStyle` widths on the header row (a bottom border) and `[data-app-rail-cap]` (none: the border stops above the rail). Colours: `[data-sidebar-chrome-header]` and `[data-app-rail]` share a `backgroundColor`; `[data-slot=sidebar-inner]` matches `main[data-slot=sidebar-inset]` (light and dark, Mercurian and another theme), and a hovered and the current row still show a fill. The edge: `getComputedStyle(document.querySelector('[data-app-sidebar]'), '::after').top` is `0px`. Check the pill is not clipped at the default sidebar width,
 and again after dragging `Resize Sidebar` narrower. Thread rows: a `sidebar-row-card`'s
-`getBoundingClientRect().height` is 26 with one line and 42 with two (its `li` adds 2).
+`getBoundingClientRect().height` is 78 with a branch line and 58 without (its `li` adds 4).
 
 ## Gotchas
 

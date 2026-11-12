@@ -40,6 +40,8 @@ describe("mobile worktree setup handoff", () => {
       }),
     ).toBeNull();
     expect(resolveWorktreeSetupSnapshot(threadId, undefined, held)).toBe(done);
+    // The server drops a setup only after it ends, so a held running snapshot missed its finish.
+    expect(resolveWorktreeSetupSnapshot(threadId, null, running)).toBeNull();
   });
 
   it.each(["failed", "cancelled"] as const)(

@@ -64,6 +64,8 @@ export type TerminalObserveInput = Schema.Codec.Encoded<typeof TerminalObserveIn
 export const TerminalWriteInput = Schema.Struct({
   ...TerminalSessionInput.fields,
   data: Schema.String.check(Schema.isNonEmpty()).check(Schema.isMaxLength(65_536)),
+  // Text for the line, not keys: no control reaches the shell, and one that takes pastes gets one.
+  paste: Schema.optional(Schema.Boolean),
 });
 export type TerminalWriteInput = Schema.Codec.Encoded<typeof TerminalWriteInput>;
 
@@ -83,6 +85,11 @@ export const TerminalCloseInput = Schema.Struct({
   deleteHistory: Schema.optional(Schema.Boolean),
 });
 export type TerminalCloseInput = typeof TerminalCloseInput.Type;
+
+const RUN_TERMINAL_THREAD_PREFIX = "run:";
+
+/** The thread id of a code file's run terminals. It names no thread: their tabs own them. */
+export const runTerminalThreadId = (checkout: string) => `${RUN_TERMINAL_THREAD_PREFIX}${checkout}`;
 
 export const TerminalSessionStatus = Schema.Literals(["starting", "running", "exited", "error"]);
 export type TerminalSessionStatus = typeof TerminalSessionStatus.Type;
@@ -120,6 +127,10 @@ export const TerminalSummary = Schema.Struct({
   updatedAt: Schema.String,
 });
 export type TerminalSummary = typeof TerminalSummary.Type;
+
+/** A run's shell at its prompt: all it holds is scrollback, so a worktree needn't wait for it. */
+export const isIdleRunTerminal = (terminal: TerminalSummary) =>
+  terminal.threadId.startsWith(RUN_TERMINAL_THREAD_PREFIX) && !terminal.hasRunningSubprocess;
 
 const TerminalMetadataSnapshotEvent = Schema.Struct({
   type: Schema.Literal("snapshot"),

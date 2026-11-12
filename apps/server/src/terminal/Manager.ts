@@ -287,6 +287,9 @@ interface TerminalSessionState {
   pid: number | null;
   history: BoundedTerminalHistory;
   pendingHistoryControlSequence: string;
+  /** Whether what's reading the terminal asked for pastes bracketed, and the end of its output. */
+  bracketedPaste: boolean;
+  pasteModeTail: string;
   pendingProcessEvents: Array<PendingProcessEvent | undefined>;
   pendingProcessEventIndex: number;
   processEventDrainRunning: boolean;
@@ -365,10 +368,9 @@ function normalizeChildCommandName(raw: string, platform: NodeJS.Platform): stri
   ) {
     trimmed = trimmed.slice(1, -1).trim();
   }
-  const firstToken = (trimmed.split(/\s+/)[0] ?? trimmed).trim();
-  if (firstToken.length === 0) return null;
+  // Process names and macOS `comm` paths can contain spaces ("Google Chrome").
   const separators = platform === "win32" ? /[\\/]/ : /\//;
-  const base = firstToken.split(separators).at(-1) ?? firstToken;
+  const base = (trimmed.split(separators).at(-1) ?? trimmed).trim();
   const withoutExe =
     platform === "win32" && base.toLowerCase().endsWith(".exe") ? base.slice(0, -4) : base;
   return withoutExe.length > 0 ? withoutExe : null;
@@ -509,12 +511,53 @@ function enqueueProcessEvent(
   return true;
 }
 
+const PASTE_MODE = new RegExp(String.raw`\u001b\[\?(?:\d+;)*2004(?:;\d+)*([hl])`, "g");
+const PASTE_MODE_LENGTH = 32;
+
+/** Follows a shell's bracketed paste mode, which it sets at each prompt, across output chunks. */
+function trackPasteMode(session: TerminalSessionState, data: string) {
+  const text = session.pasteModeTail + data;
+  const last = [...text.matchAll(PASTE_MODE)].at(-1);
+  if (last) session.bracketedPaste = last[1] === "h";
+  session.pasteModeTail = text.slice(-PASTE_MODE_LENGTH);
+}
+
+/**
+ * `text` as a line editor should get it. A shell that asked for it inserts a bracketed paste
+ * literally; bash before 5.1, PowerShell and cmd read those markers as keys, so they never see one.
+ */
+function pastedText(text: string, bracketed: boolean) {
+  const plain = text.replace(/\p{Cc}/gu, "");
+  return bracketed ? `\u001b[200~${plain}\u001b[201~` : plain;
+}
+
 function defaultShellResolver(platform: NodeJS.Platform, env: NodeJS.ProcessEnv): string {
   if (platform === "win32") {
     return "pwsh.exe";
   }
   return env.SHELL ?? "bash";
 }
+
+/**
+ * How the shell `resolveShellCandidates` starts reads a line, without starting it. Windows comes
+ * down to cmd only if neither PowerShell can start.
+ */
+export const terminalShellFamily = Effect.fn("terminal.shellFamily")(function* (
+  platform: NodeJS.Platform,
+  env: NodeJS.ProcessEnv,
+) {
+  if (platform !== "win32") {
+    const shell = defaultShellResolver(platform, env);
+    return shell.slice(shell.lastIndexOf("/") + 1) === "fish"
+      ? ("fish" as const)
+      : ("posix" as const);
+  }
+  const fileSystem = yield* FileSystem.FileSystem;
+  const powerShell = yield* fileSystem
+    .exists(windowsPowerShellPath(env))
+    .pipe(Effect.orElseSucceed(() => false));
+  return powerShell ? ("powershell" as const) : ("cmd" as const);
+});
 
 function normalizeShellCommand(
   value: string | undefined,
@@ -1143,8 +1186,10 @@ function findStringTerminatorIndex(input: string, start: number): number | null 
     if (codePoint === 0x07 || codePoint === 0x9c || isControlSequenceCancel(codePoint)) {
       return index + 1;
     }
-    if (codePoint === 0x1b && input.charCodeAt(index + 1) === 0x5c) {
-      return index + 2;
+    // Like xterm.js, an ESC that does not start ST ends the string and begins the next sequence.
+    if (codePoint === 0x1b) {
+      if (index + 1 >= input.length) return null;
+      return input.charCodeAt(index + 1) === 0x5c ? index + 2 : index;
     }
   }
   return null;
@@ -1166,10 +1211,15 @@ function findEscapeSequenceEndIndex(input: string, start: number): number | null
   if (cursor >= input.length) {
     return null;
   }
+  // A second ESC restarts the sequence, so leave it for the next pass.
+  if (input.charCodeAt(cursor) === 0x1b) {
+    return cursor;
+  }
   return isEscapeFinalByte(input.charCodeAt(cursor)) ? cursor + 1 : start + 1;
 }
 
-const HISTORY_SEQUENCE_START = /[\u001b\u0090\u009b\u009d\u009e\u009f]/;
+// libghostty prints UTF-8 C1 code points (U+0080-U+009F) as text, so only ESC starts a sequence.
+const HISTORY_SEQUENCE_START = /\u001b/;
 const NEXT_HISTORY_SEQUENCE_START = new RegExp(HISTORY_SEQUENCE_START.source, "g");
 
 function sanitizeTerminalHistoryChunk(
@@ -1251,47 +1301,6 @@ function sanitizeTerminalHistoryChunk(
       }
       append(input.slice(index, escapeSequenceEndIndex));
       index = escapeSequenceEndIndex;
-      continue;
-    }
-
-    if (codePoint === 0x9b) {
-      let cursor = index + 1;
-      while (cursor < input.length) {
-        const cancelled = isControlSequenceCancel(input.charCodeAt(cursor));
-        if (cancelled || isCsiFinalByte(input.charCodeAt(cursor))) {
-          const sequence = input.slice(index, cursor + 1);
-          const body = input.slice(index + 1, cursor);
-          if (cancelled || !shouldStripCsiSequence(body, input[cursor] ?? "")) {
-            append(sequence);
-          }
-          index = cursor + 1;
-          break;
-        }
-        cursor += 1;
-      }
-      if (cursor >= input.length) {
-        return { visibleText, pendingControlSequence: input.slice(index) };
-      }
-      continue;
-    }
-
-    if (codePoint === 0x9d || codePoint === 0x90 || codePoint === 0x9e || codePoint === 0x9f) {
-      const terminatorIndex = findStringTerminatorIndex(
-        input,
-        Math.max(index + 1, pendingScanStart),
-      );
-      if (terminatorIndex === null) {
-        return { visibleText, pendingControlSequence: input.slice(index) };
-      }
-      const sequence = input.slice(index, terminatorIndex);
-      const content = stripStringTerminator(input.slice(index + 1, terminatorIndex));
-      const strip =
-        (codePoint === 0x9d && shouldStripOscSequence(content)) ||
-        (codePoint === 0x90 && shouldStripDcsSequence(content));
-      if (!strip) {
-        append(sequence);
-      }
-      index = terminatorIndex;
       continue;
     }
 
@@ -2258,6 +2267,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
             nextEvent.data,
           );
           session.pendingHistoryControlSequence = sanitized.pendingControlSequence;
+          trackPasteMode(session, nextEvent.data);
           if (sanitized.visibleText.length > 0) {
             session.history.append(sanitized.visibleText);
           }
@@ -2889,6 +2899,8 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         pid: null,
         history,
         pendingHistoryControlSequence: "",
+        bracketedPaste: false,
+        pasteModeTail: "",
         pendingProcessEvents: [],
         pendingProcessEventIndex: 0,
         processEventDrainRunning: false,
@@ -3360,7 +3372,10 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     }
     session.inputCount += 1;
     yield* Effect.try({
-      try: () => process.write(input.data),
+      try: () =>
+        process.write(
+          input.paste === true ? pastedText(input.data, session.bracketedPaste) : input.data,
+        ),
       catch: (cause) =>
         new TerminalWriteError({
           threadId: input.threadId,

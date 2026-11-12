@@ -48,6 +48,8 @@ export function assertClaudeResultIsErrorOutput(
   assert.equal(failedRunCheckpoint?.status, "ready");
   assert.equal(failedRunCheckpoint?.appRunOrdinal, 1);
   assert.equal(failedRun?.checkpointId, failedRunCheckpoint?.id);
+  // The API error's "<synthetic>" frame is a CLI notice, not a model that did work.
+  assert.notProperty(failedTurn?.turnTokenUsage, "models");
 
   const errorItem = projection.turnItems.find(
     (item) => item.runId === failedRun?.id && item.type === "error",

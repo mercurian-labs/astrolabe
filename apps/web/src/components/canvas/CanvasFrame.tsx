@@ -1,7 +1,7 @@
 import { canvasBounds, type CanvasCodeReference } from "@mercurian/wiki/canvas";
 import type { CanvasView } from "@t3tools/client-runtime/canvasViews";
 import type { ScopedThreadRef, ThreadId, TurnItemId } from "@t3tools/contracts";
-import { Maximize2Icon } from "lucide-react";
+import { SquareArrowOutUpRightIcon } from "lucide-react";
 import { lazy, Suspense } from "react";
 
 import { readLocalApi } from "~/localApi";
@@ -37,7 +37,7 @@ export const canvasHost = (threadRef: ScopedThreadRef | null) => ({
 
 /**
  * A canvas in a thread: the whole board, sized by its own shape so the row never shifts when the
- * board loads, with its pan and zoom one click away in the right panel.
+ * board loads, with its pan and zoom one click away in a linked tab.
  */
 export function CanvasFrame({
   id,
@@ -68,10 +68,10 @@ export function CanvasFrame({
             <Button
               variant="ghost"
               size="icon-xs"
-              aria-label={`Open ${view.title} in a panel`}
+              aria-label={`Open ${view.title} in a linked tab`}
               onClick={() => showThreadCanvas(threadRef, id)}
             >
-              <Maximize2Icon />
+              <SquareArrowOutUpRightIcon />
             </Button>
           </>
         )}

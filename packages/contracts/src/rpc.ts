@@ -254,6 +254,7 @@ import {
 import {
   ORCHESTRATION_V2_WS_METHODS,
   OrchestrationGetWorkflowScriptError,
+  OrchestrationV2GetNativeChildWorkError,
   OrchestrationV2StopWorkflowError,
   OrchestrationV2ForceStopThreadError,
   OrchestrationV2DispatchCommandError,
@@ -506,16 +507,33 @@ import {
   DocumentUndoReplaceAllResult,
 } from "./documents.ts";
 import {
+  LanguageServerCheckInput,
+  ProjectSymbols,
+  ProjectSymbolsInput,
+  LanguageServerCheckResult,
   LanguageServerError,
+  LanguageServerLogItem,
+  LanguageServerLogsInput,
   LanguageServerProblemsInput,
   LanguageServerProblemsItem,
   LanguageServerSendInput,
   LanguageServerSessionInput,
   LanguageServerSessionItem,
+  LanguageServerSetTraceInput,
   LanguageServerStatus,
   LanguageServerTarget,
+  LanguageServerRoutes,
+  LanguageServerRoutesInput,
+  LanguageServerRunContext,
+  LanguageServerRunContextInput,
+  LanguageServerSettings,
+  LanguageServerSettingsInput,
+  LanguageServerToolchains,
+  LanguageServerToolchainsInput,
+  LanguageServerTrustInput,
   LanguageServerUndoEditInput,
   LanguageServerUndoEditResult,
+  LanguageServerUpdateSettingsInput,
 } from "./languageServers.ts";
 import { Project, ProjectMutation, ProjectMutationError } from "./project.ts";
 
@@ -725,13 +743,23 @@ export const WS_METHODS = {
   codeIndexClear: "codeIndex.clear",
   // Astrolabe: language servers in the environment, and the gateway browsers reach them through.
   languageServersSubscribe: "languageServers.subscribe",
+  languageServersCheck: "languageServers.check",
+  languageServersProjectSymbols: "languageServers.projectSymbols",
   languageServersRestart: "languageServers.restart",
   languageServersStop: "languageServers.stop",
-  languageServersConfirmDownload: "languageServers.confirmDownload",
+  languageServersTrustProject: "languageServers.trustProject",
+  languageServersRevokeProjectTrust: "languageServers.revokeProjectTrust",
+  languageServersLogs: "languageServers.logs",
+  languageServersSetTrace: "languageServers.setTrace",
   languageServersSession: "languageServers.session",
   languageServersSend: "languageServers.send",
   languageServersUndoEdit: "languageServers.undoEdit",
   languageServersProblems: "languageServers.problems",
+  languageServersRoutes: "languageServers.routes",
+  languageServersToolchains: "languageServers.toolchains",
+  languageServersRunContext: "languageServers.runContext",
+  languageServersSettings: "languageServers.settings",
+  languageServersUpdateSettings: "languageServers.updateSettings",
   scheduledTasksSubscribe: "scheduledTasks.subscribe",
   scheduledTasksUpsert: "scheduledTasks.upsert",
   scheduledTasksSetEnabled: "scheduledTasks.setEnabled",
@@ -789,6 +817,7 @@ export const WS_METHODS = {
   sourceControlSignInCancel: "sourceControl.signInCancel",
   sourceControlAppAccess: "sourceControl.appAccess",
   sourceControlStarred: "sourceControl.starred",
+  sourceControlStar: "sourceControl.star",
   projectCloneStart: "projectClone.start",
   projectCloneCancel: "projectClone.cancel",
   projectCloneRetry: "projectClone.retry",
@@ -1464,6 +1493,13 @@ const WsSourceControlStarredRpc = Rpc.make(WS_METHODS.sourceControlStarred, {
   error: EnvironmentAuthorizationError,
 });
 
+// Stars the repository as the server's forge account. False when the forge refused or cannot star.
+const WsSourceControlStarRpc = Rpc.make(WS_METHODS.sourceControlStar, {
+  payload: SourceControlStarredInput,
+  success: Schema.Boolean,
+  error: EnvironmentAuthorizationError,
+});
+
 // Returns when the project exists and cloning starts; progress uses the subscription.
 const WsProjectCloneStartRpc = Rpc.make(WS_METHODS.projectCloneStart, {
   payload: ProjectCloneStartInput,
@@ -2095,6 +2131,15 @@ const WsOrchestrationV2GetWorkflowScriptRpc = Rpc.make(
   },
 );
 
+const WsOrchestrationV2GetNativeChildWorkRpc = Rpc.make(
+  ORCHESTRATION_V2_WS_METHODS.getNativeChildWork,
+  {
+    payload: OrchestrationV2RpcSchemas.getNativeChildWork.input,
+    success: OrchestrationV2RpcSchemas.getNativeChildWork.output,
+    error: Schema.Union([OrchestrationV2GetNativeChildWorkError, EnvironmentAuthorizationError]),
+  },
+);
+
 const WsOrchestrationV2GetTurnItemRpc = Rpc.make(ORCHESTRATION_V2_WS_METHODS.getTurnItem, {
   payload: OrchestrationV2RpcSchemas.getTurnItem.input,
   success: OrchestrationV2RpcSchemas.getTurnItem.output,
@@ -2434,6 +2479,20 @@ const WsLanguageServersSubscribeRpc = Rpc.make(WS_METHODS.languageServersSubscri
   stream: true,
 });
 
+/** What every language server would run for a checkout, and what's missing; starts none. */
+const WsLanguageServersCheckRpc = Rpc.make(WS_METHODS.languageServersCheck, {
+  payload: LanguageServerCheckInput,
+  success: LanguageServerCheckResult,
+  error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+});
+
+/** Finds names across a checkout; asks only servers already running. */
+const WsLanguageServersProjectSymbolsRpc = Rpc.make(WS_METHODS.languageServersProjectSymbols, {
+  payload: ProjectSymbolsInput,
+  success: ProjectSymbols,
+  error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+});
+
 /** Starts it again, also after a stop, a cap or giving up. */
 const WsLanguageServersRestartRpc = Rpc.make(WS_METHODS.languageServersRestart, {
   payload: LanguageServerTarget,
@@ -2445,9 +2504,32 @@ const WsLanguageServersStopRpc = Rpc.make(WS_METHODS.languageServersStop, {
   error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
 });
 
-/** The yes to this environment's first language-server download; later ones need none. */
-const WsLanguageServersConfirmDownloadRpc = Rpc.make(WS_METHODS.languageServersConfirmDownload, {
-  payload: Schema.Struct({}),
+/** Trusts a checkout's project on this environment: its servers download and start in full. */
+const WsLanguageServersTrustProjectRpc = Rpc.make(WS_METHODS.languageServersTrustProject, {
+  payload: LanguageServerTrustInput,
+  error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+});
+
+/** Takes the trust back: the project's servers start again in their restricted form. */
+const WsLanguageServersRevokeProjectTrustRpc = Rpc.make(
+  WS_METHODS.languageServersRevokeProjectTrust,
+  {
+    payload: LanguageServerTrustInput,
+    error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+  },
+);
+
+/** A server's recent output, then what follows in batches; starts no server. */
+const WsLanguageServersLogsRpc = Rpc.make(WS_METHODS.languageServersLogs, {
+  payload: LanguageServerLogsInput,
+  success: LanguageServerLogItem,
+  error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+/** Records a server's LSP messages, for its `languageServers.logs` subscribers. */
+const WsLanguageServersSetTraceRpc = Rpc.make(WS_METHODS.languageServersSetTrace, {
+  payload: LanguageServerSetTraceInput,
   error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
 });
 
@@ -2473,6 +2555,41 @@ const WsLanguageServersUndoEditRpc = Rpc.make(WS_METHODS.languageServersUndoEdit
 });
 
 /** A checkout's problems now, then each file's as it changes. */
+/** What serves each kind of file in a checkout, then the whole table on each change. */
+const WsLanguageServersRoutesRpc = Rpc.make(WS_METHODS.languageServersRoutes, {
+  payload: LanguageServerRoutesInput,
+  success: LanguageServerRoutes,
+  error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+/** The interpreters a checkout could use; running none of them to find out. */
+const WsLanguageServersToolchainsRpc = Rpc.make(WS_METHODS.languageServersToolchains, {
+  payload: LanguageServerToolchainsInput,
+  success: LanguageServerToolchains,
+  error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+});
+
+/** What a file's run commands are built from, which only the environment can see. */
+const WsLanguageServersRunContextRpc = Rpc.make(WS_METHODS.languageServersRunContext, {
+  payload: LanguageServerRunContextInput,
+  success: LanguageServerRunContext,
+  error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+});
+
+/** Settings with their values, for the form that edits them. */
+const WsLanguageServersSettingsRpc = Rpc.make(WS_METHODS.languageServersSettings, {
+  payload: LanguageServerSettingsInput,
+  success: LanguageServerSettings,
+  error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+});
+
+/** Changes what runs: only the servers it affects restart. */
+const WsLanguageServersUpdateSettingsRpc = Rpc.make(WS_METHODS.languageServersUpdateSettings, {
+  payload: LanguageServerUpdateSettingsInput,
+  error: Schema.Union([LanguageServerError, EnvironmentAuthorizationError]),
+});
+
 const WsLanguageServersProblemsRpc = Rpc.make(WS_METHODS.languageServersProblems, {
   payload: LanguageServerProblemsInput,
   success: LanguageServerProblemsItem,
@@ -2719,6 +2836,7 @@ export const WsUpstreamRpcGroup = RpcGroup.make(
   WsSourceControlSignInCancelRpc,
   WsSourceControlAppAccessRpc,
   WsSourceControlStarredRpc,
+  WsSourceControlStarRpc,
   WsProjectCloneStartRpc,
   WsProjectCloneCancelRpc,
   WsProjectCloneRetryRpc,
@@ -2800,6 +2918,7 @@ export const WsUpstreamRpcGroup = RpcGroup.make(
   WsSubscribeResourceTelemetryRpc,
   WsOrchestrationV2DispatchCommandRpc,
   WsOrchestrationV2GetWorkflowScriptRpc,
+  WsOrchestrationV2GetNativeChildWorkRpc,
   WsOrchestrationV2StopWorkflowRpc,
   WsOrchestrationV2ForceStopThreadRpc,
   WsOrchestrationV2GetTurnItemRpc,
@@ -2890,13 +3009,23 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsCodeIndexPruneRpc,
   WsCodeIndexClearRpc,
   WsLanguageServersSubscribeRpc,
+  WsLanguageServersCheckRpc,
+  WsLanguageServersProjectSymbolsRpc,
   WsLanguageServersRestartRpc,
   WsLanguageServersUndoEditRpc,
   WsLanguageServersStopRpc,
-  WsLanguageServersConfirmDownloadRpc,
+  WsLanguageServersTrustProjectRpc,
+  WsLanguageServersRevokeProjectTrustRpc,
+  WsLanguageServersLogsRpc,
+  WsLanguageServersSetTraceRpc,
   WsLanguageServersSessionRpc,
   WsLanguageServersSendRpc,
   WsLanguageServersProblemsRpc,
+  WsLanguageServersRoutesRpc,
+  WsLanguageServersToolchainsRpc,
+  WsLanguageServersRunContextRpc,
+  WsLanguageServersSettingsRpc,
+  WsLanguageServersUpdateSettingsRpc,
 ).middleware(RpcScopeAuthorization);
 
 export const WsRpcGroup = WsUpstreamRpcGroup.merge(WsAstrolabeRpcGroup);

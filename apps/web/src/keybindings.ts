@@ -15,7 +15,7 @@ import {
   matchesKeybindingShortcutModifiers,
   normalizeEventKey,
   resolveEventKeys,
-  type ShortcutEventLike,
+  type ShortcutEventLike as SharedShortcutEventLike,
   type ShortcutModifierStateLike,
 } from "@t3tools/shared/keybindings";
 import { isElectron } from "./env";
@@ -25,10 +25,15 @@ import {
   isMultibufferFocused,
   isOutlineEditorFocused,
 } from "./lib/editorFocus";
+import { isEditableFocused } from "./lib/editableFocus";
 import { projectScriptIdFromCommand } from "./projectScripts";
 
-export type { ShortcutEventLike, ShortcutModifierStateLike } from "@t3tools/shared/keybindings";
+export type { ShortcutModifierStateLike } from "@t3tools/shared/keybindings";
 export { shortcutKeyFromEvent } from "@t3tools/shared/keybindings";
+
+export interface ShortcutEventLike extends SharedShortcutEventLike {
+  target?: EventTarget | null;
+}
 
 export interface ShortcutMatchContext {
   terminalFocus: boolean;
@@ -201,14 +206,18 @@ export function resolveShortcutCommand(
   options?: ShortcutMatchOptions,
 ): KeybindingCommand | null {
   const platform = resolvePlatform(options);
+  // Astrolabe: the app's editors, read off the DOM where there is one.
+  const hasDom = typeof document !== "undefined" && typeof Element !== "undefined";
   const context = {
-    // Astrolabe
-    editorFocus: typeof document !== "undefined" && isEditorFocused(),
-    codeEditorFocus: typeof document !== "undefined" && isCodeEditorFocused(),
-    outlineFocus: typeof document !== "undefined" && isOutlineEditorFocused(),
-    multibufferFocus: typeof document !== "undefined" && isMultibufferFocused(),
+    editorFocus: hasDom && isEditorFocused(),
+    codeEditorFocus: hasDom && isCodeEditorFocused(),
+    outlineFocus: hasDom && isOutlineEditorFocused(),
+    multibufferFocus: hasDom && isMultibufferFocused(),
     ...resolveContext(options),
   };
+  if (options?.context?.editableFocus === undefined && typeof document !== "undefined") {
+    context.editableFocus = isEditableFocused(event.target ?? document.activeElement);
+  }
 
   for (let index = keybindings.length - 1; index >= 0; index -= 1) {
     const binding = keybindings[index];

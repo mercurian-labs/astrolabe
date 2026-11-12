@@ -159,7 +159,7 @@ only changes the hash and pairs nothing; type the token into
 `[data-pane-tabs]` (the workspace tab strips) before acting. A fresh profile may first
 land on `/welcome` (the first-run gate): finish or skip it. A clean home then lands on a
 "New thread" in the **server** project, and seeded data goes straight to the app; click a
-sidebar row (`role=treeitem[name=/^<title>/]` inside `tree "Agents"`; the name is
+sidebar row (`role=navigation[name="Agents"] >> role=button[name=/^<title>, /]`; the name is
 `<title>, [<status>, ]<project group>`, or `[data-testid=sidebar-row-card] >> nth=N`)
 when the feature needs a real thread. Then:
 

@@ -21,6 +21,7 @@ import {
   type ProjectWorktreeStatusResult,
   type ProjectWorktreeTargetInput,
   type ServerSettings as ServerSettingsShape,
+  isIdleRunTerminal,
   type TerminalSummary,
   type WikiId,
 } from "@t3tools/contracts";
@@ -29,7 +30,7 @@ import * as HostProcess from "@t3tools/shared/HostProcess";
 import { fromJsonStringPretty } from "@t3tools/shared/schemaJson";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -221,7 +222,7 @@ const make = Effect.gen(function* () {
   const watcher = yield* WorkspaceWatcher.WorkspaceWatcher;
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
   const isManagedWorktreePath = yield* makeIsManagedWorktreePath;
   const keptPath = path.join(config.stateDir, "worktree-keep.json");
   const keptCache = yield* Ref.make<KeptStore | undefined>(undefined);
@@ -258,6 +259,15 @@ const make = Effect.gen(function* () {
     const relative = path.relative(root, target);
     return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
   };
+
+  const terminalsIn = (worktreePath: string) =>
+    [...liveTerminals.values()].filter((terminal) => {
+      if (terminal.status !== "starting" && terminal.status !== "running") return false;
+      return (
+        (terminal.worktreePath !== null && path.resolve(terminal.worktreePath) === worktreePath) ||
+        inside(worktreePath, path.resolve(terminal.cwd))
+      );
+    });
 
   const runGit = (operation: string, cwd: string, args: ReadonlyArray<string>) =>
     git
@@ -405,16 +415,8 @@ const make = Effect.gen(function* () {
           : { kind: "working", label: `${thread.title} is working here` },
       );
     }
-    for (const terminal of liveTerminals.values()) {
-      if (terminal.status !== "starting" && terminal.status !== "running") continue;
-      const cwd = path.resolve(terminal.cwd);
-      if (
-        (terminal.worktreePath !== null && path.resolve(terminal.worktreePath) === listed.path) ||
-        inside(listed.path, cwd)
-      ) {
-        holds.push({ kind: "terminal", label: "A terminal is open here" });
-        break;
-      }
+    if (terminalsIn(listed.path).some((terminal) => !isIdleRunTerminal(terminal))) {
+      holds.push({ kind: "terminal", label: "A terminal is open here" });
     }
     // Set-aside work is keyed by branch, so a detached checkout's edits would have nowhere to go;
     // a list does not count them, so a detached checkout is never taken.
@@ -601,7 +603,7 @@ const make = Effect.gen(function* () {
       return yield* fail(
         "The worktree location must be an absolute folder on this machine. Change it in Settings → Worktrees.",
       );
-    const suffix = (yield* crypto.randomUUIDv4().pipe(Effect.orDie)).slice(0, 8);
+    const suffix = (yield* random.uuidV4()).slice(0, 8);
     return path.join(parent, path.basename(path.resolve(root)), `t3-${suffix}`);
   });
 
@@ -794,6 +796,12 @@ const make = Effect.gen(function* () {
           worktree.path,
           Effect.gen(function* () {
             if (worktree.branch !== null) yield* setAside(worktree);
+            // A run's tab may have closed with no connection to end its shell.
+            yield* Effect.forEach(
+              terminalsIn(worktree.path).filter(isIdleRunTerminal),
+              terminals.closeIdle,
+              { discard: true },
+            );
             yield* gitWorkflow
               .removeWorktree({ cwd: root, path: worktree.path, force: true })
               .pipe(Effect.mapError(failWith("The worktree could not be deleted")));

@@ -54,3 +54,11 @@ before it replaces it.
 T3 Code removes characters you cannot see, such as zero-width and hidden tag characters, because
 they can hide instructions for the agent. When a prompt had them, T3 Code warns you that it may be
 malicious.
+
+## Share a thread
+
+**Copy thread** copies a link such as `https://app.astrolabe.sh/threads/<environment>/<thread>`. Paste
+it anywhere, such as Slack, a GitHub comment, or your notes. On a phone with Astrolabe installed, it
+opens the thread in the app. Elsewhere, opening it asks where to open it, like a prompt link, then
+opens the thread. Only someone connected to the machine that runs the thread can see it. In Astrolabe,
+a thread link in a message opens the thread in the app.

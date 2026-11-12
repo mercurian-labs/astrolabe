@@ -1,0 +1,18 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": [
+          "SC9Q89Q4B6.com.mercurian.astrolabe",
+          "SC9Q89Q4B6.com.mercurian.astrolabe.preview",
+          "SC9Q89Q4B6.com.mercurian.astrolabe.dev"
+        ],
+        "components": [
+          {
+            "/": "/threads/*"
+          }
+        ]
+      }
+    ]
+  }
+}

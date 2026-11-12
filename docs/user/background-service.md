@@ -161,8 +161,8 @@ For remote access failures after signing in, see
 
 ## Reclaim database space
 
-T3 Code removes superseded internal history on its own while it runs; your
-conversations are kept. Databases created before this shrank automatically
+Astrolabe removes internal history older than a day on its own while it runs;
+your conversations are kept. Databases created before this shrank automatically
 still hold the freed space on disk until a one-time offline repair returns it
 and turns on automatic shrinking. Settings > Maintenance (web and desktop) or
 Settings > Maintenance (mobile) suggests the repair when at least 1 GiB can be

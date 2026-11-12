@@ -281,7 +281,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/worktrees",
     scope: "project-defaults",
     searchTerms: [
-      "disk storage delete deleted archived threads old inactive merged unchanged worktrees retention days project inherit off custom",
+      "disk storage automatic delete deleted archived threads old inactive merged settled unchanged worktrees retention days project inherit off custom",
     ],
   },
   {
@@ -296,7 +296,9 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Artifacts and logs",
     to: "/settings/maintenance",
     scope: "environment-defaults",
-    searchTerms: ["disk storage browser screenshots captures rotated logs cleanup retention"],
+    searchTerms: [
+      "disk storage delete old browser artifacts screenshots captures rotated logs cleanup retention",
+    ],
   },
   {
     id: "project-defaults",
@@ -317,6 +319,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/threads",
     scope: "project-defaults",
     searchTerms: ["new thread project provider reasoning effort"],
+  },
+  {
+    id: "fallback-model",
+    title: "Fallback model",
+    to: "/settings/threads",
+    scope: "environment-defaults",
+    searchTerms: ["fallback agent provider out of usage new threads"],
+    environmentOnly: true,
   },
   {
     id: "default-permissions",
@@ -447,6 +457,36 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Format on save",
     to: "/settings/appearance",
     searchTerms: ["formatter prettier language server code repository file save mod+s"],
+  },
+  {
+    id: "inlay-hints",
+    title: "Inlay hints",
+    to: "/settings/appearance",
+    searchTerms: ["type parameter names language server code repository file editor inline"],
+  },
+  {
+    id: "inline-diagnostics",
+    title: "Inline diagnostics",
+    to: "/settings/appearance",
+    searchTerms: ["errors problems warnings end of line message language server code editor"],
+  },
+  {
+    id: "semantic-tokens",
+    title: "Semantic colours",
+    to: "/settings/appearance",
+    searchTerms: ["semantic tokens highlighting syntax language server code editor"],
+  },
+  {
+    id: "code-lens",
+    title: "Code lens",
+    to: "/settings/appearance",
+    searchTerms: ["references implementations above lines language server code editor"],
+  },
+  {
+    id: "run-markers",
+    title: "Run markers",
+    to: "/settings/appearance",
+    searchTerms: ["run test tests gutter play terminal main entry point code editor"],
   },
   {
     id: "composer-context",
@@ -599,9 +639,9 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "proactive-panels",
-    title: "Proactive panels",
+    title: "Open pull requests and changes panels proactively",
     to: "/settings/diffs",
-    searchTerms: ["automatically open diff pull request pr right panel agent completion"],
+    searchTerms: ["proactive automatically open diff pull request pr right panel agent completion"],
   },
   {
     id: "skills-in-slash-menu",
@@ -667,7 +707,9 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "provider-update-checks",
     title: "Provider update checks",
     to: "/settings/maintenance",
-    searchTerms: ["installed cli versions newer available codex claude cursor grok fx opencode"],
+    searchTerms: [
+      "installed cli versions newer available codex claude cursor grok fx kiro opencode",
+    ],
     scope: "environment-defaults",
   },
   {
@@ -870,7 +912,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Providers",
     to: "/settings/providers",
     searchTerms: [
-      "agents cli codex claude cursor grok fx opencode antigravity google sign in sign out install subscription instances authentication api key models configuration binary path config directory endpoint arguments environment variables display name accent color custom favorite hidden auto compact",
+      "agents cli codex claude cursor grok fx kiro opencode antigravity google sign in sign out install subscription instances authentication api key models configuration binary path config directory codex_home shadow home endpoint arguments environment variables display name accent color custom favorite hidden auto compact native sessions import resume",
     ],
   },
   {
@@ -990,7 +1032,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "browser-search-engine",
     title: "Search engine",
     to: "/settings/browser",
-    searchTerms: ["address bar duckduckgo google bing brave kagi ecosia custom"],
+    searchTerms: ["address bar duckduckgo google bing brave kagi ecosia custom url"],
   },
   {
     id: "pull-request-links-open-in-app",
@@ -1138,6 +1180,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["index symbols definitions imports skipped paths rebuild local graph repository"],
   },
   {
+    id: "project-language-servers",
+    title: "Language servers",
+    to: "/settings/projects",
+    searchTerms: [
+      "lsp language server python rust go java jdtls json css scss less html yaml bash shell dockerfile toml lua markdown zig swift ruby php c# csharp kotlin elixir dart c c++ cpp clangd gopls rust-analyzer basedpyright pyright typescript diagnostics completion compile_commands virtualenv venv trust trusted revoke restricted add custom own server binary arguments environment initialization options configuration turn off disable order primary",
+    ],
+  },
+  {
     id: "project-actions",
     title: "Actions",
     to: "/settings/projects",
@@ -1179,7 +1229,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "WSL backend",
     to: "/settings/access",
     searchTerms: [
-      "windows subsystem linux distro second server projects stop windows backend restart",
+      "windows subsystem linux distro second server projects stop windows backend restart wsl only",
     ],
     desktopOnly: true,
     windowsOnly: true,

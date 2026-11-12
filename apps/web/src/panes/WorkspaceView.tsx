@@ -4,11 +4,12 @@ import { Navigate, useNavigate } from "@tanstack/react-router";
 import { Activity, memo, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { chatRouteOf, ChatTabWatch } from "~/chatTabs/chatTabLabel";
+import { chatRouteOf, ChatTabWatch, useChatTagFilter } from "~/chatTabs/chatTabLabel";
 import { isCommandPaletteOpen } from "~/commandPaletteBus";
 import { registerThreadTabDrop } from "~/chatTabs/threadTabDrop";
 import { BackgroundThreadContext } from "~/components/chat/backgroundThread";
 import { changeGroupTabKey } from "~/components/changeRequests/groups/changeGroupTabs";
+import { closedRuns, closeRunTerminal } from "~/components/repositories/runTabs";
 import { RepositoryTabView } from "~/components/repositories/RepositoryTabView";
 import { parseRepositoryTabKey } from "~/components/repositories/repositoryTabs";
 import { SidebarInset } from "~/components/ui/sidebar";
@@ -33,6 +34,7 @@ import {
   focusedChatOf,
   useWorkspaceArrangement,
   useWorkspaceFront,
+  useWorkspaceOpenKeys,
   useWorkspaceSnapshot,
   useWorkspaceTabHistory,
   workspace,
@@ -191,6 +193,7 @@ export function WorkspaceView({
                 <DraftRouteRedirect draftId={routeTarget.draftId} />
               ) : null}
               <GroupsSync />
+              <RunTabsSync />
             </PanesLayoutKeyContext.Provider>
           </PanesHostContext.Provider>
         </WorkspaceHostContext.Provider>
@@ -318,7 +321,14 @@ function WorkspaceTabContents() {
       {keys.flatMap((key) =>
         parseChatTabKey(key) === null
           ? []
-          : [<ChatTabWatch key={key} chatKey={key} onGone={closeGoneChat} />],
+          : [
+              <ChatTabWatch
+                key={key}
+                chatKey={key}
+                onGone={closeGoneChat}
+                onHidden={workspace.close}
+              />,
+            ],
       )}
     </>
   );
@@ -338,7 +348,7 @@ const TabContent = memo(function TabContent({
     <PaneTabKeyContext value={tabKey}>
       {chat !== null ? (
         <ChatOwnerContext value={tabKey}>
-          <PaneChat threadRef={chat} />
+          <FilteredPaneChat threadRef={chat} />
         </ChatOwnerContext>
       ) : repository !== null ? (
         <RepositoryTabView tabKey={tabKey} tab={repository} />
@@ -348,6 +358,11 @@ const TabContent = memo(function TabContent({
     </PaneTabKeyContext>
   );
 });
+
+/** A chat the tag filter hides never mounts; `ChatTabWatch` closes its tab. */
+function FilteredPaneChat({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
+  return useChatTagFilter(threadRef) === "visible" ? <PaneChat threadRef={threadRef} /> : null;
+}
 
 const closeGoneChat = (chatKey: string) => {
   const ref = parseChatTabKey(chatKey);
@@ -359,6 +374,18 @@ function useHost() {
   const host = useContext(WorkspaceHostContext);
   if (!host) throw new Error("The workspace's contents render inside its host.");
   return host;
+}
+
+/** Ends a run's terminal when its tab closes, however it closed. Renders nothing. */
+function RunTabsSync() {
+  const keys = useWorkspaceOpenKeys();
+  const seen = useRef(keys);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- ends environment terminals no tab shows any more
+  useEffect(() => {
+    closedRuns(seen.current, keys).forEach(closeRunTerminal);
+    seen.current = keys;
+  }, [keys]);
+  return null;
 }
 
 /**

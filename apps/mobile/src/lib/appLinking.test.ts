@@ -21,6 +21,7 @@ describe("shouldHandleAppLink", () => {
     "astrolabe://threads/env-1/thread-1",
     "astrolabe://pair?pairingUrl=x",
     "astrolabe-dev://settings/usage?tab=limits",
+    "https://app.astrolabe.sh/threads/env/thread?prompt=Fix%20expo-development-client%20and%20astrolabe://expo-sharing",
   ])("handles path-bearing URL %s", (url) => {
     expect(shouldHandleAppLink(url, true)).toBe(true);
   });

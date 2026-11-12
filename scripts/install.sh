@@ -1,5 +1,5 @@
 #!/bin/sh
-# Installs the T3 Code CLI from a GitHub Release archive. Needs only sh, tar,
+# Installs the Astrolabe CLI from a GitHub Release archive. Needs only sh, tar,
 # sha256sum or shasum, and curl or wget; no Node, npm, or compiler.
 #
 #   curl -fsSL https://raw.githubusercontent.com/mercurian-labs/astrolabe/main/scripts/install.sh | sh
@@ -29,6 +29,14 @@ T3CODE_RELEASE_BASE_URL="${ASTROLABE_RELEASE_BASE_URL:-${T3CODE_RELEASE_BASE_URL
 repo="mercurian-labs/astrolabe"
 base_url="${T3CODE_RELEASE_BASE_URL:-${repo:+https://github.com/${repo}/releases/download}}"
 t3_home="${T3CODE_HOME:-$HOME/.astrolabe}"
+case "$t3_home" in
+  /*) ;;
+  *)
+    # Preserve cwd's trailing newlines; trim only pwd's newline and the sentinel.
+    t3_cwd="$(pwd -P && printf .)"
+    t3_home="${t3_cwd%??}/$t3_home"
+    ;;
+esac
 bin_dir="${T3CODE_INSTALL_BIN_DIR:-$HOME/.local/bin}"
 
 fail() {

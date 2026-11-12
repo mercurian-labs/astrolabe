@@ -26,7 +26,6 @@ import { focusListRow, listDefaultRow } from "../../keyboardNav/placeLists";
 import { sidebarSectionSlot } from "../../whichKey/handles";
 
 export interface SidebarThreadHeaderProps {
-  searchFieldRef?: RefObject<HTMLDivElement | null>;
   hasProjects: boolean;
   projectScope: ReactNode;
   /** Astrolabe: without an event when the keyboard menu asks (see `sidebarSectionSlot`). */
@@ -52,7 +51,6 @@ export interface SidebarThreadHeaderProps {
 }
 
 export function SidebarThreadHeader({
-  searchFieldRef,
   hasProjects,
   projectScope,
   onNewThread,
@@ -120,9 +118,8 @@ export function SidebarThreadHeader({
   return (
     <div className="flex items-center gap-1">
       {/* Astrolabe: the section's name holds the field's place until search opens it. */}
-      {fieldShown ? null : <SidebarSectionTitle ref={searchFieldRef}>{title}</SidebarSectionTitle>}
+      {fieldShown ? null : <SidebarSectionTitle>{title}</SidebarSectionTitle>}
       <div
-        ref={fieldShown ? searchFieldRef : undefined}
         className={cn(
           "flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-within:bg-sidebar-row-hover focus-within:text-sidebar-foreground focus-within:ring-1 focus-within:ring-inset focus-within:ring-ring/70",
           !fieldShown && "hidden",
