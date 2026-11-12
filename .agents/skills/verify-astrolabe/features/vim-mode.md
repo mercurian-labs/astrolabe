@@ -38,8 +38,9 @@ show you know the way out. In Vim's normal mode `:` opens the Command Palette (s
   menu and `:` the palette. Files save on their own; `:w` is **Save the file**, formatting
   first when a language server runs and **Format on save** (Settings → Appearance) is on.
   `]c`/`[c` jump to the next/previous change, and `K`, `gd`, `gD`, `gy`, `gI`, `gr` are hover,
-  definition, declaration, type definition, implementation and references, `gR` and `gL` Run at
-  cursor and Run last (`packages/editor/src/lsp/vimKeys.ts`). A bound Cmd/Ctrl/Alt key runs the editor's command
+  definition, declaration, type definition, implementation and references, `gh` and `gH`
+  incoming and outgoing calls (`gh` on a function opens "Incoming calls of <name>"), `gW`
+  project symbols, `gR` and `gL` Run at cursor and Run last (`packages/editor/src/lsp/vimKeys.ts`). A bound Cmd/Ctrl/Alt key runs the editor's command
   before Vim reads it as a character. A Markdown file switches to the code font outside insert mode; a code file
   (`.cm-editor.cm-code`) is monospace already, so only the block cursor shows the mode.
 - **Visual mode** (every Vim editor): `v`, `V` paint the selection in a theme colour
@@ -172,6 +173,7 @@ under the text and a hit-test lands on the text.
 
 ## Gotchas
 
+- The "No edits to save" toast is brief; catch it as SKILL.md's toast tip says.
 - Opening a thread focuses its composer **in insert mode**, so a Space or letter
   sent "to the page" types into the draft. Press Escape (normal mode, where Space is
   the leader) or open the menu with Cmd+K; a click outside leaves focus on the page,
@@ -201,7 +203,7 @@ under the text and a hit-test lands on the text.
 `packages/editor/src/vim.ts` (`vimConfiguration`), `packages/shared/src/vimrc.ts`,
 `apps/server/src/vimrc.ts`, `packages/contracts/src/vimrc.ts`,
 `components/settings/VimrcSettings.tsx`, the vimrc branch of
-`components/KeybindingsUpdateToast.logic.ts`, the `vimPanel` prop in `editor.tsx`,
+`components/KeybindingsUpdateToast.logic.ts`, the `vimPanel` prop in `packages/editor/src/editor.tsx`,
 `apps/web/src/components/composerCodeMirror/` (`composerEditor.ts`, `composerUndo.ts`,
 `ComposerPromptEditorCodeMirror.tsx`), `components/settings/VimModeSetting.tsx`,
 `components/settings/vimQuitGate.ts`, the This device section of

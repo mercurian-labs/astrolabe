@@ -15,7 +15,8 @@ thread's own Pull request tab. Shown only when a connected server reports
   upstream's own strings ("Open pull requests" in the palette, "pull request" inside a
   review) are unchanged.
 - **Wiki changes** (web, `components/changeRequests/WikiChangesGroup.tsx`): the wikis' change
-  requests in their own group above the pull requests (`ul[aria-label='Wiki changes']`):
+  requests in their own group above the pull requests (`ul[aria-label='Wiki changes']`). A **Your
+  drafts** shelf with its count sits above it while you have drafts, expanded by default. Then
   "Wiki changes" with its count at the right (`Wiki changes · <wiki>` with a clear button,
   `button "Show every wiki's changes, not only <wiki>'s"`, when this section's own wiki,
   `astrolabe:change-request-wiki-scope:v1`, picks one: set by Filter by project, or copied
@@ -24,7 +25,9 @@ thread's own Pull request tab. Shown only when a connected server reports
   rows. The section search narrows them by title. A click shows one in the focused
   pane's tab in front (`showChangeRequestTab`), Option-click a new tab, Cmd/Shift
   select, drag places them; a pull request row over a wiki change replaces it, and
-  Back/Forward walk across both kinds. Hidden when a project or a single host is picked.
+  Back/Forward walk across both kinds. Hidden when a project or a single host is picked. With
+  the kind All and no host or project picked, a host-connected wiki's pull requests show only
+  here, not in the pull request list (`PullRequestsPage.tsx`).
 - **A wiki pull request's pull requests** (`client-runtime/src/wikiPullRequests.ts`):
   its view lists the writing thread's pull requests (`ul[aria-label='Pull requests']`,
   state per row, **Open** shows one beside it as a tab, or as the thread's own Pull
@@ -82,7 +85,7 @@ thread's own Pull request tab. Shown only when a connected server reports
   members and a Threads section as buttons, "Take … out of the group"); Settings → Changes
   (`SettingsChangeRequests`) holds the Grouping switches. No tab groups or agent asks on the phone.
 - **Settings › Changes** (`/settings/change-requests`,
-  `settings/ChangeRequestSettings.tsx`; the palette finds it as "Grouping"): server-scoped
+  `components/settings/ChangeRequestSettings.tsx`; the palette finds it as "Grouping"): server-scoped
   switches, each `switch "<title>"`: Same thread, Same coordinator, Thread lineage,
   References, Same branch, Agent suggestions, Flag documentation that falls behind, Offer drafts for
   missing documentation, Merge new groups with the code (all on by default except Offer
@@ -104,9 +107,10 @@ thread's own Pull request tab. Shown only when a connected server reports
   hold the choice; both are read once per page load, so a value seeded from
   `preview_evaluate` needs a reload. A project is the list's `projectId` scope; choosing All
   afterwards drops `projectId` but keeps `environmentId` in the URL. Projects (all or one)
-  hides Wiki changes; Wikis (all or one) hides the pull requests, Sort and Filters, and an
-  empty wiki says `No pull requests in <wiki> yet` (with no wikis at all, "No wiki change
-  requests yet"). With only wikis, "All wikis" is the kind All, so Sort, Filters and the
+  hides Wiki changes; Wikis (all or one) hides the pull requests, Sort and Filters. The empty
+  text reads "No pull requests found" while searching, `No <host's plural> in <wiki> yet`
+  scoped to a wiki (default "pull requests"), else "No wiki pull requests yet". A draft counts
+  as content, so the empty text needs no drafts. With only wikis, "All wikis" is the kind All, so Sort, Filters and the
   pull requests stay. Change groups follow the filter on web: Projects keeps groups with a
   pull request, one project only its threads' groups, Wikis only wiki change-request members. The Agents filter (`projects/useThreadsFilter.ts`, `Filter threads`; see
   [sidebar-header.md](sidebar-header.md)) lists the same projects and no wikis, but picks
@@ -184,7 +188,8 @@ thread's own Pull request tab. Shown only when a connected server reports
   line, not a fade (Summary's section headings and Code's file headers are sticky). Outside
   the shared panes the panel keeps T3 Code's crumbs.
 - **The review**: `nav[aria-label='Pull request tabs']` holds **Summary** (reviewers,
-  labels, description, checks, comments), **Guide** (only with Settings → Source Control
+  labels, description, checks, comments), **Wiki** (second, only on a pull request that is a
+  host-connected wiki's change; `PullRequestDetailPanel.tsx`), **Guide** (only with Settings → Source Control
   → review guides on), **Timeline** and **Code** (the diff, with scope, split/stacked,
   file tree, Viewed). Every review opens on Summary. A written guide coming on screen in
   the focused pane collapses the sidebar (wide windows only, on Changes) and maximizes the pane when
@@ -192,7 +197,9 @@ thread's own Pull request tab. Shown only when a connected server reports
   as in T3 Code; leaving Changes opens the sidebar again unless it was opened by hand
   since. **More pull request actions**: Link to thread, Refresh, Ask a question, Explain
   this PR, Fix findings in a thread, Open on GitHub, Copy link, Copy PR number. Commenting and reviewing use the floating
-  **Comment on pull request** button.
+  **Comment on pull request** button. Both names follow the host's term (`More <term> actions`,
+  `Comment on <term>`: "merge request" on GitLab; `PullRequestActionsMenu.tsx`,
+  `PullRequestComposer.tsx`).
 
 ## How to get to it (user POV)
 
@@ -260,7 +267,7 @@ Save a screenshot of the section.
 `pullRequestWorkspace.ts`, `components/changeRequests/` (project filter, kind, Wiki changes,
 and `groups/` with the thread header's pill), `state/changeGroups.ts`,
 `components/projects/` (the project filter, shared with the Agents sidebar),
-`settings/ChangeRequestSettings.tsx` and `routes/_chat.settings.change-requests.tsx`,
+`components/settings/ChangeRequestSettings.tsx` and `routes/_chat.settings.change-requests.tsx`,
 `pullRequest/PullRequestTabHeading.tsx` (the header), the
 change-group branch of `sectionTabs/`, `packages/shared/src/changeGroups.ts`,
 `packages/contracts/src/changeGroups.ts`, `client-runtime/src/wikiPullRequests.ts`, server

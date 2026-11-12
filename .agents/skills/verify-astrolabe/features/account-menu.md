@@ -7,8 +7,8 @@ Settings. Builds without sign-in keep a plain Settings button.
 
 ## States
 
-- **No cloud config**: a plain Settings button that goes to `/settings`. No menu, no account
-  dialogs. This also covers values the client rejects: a relay URL that isn't `https`, an
+- **No cloud config**: a plain Settings button (no `aria-haspopup`) that opens
+  `dialog "Settings"` at `/settings/general`. No menu, no account dialogs. This also covers values the client rejects: a relay URL that isn't `https`, an
   auth URL that is `http` off localhost, or either with a path, query or hash
   (`cloud/publicConfig.ts`). Vite reads them at startup, so a `.env` change needs a dev
   restart.
@@ -24,7 +24,8 @@ Settings. Builds without sign-in keep a plain Settings button.
   (`cloud/account.ts`).
 - **Signed in**: initials (or the photo), and the trigger is named after the
   user's name, else email. Menu: a header with name and email, **Account**,
-  **Workspaces**, **Settings**, then **Sign out**.
+  **Workspaces**, **Settings**, then **Sign out**. Signing in on web opens a "Set up remote
+  access" dialog (`components/cloud/ConnectOnboardingDialog.tsx`), which stays until Escape.
 - **Waitlisted or declined**: the email line reads "On the waitlist".
 - **Settings shortcut**: ⌘, (Ctrl+, off macOS) only in the desktop app. The
   browser keeps that key, so the Browser panel never shows it.
@@ -42,7 +43,7 @@ below.
 
 ## Driving it with the Browser panel
 
-With cloud config only (without it the rail's Settings is a plain link with no
+With cloud config only (without it the rail's Settings is a plain button with no
 `aria-haspopup`, and the query below returns null). Locator clicks on the rail can
 time out at the scroll step; click the trigger from `preview_evaluate` instead:
 

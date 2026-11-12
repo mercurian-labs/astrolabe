@@ -25,7 +25,8 @@ spelling live in
   The editor paints its draft on the live app, so the bar changes as the row is
   edited.
 - The page title reads "Astrolabe (Beta)" while booting and "Astrolabe (Dev)" once loaded in dev
-  (a server version can set another stage label). Brand marks and the
+  (a server version can set another stage label). A Nightly hosted build reads "Astrolabe
+  (Nightly)", and Latest drops the label (`branding.ts`, `branding.logic.ts`). Brand marks and the
   wordmark appear on the boot screen and the welcome wizard, and the monogram heads the icon rail.
   The monogram also replaces T3's glyph in the chat timeline: on the plain "Created thread" row
   (`components/chat/V2LifecycleRow.tsx`) and as the `t3-code` work-log icon for thread-create
@@ -42,7 +43,10 @@ spelling live in
 Theme: **Settings** (icon rail, or the sidebar footer on narrow windows; the account
 menu's Settings row where sign-in is configured) →
 **Appearance**, or the Command Palette's **Change theme** (Cmd+P, then type
-"theme"), which Cmd+Alt+A (`theme.select`) opens directly. Both lists lead with
+"theme"), which Cmd+Alt+A (`theme.select`) opens directly. Cmd+Alt+Shift+A
+(`appearance.cycle`) cycles the appearance (system → light → dark), stored in
+`localStorage['t3code:theme-appearance-mode']`, and Cmd+Alt+Shift+T (`themeEditor.toggle`)
+toggles the theme editor (`packages/shared/src/keybindings.ts`). Both lists lead with
 Mercurian, then T3 Code, and leave out Iris. Focus bar color: Appearance →
 **Create theme** (or a card's **Duplicate**) opens the theme editor → turn on
 **Advanced** if it is off → Brand & content → **Focus bar**.

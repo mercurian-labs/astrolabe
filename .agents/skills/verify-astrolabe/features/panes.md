@@ -58,7 +58,7 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   thread's title, line or checkpoint is `Open <title> in a new tab`, which opens it as
   a chat tab after the chat in front, in front; a fork's label reads `<agent> · <running|waiting on you|idle · 3h ago|merged
   back|not started> · <n> behind`. Quiet stretches fold into buttons named
-  `Show <n> folded turns` (text `<n> turns`) that unfold on click; a bar under the drawing
+  `Show <n> folded turns` (`Show 1 folded turn` for one; text `<n> turns`) that unfold on click; a bar under the drawing
   holds **Show every turn** / **Fold quiet turns** and, when the drawing overflows the panel,
   a minimap (`LineageMinimap`, an `aria-hidden` `.h-9` strip: the drawing's paths squeezed,
   a box for the scrolled view that follows `scroll` directly; press or drag to centre there —
@@ -110,12 +110,14 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   With no linked tabs it is **New linked tab** (`[data-new-linked-tab]`, square-plus), opening a
   linked New tab in a new pane right of the chat. With some it is `[data-right-panel-toggle]`, a
   rounded square holding their count (label `Linked tabs (N)`, or `Linked tabs (N, M hidden)` with
-  a primary dot), pressed while any shows, and it opens a multi-select filter with a search box.
+  a primary dot), pressed while any shows, and it opens a multi-select combobox popup
+  (`[data-slot=combobox-popup]`) with `Search linked tabs` and one `option` per tab, each with a
+  `Delete <title>` button.
   A row's tick shows or hides that tab alone (`ParkedTab.hidden`, kept across reloads), the popover
   staying open; with the panel closed the tab ticked shows alone; unticking the last one showing
   closes the panel. A row's trash closes the tab for good, showing or hidden. Below the list:
   **New linked tab**, in front in the linked tabs' pane, closing the popover; **Show all** with any
-  hidden; **Hide all** with any showing. A hidden surface comes back when asked for by name (the
+  hidden; **Hide all** with any showing, closing the popup. A hidden surface comes back when asked for by name (the
   record's active surface moves to it), but not when it inherits active from a closed neighbour.
   `rightPanel.toggle` (Cmd+Alt+B), `p` `r` and the Command Palette hide what shows and restore it,
   leaving tabs hidden one by one hidden, so two presses hide and restore; with none they open the
@@ -167,7 +169,8 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   `pane.toggleMaximized`, `pane.toggleFullScreen`): the keyboard menu's `p` group
   (`v`, `s`, `c`, `m` for maximize, `f` for full screen, `r` for upstream's
   `rightPanel.toggle`, which hides or brings back the front chat's linked tabs), `:vs` and `:sp` in the Command Palette, or any shortcut bound to them
-  (which-key.md). A split moves focus into the new pane, on the moved tab's pill.
+  (which-key.md). A split moves focus into the new pane, on the moved tab's pill; splitting a
+  New tab focuses its launcher (`Open a tab`) instead.
   `:q` closes the focused pane's active tab.
 - **Tab context menu** (right-click): **Open in Projects** for a thread's Files, Diff and
   opened file, **Open as its own tab** for a
@@ -220,7 +223,10 @@ ChatView's panel props and renders the live surface into the pane showing its ta
 - **Back and Forward in the header**: every header above starts with ← → (`[data-tab-history]`,
   `TabHeader.History`), as Obsidian's tab headers do. They step that tab's own history
   (`workspace.step(direction, tabKey)`), focused or not, and are disabled with nothing that way.
-  From a results tab (search, problems, places; `keepsPlace`) or one with unsaved edits a step
+  A step first follows a recorded go-to jump (`panes/jumpHistory.ts`), returning to the tab and
+  line a definition or reference came from; only then does it step the tab's own history.
+  From a results tab (search, problems, places, language-server logs, runs; `keepsPlace` in
+  `panes/workspace.ts`) or one with unsaved edits a step
   opens the entry as a new tab after it in the same pane, and the results tab stays.
   A chat's header and a thread surface's (the Graph tab, a thread's pull request) have none,
   and `step`/`canStep` refuse them (`navigatesInPlace`): a chat never shows anything else in its
@@ -254,8 +260,9 @@ ChatView's panel props and renders the live surface into the pane showing its ta
 Press **+** at the end of any pane's tabs (or Cmd+T): a New tab opens there with **Open a tab**;
 pick one and it takes the New tab's place. Open a chat and press **New linked tab** at the end of
 its header (or Cmd+Alt+B): a linked pane opens to the chat's right with the surface launcher;
-pressed again, another joins it in front. **Hide tabs** sets them aside; the button then counts
-them, and clicking it brings them back.
+pressed again, another joins it in front. The button then reads **Linked tabs (N)** and opens
+their filter: **Hide all** sets them aside (`Linked tabs (N, M hidden)`), and **Show all**
+brings them back.
 
 ## Driving it with the Browser panel
 
@@ -265,7 +272,7 @@ buttons. With two panes, add `>> nth=N` to `New tab`, `Maximize pane` and
 
 ```
 preview_act click  role=button[name='New linked tab']                        # in the chat header
-preview_act click  role=button[name=/^(Hide|Show) tabs/]                     # Hide tabs / Show tabs (N hidden); absent with none
+preview_act click  <x,y of [data-right-panel-toggle]>                       # Linked tabs (N[, M hidden]); a name regex with \( times out
 preview_act click  [aria-label='Open a surface'] >> role=button[name=/^Diff/]  # launcher; an unavailable surface is a disabled row, not a button
 preview_act click  role=button[name='New tab'] >> nth=0                      # + : a New tab, no menu
 preview_act click  [aria-label='Open a tab'] >> role=button[name=/^Project file/]
@@ -335,8 +342,9 @@ and returning shows the first chat's again. After a reload both reads return the
   The menu acts on whichever panes registered last (one `panesSlot`).
 - While a pane is maximized the others are `inert`, so role locators skip them and
   `nth` indexes shift.
-- The context menu renders as plain `button`s on web. The other menus use
-  `menuitem`.
+- The tab context menu renders as plain `button`s on web, and a role click on its items
+  (`role=menu >> role=button[…]`) times out: click them by their measured centre. The other
+  menus use `menuitem`.
 - Lineage reads the whole fork family from `GET /api/orchestration/threads/<id>/lineage`,
   not the chat's loaded turns. It draws in for about a second after that first fetch
   lands, so wait before a screenshot. It opens scrolled to its right end, where forks
