@@ -1,7 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import type { CanvasView } from "@t3tools/client-runtime/canvasViews";
 import { type ScopedThreadRef, TurnItemId } from "@t3tools/contracts";
-import { MessageSquarePlusIcon } from "lucide-react";
 import type { CanvasBoardHandle } from "@mercurian/wiki-editor/canvas-board";
 import { Suspense, useRef } from "react";
 import { canvasStoryEdit } from "@mercurian/wiki/canvas-edits";
@@ -13,7 +12,8 @@ import { canvasViewsAtom, canvasViewsKey } from "~/state/canvasViews";
 import { canvasHost, LazyCanvasBoard } from "./CanvasFrame";
 import { CanvasFramePopover } from "./CanvasFramePopover";
 import { CanvasStoryPill, onStepKey } from "./CanvasStoryPill";
-import { KeepCanvasButton } from "./KeepCanvas";
+import { canvasMenuItems } from "./canvasMenuItems";
+import { useKeepCanvas } from "./KeepCanvas";
 import { useThreadCanvasStore } from "./threadCanvasStore";
 import { useCanvasWalk } from "./useCanvasWalk";
 import { useCanvasDocumentData, useThreadCanvasDocument } from "./useThreadCanvasDocument";
@@ -52,6 +52,12 @@ function CanvasPanelBoard({
   const board = useRef<CanvasBoardHandle>(null);
   const key = canvasViewsKey(threadRef);
   const readOnly = useThreadCanvasStore((store) => store.editingByThread[key] !== view.id);
+  const keep = useKeepCanvas({
+    environmentId: threadRef.environmentId,
+    threadId: threadRef.threadId,
+    itemId,
+    title: view.title,
+  });
   return (
     <div
       className="flex min-h-0 flex-1 flex-col"
@@ -59,20 +65,6 @@ function CanvasPanelBoard({
     >
       <TabHeader.Root>
         <TabHeader.Title label="Canvas">{view.title}</TabHeader.Title>
-        <TabHeader.Actions>
-          {walk.ask === undefined ? null : (
-            <TabHeader.Action label={walk.ask.label} onClick={walk.ask.run}>
-              <MessageSquarePlusIcon />
-            </TabHeader.Action>
-          )}
-          <KeepCanvasButton
-            environmentId={threadRef.environmentId}
-            threadId={threadRef.threadId}
-            itemId={itemId}
-            title={view.title}
-            size="icon-sm"
-          />
-        </TabHeader.Actions>
       </TabHeader.Root>
       <div className="min-h-0 flex-1">
         <Suspense fallback={null}>
@@ -85,6 +77,8 @@ function CanvasPanelBoard({
             step={walk.step}
             openFrame={walk.frame?.step ?? null}
             onFrame={walk.toggleFrame}
+            onPresent={() => walk.go(0)}
+            menuItems={canvasMenuItems(walk, keep.item)}
             {...(canvas === null
               ? {}
               : {
@@ -110,6 +104,7 @@ function CanvasPanelBoard({
         </Suspense>
       </div>
       <CanvasFramePopover view={view} walk={walk} onCard={(id) => board.current?.focusCard(id)} />
+      {keep.dialog}
     </div>
   );
 }

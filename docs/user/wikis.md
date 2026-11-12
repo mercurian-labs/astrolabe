@@ -64,13 +64,13 @@ To start one, choose **New document**, type a name and pick **New canvas**, or u
 
 An agent says what goes on a board, and Astrolabe finds the room: nothing already there moves, except that a group can grow to fit a new card. Its changes land on a pull request, never on main. A canvas open in that pull request refreshes as they land, with the camera where you left it. Each changed card highlights once, then keeps its mark until the pull request is merged or closed. On the thread, **Open canvas** beside the agent's step takes you to the board.
 
-Open a canvas like any document. Scroll to pan, hold ⌘ and scroll to zoom, hold Space and drag to pan, ⇧1 fits the board, and ⇧2 zooms to the selection. Far zoomed out, cards show only their names. **Jump to group** lists a canvas's labelled groups, from the top of its tab or the command palette.
+Open a canvas like any document. Scroll to pan, hold ⌘ and scroll to zoom, hold Space and drag to pan, ⇧1 fits the board, and ⇧2 zooms to the selection. Far zoomed out, cards show only their names. **Jump to group** lists a canvas's labelled groups, from the board's menu (☰ at its top right) or the command palette. The zoom chip at the bottom right shows the zoom; click it to fit the board, and ⇧0 goes to 100%.
 
 Click a card to select it, and its content becomes live: links open, a note scrolls, a web page loads, and media plays. Double-click a file card's name to open the file. A web page that refuses to be framed stays blank on its card, so open it from the link instead.
 
 ### Edit a canvas
 
-Edits save by themselves a moment after you stop, into [your draft](#drafts), or into the pull request the canvas is open in. There is no Save. A canvas in a closed pull request, or one you can't write to, only reads, and the gear on a board turns **Read-only** on for that board alone.
+Edits save by themselves a moment after you stop, into [your draft](#drafts), or into the pull request the canvas is open in. There is no Save. A canvas in a closed pull request, or one you can't write to, only reads, and **Read-only** in the board's menu, or E, turns it on for that board alone. The same menu holds both kinds of snapping and **Keys and help** (?).
 
 - **Add:** double-click the board for a text card, right-click it, drag from the bar at the bottom, or paste text, an address or an image. Drop files from your computer, a folder's files with them, or drag documents from the sidebar. A folder dragged from the sidebar adds a card for every file in it, its subfolders' too, up to 200. Dropped and pasted files land where **New files** in **Settings → Wikis** says.
 - **Select and move:** click a card, Shift-click to add, or drag across the board to select everything you touch. Cards snap to a grid of 20 and to the cards near them; hold ⌃ during a drag to turn snapping off, Shift to hold to one direction, and Alt to leave a copy behind. Arrow keys nudge the selection, further with Shift.
@@ -82,7 +82,7 @@ Edits save by themselves a moment after you stop, into [your draft](#drafts), or
 
 A selected card shows what you can do with it above it, and right-clicking (or ⇧F10) gives the rest: **Align**, **Convert to file…**, **Swap file…**, **Narrow to heading…**, and a group's background. **?** on the board lists the keys. Undo steps back one gesture at a time, through what has already saved, but not through other people's changes. If someone else changes a card while you type in it, the board keeps both versions and says so.
 
-**Export as image**, in the gear's menu or the command palette, saves a PNG on web and desktop. Text cards draw as plain text, and what only a live card can show draws as its name: Mermaid, math, a note's body, a web page, a base, a PDF.
+**Export image…**, in the board's menu or the command palette, saves a PNG on web and desktop. Text cards draw as plain text, and what only a live card can show draws as its name: Mermaid, math, a note's body, a web page, a base, a PDF.
 
 **Settings → Wikis** holds what the wheel does, when card names show, both kinds of snapping, and the zoom at which card content hides. They apply to every board on that computer.
 

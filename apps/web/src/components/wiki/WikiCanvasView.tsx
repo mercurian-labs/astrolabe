@@ -20,7 +20,7 @@ import type {
   WikiId,
 } from "@t3tools/contracts";
 import { useBlocker } from "@tanstack/react-router";
-import { ChevronDownIcon, TriangleAlertIcon } from "lucide-react";
+import { TriangleAlertIcon } from "lucide-react";
 import * as Schema from "effect/Schema";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
@@ -33,7 +33,6 @@ import { wikiEnvironment } from "~/state/wiki";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { Button } from "../ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
-import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Spinner } from "../ui/spinner";
 import { CanvasStoryPill, onStepKey } from "../canvas/CanvasStoryPill";
 import { useCanvasWalk } from "../canvas/useCanvasWalk";
@@ -142,23 +141,6 @@ function CanvasBoardPane({
       className="flex min-h-0 min-w-0 flex-1 flex-col"
       onKeyDown={(event) => onStepKey(event, walk.steps.length, walk.step, walk.go)}
     >
-      {groups.length > 0 ? (
-        <div className="flex shrink-0 justify-end border-b border-border px-3 py-1">
-          <Menu>
-            <MenuTrigger render={<Button variant="ghost" size="xs" />} aria-label="Jump to group">
-              Jump to group
-              <ChevronDownIcon />
-            </MenuTrigger>
-            <MenuPopup align="end">
-              {groups.map((group) => (
-                <MenuItem key={group.id} onClick={() => board.current?.focusCard(group.id)}>
-                  {group.label}
-                </MenuItem>
-              ))}
-            </MenuPopup>
-          </Menu>
-        </div>
-      ) : null}
       <div className="min-h-0 flex-1">
         <CanvasBoard
           ref={board}
@@ -174,6 +156,7 @@ function CanvasBoardPane({
           onSettings={onSettings}
           story={walk.story}
           step={walk.step}
+          onPresent={() => walk.go(0)}
           onStepAdded={(index) => {
             if (walk.step !== null) walk.go(index);
           }}

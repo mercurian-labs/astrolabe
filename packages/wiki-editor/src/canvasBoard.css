@@ -5,6 +5,9 @@
  */
 .cv-board {
   --cv-tint: var(--muted-foreground);
+  /* What the zoom chip at the foot's corner takes, and the gap beside it. */
+  --cv-zoom-room: 116px;
+  --cv-chip-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
   --cv-line: color-mix(in srgb, var(--foreground) 45%, transparent);
   position: relative;
   width: 100%;
@@ -576,25 +579,90 @@ span.cv-wikilink {
   fill: var(--muted-foreground);
 }
 
-.cv-controls {
+.cv-board[data-editable] {
+  --cv-zoom-room: 182px;
+}
+/* The board's menu and zoom float as chips, like a host's story pill. */
+.cv-menu-button,
+.cv-zoom {
   position: absolute;
+  display: flex;
+  align-items: center;
+  padding: 3px;
+  background: var(--popover, var(--background));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--cv-chip-shadow);
+}
+.cv-menu-button {
   top: calc(12px + env(safe-area-inset-top, 0px));
   right: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
 }
-.cv-controls button {
-  min-width: 32px;
-  height: 32px;
-  padding: 0 4px;
-  font: inherit;
-  font-size: 12px;
-  color: var(--foreground);
+.cv-zoom {
+  right: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+}
+.cv-menu-button button,
+.cv-zoom button {
+  display: grid;
+  place-items: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: 15px;
   cursor: pointer;
-  background: var(--background);
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+}
+.cv-menu-button button:hover,
+.cv-menu-button button[aria-expanded="true"],
+.cv-zoom button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+}
+.cv-menu-button svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-width: 1.5;
+}
+.cv-zoom .cv-zoom-level {
+  min-width: 44px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.cv-zoom-separator {
+  align-self: stretch;
+  width: 1px;
+  margin: 4px 4px;
+  background: var(--border);
+}
+.cv-zoom button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+.cv-board[data-touch] :is(.cv-menu-button, .cv-zoom) button {
+  min-width: 36px;
+  height: 36px;
+}
+.cv-board[data-touch] {
+  --cv-zoom-room: 136px;
+}
+.cv-board[data-touch][data-editable] {
+  --cv-zoom-room: 216px;
+}
+/* Inline in a page, the zoom waits at the top left until the board is pointed at. */
+.cv-board[data-zoom-hover] .cv-zoom {
+  top: 12px;
+  right: auto;
+  bottom: auto;
+  left: 12px;
+  visibility: hidden;
+}
+.cv-board[data-zoom-hover]:is(:hover, :focus-within) .cv-zoom {
+  visibility: visible;
 }
 
 /* Editing. Nothing here animates: what moves does so under the pointer. */
@@ -919,7 +987,7 @@ textarea.cv-label-editor {
   border-radius: 4px;
 }
 /* Presenting moves the camera for the reader. */
-.cv-board[data-walking] .cv-controls {
+.cv-board[data-walking] .cv-zoom {
   display: none;
 }
 .cv-board:fullscreen {
@@ -942,11 +1010,36 @@ textarea.cv-label-editor {
 .cv-overlay > [data-overlay-row] {
   display: flex;
   flex-basis: 100%;
+  min-width: 0;
   justify-content: center;
   pointer-events: none;
 }
 [data-overlay-row] > * {
+  max-width: 100%;
   pointer-events: auto;
+}
+/* Centred between the zoom chip and its mirror; on a narrow board, above it. */
+.cv-board:not([data-zoom-hover], [data-walking]) .cv-overlay {
+  right: calc(12px + var(--cv-zoom-room));
+  left: calc(12px + var(--cv-zoom-room));
+}
+@container (max-width: 540px) {
+  .cv-board:not([data-zoom-hover], [data-walking]) .cv-overlay {
+    right: 12px;
+    bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+    left: 12px;
+  }
+}
+@container (max-width: 680px) {
+  .cv-board[data-editable]:not([data-zoom-hover], [data-walking]) .cv-overlay,
+  .cv-board[data-touch]:not([data-zoom-hover], [data-walking]) .cv-overlay {
+    right: 12px;
+    bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+    left: 12px;
+  }
+  .cv-board[data-editable]:not([data-zoom-hover]) > .cv-bar {
+    bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+  }
 }
 .cv-overlay .cv-bar {
   position: static;
@@ -977,10 +1070,6 @@ textarea.cv-label-editor {
 .cv-bar button {
   cursor: grab;
 }
-.cv-controls button:disabled {
-  cursor: default;
-  opacity: 0.4;
-}
 .cv-menu {
   position: absolute;
   z-index: 11;
@@ -1009,6 +1098,16 @@ textarea.cv-label-editor {
 }
 .cv-menu button[data-destructive] {
   color: var(--destructive, #e5484d);
+}
+.cv-menu-hint {
+  margin-left: auto;
+  padding-left: 16px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.cv-board[data-touch] .cv-menu button {
+  min-height: 36px;
 }
 .cv-menu-check {
   flex: none;

@@ -8,19 +8,18 @@ import {
   type WikiKeepCanvasResult,
   type WikiSummary,
 } from "@t3tools/contracts";
-import { BookmarkPlusIcon, TriangleAlertIcon } from "lucide-react";
+import { TriangleAlertIcon } from "lucide-react";
 import { useId, useState } from "react";
 
 import { useEnvironmentQuery } from "~/state/query";
 import { wikiEnvironment } from "~/state/wiki";
 import { Alert, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
+import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "../ui/dialog";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useOpenWikiTab } from "../wiki/useOpenWiki";
 import { useWikiCommand } from "../wiki/wikiEnvironment";
 
@@ -207,39 +206,29 @@ function PlaceInWiki({
   );
 }
 
-/** Keep a board in a wiki the person picks, with its cards fixed by `CanvasKeep`. */
-export function KeepCanvasButton({
-  size,
-  ...board
-}: KeptBoard & { readonly size: "icon-xs" | "icon-sm" }) {
+/**
+ * Keeping a board in a wiki the person picks, with its cards fixed by `CanvasKeep`: the board menu's
+ * item, while this person can place one, and the dialog it opens.
+ */
+export function useKeepCanvas(board: KeptBoard | null) {
   const [open, setOpen] = useState(false);
-  const canPlace = useAtomValue(wikiEnvironment.keepCanvas.permissionAtom(board.environmentId));
-  if (!canPlace) return null;
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <PopoverTrigger
-              render={<Button variant="ghost" size={size} aria-label={`Keep ${board.title}`} />}
-            />
-          }
-        >
-          <BookmarkPlusIcon />
-        </TooltipTrigger>
-        <TooltipPopup side="bottom">Keep in a wiki</TooltipPopup>
-      </Tooltip>
-      <PopoverPopup
-        aria-label={`Keep ${board.title}`}
-        side="bottom"
-        align="end"
-        width="md"
-        padding="compact"
-      >
-        <p className="truncate pb-1 text-sm font-medium">{`Keep ${board.title}`}</p>
-        <PlaceInWiki board={board} onClose={() => setOpen(false)} />
-      </PopoverPopup>
-    </Popover>
+  const canPlace = useAtomValue(
+    wikiEnvironment.keepCanvas.permissionAtom(board?.environmentId ?? null),
   );
+  if (board === null || !canPlace) return { item: undefined, dialog: null };
+  return {
+    item: { label: "Keep in a wiki…", run: () => setOpen(true) },
+    dialog: (
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogPopup className="max-w-md" aria-label={`Keep ${board.title}`}>
+          <DialogHeader>
+            <DialogTitle>{`Keep ${board.title}`}</DialogTitle>
+          </DialogHeader>
+          <DialogPanel>
+            <PlaceInWiki board={board} onClose={() => setOpen(false)} />
+          </DialogPanel>
+        </DialogPopup>
+      </Dialog>
+    ),
+  };
 }

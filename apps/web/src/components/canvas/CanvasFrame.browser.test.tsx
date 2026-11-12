@@ -81,10 +81,18 @@ describe("CanvasFrame", () => {
     expect(useThreadCanvasStore.getState().editingByThread[key]).toBeUndefined();
 
     // The chat card stays read-only: its Edit unlocks the board in the tab instead.
-    await userEvent.click(screen.getByRole("button", { name: "Disable read-only" }));
+    await userEvent.click(screen.getByRole("button", { name: "Canvas menu" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Edit board" }));
     expect(open).toHaveBeenCalledTimes(2);
     expect(useThreadCanvasStore.getState().editingByThread[key]).toBe("item-1");
-    await expect.element(screen.getByRole("button", { name: "Disable read-only" })).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Canvas menu" }));
+    await expect.element(screen.getByRole("menuitem", { name: "Edit board" })).toBeVisible();
+    await userEvent.keyboard("{Escape}");
+
+    // E does the same from the board.
+    useThreadCanvasStore.getState().setEditing(key, null);
+    await userEvent.keyboard("e");
+    expect(useThreadCanvasStore.getState().editingByThread[key]).toBe("item-1");
     useThreadCanvasStore.getState().setEditing(key, null);
   });
 
@@ -114,14 +122,20 @@ describe("CanvasFrame", () => {
       </ComposerHandleContext>,
       { router: false }, // The frame reads no route.
     );
-    await userEvent.click(screen.getByRole("button", { name: "Ask about this canvas" }));
+    const menu = screen.getByRole("button", { name: "Canvas menu" });
+    await userEvent.click(menu);
+    await userEvent.click(screen.getByRole("menuitem", { name: "Ask about this canvas" }));
     expect(addCanvas).toHaveBeenLastCalledWith(
       expect.not.objectContaining({ step: expect.anything() }),
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "Present" }));
-    await userEvent.click(screen.getByRole("button", { name: "Next step" }));
-    await userEvent.click(screen.getByRole("button", { name: "Ask about step 2" }));
+    // P presents from the board, whose arrow keys then step the story.
+    await userEvent.keyboard("p");
+    await expect.element(screen.getByText("1 / 2")).toBeVisible();
+    await userEvent.keyboard("{ArrowRight}");
+    await expect.element(screen.getByText("2 / 2")).toBeVisible();
+    await userEvent.click(menu);
+    await userEvent.click(screen.getByRole("menuitem", { name: "Ask about step 2" }));
     expect(addCanvas).toHaveBeenLastCalledWith(
       expect.objectContaining({
         itemId: source.itemId,
@@ -139,7 +153,8 @@ describe("CanvasFrame", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: "Step 2: Then" }));
     await userEvent.click(screen.getByRole("button", { name: "Walk from here" }));
-    await expect.element(screen.getByRole("button", { name: "Ask about step 2" })).toBeVisible();
+    await userEvent.click(menu);
+    await expect.element(screen.getByRole("menuitem", { name: "Ask about step 2" })).toBeVisible();
   });
 
   it("opens a code card's file at its line, and a guest page leaves the card inert", async () => {

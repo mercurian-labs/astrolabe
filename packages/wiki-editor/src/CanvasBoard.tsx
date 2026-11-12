@@ -4,6 +4,7 @@ import "./canvasBoard.css";
 import {
   canvasBounds,
   canvasChangedCards,
+  canvasGroups,
   CANVAS_MARK_LABELS,
   parseCanvas,
   type CanvasBounds,
@@ -156,6 +157,8 @@ export function CanvasAssetView({
       );
   }
 }
+
+export type { CanvasMenuEntry } from "./CanvasChrome";
 
 /** What a board can do outside itself. A missing callback leaves that card inert. */
 export interface CanvasBoardHost
@@ -1311,11 +1314,22 @@ interface OpenMenu {
   readonly items: ReadonlyArray<CanvasMenuEntry>;
   readonly x: number;
   readonly y: number;
+  readonly alignEnd?: boolean;
   /** Runs when it closes, whatever was chosen. */
   readonly onClose?: () => void;
 }
 
 type ToolbarPopover = "color" | "align" | "direction" | "background" | null;
+
+/** Entries without a separator first, last, or twice over. */
+const tidySeparators = (entries: ReadonlyArray<CanvasMenuEntry>) =>
+  entries.filter(
+    (entry, at) =>
+      entry !== "separator" ||
+      (at > 0 &&
+        entries[at - 1] !== "separator" &&
+        entries.slice(at + 1).some((next) => next !== "separator")),
+  );
 
 const editingTyping = (target: EventTarget | null) =>
   target instanceof Element &&
@@ -1378,6 +1392,8 @@ export function CanvasBoard({
   openFrame = null,
   onFrame,
   onStepAdded,
+  onPresent,
+  menuItems,
   children,
   ref,
 }: {
@@ -1412,6 +1428,10 @@ export function CanvasBoard({
   readonly onFrame?: ((step: number, chip: HTMLElement) => void) | undefined;
   /** Lets a board being edited add what's selected to its story, as the step after the one shown. */
   readonly onStepAdded?: ((step: number) => void) | undefined;
+  /** Starts walking the story from its first step: the host owns the walk. */
+  readonly onPresent?: (() => void) | undefined;
+  /** The host's own actions, in the board's menu after its own. */
+  readonly menuItems?: ReadonlyArray<CanvasMenuEntry> | undefined;
   /** The host's controls, floating over the board's foot; what fits stays clear of them. */
   readonly children?: ReactNode;
   readonly ref?: Ref<CanvasBoardHandle>;
@@ -1421,6 +1441,8 @@ export function CanvasBoard({
   const worldRef = useRef<HTMLDivElement>(null);
   const overviewRef = useRef<HTMLCanvasElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
+  const zoomRef = useRef<HTMLSpanElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
   const documentState: CanvasDocumentState | null = useSyncExternalStore(
     canvasDocument?.subscribe ?? NO_SUBSCRIPTION,
     canvasDocument?.getState ?? NO_DOCUMENT_STATE,
@@ -1500,6 +1522,7 @@ export function CanvasBoard({
     }
     const mounted = overview ? OVERVIEW : next;
     setShown((now) => (sameShown(now, mounted) ? now : mounted));
+    if (zoomRef.current !== null) zoomRef.current.textContent = `${Math.round(camera.zoom * 100)}%`;
     live.onCamera?.(view.fitted ? null : camera);
     placeToolbar();
     if (worldRef.current !== null) stackChips(worldRef.current, live.frames, camera.zoom);
@@ -2010,10 +2033,80 @@ export function CanvasBoard({
     [view, commands, run, live],
   );
 
+  const canToggleEdit = canvasDocument !== null && mode === "free" && onReadOnly !== undefined;
+  const canPresent = onPresent !== undefined && steps.length > 0 && active === null;
+  const canvasMenu = (): ReadonlyArray<CanvasMenuEntry> => {
+    const groups = canvasGroups(data);
+    return tidySeparators([
+      ...(canToggleEdit
+        ? [
+            readOnly
+              ? { label: "Edit board", hint: "E", run: () => onReadOnly?.(false) }
+              : { label: "Read-only", hint: "E", run: () => onReadOnly?.(true) },
+          ]
+        : []),
+      ...(canPresent ? [{ label: "Present", hint: "P", run: () => onPresent?.() }] : []),
+      ...(groups.length > 0
+        ? [
+            {
+              label: "Jump to group",
+              items: groups.map((group) => ({
+                label: group.label,
+                run: () => {
+                  const node = live.layout.byId.get(group.id);
+                  if (node !== undefined) view.focus(node);
+                },
+              })),
+            },
+          ]
+        : []),
+      "separator",
+      ...(menuItems ?? []),
+      ...(host.renderExportDialog === undefined
+        ? []
+        : [{ label: "Export image…", run: () => run("export-image") }]),
+      ...(host.touch === true
+        ? []
+        : [{ label: "Keys and help", hint: "?", run: () => run("help") }]),
+      "separator",
+      ...(onSettings !== undefined && editable
+        ? [
+            {
+              label: "Snap to grid",
+              checked: settings.snapToGrid,
+              run: () => onSettings({ snapToGrid: !settings.snapToGrid }),
+            },
+            {
+              label: "Snap to objects",
+              checked: settings.snapToObjects,
+              run: () => onSettings({ snapToObjects: !settings.snapToObjects }),
+            },
+          ]
+        : []),
+    ]);
+  };
+  const toggleCanvasMenu = () => {
+    if (menu?.label === "Canvas menu") {
+      setMenu(null);
+      return;
+    }
+    const frame = boardRef.current?.getBoundingClientRect();
+    const button = menuButtonRef.current?.getBoundingClientRect();
+    if (frame === undefined || button === undefined) return;
+    setMenu({
+      label: "Canvas menu",
+      items: canvasMenu(),
+      x: button.right - frame.left,
+      y: button.bottom - frame.top + 4,
+      alignEnd: true,
+    });
+  };
+
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (editingTyping(event.target)) return;
     if ((event.target as Element).closest(".cv-chrome") !== null) return;
     const mod = event.metaKey || event.ctrlKey;
+    const plain = !mod && !event.altKey && !event.shiftKey;
     const key = event.key;
     const canEdit = live.editable;
     const arrows = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
@@ -2029,6 +2122,8 @@ export function CanvasBoard({
       if (event.altKey) commands.selectToward(dx, dy);
       else if (mod && canEdit) commands.grow(dx, dy, event.shiftKey);
       else if (selection.cards.size > 0 && canEdit) commands.nudge(dx, dy, event.shiftKey);
+      // A story being presented is stepped by its host.
+      else if (active !== null) return;
       else view.pan(-dx * PAN_STEP, -dy * PAN_STEP);
     } else if (mod && key.toLowerCase() === "a") {
       commands.selectAll();
@@ -2049,6 +2144,14 @@ export function CanvasBoard({
       view.fit();
     } else if (event.code === "Digit2" && event.shiftKey) {
       commands.zoomToSelection();
+    } else if (event.code === "Digit0" && event.shiftKey) {
+      view.resetZoom();
+    } else if (plain && key.toLowerCase() === "e" && canToggleEdit) {
+      onReadOnly?.(!readOnly);
+    } else if (plain && key.toLowerCase() === "p" && canPresent) {
+      onPresent?.();
+    } else if (key === "?" && !mod && host.touch !== true) {
+      setDialog({ kind: "help" });
     } else if (key === "Escape" && anything) {
       commands.select(NO_SELECTION);
     } else if (key === "ContextMenu" || (key === "F10" && event.shiftKey)) {
@@ -2211,6 +2314,9 @@ export function CanvasBoard({
       data-card-names={settings.cardNames}
       data-walkable={steps.length > 0 || undefined}
       data-walking={active !== null || undefined}
+      data-touch={host.touch === true || undefined}
+      // A board inline in a scrolling page keeps its zoom out of the way until it's pointed at.
+      data-zoom-hover={(wheelOnceFocused && host.touch !== true) || undefined}
       data-peeking={peeked !== null || undefined}
       role="group"
       aria-label={label}
@@ -2334,85 +2440,58 @@ export function CanvasBoard({
       ) : null}
       {overlaid ? null : addBar}
       {mode === "free" ? (
-        <div className="cv-chrome cv-controls">
-          {canvasDocument === null ? null : readOnly ? (
-            onReadOnly === undefined ? null : (
-              <CanvasToolbarButton label="Disable read-only" onClick={() => onReadOnly(false)}>
-                Edit
-              </CanvasToolbarButton>
-            )
-          ) : (
-            <CanvasToolbarButton
-              label="Canvas settings"
-              onClick={() => {
-                const rect = boardRef.current?.getBoundingClientRect();
-                setMenu({
-                  label: "Canvas settings",
-                  x: (rect?.width ?? 0) - 240,
-                  y:
-                    (boardRef.current?.querySelector(".cv-controls")?.getBoundingClientRect().top ??
-                      12) - (rect?.top ?? 0),
-                  items: [
-                    {
-                      label: "Snap to grid",
-                      checked: settings.snapToGrid,
-                      run: () => onSettings?.({ snapToGrid: !settings.snapToGrid }),
-                    },
-                    {
-                      label: "Snap to objects",
-                      checked: settings.snapToObjects,
-                      run: () => onSettings?.({ snapToObjects: !settings.snapToObjects }),
-                    },
-                    { label: "Read-only", checked: false, run: () => onReadOnly?.(true) },
-                    ...(host.renderExportDialog !== undefined
-                      ? [
-                          "separator" as const,
-                          { label: "Export as image…", run: () => run("export-image") },
-                        ]
-                      : []),
-                  ],
-                });
-              }}
+        <>
+          <div className="cv-chrome cv-menu-button">
+            <button
+              ref={menuButtonRef}
+              type="button"
+              aria-label="Canvas menu"
+              aria-haspopup="menu"
+              aria-expanded={menu?.label === "Canvas menu"}
+              onClick={toggleCanvasMenu}
             >
-              ⚙
-            </CanvasToolbarButton>
-          )}
-          <button type="button" aria-label="Zoom in" onClick={() => view.zoomIn()}>
-            +
-          </button>
-          <button type="button" aria-label="Reset zoom" onClick={() => view.resetZoom()}>
-            1:1
-          </button>
-          <button type="button" aria-label="Fit the board in view" onClick={() => view.fit()}>
-            Fit
-          </button>
-          <button type="button" aria-label="Zoom out" onClick={() => view.zoomOut()}>
-            −
-          </button>
-          {canvasDocument === null ? null : (
-            <>
-              <CanvasToolbarButton
-                label="Undo"
-                disabled={!editable || documentState?.canUndo !== true}
-                onClick={() => canvasDocument.undo()}
-              >
-                ↶
-              </CanvasToolbarButton>
-              <CanvasToolbarButton
-                label="Redo"
-                disabled={!editable || documentState?.canRedo !== true}
-                onClick={() => canvasDocument.redo()}
-              >
-                ↷
-              </CanvasToolbarButton>
-              {host.touch === true ? null : (
-                <CanvasToolbarButton label="Canvas help" onClick={() => run("help")}>
-                  ?
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M2.5 4h11M2.5 8h11M2.5 12h11" />
+              </svg>
+            </button>
+          </div>
+          <div className="cv-chrome cv-zoom" role="toolbar" aria-label="Zoom">
+            <button type="button" aria-label="Zoom out" onClick={() => view.zoomOut()}>
+              −
+            </button>
+            <button
+              type="button"
+              className="cv-zoom-level"
+              aria-label="Fit the board in view"
+              onClick={() => view.fit()}
+            >
+              {/* Written by the camera as it paints, not by React. */}
+              <span ref={zoomRef} />
+            </button>
+            <button type="button" aria-label="Zoom in" onClick={() => view.zoomIn()}>
+              +
+            </button>
+            {editable && canvasDocument !== null ? (
+              <>
+                <span className="cv-zoom-separator" />
+                <CanvasToolbarButton
+                  label="Undo"
+                  disabled={documentState?.canUndo !== true}
+                  onClick={() => canvasDocument.undo()}
+                >
+                  ↶
                 </CanvasToolbarButton>
-              )}
-            </>
-          )}
-        </div>
+                <CanvasToolbarButton
+                  label="Redo"
+                  disabled={documentState?.canRedo !== true}
+                  onClick={() => canvasDocument.redo()}
+                >
+                  ↷
+                </CanvasToolbarButton>
+              </>
+            ) : null}
+          </div>
+        </>
       ) : null}
       {children === undefined || children === null ? null : (
         <div
@@ -2447,6 +2526,7 @@ export function CanvasBoard({
           items={menu.items}
           x={menu.x}
           y={menu.y}
+          alignEnd={menu.alignEnd === true}
           onClose={() => {
             menu.onClose?.();
             setMenu(null);

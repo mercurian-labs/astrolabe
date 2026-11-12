@@ -1,7 +1,7 @@
 import { canvasBounds, type CanvasCodeReference } from "@mercurian/wiki/canvas";
 import type { CanvasView } from "@t3tools/client-runtime/canvasViews";
 import type { ScopedThreadRef, ThreadId, TurnItemId } from "@t3tools/contracts";
-import { MessageSquarePlusIcon, SquareArrowOutUpRightIcon } from "lucide-react";
+import { SquareArrowOutUpRightIcon } from "lucide-react";
 import type { CanvasBoardHandle } from "@mercurian/wiki-editor/canvas-board";
 import { lazy, Suspense, useRef } from "react";
 
@@ -12,7 +12,8 @@ import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { CanvasFramePopover } from "./CanvasFramePopover";
 import { CanvasStoryPill, onStepKey } from "./CanvasStoryPill";
-import { KeepCanvasButton } from "./KeepCanvas";
+import { canvasMenuItems } from "./canvasMenuItems";
+import { useKeepCanvas } from "./KeepCanvas";
 import { showThreadCanvas } from "./threadCanvasStore";
 import { useCanvasWalk } from "./useCanvasWalk";
 import { useCanvasDocumentData, useThreadCanvasDocument } from "./useThreadCanvasDocument";
@@ -65,6 +66,11 @@ export function CanvasFrame({
   const data = useCanvasDocumentData(canvas, view.data);
   const walk = useCanvasWalk({ title: view.title, data }, threadRef === null ? null : source);
   const board = useRef<CanvasBoardHandle>(null);
+  const keep = useKeepCanvas(
+    threadRef === null
+      ? null
+      : { environmentId: threadRef.environmentId, ...source, title: view.title },
+  );
   return (
     <figure
       className="m-0 overflow-hidden rounded-lg border border-border"
@@ -73,48 +79,22 @@ export function CanvasFrame({
       <figcaption className="flex h-8 items-center gap-2 border-b border-border pr-1 pl-3 text-xs text-muted-foreground">
         <span className="min-w-0 flex-1 truncate">{view.title}</span>
         <div className="flex shrink-0 items-center gap-0.5">
-          {walk.ask === undefined ? null : (
+          {threadRef === null ? null : (
             <Tooltip>
               <TooltipTrigger
                 render={
                   <Button
                     variant="ghost"
                     size="icon-xs"
-                    aria-label={walk.ask.label}
-                    onClick={walk.ask.run}
+                    aria-label={`Open ${view.title} in a tab`}
+                    onClick={() => showThreadCanvas(threadRef, id)}
                   />
                 }
               >
-                <MessageSquarePlusIcon />
+                <SquareArrowOutUpRightIcon />
               </TooltipTrigger>
-              <TooltipPopup side="bottom">{walk.ask.label}</TooltipPopup>
+              <TooltipPopup side="bottom">Open in a tab</TooltipPopup>
             </Tooltip>
-          )}
-          {threadRef === null ? null : (
-            <>
-              <KeepCanvasButton
-                environmentId={threadRef.environmentId}
-                threadId={source.threadId}
-                itemId={source.itemId}
-                title={view.title}
-                size="icon-xs"
-              />
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      aria-label={`Open ${view.title} in a tab`}
-                      onClick={() => showThreadCanvas(threadRef, id)}
-                    />
-                  }
-                >
-                  <SquareArrowOutUpRightIcon />
-                </TooltipTrigger>
-                <TooltipPopup side="bottom">Open in a tab</TooltipPopup>
-              </Tooltip>
-            </>
           )}
         </div>
       </figcaption>
@@ -134,6 +114,8 @@ export function CanvasFrame({
             step={walk.step}
             openFrame={walk.frame?.step ?? null}
             onFrame={walk.toggleFrame}
+            onPresent={() => walk.go(0)}
+            menuItems={canvasMenuItems(walk, keep.item)}
             {...(canvas === null || threadRef === null
               ? {}
               : {
@@ -151,6 +133,7 @@ export function CanvasFrame({
         </Suspense>
       </div>
       <CanvasFramePopover view={view} walk={walk} onCard={(id) => board.current?.focusCard(id)} />
+      {keep.dialog}
     </figure>
   );
 }

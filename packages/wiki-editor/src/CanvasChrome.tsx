@@ -24,6 +24,8 @@ export type CanvasMenuEntry =
       readonly run?: (() => void) | undefined;
       readonly checked?: boolean | undefined;
       readonly destructive?: boolean | undefined;
+      /** The key that does the same on the board. */
+      readonly hint?: string | undefined;
       /** Opens these in its place. */
       readonly items?: ReadonlyArray<CanvasMenuEntry> | undefined;
     }
@@ -67,6 +69,7 @@ function MenuPanel({
   items,
   x,
   y,
+  alignEnd,
   onClose,
   onOpen,
 }: {
@@ -74,6 +77,7 @@ function MenuPanel({
   readonly items: ReadonlyArray<CanvasMenuEntry>;
   readonly x: number;
   readonly y: number;
+  readonly alignEnd: boolean;
   readonly onClose: () => void;
   readonly onOpen: (items: ReadonlyArray<CanvasMenuEntry>) => void;
 }) {
@@ -84,12 +88,13 @@ function MenuPanel({
     const element = ref.current;
     const frame = element?.parentElement;
     if (!element || !frame) return;
+    const left = alignEnd ? x - element.offsetWidth : x;
     setPlace({
-      x: Math.max(4, Math.min(x, frame.clientWidth - element.offsetWidth - 4)),
+      x: Math.max(4, Math.min(left, frame.clientWidth - element.offsetWidth - 4)),
       y: Math.max(4, Math.min(y, frame.clientHeight - element.offsetHeight - 4)),
     });
     focusables(element)[0]?.focus({ preventScroll: true });
-  }, [x, y]);
+  }, [x, y, alignEnd]);
   return (
     <div
       ref={ref}
@@ -127,6 +132,11 @@ function MenuPanel({
             </span>
             {item.label}
             {item.items === undefined ? null : <span aria-hidden="true"> …</span>}
+            {item.hint === undefined ? null : (
+              <kbd className="cv-menu-hint" aria-hidden="true">
+                {item.hint}
+              </kbd>
+            )}
           </button>
         ),
       )}
@@ -134,18 +144,23 @@ function MenuPanel({
   );
 }
 
-/** A context menu. It takes focus, and Escape gives it back to the board. */
+/**
+ * A context menu. It takes focus, and Escape gives it back to the board. With `alignEnd`, `x` is
+ * where its right edge goes.
+ */
 export function CanvasMenu({
   label,
   items,
   x,
   y,
+  alignEnd = false,
   onClose,
 }: {
   readonly label: string;
   readonly items: ReadonlyArray<CanvasMenuEntry>;
   readonly x: number;
   readonly y: number;
+  readonly alignEnd?: boolean;
   readonly onClose: () => void;
 }) {
   const [open, setOpen] = useState({ depth: 0, items });
@@ -156,6 +171,7 @@ export function CanvasMenu({
       items={open.items}
       x={x}
       y={y}
+      alignEnd={alignEnd}
       onClose={onClose}
       onOpen={(next) => setOpen({ depth: open.depth + 1, items: next })}
     />
@@ -358,6 +374,10 @@ const HELP: ReadonlyArray<readonly [string, string]> = [
   ["Zoom", "⌘ scroll, or Space scroll"],
   ["Zoom to fit", "⇧1"],
   ["Zoom to selection", "⇧2"],
+  ["Zoom to 100%", "⇧0"],
+  ["Edit, or stop editing", "E"],
+  ["Present the story", "P"],
+  ["Keys and help", "?"],
   ["Select all", "⌘A"],
   ["Add to the selection", "⇧ click, or ⇧ drag"],
   ["Reach a card", "⌥ arrow key"],

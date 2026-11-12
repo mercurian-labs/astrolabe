@@ -111,7 +111,9 @@ describe("a board of 5,000 cards", () => {
     expect(mountedEdges()).toBe(0);
     expect(frames).not.toHaveBeenCalled();
 
-    await userEvent.click(document.querySelector("[aria-label='Reset zoom']")!);
+    board().dispatchEvent(
+      new KeyboardEvent("keydown", { key: ")", code: "Digit0", shiftKey: true, bubbles: true }),
+    );
     await vi.waitFor(() =>
       expect(document.querySelectorAll(".cv-card-body").length).toBeGreaterThan(0),
     );
@@ -131,7 +133,7 @@ describe("a board of 5,000 cards", () => {
 
     const painted = world().style.transform;
     frames.mockClear();
-    await expect.element(document.querySelector<HTMLElement>(".cv-controls")).toBeVisible();
+    await expect.element(document.querySelector<HTMLElement>(".cv-zoom")).toBeVisible();
     expect(world().style.transform).toBe(painted);
     expect(frames).not.toHaveBeenCalled();
   });
