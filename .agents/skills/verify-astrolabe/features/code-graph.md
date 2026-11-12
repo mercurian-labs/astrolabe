@@ -19,9 +19,12 @@ with `astrolabe_code_graph_show`. User guide: `docs/user/code-graph.md`.
   (after an expansion), **Fit the graph**, **Graph settings**. Roots are the files in the thread's
   checkpoint summaries, in the thread's worktree (else the project folder); none reads "This
   thread hasn't changed any files yet."
-- **Levels**: Graph settings › Filters › **Level** (`Folders`, `Modules`, `Files`, `Definitions`,
-  `Members`) and **Depth** 0–3. Kept per device: `astrolabe:thread-code-graph:v1` (thread tab),
+- **Levels**: Graph settings › Filters › **Level** (`role=combobox[name='Level']`: `Folders`,
+  `Modules`, `Files`, `Definitions`, `Members`) and **Depth** 0–3. Kept per device: `astrolabe:thread-code-graph:v1` (thread tab),
   `astrolabe:repository-local-graph:v1` (Projects).
+- **Graph settings** (`codeGraph/CodeGraphPanel.tsx`): `Search the graph`, `Restore default
+  settings` (puts Level back to Files) and `Close graph settings`, over the sections Filters,
+  Groups, Display and Forces.
 - **Gestures**: click a file opens it (thread tab: beside the chat via the right panel's Files;
   Projects: the file pane) and re-roots; click a folder or module shows its contents;
   double-click a dot toggles its neighbours (the single click waits ~280 ms for it);
@@ -49,10 +52,9 @@ with `astrolabe_code_graph_show`. User guide: `docs/user/code-graph.md`.
    thread hasn't changed any files yet…"), open **Graph** from **New linked tab**: the changed files are
    the accent dots, links drawn at rest, nothing moving once settled (no frames at rest).
 2. Graph settings › Level: walk Folders → Modules → Files → Definitions → Members; each keeps the
-   picture (nodes grow from where their holder stood) and Definitions draws file discs. Known
-   defect: on a thread with about 12 changed files, Definitions can freeze the page (the render
-   loop in `packages/graph/src/render/scheduler.ts` blocks each frame for ~4.5 s); if the canvas
-   stays blank, switch back to Files.
+   picture (nodes grow from where their holder stood) and Definitions draws file discs.
+   Definitions and Members settle (`packages/graph/src/layout/fileForces.ts`); a blank canvas or a
+   stalled page on a large change is a regression to report.
 3. Double-click a neighbour: its neighbours join one ring out; double-click again: they leave,
    except dots another expansion or the roots still reach. Right-click → **Show contents** on a
    file, then click its disc: it closes.

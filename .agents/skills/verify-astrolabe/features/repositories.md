@@ -139,10 +139,11 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   project trusted` (**Trust project**), or failed / stopped / paused to save memory (**Restart**).
   Clicking it opens its menu: each server on the file (`+N` in the status counts the companions:
   Ruff, and ESLint or Tailwind where the project uses them) with state, memory, Restart, Stop, View
-  logs (a `repo-lsp-logs:` tab with Server log, RPC trace, Server info); Settings → Projects says
-  why a companion isn't active. The primary's commands are under `e L` in the keyboard menu. The
+  logs (a `repo-lsp-logs:` tab with Server log, RPC trace, Server info), then **Language server
+  settings**; Settings → Projects says why a companion isn't active. The primary's commands are under `e L` in the keyboard menu. The
   toolchain is the checkout's own TypeScript (7 runs `tsc --lsp`, ≤6 typescript-language-server),
-  else a cached download. Problems underline with the message and its server's name below the line
+  else a cached download. Problems underline (`cm-lintRange-error`, with `cm-lint-marker-error` in
+  the gutter), and while the cursor is on the line the message and its server's name show below it
   (`.atlas-diagnostic-messages`; F8 / Shift+F8 step); completion as you type; hover
   (`.cm-lsp-hover-tooltip`) and signature help; F12 / Cmd-click definition (another file opens
   beside), Cmd+F12 type definition, Shift+F12 implementation, Alt+Shift+F12 references; F2
@@ -311,8 +312,10 @@ now**. With the **server** project that makes two projects.
    graph canvas's centre returns a `CANVAS`. Open another file with **Following** pressed and
    the graph re-roots on it; unpress it and it stays.
 10. Language server: in the `.ts` file wait for the header status `TypeScript <version>` (a
-    an untrusted project asks to **Trust project** first). Type `const x: number = "a";`: Saving… → Saved
-    and a wavy underline with `.atlas-diagnostic-messages`.
+    an untrusted project reads `TypeScript <version> needs this project trusted` with **Trust
+    project** first). Type `const x: number = "a";`: Saving… → Saved and a wavy underline
+    (`cm-lintRange-error`, gutter `cm-lint-marker-error`); `.atlas-diagnostic-messages` shows only
+    with the cursor on that line.
 11. Right-click a call: the cursor moves there and the menu lists the language rows; choose
     **Find All References**: a `repo-locations:` tab opens beside with `[data-excerpt]`
     editors. Click a sidebar file: it opens after the results tab, which stays.

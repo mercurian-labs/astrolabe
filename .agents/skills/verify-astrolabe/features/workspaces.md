@@ -28,7 +28,8 @@ checkout's, so replace the link with a real file before adding lines, or you wri
 main checkout.
 
 Signed out with cloud config, the page reads "Sign in to work with your team" with a
-**Sign in** button.
+**Sign in** button. Signed in with no workspace, it reads "You're not in a workspace yet",
+with **New workspace**.
 
 Sign in from the page or the account menu, then approve the code with
 `scripts/cloud-kit.sh approve <code> <email>` (see SKILL.md, Cloud). The kit
@@ -52,12 +53,14 @@ preview_act click  role=dialog[name="Invite to Acme"] >> role=button[name="Send 
 # after the second person accepts (a pending invitation only offers Revoke):
 preview_act click  #workspace-people >> role=combobox[name="Role"]   then role=option[name="Admin"]
 preview_act click  #workspace-teams >> role=button[name="Manage"] >> nth=0   # rename, owners, "Delete team…"
-preview_act click  #workspace-leave >> role=button[name="Hand over…"]        # needs a second person
+preview_act click  #workspace-leave >> role=button[name="Hand over…"]        # disabled under two people
 preview_act click  #workspace-leave >> role=button[name="Delete…"]
 ```
 
 Settings is a modal (`role=dialog[name="Settings"]`), so nothing here is under `main`, and
-the workspace dialogs open beside it: scope to their own names. **New workspace** shows only
+the workspace dialogs open beside it: scope to their own names. They are named by
+`aria-labelledby`, so `role=dialog[name="New workspace"]` finds one and CSS `[aria-label=…]`
+finds nothing. **New workspace** shows only
 for an approved account that owns no workspace yet; the cloud enforces the same rule. Rerun
 with a fresh `cloud-kit.sh person` or delete the workspace first. A new workspace starts with
 a team of the same name, invite policy "Owner and admins" and team policy "Everyone"
@@ -77,8 +80,8 @@ Postgres (`auth.organization`, `auth.member`, `auth.invitation`, `auth.team`,
 - A change made by the second person (accepting, creating a team) appears
   without a reload.
 - Renames, role and policy changes show at once and match the database.
-- Deleting asks for the name to be typed; the button stays disabled until it
-  matches.
+- Leaving a workspace, deleting one and deleting a team ask for the name to be typed; the
+  button stays disabled until it matches.
 - Leaving the page for longer than the collections' idle time (5 s) and coming
   back loads the page, not a spinner. Go to another settings page, wait about
   8 s, come back.
@@ -89,7 +92,8 @@ Postgres (`auth.organization`, `auth.member`, `auth.invitation`, `auth.team`,
 
 - Seven shapes hold long-polls; over the emulator's HTTP/1.1 a write can wait
   a few seconds for a free connection, so read the database after the UI
-  settles.
+  settles. A new pending invitation's row can also take a few seconds to show: wait for its
+  text with `preview_wait_for`, don't read once.
 - Closing every tab of the incognito profile drops its pairing and cloud
   session; mint a new pairing token and type it into `/pair`.
 - The workspace name saves on blur (Enter blurs it); a team's name saves through its
