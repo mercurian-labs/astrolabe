@@ -2,12 +2,13 @@ import { canvasBounds } from "@mercurian/wiki/canvas";
 import { documentTitle } from "@t3tools/client-runtime/wikiLogic";
 import type { CanvasView } from "@t3tools/client-runtime/canvasViews";
 import { canvasEdgeShapes } from "@mercurian/wiki-editor/canvas-geometry";
+import { canvasInkShapes } from "@mercurian/wiki-editor/canvas-ink";
 import type { WikiCanvasReference } from "@t3tools/shared/toolOutput";
 import { useNavigation } from "@react-navigation/native";
 import type { EnvironmentId, ThreadId, TurnItemId } from "@t3tools/contracts";
 import { useMemo } from "react";
 import { Pressable, View } from "react-native";
-import Svg, { G, Path, Rect, Text as SvgText } from "react-native-svg";
+import Svg, { Ellipse, G, Path, Polygon, Rect, Text as SvgText } from "react-native-svg";
 
 import { AppText as Text } from "../../components/ui/AppText";
 import { SymbolView } from "../../components/ui/AppSymbol";
@@ -100,6 +101,7 @@ export function ThreadCanvas(props: {
   const height = frameHeight(view, props.frameWidth);
   const bounds = useMemo(() => canvasBounds(view.data), [view.data]);
   const edges = useMemo(() => canvasEdgeShapes(view.data), [view.data]);
+  const inks = useMemo(() => canvasInkShapes(view.data), [view.data]);
   const zoom = Math.min(props.frameWidth / bounds.width, height / bounds.height);
   const border = String(theme["--color-border"]);
   const subtle = String(theme["--color-icon-subtle"]);
@@ -139,19 +141,32 @@ export function ThreadCanvas(props: {
                 : node.type === "file"
                   ? node.file
                   : (node.astrolabe?.code?.path.split("/").at(-1) ?? node.url);
+          const shape = node.type === "text" ? node.astrolabe?.shape : undefined;
+          const { x, y, width, height } = node;
+          const outline = {
+            fill: color ?? "transparent",
+            fillOpacity: color === undefined ? 0 : isGroup ? 0.06 : 0.14,
+            stroke: color ?? border,
+            strokeWidth: 1 / zoom,
+          };
           return (
             <G key={node.id}>
-              <Rect
-                x={node.x}
-                y={node.y}
-                width={node.width}
-                height={node.height}
-                rx={8}
-                fill={color ?? "transparent"}
-                fillOpacity={color === undefined ? 0 : isGroup ? 0.06 : 0.14}
-                stroke={color ?? border}
-                strokeWidth={1 / zoom}
-              />
+              {shape === "ellipse" ? (
+                <Ellipse
+                  cx={x + width / 2}
+                  cy={y + height / 2}
+                  rx={width / 2}
+                  ry={height / 2}
+                  {...outline}
+                />
+              ) : shape === "diamond" ? (
+                <Polygon
+                  points={`${x + width / 2},${y} ${x + width},${y + height / 2} ${x + width / 2},${y + height} ${x},${y + height / 2}`}
+                  {...outline}
+                />
+              ) : (
+                <Rect x={x} y={y} width={width} height={height} rx={8} {...outline} />
+              )}
               {zoom < MIN_READABLE_ZOOM ? null : (
                 <SvgText
                   x={node.x + 12}
@@ -174,6 +189,22 @@ export function ThreadCanvas(props: {
               {heads.map((head) => (
                 <Path key={head} d={head} fill={color} />
               ))}
+            </G>
+          );
+        })}
+        {inks.map(({ ink, path, head }) => {
+          const color = tint(ink.color) ?? (ink.type === "stroke" ? foreground : subtle);
+          return (
+            <G key={ink.id}>
+              <Path
+                d={path}
+                fill="none"
+                stroke={color}
+                strokeWidth={(ink.type === "stroke" ? 2 : 1.5) / zoom}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              {head === undefined ? null : <Path d={head} fill={color} />}
             </G>
           );
         })}

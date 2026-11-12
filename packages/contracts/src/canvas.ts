@@ -207,13 +207,15 @@ export type CanvasAgentEdit = typeof CanvasAgentEdit.Type;
 
 const JsonKeys = Schema.Record(Schema.String, Schema.Unknown);
 const point = { x: Schema.Finite, y: Schema.Finite };
-/** x, y pairs: a drawing's other keys are whatever the file holds, unknown kinds included. */
-const strokePoints = {
-  points: Schema.optional(
-    Schema.Array(Schema.Finite).check(Schema.isMaxLength(CANVAS_MAX_STROKE_POINTS * 2)),
+/** A drawing's keys are whatever the file holds, unknown kinds included; a stroke's are capped. */
+const DrawingKeys = JsonKeys.check(
+  Schema.makeFilter(
+    ({ points }) =>
+      points === undefined ||
+      (Array.isArray(points) && points.length <= CANVAS_MAX_STROKE_POINTS * 2),
+    { expected: `a stroke of at most ${CANVAS_MAX_STROKE_POINTS} points` },
   ),
-};
-const DrawingKeys = Schema.StructWithRest(Schema.Struct(strokePoints), [JsonKeys]);
+);
 
 /** A person's edits: they place cards by hand, by id. A list holds these or an agent's, not both. */
 const CanvasHandEdits = [
@@ -247,9 +249,7 @@ const CanvasHandEdits = [
   Schema.Struct({ op: Schema.Literal("set-stories"), stories: Schema.Array(Schema.Unknown) }),
   Schema.Struct({
     op: Schema.Literal("put-drawing"),
-    drawing: Schema.StructWithRest(Schema.Struct({ id: Schema.String, ...strokePoints }), [
-      JsonKeys,
-    ]),
+    drawing: DrawingKeys,
     at: Schema.optional(Schema.Int),
   }),
   Schema.Struct({ op: Schema.Literal("set-drawing"), drawing: Schema.String, keys: DrawingKeys }),
