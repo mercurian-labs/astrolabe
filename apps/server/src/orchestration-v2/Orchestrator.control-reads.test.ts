@@ -1020,6 +1020,30 @@ it.effect("keeps delegated child pull-request links independent of the parent", 
     assert.equal(child.thread.worktreePath, parent.thread.worktreePath);
     assert.equal(child.thread.lineage.parentThreadId, parentThreadId);
 
+    // A task given a folder, such as the parent's checkout of a wiki, works there on no branch.
+    const wikiCheckout = "/state/wiki-checkouts/parent/wiki-plans";
+    yield* orchestrator.dispatch({
+      type: "delegated_task.request",
+      commandId: CommandId.make("delegate-parent-wiki"),
+      parentThreadId,
+      parentRunId: parentRun.id,
+      parentNodeId: parentRun.rootNodeId!,
+      task: "Tidy the plans",
+      modelSelection,
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      worktreePath: wikiCheckout,
+      createdBy: "agent",
+      creationSource: "mcp",
+    });
+    const wikiTask = (yield* projections.getThreadProjection(parentThreadId)).subagents.find(
+      (subagent) => subagent.childThreadId !== childThreadId,
+    );
+    const wikiChild = yield* projections.getThreadProjection(wikiTask!.childThreadId!);
+    assert.equal(wikiChild.thread.worktreePath, wikiCheckout);
+    assert.isNull(wikiChild.thread.branch);
+    assert.equal(wikiChild.thread.projectId, projectId);
+
     const childPullRequest = {
       ...parentPullRequest,
       number: 456,

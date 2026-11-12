@@ -64,6 +64,7 @@ import {
 import { ColumnMenu, WikiBaseToolbar } from "./WikiBaseToolbar";
 import { useWikiAutosaveCommand } from "./wikiEnvironment";
 import type { WikiDraftEdits } from "./WikiNoteView";
+import { WikiPart } from "./WikiParts";
 
 const WikiBaseMap = lazy(() => import("./WikiBaseMap"));
 
@@ -396,6 +397,15 @@ export function WikiBase({
               </Button>
             </AlertAction>
           ) : null}
+        </Alert>
+      ) : null}
+      {result.warnings?.length ? (
+        <Alert variant="warning">
+          <TriangleAlertIcon />
+          <AlertTitle>Parts of this base don't work as written</AlertTitle>
+          <AlertDescription>
+            <WikiPart.ErrorList errors={result.warnings} />
+          </AlertDescription>
         </Alert>
       ) : null}
       <WikiBaseResults

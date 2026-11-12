@@ -20,6 +20,7 @@ import * as CheckpointStore from "../checkpointing/CheckpointStore.ts";
 import * as ServerConfig from "../config.ts";
 import { removeThreadProviderEventLogs } from "../provider/EventNdjsonLogger.ts";
 import { forkParked } from "../serverActivation.ts";
+import * as ThreadWikiCheckouts from "../wiki/ThreadWikiCheckouts.ts";
 import { OrchestrationEffectRequestV2 } from "./EffectOutbox.ts";
 import { DELETED_THREAD_TITLE, threadTombstone } from "./ThreadDeletion.ts";
 
@@ -141,6 +142,7 @@ const make = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   const config = yield* ServerConfig.ServerConfig;
   const checkpointStore = yield* CheckpointStore.CheckpointStore;
+  const wikiCheckouts = yield* Effect.serviceOption(ThreadWikiCheckouts.ThreadWikiCheckouts);
 
   /**
    * None while the thread is live or a live thread still reads it: a pending
@@ -538,6 +540,7 @@ const make = Effect.gen(function* () {
           }),
         ),
       );
+      if (Option.isSome(wikiCheckouts)) yield* wikiCheckouts.value.removeThread(threadId);
     }
   });
 

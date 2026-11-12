@@ -132,50 +132,6 @@ export function canvasOutline(file: string, data: CanvasData): string {
   return lines.join("\n");
 }
 
-export interface CanvasMatch {
-  /** The card's, group's or arrow's id: what an edit names it by, for a card or group. */
-  readonly id: string;
-  readonly text: string;
-}
-
-/** The line of `text` holding `needle`, lowercase, or nothing when none does. */
-const matchingLine = (text: string, needle: string) =>
-  text.split("\n").find((line) => line.toLowerCase().includes(needle));
-
-/** What a card says, in the order a reader would meet it. */
-function cardTexts(node: CanvasNode): ReadonlyArray<string> {
-  switch (node.type) {
-    case "text":
-      return [node.text];
-    case "file":
-      return [`${node.file}${node.subpath ?? ""}`];
-    case "group":
-      return node.label === undefined ? [] : [node.label];
-    case "link": {
-      const { code, caption } = node.astrolabe ?? {};
-      return [...(caption === undefined ? [] : [caption]), code?.path ?? node.url];
-    }
-  }
-}
-
-/**
- * Which of a board's cards, groups and arrows say `query`, case-insensitively. Cards are the unit
- * of a board, so a match is a card and its line, never a line of a file an agent doesn't read.
- */
-export function canvasMatches(data: CanvasData, query: string): ReadonlyArray<CanvasMatch> {
-  const needle = query.toLowerCase();
-  const cards = data.nodes.flatMap((node): CanvasMatch[] => {
-    const text = cardTexts(node).flatMap((each) => matchingLine(each, needle) ?? [])[0];
-    return text === undefined ? [] : [{ id: node.id, text }];
-  });
-  const arrows = data.edges.flatMap((edge): CanvasMatch[] =>
-    edge.label?.toLowerCase().includes(needle)
-      ? [{ id: edge.id, text: `[${edge.fromNode}] -> [${edge.toNode}]: ${edge.label}` }]
-      : [],
-  );
-  return [...cards, ...arrows];
-}
-
 /** A file's outline; JSON that doesn't read says so, and shows what is there to fix. */
 export function canvasSourceOutline(file: string, source: string): string {
   const parsed = parseCanvas(source);

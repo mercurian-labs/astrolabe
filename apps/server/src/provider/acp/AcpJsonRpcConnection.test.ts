@@ -96,6 +96,33 @@ describe("AcpSessionRuntime", () => {
       }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
+  it.effect.each([false, true])(
+    "sends advertised additional directories only to an agent that supports them (%s)",
+    (supported) =>
+      Effect.gen(function* () {
+        const payloads: Array<unknown> = [];
+        const runtime = yield* AcpSessionRuntime.make({
+          ...mockRuntimeOptions,
+          spawn: {
+            ...mockRuntimeOptions.spawn,
+            ...(supported ? { env: { T3_ACP_SESSION_LIFECYCLE: "1" } } : {}),
+          },
+          advertisedAdditionalDirectories: ["/state/wiki-checkouts/notes"],
+          requestLogger: (event) =>
+            Effect.sync(() => {
+              if (event.method === "session/new" && event.status === "started") {
+                payloads.push(event.payload);
+              }
+            }),
+        });
+        yield* runtime.start();
+        expect(payloads).toHaveLength(1);
+        expect((payloads[0] as { additionalDirectories?: unknown }).additionalDirectories).toEqual(
+          supported ? ["/state/wiki-checkouts/notes"] : undefined,
+        );
+      }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
+  );
+
   it.effect("publishes model changes returned by a config request and live notifications", () =>
     Effect.gen(function* () {
       const runtime = yield* AcpSessionRuntime.make(mockRuntimeOptions);

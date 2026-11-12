@@ -13,6 +13,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   backlinks,
   baseCorpus,
+  baseWarnings,
   indexFiles,
   linkDestination,
   parseBase,
@@ -43,12 +44,10 @@ const filesOf = (root: string): BaseFile[] =>
 
 const CORPUS = baseCorpus(filesOf(VAULT));
 
+const sourceOf = (base: string) =>
+  NodeFS.readFileSync(NodePath.join(VAULT, `${base}.base`), "utf8");
 const run = (base: string, view: string): BaseResult =>
-  queryBase(CORPUS, parseBase(NodeFS.readFileSync(NodePath.join(VAULT, `${base}.base`), "utf8")), {
-    view,
-    self: `${base}.base`,
-    now: NOW,
-  });
+  queryBase(CORPUS, parseBase(sourceOf(base)), { view, self: `${base}.base`, now: NOW });
 
 const field = (text: string) => (/[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text);
 const cellText = (value: BaseCell | undefined): string =>
@@ -100,6 +99,7 @@ const VIEWS: ReadonlyArray<readonly [string, string, "ordered" | "grouped"]> = [
 
 describe("parity with Obsidian 1.14.4", () => {
   it.each(VIEWS)("%s / %s gives Obsidian's rows and cells", (base, view, kind) => {
+    expect(baseWarnings(sourceOf(base))).toEqual([]);
     const ours = csv(run(base, view));
     const theirs = expected(base, view);
     if (kind === "ordered") expect(ours).toEqual(theirs);

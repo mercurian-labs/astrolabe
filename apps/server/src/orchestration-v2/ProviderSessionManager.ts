@@ -221,6 +221,8 @@ interface LiveSessionEntry {
   /** Scope revocation to recorded credential ids so superseded sessions cannot revoke replacements opened before detach. */
   readonly mcpCredentialIdByThread: ReadonlyMap<ThreadId, string>;
   readonly supportsMultipleProviderThreads: boolean;
+  /** The extra folders the session was opened with. */
+  readonly writableRoots: ReadonlyArray<string>;
   readonly runtime: ProviderAdapter.ProviderAdapterV2SessionRuntime;
   readonly exposedRuntime: ProviderAdapter.ProviderAdapterV2SessionRuntime;
   readonly eventSubscribers: Ref.Ref<
@@ -2135,6 +2137,23 @@ export const layerWithOptions = (
                 }
               }
               const key = sessionKey(input.providerSessionId);
+              const live = (yield* Ref.get(sessions)).get(key);
+              // Astrolabe: one thread's session fixes its folders at start, so one missing a
+              // folder the thread now needs (a wiki linked since) restarts, resuming its thread.
+              if (
+                live !== undefined &&
+                !live.supportsMultipleProviderThreads &&
+                (input.runtimePolicy.writableRoots ?? []).some(
+                  (root) => !live.writableRoots.includes(root),
+                )
+              ) {
+                yield* releaseEntry({
+                  providerSessionId: input.providerSessionId,
+                  reason: "manual_shutdown",
+                  detail: "The thread's folders changed.",
+                  keepIfBusyOtherThan: [],
+                }).pipe(logReleaseFailure(input.providerSessionId));
+              }
               const existing = (yield* Ref.get(sessions)).get(key);
               if (existing !== undefined) {
                 const attached = existing.attachedThreadIds.has(input.threadId);
@@ -2243,6 +2262,7 @@ export const layerWithOptions = (
                 supportsMultipleProviderThreads:
                   runtime.providerSession.capabilities.sessions
                     .supportsMultipleProviderThreadsPerSession,
+                writableRoots: input.runtimePolicy.writableRoots ?? [],
                 runtime,
                 exposedRuntime,
                 eventSubscribers,
