@@ -235,6 +235,11 @@ const CanvasHandEdits = [
   Schema.Struct({ op: Schema.Literal("set-stories"), stories: Schema.Array(Schema.Unknown) }),
 ] as const;
 
+/** A person's edit to a board, replayed by id on whatever the board holds by then. */
+export const CanvasHandEdit = Schema.Union(CanvasHandEdits);
+export type CanvasHandEdit = typeof CanvasHandEdit.Type;
+export const CANVAS_MAX_HAND_EDITS_PER_SAVE = CANVAS_MAX_HAND_EDITS;
+
 export const CanvasEdit = Schema.Union([...CanvasAgentEdits, ...CanvasHandEdits]);
 export type CanvasEdit = typeof CanvasEdit.Type;
 

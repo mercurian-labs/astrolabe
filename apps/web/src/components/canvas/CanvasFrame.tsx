@@ -3,7 +3,9 @@ import type { CanvasView } from "@t3tools/client-runtime/canvasViews";
 import type { ScopedThreadRef, ThreadId, TurnItemId } from "@t3tools/contracts";
 import { MessageSquarePlusIcon, SquareArrowOutUpRightIcon } from "lucide-react";
 import type { CanvasBoardHandle } from "@mercurian/wiki-editor/canvas-board";
-import { lazy, Suspense, useRef } from "react";
+import { canvasStoryEdit } from "@mercurian/wiki/canvas-edits";
+import type { CanvasDocument } from "@mercurian/wiki-editor/canvas-document";
+import { lazy, Suspense, useRef, useState } from "react";
 
 import { readLocalApi } from "~/localApi";
 import { useRightPanelStore } from "~/rightPanelStore";
@@ -15,6 +17,7 @@ import { CanvasStoryPill, onStepKey } from "./CanvasStoryPill";
 import { KeepCanvasButton } from "./KeepCanvas";
 import { showThreadCanvas } from "./threadCanvasStore";
 import { useCanvasWalk } from "./useCanvasWalk";
+import { useCanvasDocumentData, useThreadCanvasDocument } from "./useThreadCanvasDocument";
 
 // The board brings the Markdown parser; a thread with no canvas shouldn't load it.
 export const LazyCanvasBoard = lazy(() =>
@@ -41,6 +44,32 @@ export const canvasHost = (threadRef: ScopedThreadRef | null) => ({
 });
 
 /**
+ * A thread's board, which reads until its Edit is pressed: then it takes edits, its stories with
+ * them, until it's made read-only again.
+ */
+export function useCanvasEditing(
+  canvas: CanvasDocument | null,
+  walk: ReturnType<typeof useCanvasWalk>,
+) {
+  const [readOnly, setReadOnly] = useState(true);
+  if (canvas === null) return { board: {}, edit: undefined };
+  return {
+    board: {
+      document: canvas,
+      readOnly,
+      onReadOnly: setReadOnly,
+      onStepAdded: (index: number) => {
+        if (walk.step !== null) walk.go(index);
+      },
+    },
+    edit: readOnly
+      ? undefined
+      : (change: Parameters<typeof canvasStoryEdit>[1]) =>
+          canvas.commit([canvasStoryEdit(canvas.document, change)]),
+  };
+}
+
+/**
  * A canvas in a thread: the whole board, sized by its own shape so the row never shifts when the
  * board loads. It pans and zooms in place; the wheel scrolls the thread until the board is clicked.
  */
@@ -57,8 +86,14 @@ export function CanvasFrame({
   readonly source: { readonly threadId: ThreadId; readonly itemId: TurnItemId };
 }) {
   const { width, height } = canvasBounds(view.data);
-  const walk = useCanvasWalk(view, threadRef === null ? null : source);
+  const canvas = useThreadCanvasDocument(
+    view,
+    threadRef === null ? null : { environmentId: threadRef.environmentId, ...source },
+  );
+  const data = useCanvasDocumentData(canvas, view.data);
+  const walk = useCanvasWalk({ title: view.title, data }, threadRef === null ? null : source);
   const board = useRef<CanvasBoardHandle>(null);
+  const editing = useCanvasEditing(canvas, walk);
   return (
     <figure
       className="m-0 overflow-hidden rounded-lg border border-border"
@@ -128,9 +163,10 @@ export function CanvasFrame({
             step={walk.step}
             openFrame={walk.frame?.step ?? null}
             onFrame={walk.toggleFrame}
+            {...editing.board}
             ref={board}
           >
-            {walk.steps.length === 0 ? null : <CanvasStoryPill walk={walk} />}
+            <CanvasStoryPill walk={walk} edit={editing.edit} />
           </LazyCanvasBoard>
         </Suspense>
       </div>

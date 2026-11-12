@@ -15,6 +15,8 @@ import { t3ToolResultIndicatesFailure } from "./t3ToolSummary.ts";
 export interface CanvasView {
   readonly title: string;
   readonly data: CanvasData;
+  /** A recorded board's file, which a person's edits replay on, and the version it is. */
+  readonly recorded?: { readonly document: unknown; readonly revision: string };
 }
 
 const decodeInput = Schema.decodeUnknownOption(CanvasShowInput);
@@ -27,14 +29,19 @@ interface CanvasItem {
   readonly status?: string | undefined;
   readonly input?: unknown;
   readonly output?: unknown;
+  readonly updatedAt?: unknown;
 }
 
-// A finished item never changes, and timelines re-derive their rows on every thread update.
+// An item changes only as a new object, and timelines re-derive their rows on every thread update.
 const viewsByItem = new WeakMap<CanvasItem, CanvasView | null | undefined>();
 
 function viewOf(item: CanvasItem): CanvasView | null | undefined {
   if (item.type === "canvas") {
-    return { title: item.title ?? "Canvas", data: canvasData(item.document) };
+    return {
+      title: item.title ?? "Canvas",
+      data: canvasData(item.document),
+      recorded: { document: item.document, revision: String(item.updatedAt ?? "") },
+    };
   }
   if (t3ToolResultIndicatesFailure(item.output)) return undefined;
   // The board this call drew is its canvas item's, which draws in its place.

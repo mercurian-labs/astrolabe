@@ -337,9 +337,20 @@ describe("canvasOutline", () => {
       { id: "c", type: "text", text: "half out", x: 480, y: 0, width: 50, height: 50 },
     ],
     edges: [{ id: "e", fromNode: "a", toNode: "b", label: "uses", fromEnd: "arrow" }],
+    astrolabe: {
+      stories: [
+        {
+          title: "Tour",
+          steps: [
+            { note: "Start inside.", group: "inner" },
+            { label: "Then", note: "Out to the note.", cards: ["a", "b"] },
+          ],
+        },
+      ],
+    },
   });
 
-  it("files cards under the smallest group wholly holding them, with no coordinates", () => {
+  it("files cards under the smallest group wholly holding them, with no coordinates, then its stories", () => {
     expect(canvasOutline("Board.canvas", data)).toBe(
       [
         "Board.canvas: 3 cards, 2 groups, 1 arrow.",
@@ -354,6 +365,10 @@ describe("canvasOutline", () => {
         "",
         "Arrows",
         "[a] <-> [b]: uses",
+        "",
+        "Story: Tour",
+        "1. [inner] Start inside.",
+        "2. [a] [b] Then. Out to the note.",
       ].join("\n"),
     );
   });

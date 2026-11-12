@@ -78,6 +78,7 @@ Edits save by themselves a moment after you stop, into [your draft](#drafts), or
 - **Resize:** drag just outside a selected card's edge. Double-click the bottom or right edge to fit its text.
 - **Group:** select cards and choose **Create group**. A group carries whatever sits fully inside it, and you pick it up by its label. An unlabelled group is reached by dragging across it.
 - **Edit text:** double-click a card, or click a selected one. Escape or clicking away leaves it. A note card edits the note itself.
+- **Stories:** select cards or a group and choose **Step** to add them to the board's story, after the step you're on. While presenting, write each step's label and note in place. **⋯** beside the steps moves or deletes one; beside the story's name it renames or deletes the story.
 
 A selected card shows what you can do with it above it, and right-clicking (or ⇧F10) gives the rest: **Align**, **Convert to file…**, **Swap file…**, **Narrow to heading…**, and a group's background. **?** on the board lists the keys. Undo steps back one gesture at a time, through what has already saved, but not through other people's changes. If someone else changes a card while you type in it, the board keeps both versions and says so.
 

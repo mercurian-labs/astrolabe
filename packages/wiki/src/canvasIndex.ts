@@ -99,7 +99,8 @@ const groupTitle = (group: CanvasGroupNode) => group.label ?? "Unlabelled group"
 
 /**
  * A canvas as an agent reads it: cards under the smallest group holding them, in reading order,
- * then the arrows between them. No coordinates: a position is no use to something that can't see.
+ * then the arrows between them, then its stories. No coordinates: a position is no use to something
+ * that can't see.
  */
 export function canvasOutline(file: string, data: CanvasData): string {
   const groups = data.nodes.filter((node): node is CanvasGroupNode => node.type === "group");
@@ -128,6 +129,17 @@ export function canvasOutline(file: string, data: CanvasData): string {
     const none = edge.fromEnd !== "arrow" && edge.toEnd === "none";
     const label = edge.label === undefined ? "" : `: ${edge.label}`;
     lines.push(`[${edge.fromNode}] ${both ? "<->" : none ? "--" : "->"} [${edge.toNode}]${label}`);
+  }
+  for (const story of data.stories ?? []) {
+    lines.push("", `Story: ${story.title}`);
+    story.steps.forEach((step, index) => {
+      const shows =
+        step.group === undefined
+          ? step.cards.map((card) => `[${card}]`).join(" ")
+          : `[${step.group}]`;
+      const label = step.label === undefined ? "" : `${step.label}. `;
+      lines.push(`${index + 1}. ${shows} ${label}${step.note}`);
+    });
   }
   return lines.join("\n");
 }

@@ -9,12 +9,13 @@ import { TabHeader } from "~/panes/TabHeader";
 
 import { canvasViewsAtom, canvasViewsKey } from "~/state/canvasViews";
 
-import { canvasHost, LazyCanvasBoard } from "./CanvasFrame";
+import { canvasHost, LazyCanvasBoard, useCanvasEditing } from "./CanvasFrame";
 import { CanvasFramePopover } from "./CanvasFramePopover";
 import { CanvasStoryPill, onStepKey } from "./CanvasStoryPill";
 import { KeepCanvasButton } from "./KeepCanvas";
 import { useThreadCanvasStore } from "./threadCanvasStore";
 import { useCanvasWalk } from "./useCanvasWalk";
+import { useCanvasDocumentData, useThreadCanvasDocument } from "./useThreadCanvasDocument";
 
 /** A thread's Canvas tab: the canvas opened from the thread, to pan and zoom. */
 export function CanvasPanel({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
@@ -40,8 +41,15 @@ function CanvasPanelBoard({
   readonly threadRef: ScopedThreadRef;
 }) {
   const itemId = TurnItemId.make(view.id);
-  const walk = useCanvasWalk(view, { threadId: threadRef.threadId, itemId });
+  const canvas = useThreadCanvasDocument(view, {
+    environmentId: threadRef.environmentId,
+    threadId: threadRef.threadId,
+    itemId,
+  });
+  const data = useCanvasDocumentData(canvas, view.data);
+  const walk = useCanvasWalk({ title: view.title, data }, { threadId: threadRef.threadId, itemId });
   const board = useRef<CanvasBoardHandle>(null);
+  const editing = useCanvasEditing(canvas, walk);
   return (
     <div
       className="flex min-h-0 flex-1 flex-col"
@@ -75,9 +83,10 @@ function CanvasPanelBoard({
             step={walk.step}
             openFrame={walk.frame?.step ?? null}
             onFrame={walk.toggleFrame}
+            {...editing.board}
             ref={board}
           >
-            {walk.steps.length === 0 ? null : <CanvasStoryPill walk={walk} />}
+            <CanvasStoryPill walk={walk} edit={editing.edit} />
           </LazyCanvasBoard>
         </Suspense>
       </div>

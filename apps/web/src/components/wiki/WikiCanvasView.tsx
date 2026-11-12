@@ -22,7 +22,7 @@ import type {
 import { useBlocker } from "@tanstack/react-router";
 import { ChevronDownIcon, TriangleAlertIcon } from "lucide-react";
 import * as Schema from "effect/Schema";
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "~/hooks/useSettings";
@@ -37,6 +37,7 @@ import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Spinner } from "../ui/spinner";
 import { CanvasStoryPill, onStepKey } from "../canvas/CanvasStoryPill";
 import { useCanvasWalk } from "../canvas/useCanvasWalk";
+import { useCanvasDocumentData } from "../canvas/useThreadCanvasDocument";
 import {
   describeWikiFailure,
   documentPath,
@@ -122,10 +123,7 @@ function CanvasBoardPane({
 
   const board = useRef<CanvasBoardHandle>(null);
   const editable = canvas !== null && !readOnly;
-  const shown = useSyncExternalStore(
-    canvas?.subscribe ?? noSubscription,
-    () => canvas?.getState().data ?? data,
-  );
+  const shown = useCanvasDocumentData(canvas, data);
   const walk = useCanvasWalk({ title: documentTitle(file), data: shown }, null);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the command palette reaches this canvas through a registry outside React
   useEffect(
@@ -194,8 +192,6 @@ function CanvasBoardPane({
     </div>
   );
 }
-
-const noSubscription = () => () => {};
 
 const selectCanvasSettings = (settings: UnifiedSettings) => settings.wikiCanvas;
 

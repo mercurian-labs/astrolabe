@@ -440,10 +440,13 @@ const BAR: ReadonlyArray<readonly [BarKind, string, string]> = [
 export function CanvasBottomBar({
   toBoard,
   onAdd,
+  files = true,
   children,
 }: {
   readonly toBoard: (clientX: number, clientY: number) => CanvasPoint | null;
   readonly onAdd: (kind: BarKind, at: CanvasPoint | null) => void;
+  /** Whether there's a wiki to add notes and media from. */
+  readonly files?: boolean;
   readonly children?: ReactNode;
 }) {
   const start = useRef<{ readonly x: number; readonly y: number } | null>(null);
@@ -456,7 +459,7 @@ export function CanvasBottomBar({
   };
   return (
     <div className="cv-chrome cv-bar" role="toolbar" aria-label="Add to the board">
-      {BAR.map(([kind, label, title]) => (
+      {(files ? BAR : BAR.slice(0, 1)).map(([kind, label, title]) => (
         <button
           key={kind}
           type="button"

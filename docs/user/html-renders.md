@@ -14,6 +14,10 @@ When a flow, an architecture, or a set of dependencies is easier to see than to 
 
 The expand button opens the canvas in the right panel, where you can drag and scroll to pan, pinch or Ctrl-scroll to zoom, and use **Fit** to see the whole board. On the phone, tap a canvas to do the same.
 
+Some canvases come with stories, which walk the board a step at a time. **Present**, at the foot of the board, moves to each step and shows what it says; the arrow keys, Page Up and Page Down step too, and the full-screen button gives the board the whole screen. Hover a step's number to see what it covers, or click it for its note.
+
+**Edit**, beside the zoom buttons, lets you change a canvas in its thread: move and add cards as on a [wiki canvas](wikis.md#edit-a-canvas), and write its [stories](wikis.md#edit-a-canvas). Your edits save into the thread, and on its next turn the agent sees the board as you left it. The gear turns **Read-only** back on.
+
 A canvas stays in its thread and is deleted with it, unless you keep it. **Keep**, beside the expand button or on the phone's board, lets you add a comment, then **Add to chat** puts the canvas in the composer as a chip. Say what you want done with it, invoke any skill you like, and send: the agent can save it to a wiki as it looks in the thread. On a computer, ⌘Enter or Ctrl+Enter adds it and sends. **Place in wiki** does the saving yourself: it asks for a wiki and a name, with a folder before the name if you want it in one, and saves the canvas there as it looks in the thread, in a pull request you can merge or close. Closing it discards the copy and leaves the thread's canvas alone.
 
 A kept code card is a link to that file at a commit your remote has, so it works outside Astrolabe too. If the thread's commit isn't pushed, the link goes to the nearest commit that is, and Keep tells you the code there may differ. A card becomes plain text, naming the file and commit, if the file isn't in a pushed commit or the repository has no remote, or on a server such as Bitbucket Data Center that has no such link.

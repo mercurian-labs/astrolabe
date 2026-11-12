@@ -1,4 +1,4 @@
-import { CanvasShowCode } from "./canvas.ts";
+import { CANVAS_MAX_HAND_EDITS_PER_SAVE, CanvasHandEdit, CanvasShowCode } from "./canvas.ts";
 import { OrchestrationMessageContext } from "./composerContext.ts";
 import { withRecordIdTable } from "./orchestrationV2IdTable.ts";
 import * as DateTime from "effect/DateTime";
@@ -1567,6 +1567,8 @@ const OrchestrationV2CanvasFields = {
   document: Schema.Unknown,
   /** Where its code cards point, so a kept card can pin that code. */
   code: Schema.optional(CanvasShowCode),
+  /** When the user last changed it, which the agent hears about on its next turn. */
+  editedAt: Schema.optional(Schema.DateTimeUtc),
 } as const;
 
 export const OrchestrationV2LinkRequestStatus = Schema.Literals([
@@ -2636,6 +2638,7 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
   Schema.Struct({
     ...OrchestrationV2TurnItemJsonBaseFields,
     ...OrchestrationV2CanvasFields,
+    editedAt: Schema.optional(Schema.DateTimeUtcFromString),
   }),
   Schema.Struct({
     ...OrchestrationV2TurnItemJsonBaseFields,
@@ -3310,6 +3313,17 @@ export const OrchestrationV2Command = Schema.Union([
     commandId: CommandId,
     threadId: ThreadId,
     requestId: RuntimeRequestId,
+  }),
+  /** Astrolabe: the user's edits to a board an agent drew, replayed on the board as it is now. */
+  Schema.Struct({
+    type: Schema.Literal("canvas.edit"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    turnItemId: TurnItemId,
+    edits: Schema.Array(CanvasHandEdit).check(
+      Schema.isMinLength(1),
+      Schema.isMaxLength(CANVAS_MAX_HAND_EDITS_PER_SAVE),
+    ),
   }),
   Schema.Struct({
     type: Schema.Literal("checkpoint.rollback"),

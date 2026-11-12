@@ -2174,6 +2174,7 @@ export function CanvasBoard({
   const addBar =
     mode === "free" && canvasDocument !== null && editable ? (
       <CanvasBottomBar
+        files={host.listFiles !== undefined}
         toBoard={(clientX, clientY) => {
           const rect = boardRef.current?.getBoundingClientRect();
           const inside =

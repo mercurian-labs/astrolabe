@@ -1,3 +1,4 @@
+import { applyCanvasHandEdits } from "@mercurian/wiki/canvas-edits";
 import type {
   GuestShareId,
   OrchestrationV2SearchThreadInput,
@@ -590,6 +591,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "runtime-request.respond":
     case "runtime-request.delivery.fail":
     case "thread.user-input.dismiss":
+    case "canvas.edit":
     case "checkpoint.rollback":
     case "checkpoint.rollback.fail":
     case "thread.background-work.settle":
@@ -8934,6 +8936,54 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     });
   });
 
+  /** The user's edits, replayed on the board as it is now, so a save sent twice lands once. */
+  const dispatchCanvasEdit = Effect.fn("orchestrationV2.dispatch.canvasEdit")(function* (
+    command: Extract<OrchestrationV2Command, { readonly type: "canvas.edit" }>,
+    events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
+  ) {
+    const projection = yield* projectionStore
+      .getThreadRecords(command.threadId, ["runs", "turnItems"], {
+        turnItemTypes: ["canvas"],
+        messageRoles: [],
+      })
+      .pipe(
+        Effect.mapError(
+          (cause) => new OrchestratorProjectionError({ threadId: command.threadId, cause }),
+        ),
+      );
+    const fail = (cause: string) =>
+      new OrchestratorDispatchError({
+        commandId: command.commandId,
+        commandType: command.type,
+        cause,
+      });
+    const item = projection.turnItems.find((candidate) => candidate.id === command.turnItemId);
+    if (item === undefined || item.type !== "canvas") {
+      return yield* fail(`Turn item ${command.turnItemId} is not a canvas.`);
+    }
+    const run = projection.runs.find((candidate) => candidate.id === item.runId);
+    if (run === undefined || item.runId === null || item.nodeId === null) {
+      return yield* fail(`The run that drew ${command.turnItemId} was not found.`);
+    }
+    const document = yield* Effect.try({
+      try: () => applyCanvasHandEdits(item.document, command.edits).document,
+      catch: (cause) => fail(cause instanceof Error ? cause.message : String(cause)),
+    });
+    const now = yield* DateTime.now;
+    yield* emit(
+      events,
+      command,
+    )({
+      type: "turn-item.updated",
+      threadId: command.threadId,
+      runId: item.runId,
+      nodeId: item.nodeId,
+      providerInstanceId: run.providerInstanceId,
+      occurredAt: now,
+      payload: { ...item, document, updatedAt: now, editedAt: now },
+    });
+  });
+
   /**
    * Records or updates the card for a link an agent asked the user to make.
    * The pairing code goes straight to the link and never through orchestration.
@@ -13397,6 +13447,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         break;
       case "thread.user-input.dismiss":
         yield* dispatchThreadUserInputDismiss(command, events, effects);
+        break;
+      case "canvas.edit":
+        yield* dispatchCanvasEdit(command, events);
         break;
       case "subagent.stop":
         yield* dispatchSubagentStop(command, events, effects);
