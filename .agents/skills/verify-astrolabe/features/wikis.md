@@ -349,6 +349,21 @@ a screenshot of the section.
    neither is overwritten.
 10. Phone: the same, from Edit; no Save, the bar opens the sheet, and backgrounding the app saves.
 
+### Walk an agent's wiki edits
+
+Needs a real agent (its cheapest model); Replay doesn't edit files.
+
+1. In a project linked to a wiki, ask the agent, without naming any folder, to add a line to a
+   note. It edits under `<state>/wiki-checkouts/<thread>/<wiki>`, and `git -C <wiki> log` is
+   unchanged until the turn ends; then the thread's wiki pull request gains one amendment.
+2. Ask it to add a base, and tell it to leave the base as written with a view's columns under
+   `properties`. The base's tab shows "Parts of this base don't work as written", and so does the
+   pull request.
+3. After that turn, one "A base needs fixing" message arrives in the thread, and the agent fixes
+   the base in the turn it starts. That turn sends no second message, even if the base is still
+   broken. Without step 2's instruction, an agent usually runs `astrolabe_wiki_query` and fixes the
+   warnings in its own turn, so no message comes.
+
 ## Gotchas
 
 - A fixture wiki needs a git repository at its top level, with a branch checked
