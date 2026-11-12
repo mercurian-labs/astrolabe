@@ -242,7 +242,8 @@ A group's tab lists its members and why each is there. **Merge with the code** m
 documentation the moment the code has; a merge the wiki refuses stays open for you. From the tab
 you can add a pull request or a thread by hand (a thread brings its pull requests) or take one out,
 and accept or dismiss what an agent suggests. **Add a thread** starts with **New thread**, a draft
-beside the group that names it and joins it when you send, and offers first messages to update
+beside the group that names it and joins it when you send. Until then the group lists it as
+a draft, on the device you wrote it on. The menu also offers first messages to update
 documentation that fell behind or draft what's missing. To name a group in any thread without
 adding the thread, type `@` and its title or a pull request number. **Open as a tab group** opens the group's threads, pull requests and
 documentation together behind a numbered marker. Beside a thread, the group's threads open as chats

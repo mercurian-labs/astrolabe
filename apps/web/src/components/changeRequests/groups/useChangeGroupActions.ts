@@ -18,7 +18,7 @@ import { useAtomCommand } from "~/state/use-atom-command";
 import { toastManager } from "../../ui/toast";
 import { wikiTabKey } from "../../wiki/wikiTabs";
 import { chatTabKey } from "~/sectionTabs/sectionTabs";
-import { joinChangeGroupOnFirstSend } from "./changeGroupJoins";
+import { joinChangeGroupOnFirstSend, useChangeGroupDraftStore } from "./changeGroupJoins";
 
 /**
  * The tab a member opens in: a pull request's (named by the project of the thread that linked
@@ -88,11 +88,21 @@ function placeGroupChip(target: ComposerThreadTarget, group: EnvironmentChangeGr
 /**
  * Starts a thread for the group, as a new thread in its root thread's project does, with the
  * group's chip and `sentence` in the draft, opened by `show`. It joins the group on its first
- * send (`joinChangeGroupOnFirstSend`); a draft never sent adds nothing.
+ * send (`joinChangeGroupOnFirstSend`); a draft never sent adds nothing. A draft from the group
+ * still holding just that is shown again instead.
  */
 export function useStartChangeGroupThread(show: (chatKey: string) => void) {
   const newThread = useNewThreadHandler();
   return async (group: EnvironmentChangeGroup, sentence = "") => {
+    const reference = formatInlineContextReference(
+      wikiContextReference(changeGroupContextRecord(group)),
+    );
+    const prompt = `${reference} ${sentence}`;
+    const untouched = untouchedChangeGroupDraft(group, prompt);
+    if (untouched !== undefined) {
+      show(chatTabKey(scopeThreadRef(group.environmentId, untouched.threadId)));
+      return;
+    }
     const project = [group.groupId, ...group.threadIds]
       .map((threadId) =>
         readThreadShell(scopeThreadRef(group.environmentId, ThreadId.make(threadId))),
@@ -102,18 +112,31 @@ export function useStartChangeGroupThread(show: (chatKey: string) => void) {
       toastManager.add({ type: "error", title: "This group's threads are gone" });
       return;
     }
-    const reference = formatInlineContextReference(
-      wikiContextReference(changeGroupContextRecord(group)),
-    );
-    const opened = await newThread(scopeProjectRef(group.environmentId, project), {
-      prompt: `${reference} ${sentence}`,
-    });
+    const opened = await newThread(scopeProjectRef(group.environmentId, project), { prompt });
     if (opened === null) return;
     placeGroupChip(opened.draftId, group);
     const ref = scopeThreadRef(group.environmentId, opened.threadId);
-    joinChangeGroupOnFirstSend(ref, group);
+    joinChangeGroupOnFirstSend(opened.draftId, ref, group);
     show(chatTabKey(ref));
   };
+}
+
+function untouchedChangeGroupDraft(group: EnvironmentChangeGroup, prompt: string) {
+  const composer = useComposerDraftStore.getState();
+  return Object.values(useChangeGroupDraftStore.getState().drafts).find((draft) => {
+    const session = composer.draftThreadsByThreadKey[draft.draftId];
+    const held = composer.draftsByThreadKey[draft.draftId];
+    return (
+      draft.environmentId === group.environmentId &&
+      draft.groupId === group.groupId &&
+      session !== undefined &&
+      !session.promotedTo &&
+      held !== undefined &&
+      held.prompt.trim() === prompt.trim() &&
+      held.images.length === 0 &&
+      held.files.length === 0
+    );
+  });
 }
 
 /** Adds a thread to the group, puts the group's chip in its draft unsent, and opens it. */

@@ -19,13 +19,19 @@ import {
   MessageSquarePlusIcon,
   MessagesSquareIcon,
   PlusIcon,
+  SquarePenIcon,
   XIcon,
 } from "lucide-react";
+import {
+  changeGroupContextRecord,
+  replaceComposerContextReferences,
+} from "@t3tools/shared/composerContextReferences";
 
 import { chatTabKey } from "~/sectionTabs/sectionTabs";
 import { useState, type ReactNode } from "react";
 
 import { useEnvironmentSettings } from "~/hooks/useSettings";
+import { discardComposerDraft } from "~/lib/discardComposerDraft";
 import { TabHeader } from "~/panes/TabHeader";
 import { useThreadShells } from "~/state/entities";
 import {
@@ -51,6 +57,7 @@ import {
   CHANGE_GROUP_MEMBER_STATE_LABELS,
   changeGroupReasonLabel,
 } from "./changeGroupPresentation";
+import { useChangeGroupDrafts, type OpenChangeGroupDraft } from "./changeGroupJoins";
 import { changeGroupTabKey, type ChangeGroupTab } from "./changeGroupTabs";
 import {
   changeGroupMemberTabKey,
@@ -151,6 +158,7 @@ function GroupDetails({
   );
   const update = useUpdateChangeGroup();
   const startThread = useStartChangeGroupThread(showBeside);
+  const drafts = useChangeGroupDrafts(group);
   const code = group.members.filter((member) => member.side === "code");
   const docs = group.members.filter((member) => member.side === "docs");
   const byKey = new Map(candidates.map((member) => [member.key, member]));
@@ -386,7 +394,7 @@ function GroupDetails({
             ),
           )}
 
-          {group.threads.length > 0 ? (
+          {group.threads.length > 0 || drafts.length > 0 ? (
             <section className="flex flex-col gap-1">
               <h2 className="text-xs font-medium text-muted-foreground">Threads</h2>
               {group.threads.map((entry) => (
@@ -408,6 +416,18 @@ function GroupDetails({
                     >
                       <XIcon />
                     </Button>
+                  }
+                />
+              ))}
+              {drafts.map((draft) => (
+                <DraftRow
+                  key={draft.draftId}
+                  group={group}
+                  draft={draft}
+                  onOpen={() =>
+                    showBeside(
+                      chatTabKey(scopeThreadRef(environmentId, ThreadId.make(draft.threadId))),
+                    )
                   }
                 />
               ))}
@@ -494,6 +514,51 @@ function ThreadRow({
         </span>
       </button>
       <span className="flex shrink-0 items-center gap-0.5">{actions}</span>
+    </div>
+  );
+}
+
+/** A draft started from the group on this device: it joins when its first message sends. */
+function DraftRow({
+  group,
+  draft,
+  onOpen,
+}: {
+  readonly group: EnvironmentChangeGroup;
+  readonly draft: OpenChangeGroupDraft;
+  readonly onOpen: () => void;
+}) {
+  const own = changeGroupContextRecord(group).contextId;
+  const title =
+    replaceComposerContextReferences(draft.prompt, (occurrence) =>
+      occurrence.contextId === own ? "" : occurrence.label,
+    )
+      .trim()
+      .split("\n", 1)[0] || "New thread";
+  return (
+    <div className="group/member flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent/50">
+      <button
+        type="button"
+        aria-label={`Open draft ${title}`}
+        onClick={onOpen}
+        className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left"
+      >
+        <SquarePenIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate text-sm">{title}</span>
+          <span className="truncate text-xs text-muted-foreground">Draft · joins when sent</span>
+        </span>
+      </button>
+      <span className="flex shrink-0 items-center gap-0.5">
+        <Button
+          size="icon-xs"
+          variant="ghost-muted"
+          aria-label={`Discard draft ${title}`}
+          onClick={() => discardComposerDraft(draft.draftId)}
+        >
+          <XIcon />
+        </Button>
+      </span>
     </div>
   );
 }
@@ -648,7 +713,7 @@ function AddMember({
       }}
     >
       <HeaderComboboxTrigger label="Add a pull request">
-        <PlusIcon className="size-4" />
+        <PullRequestGlyph.add className="size-4" />
       </HeaderComboboxTrigger>
       <ComboboxPopup align="end" className="min-w-72 max-w-[min(24rem,var(--available-width))]">
         <ComboboxSearchInput
