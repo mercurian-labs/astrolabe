@@ -57,6 +57,10 @@
       "types": "./src/canvasInk.ts",
       "default": "./src/canvasInk.ts"
     },
+    "./canvas-paint": {
+      "types": "./src/canvasPaint.ts",
+      "default": "./src/canvasPaint.ts"
+    },
     "./canvas-minimap": {
       "types": "./src/CanvasMinimap.tsx",
       "default": "./src/CanvasMinimap.tsx"

@@ -2,15 +2,7 @@ import type { CanvasGroupNode, CanvasMarks, CanvasNode } from "@mercurian/wiki/c
 
 import { canvasColor, type CanvasCamera, type CanvasEdgeShape } from "./canvasGeometry";
 import type { CanvasInkShape } from "./canvasInk";
-
-const PRESETS: Readonly<Record<string, string>> = {
-  "1": "#e5484d",
-  "2": "#f76b15",
-  "3": "#d6a100",
-  "4": "#30a46c",
-  "5": "#00a2c7",
-  "6": "#8e4ec6",
-};
+import { CANVAS_PRESET_COLORS as PRESETS, canvasLineScale, canvasPaint } from "./canvasPaint";
 
 /** A canvas can't read the theme's tokens: what a review marks, at this distance. */
 const MARKS: Readonly<Record<string, string>> = {
@@ -107,8 +99,11 @@ export function drawCanvasOverview(
   fillRects(context, items.groups, base);
   context.globalAlpha = 0.3;
   context.strokeStyle = base;
-  context.lineWidth = 1 / camera.zoom;
-  for (const shape of items.shapes) context.stroke(pathOf(shape, shape.path));
+  const lines = canvasLineScale(camera.zoom);
+  for (const shape of items.shapes) {
+    context.lineWidth = canvasPaint(shape.edge).width * lines;
+    context.stroke(pathOf(shape, shape.path));
+  }
   context.globalAlpha = 0.55;
   fillRects(context, items.cards, base);
   context.globalAlpha = 1;
@@ -119,7 +114,6 @@ export function drawCanvasOverview(
     context.fillRect(x, y, width, height);
   }
   // Drawings sit above the cards, as the board draws them.
-  context.lineWidth = 2 / camera.zoom;
   context.lineCap = "round";
   context.lineJoin = "round";
   for (const shape of items.inks) {
@@ -127,6 +121,7 @@ export function drawCanvasOverview(
     const tint = MARKS[marks.drawings?.[ink.id] ?? ""] ?? tintOf(ink.color, base);
     context.strokeStyle = tint;
     context.fillStyle = tint;
+    context.lineWidth = canvasPaint(ink).width * lines;
     context.stroke(pathOf(shape, path));
     if (head !== undefined) context.fill(headOf(shape, head));
   }

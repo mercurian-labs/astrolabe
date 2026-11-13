@@ -16,6 +16,7 @@ import {
   CANVAS_MAX_DRAWINGS,
   canvasStepPick,
   canvasStoryEdit,
+  canvasStyleKeys,
   CanvasEditError,
   type CanvasEdit,
   type CanvasHandEdit,
@@ -527,6 +528,13 @@ describe("a person's edits", () => {
     ],
     ["a drawing's removal", [{ op: "remove-drawing", drawing: "s1" }]],
     [
+      "a style on a card and a stroke, as one edit",
+      [
+        { op: "set-card", card: "a", keys: canvasStyleKeys({}, { width: 4, fill: "none" }) },
+        { op: "set-drawing", drawing: "s1", keys: canvasStyleKeys({}, { width: 4 }) },
+      ],
+    ],
+    [
       "every drawing removed",
       [
         { op: "remove-drawing", drawing: "s1" },
@@ -538,6 +546,16 @@ describe("a person's edits", () => {
     const { after, undone } = roundTrip(SURVIVORS, edits);
     expect(after).not.toBe(SURVIVORS);
     expect(undone).toBe(SURVIVORS);
+  });
+
+  it("sets a style beside a shape and what it doesn't know, and clears it away", () => {
+    const shaped = { astrolabe: { shape: "ellipse", style: { sloppiness: 1, dash: "dashed" } } };
+    expect(canvasStyleKeys(shaped, { width: 2, dash: null })).toEqual({
+      astrolabe: { shape: "ellipse", style: { sloppiness: 1, width: 2 } },
+    });
+    expect(canvasStyleKeys({ astrolabe: { style: { dash: "dashed" } } }, { dash: null })).toEqual({
+      astrolabe: null,
+    });
   });
 
   it("writes a file Obsidian reads, leaving what it doesn't name as it was", () => {

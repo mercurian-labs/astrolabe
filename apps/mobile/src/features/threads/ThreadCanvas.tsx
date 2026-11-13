@@ -3,12 +3,18 @@ import { documentTitle } from "@t3tools/client-runtime/wikiLogic";
 import type { CanvasView } from "@t3tools/client-runtime/canvasViews";
 import { canvasEdgeShapes } from "@mercurian/wiki-editor/canvas-geometry";
 import { canvasInkShapes } from "@mercurian/wiki-editor/canvas-ink";
+import {
+  canvasLineScale,
+  canvasOutline,
+  canvasPaint,
+  type CanvasPaint,
+} from "@mercurian/wiki-editor/canvas-paint";
 import type { WikiCanvasReference } from "@t3tools/shared/toolOutput";
 import { useNavigation } from "@react-navigation/native";
 import type { EnvironmentId, ThreadId, TurnItemId } from "@t3tools/contracts";
 import { useMemo } from "react";
 import { Pressable, View } from "react-native";
-import Svg, { Ellipse, G, Path, Polygon, Rect, Text as SvgText } from "react-native-svg";
+import Svg, { G, Path, Rect, Text as SvgText } from "react-native-svg";
 
 import { AppText as Text } from "../../components/ui/AppText";
 import { SymbolView } from "../../components/ui/AppSymbol";
@@ -21,18 +27,24 @@ const MIN_FRAME_HEIGHT = 120;
 const MAX_FRAME_HEIGHT = 320;
 const MIN_READABLE_ZOOM = 0.3;
 
-// The presets of `canvasBoard.css`.
-const PRESET_COLORS: Readonly<Record<string, string>> = {
-  "1": "#e5484d",
-  "2": "#f76b15",
-  "3": "#d6a100",
-  "4": "#30a46c",
-  "5": "#00a2c7",
-  "6": "#8e4ec6",
-};
+/** A line's props as its paint has it, `lines` its width's share at this zoom. */
+const lineProps = (paint: CanvasPaint, color: string, lines: number) => ({
+  stroke: color,
+  strokeWidth: paint.width * lines,
+  strokeLinecap: paint.cap,
+  strokeLinejoin: "round" as const,
+  ...(paint.dashArray === null
+    ? {}
+    : { strokeDasharray: paint.dashArray.map((length) => length * lines) }),
+});
 
-const tint = (color: string | undefined) =>
-  color === undefined ? undefined : (PRESET_COLORS[color] ?? color);
+/** A fill as react-native-svg takes it: a box's surface is the frame's own background. */
+function fillProps(paint: CanvasPaint, background: string, muted: string) {
+  const { fill } = paint;
+  if (fill.kind === "none") return { fill: "none" };
+  if (fill.kind === "surface") return { fill: background };
+  return { fill: fill.color ?? muted, fillOpacity: fill.amount };
+}
 
 function frameHeight(view: CanvasView, width: number) {
   const { width: boardWidth, height: boardHeight } = canvasBounds(view.data);
@@ -106,6 +118,8 @@ export function ThreadCanvas(props: {
   const border = String(theme["--color-border"]);
   const subtle = String(theme["--color-icon-subtle"]);
   const foreground = String(theme["--color-foreground-secondary"]);
+  const background = String(theme["--color-screen"]);
+  const lines = canvasLineScale(zoom);
   return (
     <Pressable
       accessibilityRole="button"
@@ -131,7 +145,7 @@ export function ThreadCanvas(props: {
         viewBox={`${bounds.x} ${bounds.y} ${bounds.width} ${bounds.height}`}
       >
         {view.data.nodes.map((node) => {
-          const color = tint(node.color);
+          const paint = canvasPaint(node);
           const isGroup = node.type === "group";
           const label =
             node.type === "group"
@@ -141,31 +155,24 @@ export function ThreadCanvas(props: {
                 : node.type === "file"
                   ? node.file
                   : (node.astrolabe?.code?.path.split("/").at(-1) ?? node.url);
-          const shape = node.type === "text" ? node.astrolabe?.shape : undefined;
-          const { x, y, width, height } = node;
+          const shape = canvasOutline(node, paint);
           const outline = {
-            fill: color ?? "transparent",
-            fillOpacity: color === undefined ? 0 : isGroup ? 0.06 : 0.14,
-            stroke: color ?? border,
-            strokeWidth: 1 / zoom,
+            ...fillProps(paint, background, subtle),
+            ...lineProps(paint, paint.stroke ?? border, lines),
           };
           return (
-            <G key={node.id}>
-              {shape === "ellipse" ? (
-                <Ellipse
-                  cx={x + width / 2}
-                  cy={y + height / 2}
-                  rx={width / 2}
-                  ry={height / 2}
-                  {...outline}
-                />
-              ) : shape === "diamond" ? (
-                <Polygon
-                  points={`${x + width / 2},${y} ${x + width},${y + height / 2} ${x + width / 2},${y + height} ${x},${y + height / 2}`}
-                  {...outline}
-                />
+            <G key={node.id} opacity={paint.opacity}>
+              {shape.kind === "path" ? (
+                <Path d={shape.d} {...outline} />
               ) : (
-                <Rect x={x} y={y} width={width} height={height} rx={8} {...outline} />
+                <Rect
+                  x={shape.x}
+                  y={shape.y}
+                  width={shape.width}
+                  height={shape.height}
+                  rx={shape.radius}
+                  {...outline}
+                />
               )}
               {zoom < MIN_READABLE_ZOOM ? null : (
                 <SvgText
@@ -182,10 +189,11 @@ export function ThreadCanvas(props: {
           );
         })}
         {edges.map(({ edge, path, heads }) => {
-          const color = tint(edge.color) ?? subtle;
+          const paint = canvasPaint(edge);
+          const color = paint.stroke ?? subtle;
           return (
-            <G key={edge.id}>
-              <Path d={path} fill="none" stroke={color} strokeWidth={1.5 / zoom} />
+            <G key={edge.id} opacity={paint.opacity}>
+              <Path d={path} fill="none" {...lineProps(paint, color, lines)} />
               {heads.map((head) => (
                 <Path key={head} d={head} fill={color} />
               ))}
@@ -193,17 +201,11 @@ export function ThreadCanvas(props: {
           );
         })}
         {inks.map(({ ink, path, head }) => {
-          const color = tint(ink.color) ?? (ink.type === "stroke" ? foreground : subtle);
+          const paint = canvasPaint(ink);
+          const color = paint.stroke ?? (ink.type === "stroke" ? foreground : subtle);
           return (
-            <G key={ink.id}>
-              <Path
-                d={path}
-                fill="none"
-                stroke={color}
-                strokeWidth={(ink.type === "stroke" ? 2 : 1.5) / zoom}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
+            <G key={ink.id} opacity={paint.opacity}>
+              <Path d={path} fill="none" {...lineProps(paint, color, lines)} />
               {head === undefined ? null : <Path d={head} fill={color} />}
             </G>
           );

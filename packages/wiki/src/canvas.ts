@@ -22,10 +22,36 @@ interface CanvasNodeBase {
 /** A text card's outline other than the rectangle, which other apps draw it as. */
 export type CanvasShape = "ellipse" | "diamond";
 
+export type CanvasDash = "solid" | "dashed" | "dotted";
+export type CanvasCorners = "round" | "sharp";
+
+/**
+ * How a card, section, arrow or drawing is drawn beyond its `color`, which stays the stroke's so
+ * other apps still show it. Kept under `astrolabe.style`; what's left out draws as it always has.
+ */
+export interface CanvasStyle {
+  /** A preset, a hex colour, or "none". Left out, a card's fill is tinted from its `color`. */
+  readonly fill?: string;
+  /** The line's width in board units. */
+  readonly width?: number;
+  readonly dash?: CanvasDash;
+  /** Boxes only: cards drawn as rectangles, and sections. */
+  readonly corners?: CanvasCorners;
+  /** 0 to 1. */
+  readonly opacity?: number;
+}
+
+/** Wider than this reads as a fill, not a line. */
+export const CANVAS_MAX_STYLE_WIDTH = 64;
+
+interface Styled {
+  readonly astrolabe?: { readonly style?: CanvasStyle };
+}
+
 export interface CanvasTextNode extends CanvasNodeBase {
   readonly type: "text";
   readonly text: string;
-  readonly astrolabe?: { readonly shape?: CanvasShape };
+  readonly astrolabe?: { readonly shape?: CanvasShape; readonly style?: CanvasStyle };
 }
 
 /** Code a link card cites. Kept beside `url` so the card still works away from the product. */
@@ -40,10 +66,14 @@ export interface CanvasLinkNode extends CanvasNodeBase {
   readonly type: "link";
   /** Empty only on a code card in a thread, which has no link until it is saved to a wiki. */
   readonly url: string;
-  readonly astrolabe?: { readonly caption?: string; readonly code?: CanvasCodeReference };
+  readonly astrolabe?: {
+    readonly caption?: string;
+    readonly code?: CanvasCodeReference;
+    readonly style?: CanvasStyle;
+  };
 }
 
-export interface CanvasFileNode extends CanvasNodeBase {
+export interface CanvasFileNode extends CanvasNodeBase, Styled {
   readonly type: "file";
   /** Its path from the wiki's root, any depth, extension included. */
   readonly file: string;
@@ -51,7 +81,7 @@ export interface CanvasFileNode extends CanvasNodeBase {
   readonly subpath?: string;
 }
 
-export interface CanvasGroupNode extends CanvasNodeBase {
+export interface CanvasGroupNode extends CanvasNodeBase, Styled {
   readonly type: "group";
   readonly label?: string;
   /** An image's path from the wiki's root. */
@@ -80,7 +110,7 @@ export interface CanvasStory {
 
 export type CanvasNode = CanvasTextNode | CanvasLinkNode | CanvasFileNode | CanvasGroupNode;
 
-export interface CanvasEdge {
+export interface CanvasEdge extends Styled {
   readonly id: string;
   readonly fromNode: string;
   readonly toNode: string;
@@ -101,7 +131,7 @@ export type CanvasInkEnd =
 export const CANVAS_MAX_STROKE_POINTS = 1_000;
 
 /** A freehand line. `points` are x, y pairs from `x`, `y`, so moving it moves only those two. */
-export interface CanvasInkStroke {
+export interface CanvasInkStroke extends Styled {
   readonly id: string;
   readonly type: "stroke";
   readonly x: number;
@@ -111,7 +141,7 @@ export interface CanvasInkStroke {
 }
 
 /** An arrow with an end that isn't on a node; one with both on nodes is an edge. */
-export interface CanvasInkArrow {
+export interface CanvasInkArrow extends Styled {
   readonly id: string;
   readonly type: "arrow";
   readonly from: CanvasInkEnd;
@@ -472,6 +502,25 @@ function canvasStories(astrolabe: unknown): ReadonlyArray<CanvasStory> {
   });
 }
 
+/** A style as drawn: what it holds that this version can't use is left for the file to keep. */
+export function canvasStyle(astrolabe: unknown): CanvasStyle | undefined {
+  if (!isRecord(astrolabe) || !isRecord(astrolabe.style)) return undefined;
+  const { fill, width, dash, corners, opacity } = astrolabe.style;
+  const style: CanvasStyle = {
+    ...(typeof fill === "string" && fill !== "" ? { fill } : {}),
+    ...(finite(width) && width > 0 && width <= CANVAS_MAX_STYLE_WIDTH ? { width } : {}),
+    ...(dash === "solid" || dash === "dashed" || dash === "dotted" ? { dash } : {}),
+    ...(corners === "round" || corners === "sharp" ? { corners } : {}),
+    ...(finite(opacity) && opacity >= 0 && opacity <= 1 ? { opacity } : {}),
+  };
+  return Object.keys(style).length === 0 ? undefined : style;
+}
+
+const styled = (raw: Record<string, unknown>) => {
+  const style = canvasStyle(raw.astrolabe);
+  return style === undefined ? {} : { astrolabe: { style } };
+};
+
 const shapeOf = (astrolabe: unknown): CanvasShape | undefined =>
   isRecord(astrolabe) && (astrolabe.shape === "ellipse" || astrolabe.shape === "diamond")
     ? astrolabe.shape
@@ -492,7 +541,15 @@ function canvasInk(raw: Record<string, unknown>, id: string): CanvasInk | undefi
     const { points } = raw;
     if (!finite(raw.x) || !finite(raw.y) || !Array.isArray(points)) return undefined;
     if (points.length < 2 || points.length % 2 !== 0 || !points.every(finite)) return undefined;
-    return { id, type: "stroke", x: raw.x, y: raw.y, points: points as number[], ...colored };
+    return {
+      id,
+      type: "stroke",
+      x: raw.x,
+      y: raw.y,
+      points: points as number[],
+      ...colored,
+      ...styled(raw),
+    };
   }
   if (raw.type === "arrow") {
     const from = inkEnd(raw.from);
@@ -506,6 +563,7 @@ function canvasInk(raw: Record<string, unknown>, id: string): CanvasInk | undefi
       to,
       ...colored,
       ...(label === undefined ? {} : { label }),
+      ...styled(raw),
     };
   }
   return undefined;
@@ -525,11 +583,19 @@ function canvasNode(raw: Record<string, unknown>, id: string): CanvasNode | unde
   switch (raw.type) {
     case "text": {
       const shape = shapeOf(raw.astrolabe);
+      const style = canvasStyle(raw.astrolabe);
       return {
         ...base,
         type: "text",
         text: text(raw.text) ?? "",
-        ...(shape === undefined ? {} : { astrolabe: { shape } }),
+        ...(shape === undefined && style === undefined
+          ? {}
+          : {
+              astrolabe: {
+                ...(shape === undefined ? {} : { shape }),
+                ...(style === undefined ? {} : { style }),
+              },
+            }),
       };
     }
     case "file": {
@@ -539,22 +605,25 @@ function canvasNode(raw: Record<string, unknown>, id: string): CanvasNode | unde
         type: "file",
         file: text(raw.file) ?? "",
         ...(subpath === undefined ? {} : { subpath }),
+        ...styled(raw),
       };
     }
     case "link": {
       const astrolabe = isRecord(raw.astrolabe) ? raw.astrolabe : undefined;
       const caption = text(astrolabe?.caption);
       const code = codeReference(astrolabe);
+      const style = canvasStyle(astrolabe);
       return {
         ...base,
         type: "link",
         url: text(raw.url) ?? "",
-        ...(caption === undefined && code === undefined
+        ...(caption === undefined && code === undefined && style === undefined
           ? {}
           : {
               astrolabe: {
                 ...(caption === undefined ? {} : { caption }),
                 ...(code === undefined ? {} : { code }),
+                ...(style === undefined ? {} : { style }),
               },
             }),
       };
@@ -569,6 +638,7 @@ function canvasNode(raw: Record<string, unknown>, id: string): CanvasNode | unde
         ...(label === undefined ? {} : { label }),
         ...(background === undefined ? {} : { background }),
         ...(backgroundStyle === undefined ? {} : { backgroundStyle }),
+        ...styled(raw),
       };
     }
     default:
@@ -595,6 +665,7 @@ function canvasEdge(raw: Record<string, unknown>, id: string): CanvasEdge | unde
     ...(toEnd === undefined ? {} : { toEnd }),
     ...(color === undefined ? {} : { color }),
     ...(label === undefined ? {} : { label }),
+    ...styled(raw),
   };
 }
 
@@ -700,6 +771,9 @@ function written(value: unknown, depth: number): string {
  */
 export const serializeCanvas = (document: unknown): string => written(document, 0);
 
+/** How looks name a card's, arrow's or drawing's `astrolabe.style`. */
+export const STYLE_KEY = "astrolabe.style";
+
 /** What a look's keys do to a card or arrow: anything not named here is what it says. */
 export interface CanvasLook {
   /** As a merge's preview names it, such as "position". */
@@ -713,12 +787,14 @@ export const CANVAS_CARD_LOOKS: ReadonlyArray<CanvasLook> = [
   { name: "size", keys: ["width", "height"], mark: "moved" },
   { name: "colour", keys: ["color"], mark: "restyled" },
   { name: "background", keys: ["background", "backgroundStyle"], mark: "restyled" },
+  { name: "style", keys: [STYLE_KEY], mark: "restyled" },
 ];
 
 export const CANVAS_ARROW_LOOKS: ReadonlyArray<CanvasLook> = [
   { name: "sides", keys: ["fromSide", "toSide"], mark: "moved" },
   { name: "colour", keys: ["color"], mark: "restyled" },
   { name: "ends", keys: ["fromEnd", "toEnd"], mark: "restyled" },
+  { name: "style", keys: [STYLE_KEY], mark: "restyled" },
 ];
 
 /** A stroke's points and a drawn arrow's label are what it says; the rest is where and how. */
@@ -726,7 +802,31 @@ export const CANVAS_DRAWING_LOOKS: ReadonlyArray<CanvasLook> = [
   { name: "position", keys: ["x", "y"], mark: "moved" },
   { name: "ends", keys: ["from", "to"], mark: "moved" },
   { name: "colour", keys: ["color"], mark: "restyled" },
+  { name: "style", keys: [STYLE_KEY], mark: "restyled" },
 ];
+
+/**
+ * `raw` with `astrolabe.style` as a key of its own, as looks name it, so a style that changed
+ * reads as restyled while the rest of `astrolabe` (a shape, a code card's code) still says.
+ */
+export function canvasLookKeys(raw: Record<string, unknown>): Record<string, unknown> {
+  if (!isRecord(raw.astrolabe) || !("style" in raw.astrolabe)) return raw;
+  const { style, ...astrolabe } = raw.astrolabe;
+  return {
+    ...raw,
+    astrolabe: Object.keys(astrolabe).length === 0 ? undefined : astrolabe,
+    [STYLE_KEY]: style,
+  };
+}
+
+/** What `canvasLookKeys` lifted, back where the file keeps it. */
+export function canvasLookRaw(raw: Record<string, unknown>): Record<string, unknown> {
+  if (!(STYLE_KEY in raw)) return raw;
+  const { [STYLE_KEY]: style, ...rest } = raw;
+  if (style === undefined) return rest;
+  const astrolabe = isRecord(rest.astrolabe) ? rest.astrolabe : {};
+  return { ...rest, astrolabe: { ...astrolabe, style } };
+}
 
 /** A file's drawings, the same way `canvasData` reads them. */
 export const canvasDrawingEntries = (document: unknown) =>
@@ -856,10 +956,12 @@ function wasText(before: Record<string, unknown>, after: Record<string, unknown>
 }
 
 function changeOf(
-  before: Record<string, unknown>,
-  after: Record<string, unknown>,
+  beforeRaw: Record<string, unknown>,
+  afterRaw: Record<string, unknown>,
   looks: ReadonlyArray<CanvasLook>,
 ): Pick<CanvasChange, "mark" | "also"> | null {
+  const before = canvasLookKeys(beforeRaw);
+  const after = canvasLookKeys(afterRaw);
   const differs = (key: string) => !sameJson(before[key], after[key]);
   const looked = new Set(looks.flatMap((look) => look.keys));
   const said = [...new Set([...Object.keys(before), ...Object.keys(after)])].some(

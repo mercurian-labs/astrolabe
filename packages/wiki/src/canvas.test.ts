@@ -61,6 +61,8 @@ describe("diffCanvas", () => {
     ["a key it can't read", { note: true }, "text", []],
     ["text moved and recoloured", { text: "Uno", x: 1, color: "2" }, "text", ["restyled", "moved"]],
     ["a recoloured move", { x: 1, color: "2" }, "restyled", ["moved"]],
+    ["a new style", { astrolabe: { style: { width: 4 } } }, "restyled", []],
+    ["a new shape", { astrolabe: { shape: "ellipse" } }, "text", []],
   ])("reads %s", (_, change, mark, also) => {
     expect(marks({ nodes: [card] }, { nodes: [{ ...card, ...change }] })).toEqual([
       ["a", "card", mark, also],
@@ -82,6 +84,7 @@ describe("diffCanvas", () => {
     ["a new colour", { color: "3" }, "restyled"],
     ["new ends", { toEnd: "none" }, "restyled"],
     ["new sides", { fromSide: "top" }, "moved"],
+    ["a new style", { astrolabe: { style: { dash: "dotted" } } }, "restyled"],
   ])("reads an arrow with %s", (_, change, mark) => {
     expect(marks({ edges: [arrow] }, { edges: [{ ...arrow, ...change }] })).toEqual([
       ["e", "arrow", mark, []],
@@ -256,6 +259,29 @@ describe("parseCanvas", () => {
   ])("opens %s", (_name, source, count) => {
     const parsed = parseCanvas(source);
     expect(parsed.ok && parsed.data.nodes.length).toBe(count);
+  });
+
+  it("reads a style beside a shape, leaving what it can't use for the file to keep", () => {
+    const style = { fill: "none", width: 4, dash: "dotted", corners: "round", opacity: 0.5 };
+    const card = {
+      id: "a",
+      type: "text",
+      text: "t",
+      astrolabe: { shape: "diamond", style: { ...style, sloppiness: 2, width: -1 } },
+    };
+    const stroke = { id: "s", type: "stroke", x: 0, y: 0, points: [0, 0], astrolabe: { style } };
+    const document = {
+      nodes: [card, { id: "g", type: "group", astrolabe: { style: { dash: "wavy" } } }],
+      edges: [{ id: "e", fromNode: "a", toNode: "g", astrolabe: { style: { opacity: 2 } } }],
+      astrolabe: { drawings: [stroke] },
+    };
+    const data = canvasData(document);
+    const { width: _bad, ...kept } = style;
+    expect(data.nodes[0]).toMatchObject({ astrolabe: { shape: "diamond", style: kept } });
+    expect(data.nodes[1]).not.toHaveProperty("astrolabe");
+    expect(data.edges[0]).not.toHaveProperty("astrolabe");
+    expect(data.drawings?.[0]).toMatchObject({ astrolabe: { style } });
+    expect(JSON.parse(serializeCanvas(document))).toEqual(document);
   });
 
   it("refuses only text that isn't JSON", () => {

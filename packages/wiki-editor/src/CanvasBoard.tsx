@@ -97,6 +97,7 @@ import {
   type CanvasEdgeShape,
 } from "./canvasGeometry";
 import { drawCanvasOverview } from "./canvasOverview";
+import { canvasPaint, type CanvasPaint as Paint } from "./canvasPaint";
 import { CanvasMarkdown, type CanvasMarkdownHost } from "./CanvasMarkdown";
 import { CanvasMinimap } from "./CanvasMinimap";
 import { arrowMenu, boardMenu, cardMenu, readOnlyMenu, selectionMenu } from "./canvasMenus";
@@ -296,6 +297,43 @@ function colorProps(color: string | undefined) {
     ...(hex === undefined ? {} : { style: { "--cv-tint": hex } as Record<string, string> }),
   };
 }
+
+/** What the stylesheet needs of an item's paint, beside its colour: the rest it draws itself. */
+function paintProps(item: Parameters<typeof canvasPaint>[0]) {
+  const paint = canvasPaint(item);
+  const { fill, dashArray } = paint;
+  const { style: tint, ...color } = colorProps(item.color);
+  const style: Record<string, string | number> = {
+    ...tint,
+    "--cv-w": paint.width,
+    ...(paint.opacity === 1 ? {} : { opacity: paint.opacity }),
+    ...(paint.kind === "card" || paint.kind === "section" ? { borderRadius: paint.radius } : {}),
+    ...(dashArray === null ? {} : { "--cv-dash-on": dashArray[0], "--cv-dash-off": dashArray[1] }),
+  };
+  // A fill its style chose; the tint a colour gives is the stylesheet's.
+  const chosen = item.astrolabe?.style?.fill !== undefined && fill.kind !== "surface";
+  if (chosen && fill.kind === "tint") {
+    style["--cv-fill"] = fill.color ?? "var(--muted-foreground)";
+    style["--cv-fill-amount"] = `${fill.amount * 100}%`;
+  }
+  return {
+    paint,
+    props: {
+      ...color,
+      style,
+      ...(paint.dash === "solid" ? {} : { "data-dash": paint.dash }),
+      ...(chosen ? { "data-fill": fill.kind === "none" ? "none" : "" } : {}),
+    },
+  };
+}
+
+/** A dashed or dotted box's line, drawn over its edge where a CSS border can't dash to match. */
+const BoxLine = ({ paint }: { readonly paint: Paint }) =>
+  paint.dash === "solid" ? null : (
+    <svg className="cv-box-line" aria-hidden="true">
+      <rect x="0" y="0" width="100%" height="100%" rx={paint.radius} data-dash={paint.dash} />
+    </svg>
+  );
 
 const position = ({ x, y, width, height }: CanvasBounds) => ({
   left: x,
@@ -763,15 +801,35 @@ const Dots = () => (
 );
 
 /** A shaped card's outline, stretched to its box with the line's width kept. */
-const ShapeOutline = ({ shape }: { readonly shape: CanvasShape }) => (
-  <svg className="cv-shape" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-    {shape === "ellipse" ? (
-      <ellipse cx="50" cy="50" rx="50" ry="50" vectorEffect="non-scaling-stroke" />
-    ) : (
-      <polygon points="50,0 100,50 50,100 0,50" vectorEffect="non-scaling-stroke" />
-    )}
-  </svg>
-);
+const ShapeOutline = ({
+  shape,
+  dash,
+}: {
+  readonly shape: CanvasShape;
+  readonly dash: Paint["dash"];
+}) => {
+  const dashed = dash === "solid" ? undefined : dash;
+  return (
+    <svg className="cv-shape" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+      {shape === "ellipse" ? (
+        <ellipse
+          cx="50"
+          cy="50"
+          rx="50"
+          ry="50"
+          vectorEffect="non-scaling-stroke"
+          data-dash={dashed}
+        />
+      ) : (
+        <polygon
+          points="50,0 100,50 50,100 0,50"
+          vectorEffect="non-scaling-stroke"
+          data-dash={dashed}
+        />
+      )}
+    </svg>
+  );
+};
 
 const CardNode = memo(function CardNode({
   node,
@@ -804,7 +862,8 @@ const CardNode = memo(function CardNode({
   readonly from: string | undefined;
 }) {
   const { mode } = useBoard();
-  const { style, ...color } = colorProps(node.color);
+  const { paint, props } = paintProps(node);
+  const { style, ...painted } = props;
   const live = mode === "fit" || selected;
   const noteFile =
     editing && node.type === "file" && canvasFileKind(node.file) === "note" ? node.file : null;
@@ -821,10 +880,14 @@ const CardNode = memo(function CardNode({
       data-from={from}
       data-editing={editing || undefined}
       style={{ ...position(node), ...style, ...(raised === undefined ? {} : { zIndex: raised }) }}
-      {...color}
+      {...painted}
     >
       {node.type === "file" ? <FileCardLabel node={node} /> : null}
-      {shape === undefined ? null : <ShapeOutline shape={shape} />}
+      {shape === undefined ? (
+        <BoxLine paint={paint} />
+      ) : (
+        <ShapeOutline shape={shape} dash={paint.dash} />
+      )}
       <MarkBadge mark={mark} />
       <Flash revision={flash} />
       <div className="cv-card-content" data-live={(live && !simple) || undefined}>
@@ -905,7 +968,8 @@ const GroupNode = memo(function GroupNode({
   readonly steps: ReadonlyArray<StepChipProps> | undefined;
 }) {
   const { host } = useBoard();
-  const { style, ...color } = colorProps(node.color);
+  const { paint, props } = paintProps(node);
+  const { style, ...painted } = props;
   // Smaller above larger, and all beneath the cards: their order on the page says so.
   return (
     <div
@@ -915,8 +979,9 @@ const GroupNode = memo(function GroupNode({
       data-mark={mark}
       data-lit={lit}
       style={{ ...position(node), ...style }}
-      {...color}
+      {...painted}
     >
+      <BoxLine paint={paint} />
       <MarkBadge mark={mark} />
       <Flash revision={flash} />
       {node.background === undefined
@@ -1096,7 +1161,7 @@ const EdgeNode = memo(function EdgeNode({
   readonly lit: boolean | undefined;
 }) {
   const { edge, path, heads } = shape;
-  const { style, ...color } = colorProps(edge.color);
+  const { props } = paintProps(edge);
   return (
     <g
       className="cv-edge"
@@ -1104,8 +1169,7 @@ const EdgeNode = memo(function EdgeNode({
       data-selected={selected || undefined}
       data-mark={mark}
       data-lit={lit}
-      style={style}
-      {...color}
+      {...props}
     >
       <path className="cv-edge-line" d={path} />
       <path className="cv-edge-hit" d={path} />
@@ -1180,7 +1244,7 @@ const InkNode = memo(function InkNode({
   readonly lit: boolean | undefined;
 }) {
   const { ink, path, head } = shape;
-  const { style, ...color } = colorProps(ink.color);
+  const { props } = paintProps(ink);
   return (
     <g
       className="cv-ink"
@@ -1189,8 +1253,7 @@ const InkNode = memo(function InkNode({
       data-selected={selected || undefined}
       data-mark={mark}
       data-lit={lit}
-      style={style}
-      {...color}
+      {...props}
     >
       <path className="cv-ink-hit" d={path} />
       <path className="cv-ink-line" d={path} />

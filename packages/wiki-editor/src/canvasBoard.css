@@ -85,9 +85,16 @@
 [data-color="6"] {
   --cv-tint: #8e4ec6;
 }
+/* A line's width is the board's, from its paint's --cv-w, held to the zoom's floor by --cv-line. */
+.cv-card,
+.cv-group,
+.cv-edge,
+.cv-ink {
+  --cv-stroke: calc(var(--cv-w, 1) * var(--cv-line, 1) * 1px);
+}
 .cv-card {
   background: var(--background);
-  border: calc(1px * var(--cv-ui, 1)) solid var(--border);
+  border: var(--cv-stroke) solid var(--border);
 }
 .cv-card[data-selected],
 .cv-group[data-selected] {
@@ -213,6 +220,54 @@
 .cv-card[style*="--cv-tint"] {
   background: color-mix(in srgb, var(--cv-tint) 10%, var(--background));
   border-color: color-mix(in srgb, var(--cv-tint) 55%, var(--border));
+}
+/* A fill its style sets, over the board's background for a card and over nothing for a section. */
+.cv-card[data-fill] {
+  background: color-mix(in srgb, var(--cv-fill) var(--cv-fill-amount), var(--background));
+}
+.cv-group[data-fill] {
+  background: color-mix(in srgb, var(--cv-fill) var(--cv-fill-amount), transparent);
+}
+.cv-card[data-fill="none"],
+.cv-group[data-fill="none"] {
+  background: none;
+}
+/* A dashed or dotted box draws its line as an outline over its edge, as the image export does. */
+.cv-card[data-dash],
+.cv-group[data-dash] {
+  border-color: transparent;
+}
+.cv-box-line {
+  position: absolute;
+  inset: calc(var(--cv-stroke) * -1);
+  width: auto;
+  height: auto;
+  overflow: visible;
+  pointer-events: none;
+  fill: none;
+  stroke: var(--border);
+  stroke-width: var(--cv-stroke);
+}
+.cv-group .cv-box-line {
+  stroke: color-mix(in srgb, var(--cv-tint) 40%, transparent);
+}
+.cv-card:is([data-color], [style*="--cv-tint"]) .cv-box-line {
+  stroke: color-mix(in srgb, var(--cv-tint) 55%, var(--border));
+}
+.cv-group[data-color] .cv-box-line,
+.cv-group[style*="--cv-tint"] .cv-box-line {
+  stroke: var(--cv-tint);
+}
+:is(.cv-box-line, .cv-shape) [data-dash] {
+  stroke-dasharray: calc(var(--cv-dash-on) * var(--cv-line, 1) * 1px)
+    calc(var(--cv-dash-off) * var(--cv-line, 1) * 1px);
+}
+:is(.cv-box-line, .cv-shape) [data-dash="dotted"] {
+  stroke-linecap: round;
+}
+.cv-card[data-mark] .cv-box-line,
+.cv-group[data-mark] .cv-box-line {
+  stroke: var(--cv-mark);
 }
 .cv-card-body {
   box-sizing: border-box;
@@ -454,7 +509,7 @@ span.cv-wikilink {
 
 .cv-group {
   background: color-mix(in srgb, var(--cv-tint) 6%, transparent);
-  border: calc(1px * var(--cv-ui, 1)) solid color-mix(in srgb, var(--cv-tint) 40%, transparent);
+  border: var(--cv-stroke) solid color-mix(in srgb, var(--cv-tint) 40%, transparent);
 }
 .cv-group-background {
   position: absolute;
@@ -527,13 +582,22 @@ span.cv-wikilink {
 .cv-edge-line {
   fill: none;
   stroke: currentcolor;
-  stroke-width: calc(1.5px * var(--cv-ui, 1));
+  stroke-width: var(--cv-stroke);
+}
+.cv-edge[data-dash] .cv-edge-line,
+.cv-ink[data-dash] .cv-ink-line {
+  stroke-dasharray: calc(var(--cv-dash-on) * var(--cv-line, 1) * 1px)
+    calc(var(--cv-dash-off) * var(--cv-line, 1) * 1px);
+}
+.cv-edge[data-dash="dotted"] .cv-edge-line,
+.cv-ink[data-dash="dotted"] .cv-ink-line {
+  stroke-linecap: round;
 }
 .cv-edge-head {
   fill: currentcolor;
 }
 .cv-edge[data-selected] .cv-edge-line {
-  stroke-width: calc(3px * var(--cv-ui, 1));
+  stroke-width: calc(var(--cv-stroke) + 1.5px * var(--cv-ui, 1));
 }
 .cv-edge[data-mark] {
   color: var(--cv-mark);
@@ -573,11 +637,17 @@ span.cv-wikilink {
   pointer-events: none;
   fill: var(--background);
   stroke: var(--border);
-  stroke-width: calc(1px * var(--cv-ui, 1));
+  stroke-width: var(--cv-stroke);
 }
 .cv-card[data-shape]:is([data-color], [style*="--cv-tint"]) .cv-shape {
   fill: color-mix(in srgb, var(--cv-tint) 10%, var(--background));
   stroke: color-mix(in srgb, var(--cv-tint) 55%, var(--border));
+}
+.cv-card[data-shape][data-fill] .cv-shape {
+  fill: color-mix(in srgb, var(--cv-fill) var(--cv-fill-amount), var(--background));
+}
+.cv-card[data-shape][data-fill="none"] .cv-shape {
+  fill: none;
 }
 .cv-card[data-shape][data-mark] .cv-shape {
   stroke: var(--cv-mark);
@@ -623,13 +693,13 @@ span.cv-wikilink {
   stroke: currentcolor;
   stroke-linecap: round;
   stroke-linejoin: round;
-  stroke-width: calc(2.5px * var(--cv-ui, 1));
+  stroke-width: var(--cv-stroke);
 }
 .cv-ink-draft {
+  --cv-stroke: calc(var(--cv-w, 2.5) * var(--cv-line, 1) * 1px);
   stroke: var(--foreground);
 }
-.cv-ink[data-kind="arrow"] .cv-ink-line {
-  stroke-width: calc(1.5px * var(--cv-ui, 1));
+.cv-ink[data-kind="arrow"]:not([data-dash="dotted"]) .cv-ink-line {
   stroke-linecap: butt;
 }
 .cv-ink-head {
@@ -1579,13 +1649,16 @@ textarea.cv-label-editor {
     transition: none;
   }
 }
-/* A story's frame is a view over the board, not a region of it: a viewfinder, never picked. */
+/*
+ * A story's frame is a view over the board, not a region of it: a viewfinder, never picked. Its
+ * corners say so; its edge is a faint solid line, since a section's may be dashed or dotted.
+ */
 .cv-story-frame {
   --cv-corner-weight: calc(2px * var(--cv-screen, 1));
   pointer-events: none;
   background: none;
-  border-style: dashed;
-  border-color: color-mix(in srgb, var(--muted-foreground) 50%, transparent);
+  border-width: calc(1px * var(--cv-screen, 1));
+  border-color: color-mix(in srgb, var(--muted-foreground) 30%, transparent);
 }
 /* Never more than a quarter of a small frame, so its corners mark it rather than cover it. */
 .cv-frame-corner {

@@ -5,21 +5,19 @@ import {
   type CanvasNode,
 } from "@mercurian/wiki/canvas";
 
-import { canvasColor, canvasEdgeShapes, canvasFileKind, cardFileName } from "./canvasGeometry";
+import { canvasEdgeShapes, canvasFileKind, cardFileName } from "./canvasGeometry";
 import { canvasInkShapes } from "./canvasInk";
+import {
+  canvasLineScale,
+  canvasOutline,
+  canvasPaint,
+  type CanvasPaint,
+  type CanvasPaintFill,
+} from "./canvasPaint";
 
 const PADDING = 40;
 /** Browsers stop drawing past this on a side. */
 const MAX_SIDE = 16_384;
-
-const PRESET_TINTS: Readonly<Record<string, string>> = {
-  "1": "#e5484d",
-  "2": "#f76b15",
-  "3": "#d6a100",
-  "4": "#30a46c",
-  "5": "#00a2c7",
-  "6": "#8e4ec6",
-};
 
 export interface CanvasExportOptions {
   readonly area: "full" | "viewport";
@@ -84,37 +82,28 @@ export function canvasPlainLines(text: string): ReadonlyArray<{
   });
 }
 
-function roundedRect(context: CanvasRenderingContext2D, rect: CanvasBounds, radius: number) {
-  context.beginPath();
-  context.roundRect(rect.x, rect.y, rect.width, rect.height, radius);
+function roundedRect(rect: CanvasBounds, radius: number) {
+  const path = new Path2D();
+  path.roundRect(rect.x, rect.y, rect.width, rect.height, radius);
+  return path;
 }
 
-/** A card's outline: a shaped card's ellipse or diamond, or the usual rounded box. */
-function outline(context: CanvasRenderingContext2D, node: CanvasNode) {
-  const shape = node.type === "text" ? node.astrolabe?.shape : undefined;
+/** A card's outline as its paint has it, and the box its text goes in. */
+function outline(node: CanvasNode, paint: CanvasPaint) {
+  const shape = canvasOutline(node, paint);
+  if (shape.kind === "box") return { path: roundedRect(shape, shape.radius), inside: node };
   const { x, y, width, height } = node;
-  if (shape === undefined) {
-    roundedRect(context, node, 8);
-    return node;
-  }
-  context.beginPath();
-  if (shape === "ellipse") {
-    context.ellipse(x + width / 2, y + height / 2, width / 2, height / 2, 0, 0, Math.PI * 2);
-  } else {
-    context.moveTo(x + width / 2, y);
-    context.lineTo(x + width, y + height / 2);
-    context.lineTo(x + width / 2, y + height);
-    context.lineTo(x, y + height / 2);
-    context.closePath();
-  }
   // Where its text goes: the box inside the shape.
-  const inset = shape === "ellipse" ? 0.146 : 0.25;
+  const inset = node.type === "text" && node.astrolabe?.shape === "ellipse" ? 0.146 : 0.25;
   return {
-    ...node,
-    x: x + width * inset,
-    y: y + height * inset,
-    width: width * (1 - inset * 2),
-    height: height * (1 - inset * 2),
+    path: new Path2D(shape.d),
+    inside: {
+      ...node,
+      x: x + width * inset,
+      y: y + height * inset,
+      width: width * (1 - inset * 2),
+      height: height * (1 - inset * 2),
+    },
   };
 }
 
@@ -168,10 +157,39 @@ function drawText(
   context.restore();
 }
 
-const tintOf = (color: string | undefined) => {
-  const { preset, hex } = canvasColor(color);
-  return hex ?? (preset === undefined ? undefined : PRESET_TINTS[preset]);
-};
+function paintFill(
+  context: CanvasRenderingContext2D,
+  path: Path2D,
+  fill: CanvasPaintFill,
+  colors: CanvasExportColors,
+) {
+  if (fill.kind === "none") return;
+  if (fill.kind === "surface" || fill.over === "surface") {
+    context.fillStyle = colors.background;
+    context.fill(path);
+  }
+  if (fill.kind === "tint") {
+    const alpha = context.globalAlpha;
+    context.globalAlpha = alpha * fill.amount;
+    context.fillStyle = fill.color ?? colors.muted;
+    context.fill(path);
+    context.globalAlpha = alpha;
+  }
+}
+
+/** A line as its paint has it, at `lines` times its width to keep to the zoom's floor. */
+function strokeStyle(
+  context: CanvasRenderingContext2D,
+  paint: CanvasPaint,
+  color: string,
+  lines: number,
+) {
+  context.strokeStyle = color;
+  context.lineWidth = paint.width * lines;
+  context.lineCap = paint.cap;
+  context.lineJoin = "round";
+  context.setLineDash(paint.dashArray?.map((length) => length * lines) ?? []);
+}
 
 export const cardCaption = (node: CanvasNode): string =>
   node.type === "file"
@@ -209,39 +227,41 @@ export function drawCanvasExport(
   const groups = data.nodes
     .filter((node) => node.type === "group")
     .sort((a, b) => area2(b) - area2(a));
+  const lines = canvasLineScale(scale);
   for (const group of groups) {
     if (group.type !== "group") continue;
-    const tint = tintOf(group.color) ?? colors.muted;
-    roundedRect(context, group, 8);
-    context.globalAlpha = 0.08;
-    context.fillStyle = tint;
-    context.fill();
-    context.globalAlpha = 1;
+    const paint = canvasPaint(group);
+    context.globalAlpha = paint.opacity;
+    const tint = paint.stroke ?? colors.muted;
+    const path = roundedRect(group, paint.radius);
+    paintFill(context, path, paint.fill, colors);
     const background = group.background === undefined ? undefined : images.get(group.background);
     if (background !== undefined) {
       context.save();
-      context.clip();
-      context.globalAlpha = 0.8;
+      context.clip(path);
+      context.globalAlpha = paint.opacity * 0.8;
       context.drawImage(background, group.x, group.y, group.width, group.height);
       context.restore();
     }
-    context.strokeStyle = tint;
-    context.lineWidth = 1;
-    roundedRect(context, group, 8);
-    context.stroke();
+    strokeStyle(context, paint, tint, lines);
+    context.stroke(path);
+    context.setLineDash([]);
     if (group.label !== undefined && !options.privacy) {
       context.fillStyle = colors.muted;
       context.font = "600 16px sans-serif";
       context.fillText(group.label, group.x, group.y - 6);
     }
+    context.globalAlpha = 1;
   }
 
-  context.lineWidth = 1.5;
   for (const shape of canvasEdgeShapes(data)) {
-    const tint = tintOf(shape.edge.color) ?? colors.line;
-    context.strokeStyle = tint;
+    const paint = canvasPaint(shape.edge);
+    const tint = paint.stroke ?? colors.line;
+    context.globalAlpha = paint.opacity;
+    strokeStyle(context, paint, tint, lines);
     context.fillStyle = tint;
     context.stroke(new Path2D(shape.path));
+    context.setLineDash([]);
     for (const head of shape.heads) {
       const tip = new Path2D(head);
       context.fill(tip);
@@ -253,28 +273,22 @@ export function drawCanvasExport(
       context.fillText(shape.edge.label, shape.labelAt.x, shape.labelAt.y);
       context.textAlign = "start";
     }
+    context.globalAlpha = 1;
   }
 
   for (const node of data.nodes) {
     if (node.type === "group") continue;
-    const tint = tintOf(node.color);
-    const inside = outline(context, node);
-    context.fillStyle = colors.background;
-    context.fill();
-    if (tint !== undefined) {
-      context.globalAlpha = 0.1;
-      context.fillStyle = tint;
-      context.fill();
-      context.globalAlpha = 1;
-    }
-    context.strokeStyle = tint ?? colors.border;
-    context.lineWidth = 1;
-    context.stroke();
+    const paint = canvasPaint(node);
+    context.globalAlpha = paint.opacity;
+    const { path, inside } = outline(node, paint);
+    paintFill(context, path, paint.fill, colors);
+    strokeStyle(context, paint, paint.stroke ?? colors.border, lines);
+    context.stroke(path);
+    context.setLineDash([]);
     const image = node.type === "file" ? images.get(node.file) : undefined;
     if (image !== undefined) {
       context.save();
-      roundedRect(context, node, 8);
-      context.clip();
+      context.clip(roundedRect(node, paint.radius));
       context.drawImage(image, node.x, node.y, node.width, node.height);
       context.restore();
     } else if (options.privacy) {
@@ -290,17 +304,18 @@ export function drawCanvasExport(
         context.fillText(line, node.x + 12, node.y + 24 + row * 20);
       }
     }
+    context.globalAlpha = 1;
   }
 
-  context.lineCap = "round";
-  context.lineJoin = "round";
   for (const shape of canvasInkShapes(data)) {
     const { ink } = shape;
-    const tint = tintOf(ink.color) ?? (ink.type === "stroke" ? colors.foreground : colors.line);
-    context.strokeStyle = tint;
+    const paint = canvasPaint(ink);
+    const tint = paint.stroke ?? (ink.type === "stroke" ? colors.foreground : colors.line);
+    context.globalAlpha = paint.opacity;
+    strokeStyle(context, paint, tint, lines);
     context.fillStyle = tint;
-    context.lineWidth = ink.type === "stroke" ? 2.5 : 1.5;
     context.stroke(new Path2D(shape.path));
+    context.setLineDash([]);
     if (shape.head !== undefined) context.fill(new Path2D(shape.head));
     if (ink.type === "arrow" && ink.label !== undefined && !options.privacy) {
       context.font = "12px sans-serif";
@@ -309,6 +324,7 @@ export function drawCanvasExport(
       context.fillText(ink.label, shape.labelAt.x, shape.labelAt.y);
       context.textAlign = "start";
     }
+    context.globalAlpha = 1;
   }
   context.lineCap = "butt";
 

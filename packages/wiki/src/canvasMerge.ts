@@ -6,6 +6,8 @@
  */
 import {
   canvasArrowName,
+  canvasLookKeys,
+  canvasLookRaw,
   canvasCardName,
   canvasDrawingName,
   CANVAS_ARROW_LOOKS,
@@ -126,9 +128,14 @@ function mergeValue(
 }
 
 /** A card or arrow both sides hold. A look moves as one: never half of each side's position. */
-function mergeItem(id: string, sides: Sides<Raw>, kind: Kind, said: Said): Raw {
+function mergeItem(id: string, files: Sides<Raw>, kind: Kind, said: Said): Raw {
+  if (sameJson(files.ours, files.theirs)) return files.ours;
+  const sides = {
+    base: canvasLookKeys(files.base),
+    ours: canvasLookKeys(files.ours),
+    theirs: canvasLookKeys(files.theirs),
+  };
   const { base, ours, theirs } = sides;
-  if (sameJson(ours, theirs)) return ours;
   const chosen = new Map<string, unknown>();
   const clashed: string[] = [];
   for (const look of kind.looks) {
@@ -149,12 +156,14 @@ function mergeItem(id: string, sides: Sides<Raw>, kind: Kind, said: Said): Raw {
     const value = chosen.has(key) ? chosen.get(key) : mergeValue(key, id, sides, kind, said);
     if (value !== undefined) merged[key] = value;
   }
-  return merged;
+  return canvasLookRaw(merged);
 }
 
 /** Whether a side's edit of what the other deleted leaves anything that matters. */
-function mergeDeleted(id: string, was: unknown, kept: unknown, kind: Kind, said: Said) {
-  if (!isRecord(was) || !isRecord(kept) || sameJson(was, kept)) return;
+function mergeDeleted(id: string, wasRaw: unknown, keptRaw: unknown, kind: Kind, said: Said) {
+  if (!isRecord(wasRaw) || !isRecord(keptRaw) || sameJson(wasRaw, keptRaw)) return;
+  const was = canvasLookKeys(wasRaw);
+  const kept = canvasLookKeys(keptRaw);
   const looks = new Set(kind.looks.flatMap((look) => look.keys));
   const onlyLooks = allKeys(was, kept).every(
     (key) => looks.has(key) || sameJson(was[key], kept[key]),

@@ -11,6 +11,7 @@ import {
   type CanvasData,
   type CanvasGroupNode,
   type CanvasSide,
+  type CanvasStyle,
 } from "./canvas.ts";
 import {
   canvasArrowSides,
@@ -270,6 +271,29 @@ const anchoredTo = (raw: unknown, node: unknown) =>
 
 const keyChanges = (raw: Raw, keys: Readonly<Record<string, unknown>>) =>
   Object.fromEntries(Object.keys(keys).map((key) => [key, raw[key] ?? null]));
+
+/** A change to a style: a value sets that part, null clears it back to the default. */
+export type CanvasStylePatch = {
+  readonly [Key in keyof CanvasStyle]?: CanvasStyle[Key] | null;
+};
+
+/**
+ * The `set-card`, `set-arrow` or `set-drawing` keys that put `patch` into what `raw` holds as its
+ * style: the rest of its `astrolabe` (a shape, a code card's code) and what this version doesn't
+ * know are kept, and an emptied style or `astrolabe` goes.
+ */
+export function canvasStyleKeys(
+  raw: Readonly<Record<string, unknown>>,
+  patch: CanvasStylePatch,
+): { readonly astrolabe: Raw | null } {
+  const astrolabe = isRecord(raw.astrolabe) ? raw.astrolabe : {};
+  const style = Object.entries(patch).reduce<Raw>(
+    (kept, [key, value]) => withKey(kept, key, value ?? null),
+    isRecord(astrolabe.style) ? astrolabe.style : {},
+  );
+  const next = withKey(astrolabe, "style", Object.keys(style).length === 0 ? null : style);
+  return { astrolabe: Object.keys(next).length === 0 ? null : next };
+}
 
 export interface CanvasHandOutcome {
   /** The document with the edits in. Whatever they didn't touch is the same object. */
