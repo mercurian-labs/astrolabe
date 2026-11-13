@@ -1,9 +1,11 @@
 import type { EnvironmentId, ProjectId, ScopedThreadRef } from "@t3tools/contracts";
-import type { NavigateFn } from "@tanstack/react-router";
+import { type NavigateFn, useNavigate } from "@tanstack/react-router";
+import { FolderGit2Icon } from "lucide-react";
 
 import { readProject, readThreadShell } from "~/state/entities";
 import type { SectionTabMove } from "~/sectionTabs/SectionTabContent";
 import { workspace } from "~/panes/workspace";
+import { threadFileInCheckout } from "./fileView";
 import { repositoryFileReveal } from "./repositoryFileReveal";
 import { revealInRepositoryFilter } from "./repositoryFilter";
 import { showWorktreeFiles, worktreeFilesKey } from "./repositoryScope";
@@ -18,6 +20,7 @@ import { repositoryTabKey, type RepositoryCheckout } from "./repositoryTabs";
 export function repositoryMoveOfSurface(
   threadRef: ScopedThreadRef | null,
   surfaceId: string | null,
+  line?: number | null,
 ): SectionTabMove | null {
   if (threadRef === null || surfaceId === null) return null;
   const path = surfaceId.startsWith("file:") ? surfaceId.slice("file:".length) : null;
@@ -35,9 +38,9 @@ export function repositoryMoveOfSurface(
           ? { branch: thread.branch }
           : { cwd };
       if (path !== null) {
-        workspace.show(
-          repositoryTabKey({ kind: "file", environmentId, projectId, checkout, path }),
-        );
+        const tabKey = repositoryTabKey({ kind: "file", environmentId, projectId, checkout, path });
+        workspace.show(tabKey);
+        if (line != null) repositoryFileReveal.request(tabKey, line);
       } else if (surfaceId === "diff") {
         workspace.show(
           repositoryTabKey({
@@ -86,4 +89,23 @@ export function openRepositoryFileAtLine(
   workspace.show(tabKey);
   repositoryFileReveal.request(tabKey, target.line);
   void navigate({ to: "/repositories" });
+}
+
+/** Astrolabe: the thread file panel's "Open in Projects", its open-in picker's primary action. */
+export function useThreadFileOpen(
+  threadRef: ScopedThreadRef,
+  draft: boolean,
+  cwd: string,
+  absolutePath: string | null,
+  isFile: boolean,
+  line: number | null,
+) {
+  const navigate = useNavigate();
+  const path = threadFileInCheckout(draft, cwd, absolutePath, isFile);
+  if (path === null) return null;
+  return {
+    label: "Projects",
+    Icon: FolderGit2Icon,
+    open: () => repositoryMoveOfSurface(threadRef, `file:${path}`, line)?.run(navigate),
+  };
 }

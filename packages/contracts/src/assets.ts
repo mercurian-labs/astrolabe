@@ -30,6 +30,8 @@ export const AssetResource = Schema.Union([
   Schema.TaggedStruct("draft-workspace-file", {
     cwd: TrimmedNonEmptyString.check(Schema.isMaxLength(ASSET_PATH_MAX_LENGTH)),
     path: TrimmedNonEmptyString.check(Schema.isMaxLength(ASSET_PATH_MAX_LENGTH)),
+    // Astrolabe: any file, as a download, as `media-file` offers a thread's.
+    disposition: Schema.optionalKey(Schema.Literal("attachment")),
   }),
   // A wiki's file as a commit holds it, so what exists only in a change request still shows.
   Schema.TaggedStruct("wiki-file", {

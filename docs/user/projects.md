@@ -135,7 +135,9 @@ opens your branch's, from the **⋯** menu on a worktree's header. To compare wi
 branch, pick it from the branch name in the changes tab's title. Comment on lines to send them to the thread working in that copy, or to the
 project's new thread.
 
-In a thread, the **Files** and **Diff** tabs offer **Open in Projects** from their tab menu.
+In a thread, the **Files** and **Diff** tabs offer **Open in Projects** from their tab menu. A file
+shown in **Files** opens in Projects from its **Open** button too; your other editors are in the
+menu beside it.
 
 ## Manage projects
 
