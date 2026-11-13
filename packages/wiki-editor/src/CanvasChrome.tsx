@@ -522,10 +522,10 @@ const FIT_ICON = [
   "M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3",
 ];
 
-/** A step's viewfinder corners, as the board marks one. */
+/** A card with a step's number on its corner, as the board marks one. */
 const STEP_ICON = [
-  "M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3",
-  "M12 9v6M9 12h6",
+  "M10 6h9a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-9",
+  "M6 2.5a3.5 3.5 0 1 0 0 7a3.5 3.5 0 1 0 0-7",
 ];
 
 /** Strokes for the bar's undo, redo and zoom, on the tools' 24-unit grid. */

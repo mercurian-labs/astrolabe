@@ -870,7 +870,7 @@ const CardNode = memo(function CardNode({
   readonly focus: boolean;
   /** The story's steps that point at it, numbered on its corner. */
   readonly steps: ReadonlyArray<StepChipProps> | undefined;
-  /** Shown beside the step's frame, away from its place: the step it belongs to, from 1. */
+  /** Shown beside what the step points at, away from its place: the step it belongs to, from 1. */
   readonly from: string | undefined;
 }) {
   const { mode } = useBoard();
