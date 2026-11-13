@@ -15,6 +15,7 @@ import { environmentThreadDetails } from "~/state/threads";
 interface EditedBoardDismissals {
   readonly byThread: Readonly<Record<string, Readonly<Record<string, string>>>>;
   readonly dismiss: (threadRef: ScopedThreadRef, boardId: string, editedAt: string) => void;
+  readonly restore: (threadRef: ScopedThreadRef, boardId: string) => void;
 }
 
 const NO_DISMISSALS: Readonly<Record<string, string>> = {};
@@ -32,6 +33,12 @@ export const useEditedBoardDismissals = create<EditedBoardDismissals>()(
               [key]: { ...state.byThread[key], [boardId]: editedAt },
             },
           };
+        }),
+      restore: (threadRef, boardId) =>
+        set((state) => {
+          const key = scopedThreadKey(threadRef);
+          const { [boardId]: _restored, ...rest } = state.byThread[key] ?? {};
+          return { byThread: { ...state.byThread, [key]: rest } };
         }),
     }),
     {
