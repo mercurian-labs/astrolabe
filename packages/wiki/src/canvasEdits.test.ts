@@ -13,6 +13,7 @@ import {
 import {
   applyCanvasEdits,
   applyCanvasHandEdits,
+  CANVAS_MAX_DRAWINGS,
   canvasStepPick,
   canvasStoryEdit,
   CanvasEditError,
@@ -630,13 +631,23 @@ describe("a person's edits", () => {
     ).toThrow(CanvasEditError);
   });
 
-  it("handles a whole board in one list without slowing per card", () => {
+  it("handles a whole board in one list without slowing per card or drawing", () => {
     const nodes = Array.from({ length: 5000 }, (_, index) => card(`n${index}`, index, 0));
-    const start = read(board(nodes)).document;
-    const removed = applyCanvasHandEdits(
-      start,
-      nodes.map(({ id }) => ({ op: "remove-card", card: id })),
-    );
+    const drawings = Array.from({ length: CANVAS_MAX_DRAWINGS }, (_, index) => ({
+      id: `d${index}`,
+      type: "arrow",
+      from: { node: `n${index}`, side: "top" },
+      to: { x: index, y: 0 },
+    }));
+    const start = read(serializeCanvas({ nodes, edges: [], astrolabe: { drawings } })).document;
+    const removed = applyCanvasHandEdits(start, [
+      ...drawings.map(({ id }): CanvasHandEdit => ({ op: "set-drawing", drawing: id, keys: {} })),
+      ...drawings
+        .filter((_, index) => index % 2 === 0)
+        .map(({ id }): CanvasHandEdit => ({ op: "remove-drawing", drawing: id })),
+      ...nodes.map(({ id }): CanvasHandEdit => ({ op: "remove-card", card: id })),
+    ]);
+    expect(removed.document.astrolabe).toBeUndefined();
     expect(serializeCanvas(applyCanvasHandEdits(removed.document, removed.inverse).document)).toBe(
       serializeCanvas(start),
     );

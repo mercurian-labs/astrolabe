@@ -356,14 +356,80 @@ export function applyCanvasHandEdits(
   };
 
   let astrolabe = isRecord(document.astrolabe) ? document.astrolabe : undefined;
-  // Read only once an edit is about drawings, so a board without any writes none.
-  const ink: { list: unknown[] | null } = { list: null };
+  // Read only once an edit is about drawings, so a board without any writes none. Like cards,
+  // a removal leaves a hole, and places are counted again only when something is put back.
+  const ink: {
+    list: unknown[] | null;
+    holes: number;
+    at: Map<string, number> | null;
+    on: Map<unknown, number[]> | null;
+  } = { list: null, holes: 0, at: null, on: null };
   const drawingList = () => (ink.list ??= given(astrolabe?.drawings));
-  const drawingAt = (id: string) => placesIn(drawingList(), "drawing").get(id);
+  const drawingCount = () => drawingList().length - ink.holes;
+  const drawingAt = (id: string) => {
+    const position = (ink.at ??= placesIn(drawingList(), "drawing")).get(id);
+    return position !== undefined && drawingList()[position] !== undefined ? position : undefined;
+  };
+  /** Files the drawing at `position` under the nodes its ends are on, once the index is built. */
+  const anchor = (index: Map<unknown, number[]>, position: number) => {
+    const raw = drawingList()[position];
+    if (!isRecord(raw)) return;
+    const ends = new Set([raw.from, raw.to].map((end) => (isRecord(end) ? end.node : undefined)));
+    for (const node of ends) {
+      if (node === undefined) continue;
+      const on = index.get(node);
+      if (on === undefined) index.set(node, [position]);
+      else on.push(position);
+    }
+  };
+  /** Each node's drawn arrows by place; a place may be stale, so it's checked as it's read. */
+  const anchoredOn = () => {
+    if (ink.on !== null) return ink.on;
+    const index = new Map<unknown, number[]>();
+    drawingList().forEach((_, position) => anchor(index, position));
+    return (ink.on = index);
+  };
+  const placed = (position: number) => {
+    if (ink.on !== null) anchor(ink.on, position);
+  };
+  const inkRestored: Array<Extract<CanvasHandEdit, { op: "put-drawing" }>> = [];
   const removeDrawing = (position: number) => {
     const list = drawingList();
-    const [raw] = list.splice(position, 1);
-    if (isRecord(raw)) others.push({ op: "put-drawing", drawing: raw, at: position });
+    const raw = list[position];
+    if (!isRecord(raw)) return;
+    inkRestored.push({ op: "put-drawing", drawing: raw, at: position });
+    list[position] = undefined;
+    ink.holes += 1;
+  };
+  const recount = () => {
+    ink.holes = 0;
+    ink.at = null;
+    ink.on = null;
+  };
+  const closeInkHoles = () => {
+    if (ink.list === null || ink.holes === 0) return;
+    ink.list = ink.list.filter((raw) => raw !== undefined);
+    recount();
+  };
+  /** Consecutive new drawings put back at their places, as one insert. */
+  const putInkRun = (start: number) => {
+    let end = start;
+    const items: Array<{ readonly at: number; readonly raw: Raw }> = [];
+    const taken = new Set<string>();
+    for (; end < edits.length; end++) {
+      const edit = edits[end];
+      if (edit?.op !== "put-drawing" || edit.at === undefined) break;
+      const id = idOf(edit.drawing);
+      if (drawingAt(id) !== undefined || taken.has(id)) break;
+      if (id === "" || drawingCount() + items.length >= CANVAS_MAX_DRAWINGS) continue;
+      taken.add(id);
+      items.push({ at: edit.at, raw: edit.drawing });
+      others.push({ op: "remove-drawing", drawing: id });
+    }
+    closeInkHoles();
+    ink.list = insertedAt(drawingList(), items);
+    recount();
+    return end;
   };
 
   for (let index = 0; index < edits.length;) {
@@ -376,9 +442,15 @@ export function applyCanvasHandEdits(
         if (position !== undefined) {
           others.push({ op: "put-drawing", drawing: list[position] as Raw });
           list[position] = edit.drawing;
-        } else if (id !== "" && list.length < CANVAS_MAX_DRAWINGS) {
+          placed(position);
+        } else if (edit.at !== undefined) {
+          index = putInkRun(index);
+          continue;
+        } else if (id !== "" && drawingCount() < CANVAS_MAX_DRAWINGS) {
           others.push({ op: "remove-drawing", drawing: id });
-          list.splice(Math.min(edit.at ?? list.length, list.length), 0, edit.drawing);
+          ink.at?.set(id, list.length);
+          list.push(edit.drawing);
+          placed(list.length - 1);
         }
         break;
       }
@@ -396,11 +468,13 @@ export function applyCanvasHandEdits(
           (raw, [key, value]) => withKey(raw, key, value),
           before,
         );
+        placed(position);
         break;
       }
       case "remove-drawing": {
         const position = drawingAt(edit.drawing);
-        if (position !== undefined) removeDrawing(position);
+        if (position === undefined) break;
+        removeDrawing(position);
         break;
       }
       case "set-stories": {
@@ -470,10 +544,11 @@ export function applyCanvasHandEdits(
         restored.push({ op: "put-card", node: raw, at: position });
         const stored = raw.id ?? edit.card;
         for (const arrow of arrowIndex().get(stored) ?? []) removeArrow(arrow);
-        // A drawn arrow on it goes too, as its arrows do; from the end, so places hold.
-        const list = astrolabe?.drawings === undefined && ink.list === null ? [] : drawingList();
-        for (let at = list.length - 1; at >= 0; at--) {
-          if (anchoredTo(list[at], stored)) removeDrawing(at);
+        // A drawn arrow on it goes too, as its arrows do.
+        if (astrolabe?.drawings !== undefined || ink.list !== null) {
+          for (const at of anchoredOn().get(stored) ?? []) {
+            if (anchoredTo(drawingList()[at], stored)) removeDrawing(at);
+          }
         }
         nodes[position] = undefined;
         nodeAt.delete(edit.card);
@@ -517,13 +592,15 @@ export function applyCanvasHandEdits(
     index += 1;
   }
   closeHoles();
+  closeInkHoles();
   if (ink.list !== null) {
     const kept = withKey(astrolabe ?? {}, "drawings", ink.list.length === 0 ? null : ink.list);
     astrolabe = Object.keys(kept).length === 0 ? undefined : kept;
   }
   restored.sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
   const rest = withKey({ ...document, nodes, edges }, "astrolabe", astrolabe ?? null);
-  return { document: rest, inverse: [...restored, ...others.reverse()] };
+  inkRestored.sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
+  return { document: rest, inverse: [...restored, ...inkRestored, ...others.reverse()] };
 }
 
 function replay(file: string, source: string, edits: ReadonlyArray<CanvasEdit>, seed: string) {
