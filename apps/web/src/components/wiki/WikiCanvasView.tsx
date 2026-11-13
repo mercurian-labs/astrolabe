@@ -167,7 +167,7 @@ function CanvasBoardPane({
             edit={
               canvas === null || !editable
                 ? undefined
-                : (change) => canvas.commit([canvasStoryEdit(canvas.document, change)])
+                : (change) => canvas.commit(canvasStoryEdit(canvas.document, change, canvas.mint))
             }
           />
         </CanvasBoard>

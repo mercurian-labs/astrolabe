@@ -848,6 +848,8 @@ const CardNode = memo(function CardNode({
   editable,
   raised,
   lit,
+  focus,
+  steps,
   from,
 }: {
   readonly node: Exclude<CanvasNode, CanvasGroupNode>;
@@ -864,6 +866,10 @@ const CardNode = memo(function CardNode({
   readonly raised: number | undefined;
   /** Whether the step being walked shows it; unset outside a walk. */
   readonly lit: boolean | undefined;
+  /** It's what the step walked or peeked at points at, being one of its loose cards. */
+  readonly focus: boolean;
+  /** The story's steps that point at it, numbered on its corner. */
+  readonly steps: ReadonlyArray<StepChipProps> | undefined;
   /** Shown beside the step's frame, away from its place: the step it belongs to, from 1. */
   readonly from: string | undefined;
 }) {
@@ -883,6 +889,7 @@ const CardNode = memo(function CardNode({
       data-selected={selected || undefined}
       data-mark={mark}
       data-lit={lit}
+      data-focus={focus || undefined}
       data-from={from}
       data-editing={editing || undefined}
       style={{ ...position(node), ...style, ...(raised === undefined ? {} : { zIndex: raised }) }}
@@ -896,6 +903,13 @@ const CardNode = memo(function CardNode({
       )}
       <MarkBadge mark={mark} />
       <Flash revision={flash} />
+      {steps === undefined ? null : (
+        <span className="cv-card-steps">
+          {steps.map((each) => (
+            <StepChip key={each.index} {...each} />
+          ))}
+        </span>
+      )}
       <div className="cv-card-content" data-live={(live && !simple) || undefined}>
         {noteFile !== null ? (
           <NoteCardEditor file={noteFile} />
@@ -970,7 +984,7 @@ const GroupNode = memo(function GroupNode({
   readonly editable: boolean;
   readonly onLabel: (id: string, label: string) => void;
   readonly lit: boolean | undefined;
-  /** The story's steps this group is, numbered on its label. */
+  /** The story's steps that point at this group, numbered on its label. */
   readonly steps: ReadonlyArray<StepChipProps> | undefined;
 }) {
   const { host } = useBoard();
@@ -1014,8 +1028,6 @@ const GroupNode = memo(function GroupNode({
     </div>
   );
 });
-
-const CORNERS = ["nw", "ne", "se", "sw"] as const;
 
 interface StepChipProps {
   readonly index: number;
@@ -1065,7 +1077,7 @@ function StepChip({ index, label, current, open, onOpen, onPeek }: StepChipProps
   );
 }
 
-/** Every step's number, and those of the steps that are groups by their group. */
+/** Every step's number, and each by what it points at: its groups, else its cards. */
 function stepChips(
   steps: ReadonlyArray<CanvasStep>,
   at: Pick<StepChipProps, "onOpen" | "onPeek"> & {
@@ -1082,12 +1094,14 @@ function stepChips(
     onPeek: at.onPeek,
   }));
   const byGroup = new Map<string, StepChipProps[]>();
+  const byCard = new Map<string, StepChipProps[]>();
   steps.forEach((each, index) => {
     const chip = all[index];
-    if (each.group === undefined || each.heading !== undefined || chip === undefined) return;
-    byGroup.set(each.group, [...(byGroup.get(each.group) ?? []), chip]);
+    if (each.heading !== undefined || chip === undefined) return;
+    const [on, ids] = each.groups.length > 0 ? [byGroup, each.groups] : [byCard, each.cards];
+    for (const id of ids) on.set(id, [...(on.get(id) ?? []), chip]);
   });
-  return { all, byGroup };
+  return { all, byGroup, byCard };
 }
 
 /** A lanes board's step, named above its column: what a frame would say, where nothing else is. */
@@ -1106,53 +1120,6 @@ function StepHeading({
       {chip.label === undefined ? null : <span className="cv-step-heading-name">{chip.label}</span>}
     </div>
   );
-}
-
-/**
- * A story's step on the board that no group is: a viewfinder over its cards, which a walk moves
- * to. Its number sits on the bottom-right corner, away from the top-left where groups are named.
- */
-function StoryFrame({
-  frame,
-  lit,
-  chip,
-}: {
-  readonly frame: CanvasBounds;
-  readonly lit: boolean | undefined;
-  readonly chip: StepChipProps;
-}) {
-  return (
-    <div className="cv-group cv-story-frame" data-lit={lit} style={position(frame)}>
-      {CORNERS.map((corner) => (
-        <span key={corner} className="cv-frame-corner" data-corner={corner} />
-      ))}
-      <StepChip {...chip} />
-    </div>
-  );
-}
-
-/** Screen pixels apart, under which two frames' numbers would cover each other. */
-const CHIP_NEAR = 26;
-
-/**
- * Sets each frame's number beside any other already on the same corner, as the reader sees them:
- * frames far apart on the board can share a corner once it's zoomed out.
- */
-function stackChips(world: HTMLElement, frames: ReadonlyArray<CanvasBounds>, zoom: number) {
-  const placed: Array<{ readonly x: number; readonly y: number }> = [];
-  const elements = world.querySelectorAll<HTMLElement>(":scope > .cv-story-frame");
-  frames.forEach((frame, index) => {
-    const corner = { x: (frame.x + frame.width) * zoom, y: (frame.y + frame.height) * zoom };
-    const stack = placed.filter(
-      (each) => Math.abs(each.x - corner.x) < CHIP_NEAR && Math.abs(each.y - corner.y) < CHIP_NEAR,
-    ).length;
-    placed.push(corner);
-    const element = elements[index];
-    if (element !== undefined && element.dataset.stack !== String(stack)) {
-      element.dataset.stack = String(stack);
-      element.style.setProperty("--cv-stack", String(stack));
-    }
-  });
 }
 
 const EdgeNode = memo(function EdgeNode({
@@ -1394,7 +1361,6 @@ class BoardLive {
   openMenu: OpenMenu | null = null;
   readAt: string | undefined = undefined;
   walkable = false;
-  frames: ReadonlyArray<CanvasBounds> = [];
   /** The frame a free board's camera last moved to. */
   walkedTo: string | null = null;
   whole: CanvasBounds = { x: 0, y: 0, width: 0, height: 0 };
@@ -1719,7 +1685,6 @@ export function CanvasBoard({
     if (zoomRef.current !== null) zoomRef.current.textContent = `${Math.round(camera.zoom * 100)}%`;
     live.onCamera?.(view.fitted ? null : camera);
     placeToolbar();
-    if (worldRef.current !== null) stackChips(worldRef.current, live.frames, camera.zoom);
     if (next.simple) return;
     reads.files.want(
       next.cards.flatMap((card) =>
@@ -2021,9 +1986,6 @@ export function CanvasBoard({
       marks,
       bounds,
       walkable: steps.length > 0,
-      frames: steps.flatMap((each) =>
-        each.group === undefined && each.heading === undefined ? [each.frame] : [],
-      ),
       whole,
     });
     reads.files.readFrom((paths) => host.readFiles?.(paths) ?? Promise.resolve([]));
@@ -2569,9 +2531,18 @@ export function CanvasBoard({
           const pick = canvasStepPick(data, selection.cards);
           if (pick === null) return;
           const at = step === null ? steps.length : step + 1;
-          canvasDocument.commit([
-            canvasStoryEdit(canvasDocument.document, { kind: "add-step", story, at, step: pick }),
-          ]);
+          const made = canvasDocument.mint();
+          canvasDocument.commit(
+            canvasStoryEdit(
+              canvasDocument.document,
+              { kind: "add-step", story, at, step: pick },
+              () => made,
+            ),
+          );
+          if ("around" in pick) {
+            setSelection({ cards: new Set([made]), arrow: null });
+            setEditing({ kind: "group", id: made });
+          }
           onStepAdded(at);
         };
   // Presenting hands the camera to the story, as on a read-only board: only the pill stays.
@@ -2682,26 +2653,26 @@ export function CanvasBoard({
               editable={editable}
               onLabel={finishGroupLabel}
               lit={
-                shines?.group === node.id
+                shines?.groups.includes(node.id)
                   ? true
-                  : active !== null || shines?.group !== undefined
+                  : active !== null || (shines?.groups.length ?? 0) > 0
                     ? false
                     : undefined
               }
               steps={chips.byGroup.get(node.id)}
             />
           ))}
-          {steps.map((each, index) => {
-            const lit = shines === null ? undefined : index === current;
-            const chip = chips.all[index]!;
-            if (each.heading !== undefined) {
-              // oxlint-disable-next-line react/no-array-index-key -- a step is its place in the story; headings hold no state
-              return <StepHeading key={index} heading={each.heading} lit={lit} chip={chip} />;
-            }
-            if (each.group !== undefined) return null;
-            // oxlint-disable-next-line react/no-array-index-key -- a step is its place in the story; frames hold no state
-            return <StoryFrame key={index} frame={each.frame} lit={lit} chip={chip} />;
-          })}
+          {steps.map((each, index) =>
+            each.heading === undefined ? null : (
+              <StepHeading
+                // oxlint-disable-next-line react/no-array-index-key -- a step is its place in the story; headings hold no state
+                key={index}
+                heading={each.heading}
+                lit={shines === null ? undefined : index === current}
+                chip={chips.all[index]!}
+              />
+            ),
+          )}
           <svg className="cv-edges" aria-hidden="true" width="1" height="1">
             {shown.shapes.map((shape) => (
               <EdgeNode
@@ -2747,6 +2718,8 @@ export function CanvasBoard({
               editable={editable}
               raised={raised.get(node.id)}
               lit={shines === null ? undefined : shines.cards.has(node.id)}
+              focus={shines !== null && shines.groups.length === 0 && shines.cards.has(node.id)}
+              steps={chips.byCard.get(node.id)}
               from={dockedLabel(active, node.id)}
             />
           ))}

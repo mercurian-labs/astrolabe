@@ -97,7 +97,7 @@ function CanvasPanelBoard({
               edit={
                 canvas === null || readOnly
                   ? undefined
-                  : (change) => canvas.commit([canvasStoryEdit(canvas.document, change)])
+                  : (change) => canvas.commit(canvasStoryEdit(canvas.document, change, canvas.mint))
               }
             />
           </LazyCanvasBoard>

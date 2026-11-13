@@ -1,4 +1,5 @@
 import { canvasSteps } from "@mercurian/wiki/canvas";
+import { canvasSectionAround } from "@mercurian/wiki/canvas-edits";
 import type { CanvasView } from "@t3tools/client-runtime/canvasViews";
 import type { ThreadId, TurnItemId } from "@t3tools/contracts";
 import { canvasContextRecord } from "@t3tools/shared/composerContextReferences";
@@ -70,6 +71,13 @@ export function useCanvasWalk(
     steps,
     step,
     go,
+    /** Where a section round a step of loose cards would go, when they sit together. */
+    sectionFor: (index: number) => {
+      const each = steps[index];
+      return each === undefined || each.groups.length > 0 || each.heading !== undefined
+        ? null
+        : canvasSectionAround(view.data, each.cards);
+    },
     frame,
     /** Opens a step's details beside its frame's number, or closes them if they're open. */
     toggleFrame: (index: number, chip: HTMLElement) =>

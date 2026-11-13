@@ -214,7 +214,7 @@ export function CanvasStoryPill({
   readonly walk: ReturnType<typeof useCanvasWalk>;
   readonly edit?: ((change: CanvasStoryChange) => void) | undefined;
 }) {
-  const { stories, story, pick, steps, step, go } = walk;
+  const { stories, story, pick, steps, step, go, sectionFor } = walk;
   const pill = useRef<HTMLDivElement>(null);
   const [renaming, setRenaming] = useState(false);
   const board = () => pill.current?.closest<HTMLElement>(".cv-board") ?? null;
@@ -224,6 +224,7 @@ export function CanvasStoryPill({
   );
   if (steps.length === 0) return null;
   const current = step === null ? undefined : steps[step];
+  const around = step === null || edit === undefined ? null : sectionFor(step);
   const stop = () => {
     go(null);
     if (fullscreen) void document.exitFullscreen();
@@ -422,6 +423,11 @@ export function CanvasStoryPill({
                   >
                     Move later
                   </MenuItem>
+                  {around === null ? null : (
+                    <MenuItem onClick={() => edit({ kind: "make-section", story, step, around })}>
+                      Make a section
+                    </MenuItem>
+                  )}
                   <MenuItem
                     onClick={() => {
                       edit({ kind: "remove-step", story, step });

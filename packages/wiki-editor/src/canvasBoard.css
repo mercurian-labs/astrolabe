@@ -1780,7 +1780,7 @@ textarea.cv-label-editor {
   border-radius: 6px;
 }
 
-/* A walk: the step's frame, cards and arrows stay; the rest of the board steps back. */
+/* A walk: the step's sections, cards and arrows stay; the rest of the board steps back. */
 .cv-board[data-mode="fit"][data-walkable] .cv-world {
   transition: transform 320ms cubic-bezier(0.2, 0.7, 0.2, 1);
 }
@@ -1819,67 +1819,15 @@ textarea.cv-label-editor {
   color: var(--muted-foreground);
   white-space: nowrap;
 }
-.cv-board[data-walking] .cv-group[data-lit="true"] {
-  border-color: var(--primary);
-}
 @media (prefers-reduced-motion: reduce) {
   .cv-board[data-walkable] :is(.cv-world, .cv-card, .cv-group, .cv-edge, .cv-edge-label) {
     transition: none;
   }
 }
-/*
- * A story's frame is a view over the board, not a region of it: a viewfinder, never picked. Its
- * corners say so; its edge is a faint solid line, since a section's may be dashed or dotted.
- */
-.cv-story-frame {
-  --cv-corner-weight: calc(2px * var(--cv-screen, 1));
-  pointer-events: none;
-  background: none;
-  border-width: calc(1px * var(--cv-screen, 1));
-  border-color: color-mix(in srgb, var(--muted-foreground) 30%, transparent);
-}
-/* Never more than a quarter of a small frame, so its corners mark it rather than cover it. */
-.cv-frame-corner {
-  position: absolute;
-  width: min(calc(14px * var(--cv-screen, 1)), 25%);
-  height: min(calc(14px * var(--cv-screen, 1)), 25%);
-  border: 0 solid color-mix(in srgb, var(--muted-foreground) 80%, transparent);
-}
-.cv-frame-corner[data-corner="nw"] {
-  top: -1px;
-  left: -1px;
-  border-top-width: var(--cv-corner-weight);
-  border-left-width: var(--cv-corner-weight);
-  border-top-left-radius: 6px;
-}
-.cv-frame-corner[data-corner="ne"] {
-  top: -1px;
-  right: -1px;
-  border-top-width: var(--cv-corner-weight);
-  border-right-width: var(--cv-corner-weight);
-  border-top-right-radius: 6px;
-}
-.cv-frame-corner[data-corner="se"] {
-  right: -1px;
-  bottom: -1px;
-  border-right-width: var(--cv-corner-weight);
-  border-bottom-width: var(--cv-corner-weight);
-  border-bottom-right-radius: 6px;
-}
-.cv-frame-corner[data-corner="sw"] {
-  bottom: -1px;
-  left: -1px;
-  border-bottom-width: var(--cv-corner-weight);
-  border-left-width: var(--cv-corner-weight);
-  border-bottom-left-radius: 6px;
-}
-/* The step's number, on the corner groups never name, beside any other chip already there. */
+/* A step's number, on what the step points at: a section's label, a card's corner, a lane's name. */
 .cv-frame-chip {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  z-index: 5;
   display: inline-flex;
+  flex: none;
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
@@ -1896,12 +1844,6 @@ textarea.cv-label-editor {
   font-weight: 700;
   line-height: 1;
   pointer-events: auto;
-  transform: translate(calc(50% + var(--cv-stack, 0) * 24px * var(--cv-screen, 1)), 50%);
-}
-.cv-group-label .cv-frame-chip {
-  position: static;
-  flex: none;
-  transform: none;
 }
 button.cv-frame-chip {
   cursor: pointer;
@@ -1910,16 +1852,31 @@ button.cv-frame-chip:focus-visible {
   outline: calc(2px * var(--cv-screen, 1)) solid var(--ring, var(--primary));
   outline-offset: calc(2px * var(--cv-screen, 1));
 }
-.cv-story-frame[data-lit="true"] {
-  border-color: var(--primary);
-}
-.cv-story-frame[data-lit="true"] .cv-frame-corner {
-  border-color: var(--primary);
-}
 .cv-frame-chip[data-current] {
   border-color: var(--primary);
   background: var(--primary);
   color: var(--primary-foreground, var(--background));
+}
+/* A card's numbers straddle its top-left corner, where a section's would sit on its label. */
+.cv-card-steps {
+  position: absolute;
+  z-index: 5;
+  top: 0;
+  left: 0;
+  display: flex;
+  gap: calc(3px * var(--cv-screen, 1));
+  transform: translate(calc(-8px * var(--cv-screen, 1)), -50%);
+}
+/* What a step points at, walked or peeked at, is ringed: the step draws nothing of its own. */
+.cv-board:is([data-walking], [data-peeking]) .cv-card[data-focus] {
+  outline: calc(2px * var(--cv-screen, 1)) solid var(--primary);
+  outline-offset: calc(3px * var(--cv-screen, 1));
+}
+.cv-board:is([data-walking], [data-peeking]) .cv-group[data-lit="true"] {
+  outline: calc(2px * var(--cv-screen, 1)) solid var(--primary);
+}
+.cv-board:is([data-walking], [data-peeking]) .cv-group[data-lit="true"] .cv-box-line {
+  stroke: var(--primary);
 }
 .cv-step-heading {
   position: absolute;
@@ -1932,11 +1889,6 @@ button.cv-frame-chip:focus-visible {
   color: var(--muted-foreground);
   white-space: nowrap;
   pointer-events: none;
-}
-.cv-step-heading .cv-frame-chip {
-  position: static;
-  flex: none;
-  transform: none;
 }
 .cv-step-heading-name {
   min-width: 0;
@@ -1955,7 +1907,4 @@ button.cv-frame-chip:focus-visible {
 }
 .cv-board[data-peeking] .cv-group[data-lit="false"] {
   opacity: 0.4;
-}
-.cv-board[data-peeking] .cv-group[data-lit="true"] {
-  border-color: var(--primary);
 }
