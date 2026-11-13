@@ -178,6 +178,23 @@ describe("applyCanvasEdits", () => {
     const withoutGroup = read(apply(board(nodes, edges), [{ op: "remove", card: "g" }]).source);
     expect(withoutGroup.data.nodes.map((node) => node.id)).toEqual(["a", "b"]);
     expect(withoutGroup.data.edges).toHaveLength(1);
+
+    const drawn = serializeCanvas({
+      nodes,
+      edges,
+      astrolabe: {
+        drawings: [
+          { id: "on-a", type: "arrow", from: { node: "a", side: "top" }, to: { x: 0, y: 0 } },
+          { id: "on-b", type: "arrow", from: { x: 0, y: 0 }, to: { node: "b", side: "left" } },
+        ],
+      },
+    });
+    const { document } = read(apply(drawn, [{ op: "remove", card: "a" }]).source);
+    expect(
+      (document as { astrolabe: { drawings: Array<{ id: string }> } }).astrolabe.drawings.map(
+        (ink) => ink.id,
+      ),
+    ).toEqual(["on-b"]);
   });
 
   it("disconnects by the two ends, either way round, and says when none joins them", () => {

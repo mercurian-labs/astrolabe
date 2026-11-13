@@ -216,6 +216,22 @@ describe("reviewCanvas", () => {
 });
 
 describe("parseCanvas", () => {
+  it("leaves out a drawn arrow on a node the board doesn't have, which the file keeps", () => {
+    const parsed = parseCanvas(
+      JSON.stringify({
+        nodes: [{ id: "here", type: "text", text: "Here" }],
+        astrolabe: {
+          drawings: [
+            { id: "lost", type: "arrow", from: { node: "gone", side: "top" }, to: { x: 0, y: 0 } },
+            { id: "kept", type: "arrow", from: { node: "here", side: "top" }, to: { x: 0, y: 0 } },
+          ],
+        },
+      }),
+    );
+    if (!parsed.ok) throw new Error(parsed.error);
+    expect(parsed.data.drawings?.map((ink) => ink.id)).toEqual(["kept"]);
+  });
+
   it("keeps what doesn't draw in the document, and writes it back", () => {
     const parsed = parseCanvas(fixture("survive-input.canvas"));
     if (!parsed.ok) throw new Error(parsed.error);

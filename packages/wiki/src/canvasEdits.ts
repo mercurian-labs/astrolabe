@@ -687,6 +687,8 @@ function replay(file: string, source: string, edits: ReadonlyArray<CanvasEdit>, 
   const writeArrows = (found: ReadonlyArray<number>, key: string, value: unknown) => {
     for (const position of found) edges[position] = withKey(edges[position] as Raw, key, value);
   };
+  /** Removed nodes' ids as stored, for the drawn arrows that go with them. */
+  const removed = new Set<unknown>();
   const dropNode = (id: string) => {
     const position = nodeAt.get(id);
     if (position !== undefined) nodes[position] = undefined;
@@ -791,6 +793,7 @@ function replay(file: string, source: string, edits: ReadonlyArray<CanvasEdit>, 
             edges[position] = undefined;
           }
         });
+        removed.add(stored);
         dropNode(id);
         return;
       }
@@ -892,11 +895,25 @@ function replay(file: string, source: string, edits: ReadonlyArray<CanvasEdit>, 
     edges[at] = arrowWithSides(edge, fromSide, toSide);
   }
 
+  // A drawn arrow on a removed card goes with it, as a person's removal takes it.
+  let astrolabe = document.astrolabe;
+  if (isRecord(astrolabe) && removed.size > 0) {
+    const drawings = given(astrolabe.drawings);
+    const goes = (raw: unknown) =>
+      isRecord(raw) && [raw.from, raw.to].some((end) => isRecord(end) && removed.has(end.node));
+    const kept = drawings.filter((raw) => !goes(raw));
+    if (kept.length < drawings.length) {
+      const next = withKey(astrolabe, "drawings", kept.length === 0 ? null : kept);
+      astrolabe = Object.keys(next).length === 0 ? undefined : next;
+    }
+  }
   return {
+    // The serializer leaves out a key whose value is undefined.
     source: serializeCanvas({
       ...document,
       nodes: nodes.filter((node) => node !== undefined),
       edges: edges.filter((edge) => edge !== undefined),
+      astrolabe,
     }),
     cards: Object.fromEntries([...refs].filter(([, id]) => nodeAt.has(id))),
     notes,

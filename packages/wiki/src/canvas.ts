@@ -627,11 +627,15 @@ const drawn = <A>(
 export function canvasData(document: unknown): CanvasData {
   if (!isRecord(document)) return { nodes: [], edges: [] };
   const stories = canvasStories(document.astrolabe);
-  const drawings = isRecord(document.astrolabe)
-    ? drawn(document.astrolabe.drawings, "drawing", canvasInk)
-    : [];
+  const nodes = drawn(document.nodes, "node", canvasNode);
+  // A drawn arrow on a node that's gone draws nothing and can't be picked, so it isn't the board's.
+  const ids = new Set(nodes.map((node) => node.id));
+  const onBoard = (end: CanvasInkEnd) => !("node" in end) || ids.has(end.node);
+  const drawings = (
+    isRecord(document.astrolabe) ? drawn(document.astrolabe.drawings, "drawing", canvasInk) : []
+  ).filter((ink) => ink.type !== "arrow" || (onBoard(ink.from) && onBoard(ink.to)));
   return {
-    nodes: drawn(document.nodes, "node", canvasNode),
+    nodes,
     edges: drawn(document.edges, "edge", canvasEdge),
     ...(stories.length === 0 ? {} : { stories }),
     ...(drawings.length === 0 ? {} : { drawings }),
