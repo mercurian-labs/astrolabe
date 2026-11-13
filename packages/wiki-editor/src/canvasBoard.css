@@ -1188,14 +1188,28 @@ textarea.cv-label-editor {
   }
 }
 @container (max-width: 680px) {
-  .cv-board[data-editable]:not([data-zoom-hover], [data-walking]) .cv-overlay,
   .cv-board[data-touch]:not([data-zoom-hover], [data-walking]) .cv-overlay {
+    right: 12px;
+    bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+    left: 12px;
+  }
+}
+/* The tool row is wider than a pill: it only shares the zoom chip's line on a wide board. */
+@container (max-width: 960px) {
+  .cv-board[data-editable]:not([data-zoom-hover], [data-walking]) .cv-overlay {
     right: 12px;
     bottom: calc(56px + env(safe-area-inset-bottom, 0px));
     left: 12px;
   }
   .cv-board[data-editable]:not([data-zoom-hover]) > .cv-bar {
     bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+  }
+}
+@container (max-width: 1100px) {
+  .cv-board[data-touch][data-editable]:not([data-zoom-hover], [data-walking]) .cv-overlay {
+    right: 12px;
+    bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+    left: 12px;
   }
 }
 .cv-overlay .cv-bar {
