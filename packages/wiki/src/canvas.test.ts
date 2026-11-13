@@ -852,11 +852,11 @@ describe("placeCanvas", () => {
         },
       });
       const steps = canvasSteps(data);
-      expect(steps.map((each) => [each.note, each.group, each.label])).toEqual([
-        ["named", "g", "Server"],
-        ["its cards", "g", "Server"],
-        ["some of them", undefined, undefined],
-        ["relabelled", "g", "Own"],
+      expect(steps.map((each) => [each.note, each.groups, each.label])).toEqual([
+        ["named", ["g"], "Server"],
+        ["its cards", ["g"], "Server"],
+        ["some of them", [], undefined],
+        ["relabelled", ["g"], "Own"],
       ]);
       expect(steps[0]?.frame).toEqual({ x: 0, y: 0, width: 400, height: 140 });
       expect(steps[0]?.bounds).toEqual(steps[0]?.frame);
@@ -894,10 +894,10 @@ describe("placeCanvas", () => {
         "orders",
         "payments",
       ]);
-      expect(canvasSteps(board).map((each) => [each.group, each.label, [...each.cards]])).toEqual([
-        ["store", "Storefront", ["cart"]],
-        ["orders", "Orders API", ["price"]],
-        ["payments", "Payments", ["pay"]],
+      expect(canvasSteps(board).map((each) => [each.groups, each.label, [...each.cards]])).toEqual([
+        [["store"], "Storefront", ["cart"]],
+        [["orders"], "Orders API", ["price"]],
+        [["payments"], "Payments", ["pay"]],
       ]);
     });
 

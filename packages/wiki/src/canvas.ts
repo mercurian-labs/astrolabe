@@ -90,14 +90,16 @@ export interface CanvasGroupNode extends CanvasNodeBase, Styled {
   readonly backgroundStyle?: string;
 }
 
-/** One step of a story: what the reader sees, and the cards it shows, or the group that is it. */
+/** One step of a story: what the reader sees, and the cards it shows, or the groups that are it. */
 export interface CanvasStoryStep {
   readonly label?: string;
   readonly note: string;
-  /** Empty for a step that names its group. */
+  /** Empty for a step that names its group; for one with `groups`, what older versions show. */
   readonly cards: ReadonlyArray<string>;
   /** A group the step is: its cards are the group's, its frame the group's outline. */
   readonly group?: string;
+  /** Two or more groups the step is, in place of `group`, which older versions read alone. */
+  readonly groups?: ReadonlyArray<string>;
   /** Where a lanes board names the step, above its column. */
   readonly heading?: CanvasBounds;
 }
@@ -257,11 +259,11 @@ export interface CanvasStep {
   /** Its own label, else its group's. */
   readonly label?: string;
   readonly note: string;
-  /** The group the step is, which the board draws as its frame. */
-  readonly group?: string;
-  /** Where its name stands above its column, on a lanes board; it draws no frame there. */
+  /** The groups the step is, which carry its number; none for a step of loose cards. */
+  readonly groups: ReadonlyArray<string>;
+  /** Where its name stands above its column, on a lanes board. */
   readonly heading?: CanvasBounds;
-  /** The box around the step's cards that sit together, or its group's outline. */
+  /** What the camera centres on: its groups' outline, else the box around its cards that sit together. Never drawn. */
   readonly frame: CanvasBounds;
   /** All the step's cards, docked ones included. */
   readonly cards: ReadonlySet<string>;
@@ -284,6 +286,8 @@ export interface CanvasDocked extends CanvasBounds {
 /** Room between a frame and a card docked beside it: clear of the frame's label. */
 const DOCK_GAP = 60;
 const DOCK_SPACING = 24;
+
+const boxOf = ({ x, y, width, height }: CanvasBounds): CanvasBounds => ({ x, y, width, height });
 
 const unionBounds = (a: CanvasBounds, b: CanvasBounds): CanvasBounds => {
   const x = Math.min(a.x, b.x);
@@ -313,10 +317,14 @@ export function canvasSteps(data: CanvasData, story = 0): ReadonlyArray<CanvasSt
     }
     return cards;
   };
-  // The group a step is: the one it names, else the smallest holding exactly its cards.
-  const groupFor = (step: CanvasStoryStep, nodes: ReadonlyArray<CanvasNode>) => {
-    if (step.group !== undefined) return allGroups.find((group) => group.id === step.group);
-    if (nodes.length === 0) return undefined;
+  // The groups a step is: those it names, else the smallest holding exactly its cards.
+  const groupsFor = (step: CanvasStoryStep, nodes: ReadonlyArray<CanvasNode>) => {
+    const named = step.groups ?? (step.group === undefined ? undefined : [step.group]);
+    if (named !== undefined) {
+      const found = named.flatMap((id) => allGroups.find((group) => group.id === id) ?? []);
+      if (found.length > 0 || step.group !== undefined) return found;
+    }
+    if (nodes.length === 0) return [];
     let found: CanvasGroupNode | undefined;
     for (const group of allGroups) {
       const cards = heldBy(group);
@@ -325,28 +333,27 @@ export function canvasSteps(data: CanvasData, story = 0): ReadonlyArray<CanvasSt
         found = group;
       }
     }
-    return found;
+    return found === undefined ? [] : [found];
   };
   const framed = steps.map((step) => {
     const named = [...new Set(step.cards)].flatMap((id) => byId.get(id) ?? []);
-    const group = groupFor(step, named);
-    if (group === undefined) return { step, nodes: named, group, ...canvasStepFrame(named) };
-    const inside = heldBy(group);
+    const groups = groupsFor(step, named);
+    const [first, ...more] = groups;
+    if (first === undefined) return { step, nodes: named, groups, ...canvasStepFrame(named) };
+    const inside = new Set(groups.flatMap((group) => [...heldBy(group)]));
     const nodes = [...inside].flatMap((id) => byId.get(id) ?? []);
-    const { x, y, width, height } = group;
-    return { step, nodes, group, frame: { x, y, width, height }, inside };
+    const frame = more.reduce<CanvasBounds>(unionBounds, boxOf(first));
+    return { step, nodes, groups, frame, inside };
   });
   const home = (id: string) => {
     const at = framed.findIndex((each) => each.inside.has(id));
     return at === -1 ? undefined : at;
   };
-  const groups = data.nodes.filter(
-    (node): node is CanvasGroupNode => node.type === "group" && node.label !== undefined,
-  );
+  const labelled = allGroups.filter((node) => node.label !== undefined);
   // The innermost labelled group a card sits in.
   const groupOf = (card: CanvasNode) => {
     let found: CanvasGroupNode | undefined;
-    for (const group of groups) {
+    for (const group of labelled) {
       if (!insideGroup(group, card)) continue;
       if (found === undefined || group.width * group.height < found.width * found.height) {
         found = group;
@@ -354,7 +361,7 @@ export function canvasSteps(data: CanvasData, story = 0): ReadonlyArray<CanvasSt
     }
     return found?.label;
   };
-  return framed.flatMap(({ step, nodes, group, frame, inside }): CanvasStep[] => {
+  return framed.flatMap(({ step, nodes, groups, frame, inside }): CanvasStep[] => {
     if (frame === undefined) return [];
     const { heading } = step;
     let bounds = heading === undefined ? frame : unionBounds(frame, heading);
@@ -390,12 +397,13 @@ export function canvasSteps(data: CanvasData, story = 0): ReadonlyArray<CanvasSt
         .filter((edge) => lit.has(edge.fromNode) && lit.has(edge.toNode))
         .map((edge) => edge.id),
     );
-    const label = step.label ?? group?.label;
+    const names = groups.flatMap((group) => group.label ?? []);
+    const label = step.label ?? (names.length === 0 ? undefined : names.join(", "));
     return [
       {
         ...(label === undefined ? {} : { label }),
         note: step.note,
-        ...(group === undefined ? {} : { group: group.id }),
+        groups: groups.map((group) => group.id),
         ...(heading === undefined ? {} : { heading }),
         frame,
         cards: lit,
@@ -485,15 +493,16 @@ function canvasStories(astrolabe: unknown): ReadonlyArray<CanvasStory> {
       if (!isRecord(step) || typeof step.note !== "string") return [];
       const cards = strings(step.cards);
       const label = text(step.label);
-      const group = text(step.group);
+      const several = [...new Set(strings(step.groups))];
+      const group = several.length === 1 ? several[0] : text(step.group);
       const heading = bounds(step.heading);
-      if (cards.length === 0 && group === undefined) return [];
+      if (cards.length === 0 && group === undefined && several.length === 0) return [];
       return [
         {
           ...(label === undefined ? {} : { label }),
           note: step.note,
           cards,
-          ...(group === undefined ? {} : { group }),
+          ...(several.length > 1 ? { groups: several } : group === undefined ? {} : { group }),
           ...(heading === undefined ? {} : { heading }),
         },
       ];

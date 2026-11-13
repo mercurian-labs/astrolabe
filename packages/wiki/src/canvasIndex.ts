@@ -138,10 +138,9 @@ export function canvasOutline(file: string, data: CanvasData): string {
   for (const story of data.stories ?? []) {
     lines.push("", `Story: ${story.title}`);
     story.steps.forEach((step, index) => {
-      const shows =
-        step.group === undefined
-          ? step.cards.map((card) => `[${card}]`).join(" ")
-          : `[${step.group}]`;
+      const shows = (step.groups ?? (step.group === undefined ? step.cards : [step.group]))
+        .map((id) => `[${id}]`)
+        .join(" ");
       const label = step.label === undefined ? "" : `${step.label}. `;
       lines.push(`${index + 1}. ${shows} ${label}${step.note}`);
     });
