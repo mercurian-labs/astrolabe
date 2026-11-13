@@ -208,6 +208,10 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   file's header has **Open**. Line
   comments go to the composer of the thread in that checkout, else the project's
   new-thread draft, else its newest thread; with none, a note asks to start a thread.
+- **A thread's Files** (right panel `file:`/`files` surfaces): upstream's `FilePreviewPanel.tsx`,
+  whose open-in picker's primary action is **Open in Projects** (`useThreadFileOpen`) for a file in
+  the thread's checkout, carrying its revealed line; the external editors stay in its menu. A host
+  file, an attachment, a folder or a draft thread keeps the picker as upstream has it.
 - **Manage projects** (the filter's foot) opens Settings → Projects.
 - **Open in Projects**: a thread's right-panel **Files**, a file opened there, and
   **Diff** offer it in the tab's context menu; it opens the same file or its uncommitted

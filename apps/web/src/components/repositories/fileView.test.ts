@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { fileAssetResource, fileView } from "./fileView";
+import { fileAssetResource, fileView, threadFileInCheckout } from "./fileView";
 
 describe("fileView", () => {
   it.each([
@@ -41,5 +41,21 @@ describe("fileAssetResource", () => {
     ],
   ] as const)("%s as %s", (path, use, expected) => {
     expect(fileAssetResource({ cwd, path }, use)).toEqual(expected);
+  });
+});
+
+describe("threadFileInCheckout", () => {
+  it.each([
+    [false, "/repo/src/a.ts", true, "src/a.ts"],
+    // A file outside the checkout, the checkout itself, and a sibling folder sharing its prefix.
+    [false, "/tmp/shot.png", true, null],
+    [false, "/repo", true, null],
+    [false, "/repo-other/a.ts", true, null],
+    // A folder in the checkout, an attachment (no path), and a draft thread.
+    [false, "/repo/src", false, null],
+    [false, null, true, null],
+    [true, "/repo/src/a.ts", true, null],
+  ] as const)("draft %s, %s (file %s)", (draft, absolutePath, isFile, expected) => {
+    expect(threadFileInCheckout(draft, "/repo", absolutePath, isFile)).toBe(expected);
   });
 });

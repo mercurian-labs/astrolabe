@@ -1,3 +1,4 @@
+import { mediaFileReference } from "@t3tools/client-runtime/media-reference";
 import type { AssetResource } from "@t3tools/contracts";
 import { filePreviewDelimiter } from "@t3tools/shared/delimitedPreview";
 import {
@@ -60,4 +61,19 @@ export function fileView(path: string): FileView {
         ? "html"
         : null;
   return { kind: "text", rendered };
+}
+
+/**
+ * Where a file shown in a thread's file panel opens in a Projects tab, as a path in the thread's
+ * checkout; null for a folder, a file outside the checkout, or a draft thread, which has no thread
+ * on the server to find the checkout of.
+ */
+export function threadFileInCheckout(
+  draft: boolean,
+  cwd: string,
+  absolutePath: string | null,
+  isFile: boolean,
+): string | null {
+  if (draft || !isFile || absolutePath === null) return null;
+  return mediaFileReference(absolutePath, cwd).relativePath ?? null;
 }

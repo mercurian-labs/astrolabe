@@ -52,6 +52,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { isBrowserPreviewFile, openFileInPreview } from "~/browser/openFileInPreview";
 import { useAssetUrlRefresh, useAssetUrlState } from "~/assets/assetUrls";
 import { OpenInPicker } from "~/components/chat/OpenInPicker";
+import { useThreadFileOpen } from "~/components/repositories/openInRepositories";
 import { MediaVideoPlayer } from "~/components/media/MediaVideoPlayer";
 import { MediaActions, type MediaActionSource } from "~/components/media/MediaActions";
 import { MorphIcon } from "~/components/MorphIcon";
@@ -1164,6 +1165,8 @@ export default function FilePreviewPanel({
       : relativePath && attachment === undefined
         ? resolvePathLinkTarget(relativePath, cwd)
         : null;
+  // Astrolabe: the open-in picker's primary action opens a checkout's file in a Projects tab.
+  const builtin = useThreadFileOpen(threadRef, draft, cwd, absolutePath, file.isFile, revealLine);
   const onFilePostRender = useFileLineReveal(relativePath, revealLine, revealRequestId);
   // Mounting the file read under the workspace mutation id refetches it after each mutation.
   useAtomMount(
@@ -1280,6 +1283,7 @@ export default function FilePreviewPanel({
               openInCwdIsFile={file.isFile}
               compact
               revealFileManager={revealsInFileManager}
+              builtinOpen={builtin}
             />
           ) : null}
           {canToggleRendered && renderedMode ? (
