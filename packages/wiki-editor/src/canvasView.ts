@@ -16,6 +16,8 @@ const WHEEL_ZOOM_SPEED = 0.01;
 const GLIDE_MS = 320;
 
 /** Told where the camera ended up, each time it draws. */
+export type CanvasInset = { readonly top: number; readonly bottom: number };
+
 export type CanvasPaint = (camera: CanvasCamera, width: number, height: number) => void;
 
 /**
@@ -27,8 +29,8 @@ export class CanvasView {
   #world: HTMLElement | null = null;
   #bounds: CanvasBounds = { x: 0, y: 0, width: 0, height: 0 };
   #padding = 0;
-  /** Screen pixels at the frame's foot that the host's controls cover. */
-  #inset = 0;
+  /** Screen pixels at the frame's top and foot that its controls cover. */
+  #inset: CanvasInset = { top: 0, bottom: 0 };
   #glide: ReturnType<typeof setTimeout> | undefined;
   #camera: CanvasCamera = { x: 0, y: 0, zoom: 1 };
   /** Until the reader moves it, the board keeps fitting as its frame resizes. */
@@ -115,11 +117,22 @@ export class CanvasView {
     else this.#paint();
   }
 
-  /** Keeps what fits clear of the controls laid over the frame's foot. */
-  setInset(inset: number, refit = true) {
-    if (inset === this.#inset) return;
+  /** Keeps what fits clear of the controls laid over the frame's top and foot. */
+  setInset(inset: CanvasInset, refit = true) {
+    if (inset.top === this.#inset.top && inset.bottom === this.#inset.bottom) return;
     this.#inset = inset;
     if (refit && this.#fitted) this.fit();
+  }
+
+  #fitIn(rect: CanvasBounds, board: HTMLElement): CanvasCamera {
+    const { top, bottom } = this.#inset;
+    const camera = fitCamera(
+      rect,
+      board.clientWidth,
+      Math.max(0, board.clientHeight - top - bottom),
+      this.#padding,
+    );
+    return { ...camera, y: camera.y + top };
   }
 
   /** `glide` eases the camera there, as a story moves from step to step. */
@@ -127,12 +140,7 @@ export class CanvasView {
     const board = this.#board;
     const world = this.#world;
     if (board === null) return;
-    this.#camera = fitCamera(
-      this.#bounds,
-      board.clientWidth,
-      Math.max(0, board.clientHeight - this.#inset),
-      this.#padding,
-    );
+    this.#camera = this.#fitIn(this.#bounds, board);
     this.#fitted = true;
     if (glide && world !== null && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
       world.dataset.gliding = "";
@@ -145,10 +153,7 @@ export class CanvasView {
   /** Shows `rect` whole, never closer than actual size. */
   focus(rect: CanvasBounds) {
     if (this.#board === null) return;
-    const { clientWidth, clientHeight } = this.#board;
-    this.#move(
-      fitCamera(rect, clientWidth, Math.max(0, clientHeight - this.#inset), this.#padding),
-    );
+    this.#move(this.#fitIn(rect, this.#board));
   }
 
   /** `rect` in the middle of the frame at actual size, as Follow connection lands. */

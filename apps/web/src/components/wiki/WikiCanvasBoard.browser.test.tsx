@@ -422,13 +422,15 @@ describe("editing a board", () => {
     readOnly = false,
     host,
     boardRef,
+    width = 1000,
   }: {
     readonly canvas: CanvasDocument;
     readonly readOnly?: boolean;
     readonly host?: CanvasBoardHost;
     readonly boardRef?: Parameters<typeof CanvasBoard>[0]["ref"];
+    readonly width?: number;
   }) => (
-    <div style={{ width: 1000, height: 700 }}>
+    <div style={{ width, height: 700 }}>
       <CanvasBoard
         data={canvas.getState().data}
         mode="free"
@@ -723,6 +725,25 @@ describe("editing a board", () => {
     await vi.waitFor(() => expect(drawings().map((ink) => ink.type)).toEqual(["arrow"]));
   });
 
+  it("keeps the Pen in More on a narrow board, and draws with it from there", async () => {
+    using _capture = setup();
+    const canvas = newCanvas([text("a", 0, 0)]);
+    await using screen = await render(<Editing canvas={canvas} width={280} />, { router: false });
+    await vi.waitFor(() => expect(element("a")).not.toBeNull());
+    const bar = document.querySelector(".cv-tools[role='toolbar']")!;
+    expect(bar.querySelector("[data-tool='pen']")).toBeNull();
+    expect(bar.querySelector("[data-tool='select']")).not.toBeNull();
+    const more = screen.getByRole("button", { name: "More tools" });
+    await userEvent.click(more);
+    await userEvent.click(screen.getByRole("menuitemcheckbox", { name: "Pen" }));
+    expect(board().dataset.tool).toBe("pen");
+    // The tool in hand has left the bar, so More says so.
+    await expect.element(more).toHaveAttribute("data-active");
+    drag(board(), { x: 60, y: 300 }, { x: 80, y: 310 }, { x: 120, y: 330 }, { x: 160, y: 300 });
+    await vi.waitFor(() => expect(canvas.getState().data.drawings).toHaveLength(1));
+    expect(canvas.getState().data.drawings?.[0]).toMatchObject({ type: "stroke" });
+  });
+
   it("styles a card and a stroke together from the panel, one undo a change", async () => {
     using _capture = setup();
     const stroke = { id: "s", type: "stroke", x: 600, y: 300, points: [0, 0, 80, 40] };
@@ -888,7 +909,7 @@ describe("editing a board", () => {
     await vi.waitFor(() => expect(buttons()).toEqual(["Remove", "Zoom to selection"]));
     await screen.rerender(<Editing canvas={canvas} readOnly />);
     await vi.waitFor(() => expect(buttons()).toEqual(["Zoom to selection"]));
-    expect(document.querySelector(".cv-bar")).toBeNull();
+    expect(document.querySelector(".cv-tools")).toBeNull();
     drag(element("a"), { x: 50, y: 50 }, { x: 150, y: 150 });
     expect(nodeIn(canvas, "a")).toMatchObject({ x: 0, y: 0 });
   });

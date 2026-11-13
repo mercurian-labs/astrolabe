@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -7,7 +8,9 @@ import {
   type KeyboardEvent,
   type PointerEvent,
   type ReactNode,
+  type Ref,
 } from "react";
+import { flushSync } from "react-dom";
 
 import type { CanvasShape } from "@mercurian/wiki/canvas";
 
@@ -31,6 +34,10 @@ export type CanvasMenuEntry =
       readonly hint?: string | undefined;
       /** Opens these in its place. */
       readonly items?: ReadonlyArray<CanvasMenuEntry> | undefined;
+      readonly icon?: ReactNode | undefined;
+      /** A value beside its name, such as the zoom it's at. */
+      readonly detail?: string | undefined;
+      readonly disabled?: boolean | undefined;
     }
   | "separator";
 
@@ -120,6 +127,7 @@ function MenuPanel({
             type="button"
             role={item.checked === undefined ? "menuitem" : "menuitemcheckbox"}
             aria-checked={item.checked}
+            disabled={item.disabled}
             data-destructive={item.destructive || undefined}
             onClick={() => {
               if (item.items !== undefined) {
@@ -133,7 +141,11 @@ function MenuPanel({
             <span className="cv-menu-check" aria-hidden="true">
               {item.checked ? "✓" : ""}
             </span>
+            {item.icon === undefined ? null : <span className="cv-menu-icon">{item.icon}</span>}
             {item.label}
+            {item.detail === undefined ? null : (
+              <span className="cv-menu-detail">{item.detail}</span>
+            )}
             {item.items === undefined ? null : <span aria-hidden="true"> …</span>}
             {item.hint === undefined ? null : (
               <kbd className="cv-menu-hint" aria-hidden="true">
@@ -416,19 +428,34 @@ export function CanvasToolbarButton({
 
 type DragInKind = "note" | "media";
 
-const DRAG_IN: ReadonlyArray<readonly [DragInKind, string, string, string]> = [
-  ["note", "Note", "Drag to add a note from this wiki", "Add a note from this wiki"],
-  ["media", "Media", "Drag to add media from this wiki", "Add media from this wiki"],
-];
+const DRAG_IN: ReadonlyArray<readonly [DragInKind, string, string, string, ReadonlyArray<string>]> =
+  [
+    [
+      "note",
+      "Note",
+      "Drag to add a note from this wiki",
+      "Add a note from this wiki",
+      ["M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z", "M14 3v5h5", "M9 13h6M9 17h4"],
+    ],
+    [
+      "media",
+      "Media",
+      "Drag to add media from this wiki",
+      "Add media from this wiki",
+      [
+        "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z",
+        "m21 15-5-5L5 21",
+        "M10.5 9a1.5 1.5 0 1 1-3 0 1.5 1.5 0 1 1 3 0",
+      ],
+    ],
+  ];
 
 /** The data attributes the board's tooltip reads its name and key from. */
 export const tipProps = (tip: readonly [name: string, key?: string] | undefined) =>
   tip === undefined ? {} : { "data-tip": tip[0], "data-tip-key": tip[1] };
 
 /** A tool's key, its name and its icon's strokes, on a 24-unit grid. */
-const TOOLS: ReadonlyArray<
-  readonly [CanvasTool, string, string, ReadonlyArray<string>] | "separator"
-> = [
+const TOOLS: ReadonlyArray<readonly [CanvasTool, string, string, ReadonlyArray<string>]> = [
   [
     "hand",
     "Hand",
@@ -448,7 +475,6 @@ const TOOLS: ReadonlyArray<
       "M4.04 4.69a.5.5 0 0 1 .65-.65l16 6.5a.5.5 0 0 1-.06.95l-6.13 1.58a2 2 0 0 0-1.43 1.43l-1.58 6.13a.5.5 0 0 1-.95.06z",
     ],
   ],
-  "separator",
   [
     "card",
     "Card",
@@ -477,6 +503,9 @@ const TOOLS: ReadonlyArray<
   ["shape", "Shape", "O", []],
 ];
 
+/** The tools that draw, which can leave a narrow bar; Hand and Select always stay. */
+const DRAW_TOOLS = TOOLS.filter(([kind]) => kind !== "hand" && kind !== "select");
+
 const SHAPES: ReadonlyArray<readonly [CanvasShape, string, string]> = [
   ["ellipse", "Ellipse", "M12 5c4.97 0 9 3.13 9 7s-4.03 7-9 7-9-3.13-9-7 4.03-7 9-7z"],
   [
@@ -486,6 +515,10 @@ const SHAPES: ReadonlyArray<readonly [CanvasShape, string, string]> = [
   ],
 ];
 
+const FIT_ICON = [
+  "M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3",
+];
+
 /** A step's viewfinder corners, as the board marks one. */
 const STEP_ICON = [
   "M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3",
@@ -493,14 +526,14 @@ const STEP_ICON = [
 ];
 
 /** Strokes for the bar's undo, redo and zoom, on the tools' 24-unit grid. */
-export const CANVAS_VIEW_ICONS = {
+const CANVAS_VIEW_ICONS = {
   undo: ["M9 14 4 9l5-5", "M4 9h10.5a5.5 5.5 0 0 1 0 11H11"],
   redo: ["m15 14 5-5-5-5", "M20 9H9.5a5.5 5.5 0 0 0 0 11H13"],
   zoomOut: ["M6 12h12"],
   zoomIn: ["M6 12h12", "M12 6v12"],
 } as const;
 
-export const ToolIcon = ({ strokes }: { readonly strokes: ReadonlyArray<string> }) => (
+const ToolIcon = ({ strokes }: { readonly strokes: ReadonlyArray<string> }) => (
   <svg viewBox="0 0 24 24" aria-hidden="true">
     {strokes.map((d) => (
       <path key={d} d={d} />
@@ -512,12 +545,151 @@ const shapeIcon = (shape: CanvasShape) => SHAPES.find(([each]) => each === shape
 
 /** Each tool's key, as the board hears it. */
 export const CANVAS_TOOL_KEYS: Readonly<Record<string, CanvasTool>> = Object.fromEntries(
-  TOOLS.flatMap((tool) => (tool === "separator" ? [] : [[tool[2].toLowerCase(), tool[0]]])),
+  TOOLS.map((tool) => [tool[2].toLowerCase(), tool[0]]),
 );
 
+/** What the bar's zoom does, for its buttons and for the More menu. */
+export interface CanvasBarZoom {
+  readonly zoomIn: () => void;
+  readonly zoomOut: () => void;
+  readonly fit: () => void;
+  /** Where the camera writes its zoom as it paints. */
+  readonly level: (element: HTMLSpanElement | null) => void;
+  readonly percent: () => string;
+}
+
+export interface CanvasBarHistory {
+  readonly canUndo: boolean;
+  readonly canRedo: boolean;
+  readonly undo: () => void;
+  readonly redo: () => void;
+}
+
+type BarGroup = "pick" | "draw" | "files" | "step" | "history" | "zoom" | "done";
+type BarUnit = { readonly id: string; readonly group: BarGroup };
+
+/** What leaves the bar first when the board is too narrow for it, in order. */
+const OVERFLOW_ORDER = [
+  "zoom",
+  "history",
+  "files",
+  "step",
+  "shape",
+  "pen",
+  "arrow",
+  "section",
+  "card",
+] as const;
+
+const MORE_ICON = [
+  "M13 12a1 1 0 1 1-2 0 1 1 0 1 1 2 0",
+  "M20 12a1 1 0 1 1-2 0 1 1 0 1 1 2 0",
+  "M6 12a1 1 0 1 1-2 0 1 1 0 1 1 2 0",
+];
+
+type BarFit = { readonly keys: boolean; readonly hidden: number };
+
+type BarWidths = {
+  readonly chrome: number;
+  readonly gap: number;
+  readonly separator: number;
+  readonly more: number;
+  readonly keyed: ReadonlyMap<string, number>;
+  readonly plain: ReadonlyMap<string, number>;
+};
+
+function measureBar(copy: HTMLElement): BarWidths | null {
+  const [keyed, plain] = copy.children;
+  if (!(keyed instanceof HTMLElement) || !(plain instanceof HTMLElement)) return null;
+  const style = getComputedStyle(keyed);
+  const widths = (row: HTMLElement) =>
+    new Map(
+      [...row.querySelectorAll<HTMLElement>("[data-unit]")].map((each) => [
+        each.dataset.unit ?? "",
+        each.getBoundingClientRect().width,
+      ]),
+    );
+  return {
+    chrome:
+      parseFloat(style.paddingLeft) +
+      parseFloat(style.paddingRight) +
+      parseFloat(style.borderLeftWidth) +
+      parseFloat(style.borderRightWidth),
+    gap: parseFloat(style.columnGap) || 0,
+    separator: keyed.querySelector(".cv-tools-separator")?.getBoundingClientRect().width ?? 0,
+    more: keyed.querySelector("[data-more]")?.getBoundingClientRect().width ?? 0,
+    keyed: widths(keyed),
+    plain: widths(plain),
+  };
+}
+
+/** The units in the bar once the first `hidden` of the overflow order have left it. */
+function visibleUnits(
+  units: ReadonlyArray<BarUnit>,
+  leaving: ReadonlyArray<string>,
+  hidden: number,
+) {
+  const gone = new Set(leaving.slice(0, hidden));
+  return units.filter((unit) => !gone.has(unit.id));
+}
+
+/** Separators fall between groups; the More button joins the last group before Done. */
+function barWidth(widths: BarWidths, units: ReadonlyArray<BarUnit>, keys: boolean, more: boolean) {
+  let total = widths.chrome;
+  let count = 0;
+  let group: BarGroup | null = null;
+  const add = (width: number) => {
+    total += width + (count > 0 ? widths.gap : 0);
+    count += 1;
+  };
+  for (const unit of units) {
+    if (more && unit.group === "done") {
+      add(widths.more);
+      more = false;
+    }
+    if (group !== null && group !== unit.group) add(widths.separator);
+    group = unit.group;
+    add((keys ? widths.keyed : widths.plain).get(unit.id) ?? 0);
+  }
+  if (more) add(widths.more);
+  return total;
+}
+
+/** How much of the bar fits in `available`, from the copy of every unit it was measured off. */
+function decideBar(copy: HTMLElement, available: number): BarFit | null {
+  const widths = measureBar(copy);
+  if (widths === null || available === 0) return null;
+  const units = [...copy.children[0]!.querySelectorAll<HTMLElement>("[data-unit]")].map((each) => ({
+    id: each.dataset.unit ?? "",
+    group: each.dataset.group as BarGroup,
+  }));
+  const leaving = OVERFLOW_ORDER.filter((id) => units.some((unit) => unit.id === id));
+  return fitBar(widths, units, leaving, available);
+}
+
+function fitBar(
+  widths: BarWidths,
+  units: ReadonlyArray<BarUnit>,
+  leaving: ReadonlyArray<string>,
+  available: number,
+): BarFit {
+  // The key letters go before anything leaves: the tooltips still name each key.
+  if (Math.ceil(barWidth(widths, units, true, false)) <= available)
+    return { keys: true, hidden: 0 };
+  for (let hidden = 0; hidden < leaving.length; hidden += 1) {
+    const shown = visibleUnits(units, leaving, hidden);
+    if (Math.ceil(barWidth(widths, shown, false, hidden > 0)) <= available) {
+      return { keys: false, hidden };
+    }
+  }
+  return { keys: false, hidden: leaving.length };
+}
+
 /**
- * An editable board's tools, floating at its foot. Notes and media are dragged from here onto the
- * board, or pressed to land in the middle of the view.
+ * An editable board's tools, in one line at its top between the style and menu buttons. What
+ * doesn't fit leaves for a More menu at the bar's end, in a fixed order, decided from widths
+ * measured off a hidden copy, so the bar never lays out wrong first. Notes and media are dragged
+ * from here onto the board, or pressed to land in the middle of the view.
  */
 export function CanvasToolRow({
   tool,
@@ -530,7 +702,11 @@ export function CanvasToolRow({
   onStep,
   stepReady,
   onDone,
-  view,
+  history,
+  zoom,
+  onMore,
+  moreOpen,
+  ref,
   children,
 }: {
   readonly tool: CanvasTool;
@@ -547,14 +723,52 @@ export function CanvasToolRow({
   readonly stepReady: boolean;
   /** Stops editing; left out where editing can't be turned off. */
   readonly onDone?: (() => void) | undefined;
-  /** Undo, redo and zoom, between the step and Done. */
-  readonly view?: ReactNode;
+  readonly history: CanvasBarHistory;
+  readonly zoom: CanvasBarZoom;
+  /** Opens, or closes, the menu of what has left the bar, under its button. */
+  readonly onMore: (button: HTMLButtonElement, items: ReadonlyArray<CanvasMenuEntry>) => void;
+  readonly moreOpen: boolean;
+  readonly ref?: Ref<HTMLDivElement>;
+  /** Kept in the bar beside Select. */
   readonly children?: ReactNode;
 }) {
   const start = useRef<{ readonly x: number; readonly y: number } | null>(null);
   const [picking, setPicking] = useState(false);
+  const [fit, setFit] = useState<BarFit>({ keys: true, hidden: 0 });
   // Putting the Shape tool down closes its choice: picked up again by its key, it stays shut.
   if (picking && tool !== "shape") setPicking(false);
+  const extra = children !== undefined && children !== null && children !== false;
+  const units: ReadonlyArray<BarUnit> = [
+    { id: "hand", group: "pick" },
+    { id: "select", group: "pick" },
+    ...(extra ? [{ id: "extra", group: "pick" as const }] : []),
+    ...DRAW_TOOLS.map((each) => ({ id: each[0], group: "draw" as const })),
+    ...(files ? [{ id: "files", group: "files" as const }] : []),
+    ...(onStep === undefined ? [] : [{ id: "step", group: "step" as const }]),
+    { id: "history", group: "history" },
+    { id: "zoom", group: "zoom" },
+    ...(onDone === undefined ? [] : [{ id: "done", group: "done" as const }]),
+  ];
+  const leaving = OVERFLOW_ORDER.filter((id) => units.some((unit) => unit.id === id));
+  const signature = units.map((unit) => unit.id).join(" ");
+  // Mounted again whenever the units change, so it measures them afresh before paint, and again as
+  // the board or the bar's contents resize.
+  const measured = useCallback((element: HTMLDivElement | null) => {
+    const frame = element?.parentElement;
+    if (element === null || frame === null || frame === undefined) return;
+    const decide = () => {
+      const next = decideBar(element, frame.clientWidth);
+      if (next === null) return;
+      setFit((now) => (now.keys === next.keys && now.hidden === next.hidden ? now : next));
+    };
+    decide();
+    const observer = new ResizeObserver(() => flushSync(decide));
+    observer.observe(frame);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  const hidden = new Set<string>(leaving.slice(0, fit.hidden));
   const finish = (kind: DragInKind, event: PointerEvent<HTMLButtonElement>) => {
     const from = start.current;
     start.current = null;
@@ -562,119 +776,306 @@ export function CanvasToolRow({
     const dragged = Math.hypot(event.clientX - from.x, event.clientY - from.y) > 8;
     onAdd(kind, dragged ? toBoard(event.clientX, event.clientY) : null);
   };
-  return (
-    <div className="cv-chrome cv-bar cv-tools" role="toolbar" aria-label="Tools">
-      {/* One line, or on a narrow board two: what draws, then what steps, undoes, zooms and ends. */}
-      <span className="cv-tools-row">
-        {TOOLS.map((each, at) =>
-          each === "separator" ? (
-            // oxlint-disable-next-line react/no-array-index-key -- the list is fixed
-            <span key={at} className="cv-tools-separator" />
-          ) : (
-            <span key={each[0]} className="cv-tool">
-              <button
-                type="button"
-                data-tool={each[0]}
-                aria-pressed={tool === each[0]}
-                aria-label={`${each[1]} (${each[2]})`}
-                {...tipProps([each[1], each[2]])}
-                {...(each[0] === "shape"
-                  ? { "aria-haspopup": "menu" as const, "aria-expanded": picking }
-                  : {})}
-                onClick={() => {
-                  onTool(each[0]);
-                  setPicking(each[0] === "shape" && !picking);
-                }}
-              >
-                <ToolIcon strokes={each[0] === "shape" ? [shapeIcon(shape)] : each[3]} />
-                <kbd aria-hidden="true">{each[2]}</kbd>
-              </button>
-              {each[0] === "shape" && picking ? (
-                <span className="cv-chrome cv-shape-picker" role="menu" aria-label="Shape">
-                  {SHAPES.map(([kind, name, d]) => (
-                    <button
-                      key={kind}
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={shape === kind}
-                      aria-label={name}
-                      onClick={() => {
-                        onShape(kind);
-                        setPicking(false);
-                      }}
-                    >
-                      <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path d={d} />
-                      </svg>
-                    </button>
-                  ))}
-                </span>
-              ) : null}
+
+  /** One unit's buttons; `copy` draws them unnamed and inert, for measuring. */
+  const unit = (id: string, copy: boolean): ReactNode => {
+    // The copy is inert and unnamed, so it's never found in place of the bar.
+    const named = (name: string, tip?: readonly [name: string, key?: string]) =>
+      copy ? {} : { "aria-label": name, ...tipProps(tip) };
+    const toolEntry = TOOLS.find((each) => each[0] === id);
+    if (toolEntry !== undefined) {
+      const [kind, name, key, strokes] = toolEntry;
+      return (
+        <>
+          <button
+            type="button"
+            data-tool={kind}
+            aria-pressed={copy ? undefined : tool === kind}
+            {...named(`${name} (${key})`, [name, key])}
+            {...(kind === "shape" && !copy
+              ? { "aria-haspopup": "menu" as const, "aria-expanded": picking }
+              : {})}
+            onClick={() => {
+              onTool(kind);
+              setPicking(kind === "shape" && !picking);
+            }}
+          >
+            <ToolIcon strokes={kind === "shape" ? [shapeIcon(shape)] : strokes} />
+            <kbd aria-hidden="true">{key}</kbd>
+          </button>
+          {kind === "shape" && picking && !copy ? (
+            <span className="cv-chrome cv-shape-picker" role="menu" aria-label="Shape">
+              {SHAPES.map(([each, label, d]) => (
+                <button
+                  key={each}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={shape === each}
+                  aria-label={label}
+                  onClick={() => {
+                    onShape(each);
+                    setPicking(false);
+                  }}
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d={d} />
+                  </svg>
+                </button>
+              ))}
             </span>
-          ),
-        )}
-        {files ? <span className="cv-tools-separator" /> : null}
-        {files
-          ? DRAG_IN.map(([kind, label, title, tip]) => (
-              <button
-                key={kind}
-                type="button"
-                data-drag-in
-                aria-label={title}
-                {...tipProps([tip])}
-                onPointerDown={(event) => {
-                  event.currentTarget.setPointerCapture(event.pointerId);
-                  start.current = { x: event.clientX, y: event.clientY };
-                }}
-                onPointerUp={(event) => finish(kind, event)}
-                onPointerCancel={() => {
-                  start.current = null;
-                }}
-                onKeyDown={(event) => {
-                  if (event.key !== "Enter" && event.key !== " ") return;
-                  event.preventDefault();
-                  event.stopPropagation();
-                  onAdd(kind, null);
-                }}
-              >
-                {label}
-              </button>
-            ))
-          : null}
-        {children}
-      </span>
-      <span className="cv-tools-row">
-        {onStep === undefined ? null : (
+          ) : null}
+        </>
+      );
+    }
+    switch (id) {
+      case "extra":
+        return children;
+      case "files":
+        return DRAG_IN.map(([kind, label, name, tip]) => (
+          <button
+            key={kind}
+            type="button"
+            data-drag-in
+            {...named(name, [tip])}
+            onPointerDown={(event) => {
+              event.currentTarget.setPointerCapture(event.pointerId);
+              start.current = { x: event.clientX, y: event.clientY };
+            }}
+            onPointerUp={(event) => finish(kind, event)}
+            onPointerCancel={() => {
+              start.current = null;
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" && event.key !== " ") return;
+              event.preventDefault();
+              event.stopPropagation();
+              onAdd(kind, null);
+            }}
+          >
+            {label}
+          </button>
+        ));
+      case "step":
+        return (
+          <button
+            type="button"
+            data-step
+            {...named("Step from selection", ["Step from selection"])}
+            disabled={!copy && !stepReady}
+            onClick={onStep}
+          >
+            <ToolIcon strokes={STEP_ICON} />
+          </button>
+        );
+      case "history":
+        return (
           <>
-            <span className="cv-tools-separator" />
             <button
               type="button"
-              data-step
-              aria-label="Step from selection"
-              disabled={!stepReady}
-              onClick={onStep}
-              {...tipProps(["Step from selection"])}
+              {...named("Undo", ["Undo", "⌘Z"])}
+              disabled={!copy && !history.canUndo}
+              onClick={history.undo}
             >
-              <ToolIcon strokes={STEP_ICON} />
+              <ToolIcon strokes={CANVAS_VIEW_ICONS.undo} />
             </button>
-          </>
-        )}
-        {view}
-        {onDone === undefined ? null : (
-          <>
-            <span className="cv-tools-separator" />
             <button
               type="button"
-              data-done
-              aria-label="Done editing (E)"
-              onClick={onDone}
-              {...tipProps(["Done editing", "E"])}
+              {...named("Redo", ["Redo", "⌘⇧Z"])}
+              disabled={!copy && !history.canRedo}
+              onClick={history.redo}
             >
-              Done
+              <ToolIcon strokes={CANVAS_VIEW_ICONS.redo} />
             </button>
           </>
-        )}
-      </span>
+        );
+      case "zoom":
+        return (
+          <>
+            <button type="button" {...named("Zoom out", ["Zoom out", "−"])} onClick={zoom.zoomOut}>
+              <ToolIcon strokes={CANVAS_VIEW_ICONS.zoomOut} />
+            </button>
+            <button
+              type="button"
+              data-zoom-level
+              {...named("Fit the board in view", ["Fit the board", "⇧1"])}
+              onClick={zoom.fit}
+            >
+              {copy ? "100%" : <span ref={zoom.level} />}
+            </button>
+            <button type="button" {...named("Zoom in", ["Zoom in", "+"])} onClick={zoom.zoomIn}>
+              <ToolIcon strokes={CANVAS_VIEW_ICONS.zoomIn} />
+            </button>
+          </>
+        );
+      case "done":
+        return (
+          <button
+            type="button"
+            data-done
+            {...named("Done editing (E)", ["Done editing", "E"])}
+            onClick={onDone}
+          >
+            Done
+          </button>
+        );
+      default:
+        return null;
+    }
+  };
+
+  const menuItems = (): ReadonlyArray<CanvasMenuEntry> => {
+    const groups: Array<ReadonlyArray<CanvasMenuEntry>> = [];
+    const draw = DRAW_TOOLS.filter((each) => hidden.has(each[0])).flatMap(
+      ([kind, name, key, strokes]): ReadonlyArray<CanvasMenuEntry> =>
+        kind === "shape"
+          ? SHAPES.map(([each, label, d]) => ({
+              label,
+              hint: key,
+              icon: <ToolIcon strokes={[d]} />,
+              checked: tool === "shape" && shape === each,
+              run: () => onShape(each),
+            }))
+          : [
+              {
+                label: name,
+                hint: key,
+                icon: <ToolIcon strokes={strokes} />,
+                checked: tool === kind,
+                run: () => onTool(kind),
+              },
+            ],
+    );
+    if (draw.length > 0) groups.push(draw);
+    if (hidden.has("files")) {
+      groups.push(
+        DRAG_IN.map(([kind, , , name, strokes]) => ({
+          label: name,
+          icon: <ToolIcon strokes={strokes} />,
+          run: () => onAdd(kind, null),
+        })),
+      );
+    }
+    if (hidden.has("step") && onStep !== undefined) {
+      groups.push([
+        {
+          label: "Step from selection",
+          icon: <ToolIcon strokes={STEP_ICON} />,
+          disabled: !stepReady,
+          run: onStep,
+        },
+      ]);
+    }
+    if (hidden.has("history")) {
+      groups.push([
+        {
+          label: "Undo",
+          hint: "⌘Z",
+          icon: <ToolIcon strokes={CANVAS_VIEW_ICONS.undo} />,
+          disabled: !history.canUndo,
+          run: history.undo,
+        },
+        {
+          label: "Redo",
+          hint: "⌘⇧Z",
+          icon: <ToolIcon strokes={CANVAS_VIEW_ICONS.redo} />,
+          disabled: !history.canRedo,
+          run: history.redo,
+        },
+      ]);
+    }
+    if (hidden.has("zoom")) {
+      groups.push([
+        {
+          label: "Zoom in",
+          hint: "+",
+          icon: <ToolIcon strokes={CANVAS_VIEW_ICONS.zoomIn} />,
+          run: zoom.zoomIn,
+        },
+        {
+          label: "Zoom out",
+          hint: "−",
+          icon: <ToolIcon strokes={CANVAS_VIEW_ICONS.zoomOut} />,
+          run: zoom.zoomOut,
+        },
+        {
+          label: "Fit board",
+          detail: zoom.percent(),
+          hint: "⇧1",
+          icon: <ToolIcon strokes={FIT_ICON} />,
+          run: zoom.fit,
+        },
+      ]);
+    }
+    return groups.flatMap((group, at) => (at === 0 ? group : ["separator" as const, ...group]));
+  };
+
+  /** The bar's contents, separated between groups, with More at the end of the last before Done. */
+  const row = (shown: ReadonlyArray<BarUnit>, copy: boolean, more: ReactNode) => {
+    const out: Array<ReactNode> = [];
+    let group: BarGroup | null = null;
+    let moreAt = shown.findIndex((each) => each.group === "done");
+    if (moreAt === -1) moreAt = shown.length;
+    shown.forEach((each, at) => {
+      if (at === moreAt && more !== null) out.push(more);
+      if (group !== null && group !== each.group) {
+        out.push(<span key={`${each.id}/separator`} className="cv-tools-separator" />);
+      }
+      group = each.group;
+      out.push(
+        <span
+          key={each.id}
+          className="cv-tools-unit"
+          data-unit={copy ? each.id : undefined}
+          data-group={copy ? each.group : undefined}
+        >
+          {unit(each.id, copy)}
+        </span>,
+      );
+    });
+    if (moreAt === shown.length && more !== null) out.push(more);
+    return out;
+  };
+
+  const shown = visibleUnits(units, leaving, fit.hidden);
+  const toolHidden = hidden.has(tool);
+  const more =
+    fit.hidden === 0 ? null : (
+      <button
+        key="more"
+        type="button"
+        data-more
+        aria-label="More tools"
+        aria-haspopup="menu"
+        aria-expanded={moreOpen}
+        data-active={toolHidden || undefined}
+        {...tipProps(["More tools"])}
+        onClick={(event) => onMore(event.currentTarget, menuItems())}
+      >
+        <ToolIcon strokes={MORE_ICON} />
+      </button>
+    );
+  return (
+    <div ref={ref} className="cv-topbar">
+      <div
+        className="cv-chrome cv-tools"
+        role="toolbar"
+        aria-label="Tools"
+        data-keys={fit.keys || undefined}
+      >
+        {row(shown, false, more)}
+      </div>
+      {/* Every unit, with and without its key letters, and a More button: what the bar is measured from. */}
+      <div key={signature} ref={measured} className="cv-tools-measure" aria-hidden="true" inert>
+        <div className="cv-tools" data-keys>
+          {row(units, true, null)}
+          <span className="cv-tools-unit">
+            <button type="button" data-more>
+              <ToolIcon strokes={MORE_ICON} />
+            </button>
+          </span>
+        </div>
+        <div className="cv-tools">{row(units, true, null)}</div>
+      </div>
     </div>
   );
 }

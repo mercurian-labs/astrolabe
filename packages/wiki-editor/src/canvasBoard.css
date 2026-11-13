@@ -733,14 +733,10 @@ span.cv-wikilink {
     stroke-width: calc(24px * var(--cv-ui, 1));
   }
 }
-/* The Shape tool's choice, above its button. */
-.cv-tool {
-  position: relative;
-  display: inline-flex;
-}
+/* The Shape tool's choice, beneath its button. */
 .cv-shape-picker {
   position: absolute;
-  bottom: calc(100% + 6px);
+  top: calc(100% + 6px);
   left: 50%;
   display: flex;
   gap: 2px;
@@ -1150,7 +1146,7 @@ textarea.cv-label-editor {
   visibility: hidden;
 }
 .cv-toolbar > button,
-.cv-bar button,
+.cv-tools button,
 .cv-toolbar-list button {
   min-height: 28px;
   padding: 0 8px;
@@ -1161,8 +1157,8 @@ textarea.cv-label-editor {
 }
 .cv-toolbar > button:hover,
 .cv-toolbar > button[aria-pressed="true"],
-.cv-bar button:hover,
-.cv-bar button[aria-pressed="true"],
+.cv-tools button:hover,
+.cv-tools button[aria-pressed="true"],
 .cv-toolbar-list button:hover,
 .cv-menu button:hover,
 .cv-menu button:focus-visible,
@@ -1209,6 +1205,10 @@ textarea.cv-label-editor {
   border: 1px solid var(--border);
   border-radius: 12px;
   box-shadow: var(--cv-chip-shadow);
+}
+.cv-board[data-touch] .cv-style-toggle {
+  width: 44px;
+  height: 44px;
 }
 .cv-style-toggle:hover,
 .cv-style-toggle[aria-expanded="true"] {
@@ -1414,39 +1414,62 @@ textarea.cv-label-editor {
     left: 12px;
   }
 }
-.cv-overlay .cv-bar {
-  position: static;
-  align-items: center;
-  padding: 4px;
-  border-radius: 12px;
-  box-shadow:
-    0 10px 15px -3px rgb(0 0 0 / 0.1),
-    0 4px 6px -4px rgb(0 0 0 / 0.1);
-  transform: none;
-}
 .cv-overlay > * {
   pointer-events: auto;
 }
-.cv-bar {
+/*
+ * An editable board's tools, in one line at its top, centred between the style button and the
+ * menu button and as tall as they are. What doesn't fit is measured into the More menu.
+ */
+.cv-topbar {
   position: absolute;
-  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-  left: 50%;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  right: 56px;
+  left: 56px;
+  z-index: 10;
   display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.cv-board[data-touch] .cv-topbar {
+  right: 64px;
+  left: 64px;
+}
+.cv-tools {
+  display: flex;
+  flex: none;
+  flex-wrap: nowrap;
   gap: 2px;
-  padding: 2px;
+  align-items: center;
+  padding: 3px;
+  pointer-events: auto;
+  touch-action: none;
   background: var(--popover, var(--background));
   border: 1px solid var(--border);
-  border-radius: 6px;
-  transform: translateX(-50%);
-  touch-action: none;
+  border-radius: 12px;
+  box-shadow: var(--cv-chip-shadow);
 }
-.cv-bar button {
-  cursor: grab;
-}
-/* An editable board's tools, in the story pill's chip. */
-.cv-tools {
+.cv-tools-unit {
+  position: relative;
+  display: flex;
+  flex: none;
+  gap: 2px;
   align-items: center;
-  max-width: 100%;
+}
+/* The copy the bar is measured from: laid out at its own width, never seen. */
+.cv-tools-measure {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: max-content;
+  pointer-events: none;
+  visibility: hidden;
+}
+.cv-tools-measure .cv-tools {
+  box-shadow: none;
 }
 .cv-tools button {
   display: inline-flex;
@@ -1466,7 +1489,9 @@ textarea.cv-label-editor {
   cursor: grab;
 }
 .cv-tools button[aria-pressed="true"],
-.cv-tools button[aria-pressed="true"]:hover {
+.cv-tools button[aria-pressed="true"]:hover,
+.cv-tools button[data-more][data-active],
+.cv-tools button[data-more][data-active]:hover {
   color: var(--primary);
   background: color-mix(in srgb, var(--primary) 14%, transparent);
 }
@@ -1490,6 +1515,12 @@ textarea.cv-label-editor {
   stroke-linejoin: round;
   stroke-width: 1.75;
 }
+.cv-tools:not([data-keys]) kbd {
+  display: none;
+}
+.cv-tools:not([data-keys]) button[data-tool] {
+  padding: 0 6px;
+}
 .cv-tools kbd {
   align-self: flex-end;
   margin-bottom: 5px;
@@ -1511,16 +1542,8 @@ textarea.cv-label-editor {
 .cv-board[data-touch] .cv-tools kbd {
   display: none;
 }
-/* While editing, the tools sit under the story's pill rather than beside it. */
-.cv-board[data-editable] .cv-overlay {
-  flex-flow: column nowrap;
-  align-items: center;
-}
-.cv-board[data-editable] .cv-overlay > [data-overlay-row] {
-  flex-basis: auto;
-  align-self: stretch;
-}
 .cv-tools button[data-step],
+.cv-tools button[data-more],
 .cv-tools button:has(> svg:only-child) {
   padding: 0 6px;
 }
@@ -1530,38 +1553,6 @@ textarea.cv-label-editor {
   padding: 0 4px;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
-}
-.cv-tools-row {
-  display: flex;
-  gap: 2px;
-  align-items: center;
-  align-self: stretch;
-}
-/* The tooltip names each tool and its key, so the letters go first as the bar narrows. */
-@container (max-width: 720px) {
-  .cv-tools kbd {
-    display: none;
-  }
-  .cv-tools button[data-tool] {
-    padding: 0 6px;
-  }
-}
-/* Then the bar breaks in two, each line as wide as it needs. */
-@container (max-width: 600px) {
-  .cv-tools:has([data-drag-in]) {
-    flex-direction: column;
-  }
-  .cv-tools:has([data-drag-in]) .cv-tools-row + .cv-tools-row > .cv-tools-separator:first-child {
-    display: none;
-  }
-}
-@container (max-width: 520px) {
-  .cv-tools {
-    flex-direction: column;
-  }
-  .cv-tools .cv-tools-row + .cv-tools-row > .cv-tools-separator:first-child {
-    display: none;
-  }
 }
 /* The board's tooltip, in the app's look; placed by script, so it shows only once it's placed. */
 .cv-tip {
@@ -1620,6 +1611,35 @@ textarea.cv-label-editor {
   background: none;
   border: 0;
   border-radius: calc(var(--radius, 8px) - 4px);
+}
+.cv-menu button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+.cv-menu button:disabled:hover {
+  background: none;
+}
+.cv-menu-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  margin-right: 4px;
+}
+.cv-menu-icon svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.75;
+}
+.cv-menu-detail {
+  margin-left: 8px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
 }
 .cv-menu button[data-destructive] {
   color: var(--destructive, #e5484d);

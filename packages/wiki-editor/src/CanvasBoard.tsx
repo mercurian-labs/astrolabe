@@ -59,9 +59,7 @@ import {
   CanvasToolbarButton,
   CanvasToolRow,
   CanvasTips,
-  CANVAS_VIEW_ICONS,
   tipProps,
-  ToolIcon,
   useRestoreFocus,
   type CanvasMenuEntry,
 } from "./CanvasChrome";
@@ -268,6 +266,7 @@ export interface CanvasBoardHandle {
 const FIT_PADDING = { fit: 8, free: 32 };
 /** Between a button and the menu it opens, as the app's menus keep. */
 const MENU_GAP = 6;
+const MORE_MENU = "More tools";
 const PAN_STEP = 60;
 /** More cards in view than this, and a pan would stall mounting them: they draw on one canvas. */
 const OVERVIEW_CARDS = 600;
@@ -1594,6 +1593,7 @@ export function CanvasBoard({
 }) {
   const boardRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
+  const topBarRef = useRef<HTMLDivElement>(null);
   const worldRef = useRef<HTMLDivElement>(null);
   const overviewRef = useRef<HTMLCanvasElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -1693,7 +1693,10 @@ export function CanvasBoard({
     const frame = boardRef.current;
     const half = toolbar.offsetWidth / 2;
     let clampedX = Math.max(half + 4, Math.min(x, (frame?.clientWidth ?? 0) - half - 4));
-    const clampedY = Math.max(toolbar.offsetHeight + 8, y - 12);
+    // Under the tool bar at the board's top, never over it.
+    const bar = topBarRef.current;
+    const ceiling = bar === null ? 0 : bar.offsetTop + bar.offsetHeight;
+    const clampedY = Math.max(ceiling + toolbar.offsetHeight + 8, y - 12);
     // Beside the style panel, never over it.
     const panel = styleRef.current;
     if (panel !== null && clampedY - toolbar.offsetHeight < panel.offsetTop + panel.offsetHeight) {
@@ -2035,7 +2038,11 @@ export function CanvasBoard({
   const overlayInset = useCallback(() => {
     const board = boardRef.current;
     const overlay = overlayRef.current;
-    return board === null || overlay === null ? 0 : board.clientHeight - overlay.offsetTop;
+    const bar = topBarRef.current;
+    return {
+      top: bar === null ? 0 : bar.offsetTop + bar.offsetHeight,
+      bottom: board === null || overlay === null ? 0 : board.clientHeight - overlay.offsetTop,
+    };
   }, []);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a free board's camera is the reader's: only a change of step moves it, outside React
   useLayoutEffect(() => {
@@ -2046,15 +2053,18 @@ export function CanvasBoard({
   }, [activeFrame, mode, view, live, overlayInset]);
 
   const overlaid = children !== undefined && children !== null;
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the host's controls are laid out by the browser and change size as a story is walked
+  const barShown = mode === "free" && canvasDocument !== null && editable && active === null;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the host's controls and the tool bar are laid out by the browser and change size as a story is walked
   useLayoutEffect(() => {
     const measure = () => view.setInset(overlayInset());
     measure();
-    if (!overlaid) return;
+    if (!overlaid && !barShown) return;
     const observer = new ResizeObserver(measure);
-    for (const each of [overlayRef.current, boardRef.current]) if (each) observer.observe(each);
+    for (const each of [overlayRef.current, topBarRef.current, boardRef.current]) {
+      if (each) observer.observe(each);
+    }
     return () => observer.disconnect();
-  }, [view, overlaid, overlayInset]);
+  }, [view, overlaid, barShown, overlayInset]);
 
   // Changing a commit's cards catches the eye once; the marks are what stay. A board with no
   // revision never changes under its reader, and one being edited says which cards came from
@@ -2564,92 +2574,79 @@ export function CanvasBoard({
           ]);
           onStepAdded(at);
         };
-  const addBar =
-    mode === "free" && canvasDocument !== null && editable ? (
-      <CanvasToolRow
-        tool={tool}
-        onTool={(next) => {
-          setTool(next);
-          boardRef.current?.focus({ preventScroll: true });
-        }}
-        onStep={addStep}
-        stepReady={selection.cards.size > 0}
-        onDone={canToggleEdit ? () => onReadOnly?.(true) : undefined}
-        shape={shapeKind}
-        onShape={(next) => {
-          setShapeKind(next);
-          setTool("shape");
-          boardRef.current?.focus({ preventScroll: true });
-        }}
-        files={host.listFiles !== undefined}
-        toBoard={(clientX, clientY) => {
-          const rect = boardRef.current?.getBoundingClientRect();
-          const inside =
-            rect !== undefined &&
-            clientX >= rect.left &&
-            clientX <= rect.right &&
-            clientY >= rect.top &&
-            clientY <= rect.bottom;
-          return inside ? view.toWorld(clientX, clientY) : null;
-        }}
-        onAdd={(kind, at) => void commands.addFile(kind, at)}
-        view={
-          <>
-            <span className="cv-tools-separator" />
-            <CanvasToolbarButton
-              label="Undo"
-              tip={["Undo", "⌘Z"]}
-              disabled={documentState?.canUndo !== true}
-              onClick={() => canvasDocument.undo()}
-            >
-              <ToolIcon strokes={CANVAS_VIEW_ICONS.undo} />
-            </CanvasToolbarButton>
-            <CanvasToolbarButton
-              label="Redo"
-              tip={["Redo", "⌘⇧Z"]}
-              disabled={documentState?.canRedo !== true}
-              onClick={() => canvasDocument.redo()}
-            >
-              <ToolIcon strokes={CANVAS_VIEW_ICONS.redo} />
-            </CanvasToolbarButton>
-            <span className="cv-tools-separator" />
-            <CanvasToolbarButton
-              label="Zoom out"
-              tip={["Zoom out", "−"]}
-              onClick={() => view.zoomOut()}
-            >
-              <ToolIcon strokes={CANVAS_VIEW_ICONS.zoomOut} />
-            </CanvasToolbarButton>
-            <button
-              type="button"
-              data-zoom-level
-              aria-label="Fit the board in view"
-              onClick={() => view.fit()}
-              {...tipProps(["Fit the board", "⇧1"])}
-            >
-              <span ref={zoomLevel} />
-            </button>
-            <CanvasToolbarButton
-              label="Zoom in"
-              tip={["Zoom in", "+"]}
-              onClick={() => view.zoomIn()}
-            >
-              <ToolIcon strokes={CANVAS_VIEW_ICONS.zoomIn} />
-            </CanvasToolbarButton>
-          </>
+  // Presenting hands the camera to the story, as on a read-only board: only the pill stays.
+  const addBar = barShown ? (
+    <CanvasToolRow
+      ref={topBarRef}
+      tool={tool}
+      onTool={(next) => {
+        setTool(next);
+        boardRef.current?.focus({ preventScroll: true });
+      }}
+      onStep={addStep}
+      stepReady={selection.cards.size > 0}
+      onDone={canToggleEdit ? () => onReadOnly?.(true) : undefined}
+      shape={shapeKind}
+      onShape={(next) => {
+        setShapeKind(next);
+        setTool("shape");
+        boardRef.current?.focus({ preventScroll: true });
+      }}
+      files={host.listFiles !== undefined}
+      toBoard={(clientX, clientY) => {
+        const rect = boardRef.current?.getBoundingClientRect();
+        const inside =
+          rect !== undefined &&
+          clientX >= rect.left &&
+          clientX <= rect.right &&
+          clientY >= rect.top &&
+          clientY <= rect.bottom;
+        return inside ? view.toWorld(clientX, clientY) : null;
+      }}
+      onAdd={(kind, at) => void commands.addFile(kind, at)}
+      history={{
+        canUndo: documentState?.canUndo === true,
+        canRedo: documentState?.canRedo === true,
+        undo: () => canvasDocument.undo(),
+        redo: () => canvasDocument.redo(),
+      }}
+      zoom={{
+        zoomIn: () => view.zoomIn(),
+        zoomOut: () => view.zoomOut(),
+        fit: () => view.fit(),
+        level: zoomLevel,
+        percent: () => `${Math.round(view.camera.zoom * 100)}%`,
+      }}
+      moreOpen={menu?.label === MORE_MENU}
+      onMore={(button, items) => {
+        if (menu?.label === MORE_MENU) {
+          setMenu(null);
+          return;
         }
-      >
-        {host.touch === true && tool === "select" ? (
-          <CanvasToolbarButton
-            label="Select several"
-            pressed={selecting}
-            onClick={() => setSelecting((on) => !on)}
-          >
-            Several
-          </CanvasToolbarButton>
-        ) : null}
-      </CanvasToolRow>
-    ) : null;
+        const frame = boardRef.current?.getBoundingClientRect();
+        const bar = button.closest(".cv-tools")?.getBoundingClientRect();
+        if (frame === undefined || bar === undefined) return;
+        setMenu({
+          label: MORE_MENU,
+          items,
+          x: button.getBoundingClientRect().right - frame.left,
+          y: bar.bottom - frame.top + MENU_GAP,
+          alignEnd: true,
+          onClose: () => button.focus({ preventScroll: true }),
+        });
+      }}
+    >
+      {host.touch === true && tool === "select" ? (
+        <CanvasToolbarButton
+          label="Select several"
+          pressed={selecting}
+          onClick={() => setSelecting((on) => !on)}
+        >
+          Several
+        </CanvasToolbarButton>
+      ) : null}
+    </CanvasToolRow>
+  ) : null;
 
   return (
     <div
@@ -2806,7 +2803,7 @@ export function CanvasBoard({
           onStep={addStep}
         />
       ) : null}
-      {overlaid ? null : addBar}
+      {addBar}
       {showStyle ? (
         <CanvasStylePanel
           ref={styleRef}
@@ -2876,7 +2873,6 @@ export function CanvasBoard({
           onContextMenu={(event) => event.stopPropagation()}
         >
           {children}
-          {addBar}
         </div>
       )}
       {notice === null ? null : (
