@@ -59,6 +59,10 @@ import {
   CanvasPrompt,
   CanvasToolbarButton,
   CanvasToolRow,
+  CanvasTips,
+  CANVAS_VIEW_ICONS,
+  tipProps,
+  ToolIcon,
   useRestoreFocus,
   type CanvasMenuEntry,
 } from "./CanvasChrome";
@@ -1508,7 +1512,8 @@ export function CanvasBoard({
   const worldRef = useRef<HTMLDivElement>(null);
   const overviewRef = useRef<HTMLCanvasElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
-  const zoomRef = useRef<HTMLSpanElement>(null);
+  const zoomRef = useRef<HTMLSpanElement | null>(null);
+  const tipBoard = useCallback(() => boardRef.current, []);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const documentState: CanvasDocumentState | null = useSyncExternalStore(
     canvasDocument?.subscribe ?? NO_SUBSCRIPTION,
@@ -1517,6 +1522,15 @@ export function CanvasBoard({
   const data = documentState?.data ?? dataProp;
   const editable = canvasDocument !== null && !readOnly && mode === "free";
   const [view] = useState(() => new CanvasView());
+  // The zoom moves between the chip and the tool bar as editing starts and stops: each starts
+  // from the camera as it stands, and the camera writes it as it paints, not React.
+  const zoomLevel = useCallback(
+    (element: HTMLSpanElement | null) => {
+      zoomRef.current = element;
+      if (element !== null) element.textContent = `${Math.round(view.camera.zoom * 100)}%`;
+    },
+    [view],
+  );
   const [live] = useState(() => new BoardLive(data, marks, openingCamera));
   const steps = useMemo(() => canvasSteps(data, story), [data, story]);
   const active = step === null ? null : (steps[step] ?? null);
@@ -2437,6 +2451,51 @@ export function CanvasBoard({
           return inside ? view.toWorld(clientX, clientY) : null;
         }}
         onAdd={(kind, at) => void commands.addFile(kind, at)}
+        view={
+          <>
+            <span className="cv-tools-separator" />
+            <CanvasToolbarButton
+              label="Undo"
+              tip={["Undo", "⌘Z"]}
+              disabled={documentState?.canUndo !== true}
+              onClick={() => canvasDocument.undo()}
+            >
+              <ToolIcon strokes={CANVAS_VIEW_ICONS.undo} />
+            </CanvasToolbarButton>
+            <CanvasToolbarButton
+              label="Redo"
+              tip={["Redo", "⌘⇧Z"]}
+              disabled={documentState?.canRedo !== true}
+              onClick={() => canvasDocument.redo()}
+            >
+              <ToolIcon strokes={CANVAS_VIEW_ICONS.redo} />
+            </CanvasToolbarButton>
+            <span className="cv-tools-separator" />
+            <CanvasToolbarButton
+              label="Zoom out"
+              tip={["Zoom out", "−"]}
+              onClick={() => view.zoomOut()}
+            >
+              <ToolIcon strokes={CANVAS_VIEW_ICONS.zoomOut} />
+            </CanvasToolbarButton>
+            <button
+              type="button"
+              data-zoom-level
+              aria-label="Fit the board in view"
+              onClick={() => view.fit()}
+              {...tipProps(["Fit the board", "⇧1"])}
+            >
+              <span ref={zoomLevel} />
+            </button>
+            <CanvasToolbarButton
+              label="Zoom in"
+              tip={["Zoom in", "+"]}
+              onClick={() => view.zoomIn()}
+            >
+              <ToolIcon strokes={CANVAS_VIEW_ICONS.zoomIn} />
+            </CanvasToolbarButton>
+          </>
+        }
       >
         {host.touch === true && tool === "select" ? (
           <CanvasToolbarButton
@@ -2612,6 +2671,7 @@ export function CanvasBoard({
               ref={menuButtonRef}
               type="button"
               aria-label="Canvas menu"
+              {...tipProps(["Canvas menu"])}
               aria-haspopup="menu"
               aria-expanded={menu?.label === "Canvas menu"}
               onClick={toggleCanvasMenu}
@@ -2621,44 +2681,38 @@ export function CanvasBoard({
               </svg>
             </button>
           </div>
-          <div className="cv-chrome cv-zoom" role="toolbar" aria-label="Zoom">
-            <button type="button" aria-label="Zoom out" onClick={() => view.zoomOut()}>
-              −
-            </button>
-            <button
-              type="button"
-              className="cv-zoom-level"
-              aria-label="Fit the board in view"
-              onClick={() => view.fit()}
-            >
-              {/* Written by the camera as it paints, not by React. */}
-              <span ref={zoomRef} />
-            </button>
-            <button type="button" aria-label="Zoom in" onClick={() => view.zoomIn()}>
-              +
-            </button>
-            {editable && canvasDocument !== null ? (
-              <>
-                <span className="cv-zoom-separator" />
-                <CanvasToolbarButton
-                  label="Undo"
-                  disabled={documentState?.canUndo !== true}
-                  onClick={() => canvasDocument.undo()}
-                >
-                  ↶
-                </CanvasToolbarButton>
-                <CanvasToolbarButton
-                  label="Redo"
-                  disabled={documentState?.canRedo !== true}
-                  onClick={() => canvasDocument.redo()}
-                >
-                  ↷
-                </CanvasToolbarButton>
-              </>
-            ) : null}
-          </div>
+          {addBar === null ? (
+            <div className="cv-chrome cv-zoom" role="toolbar" aria-label="Zoom">
+              <button
+                type="button"
+                aria-label="Zoom out"
+                onClick={() => view.zoomOut()}
+                {...tipProps(["Zoom out", "−"])}
+              >
+                −
+              </button>
+              <button
+                type="button"
+                className="cv-zoom-level"
+                aria-label="Fit the board in view"
+                onClick={() => view.fit()}
+                {...tipProps(["Fit the board", "⇧1"])}
+              >
+                <span ref={zoomLevel} />
+              </button>
+              <button
+                type="button"
+                aria-label="Zoom in"
+                onClick={() => view.zoomIn()}
+                {...tipProps(["Zoom in", "+"])}
+              >
+                +
+              </button>
+            </div>
+          ) : null}
         </>
       ) : null}
+      <CanvasTips board={tipBoard} />
       {children === undefined || children === null ? null : (
         <div
           ref={overlayRef}

@@ -8,13 +8,21 @@ import {
   PlayIcon,
   XIcon,
 } from "lucide-react";
-import { type KeyboardEvent, useRef, useState, useSyncExternalStore } from "react";
+import {
+  type KeyboardEvent,
+  type ReactElement,
+  type ReactNode,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Textarea } from "../ui/textarea";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import type { useCanvasWalk } from "./useCanvasWalk";
 
 const FORWARD = new Set(["ArrowRight", "PageDown"]);
@@ -58,6 +66,24 @@ const onFullscreenChange = (done: () => void) => {
   document.addEventListener("fullscreenchange", done);
   return () => document.removeEventListener("fullscreenchange", done);
 };
+
+/** A pill control named in a tooltip, with the key that does the same where there is one. */
+function PillTip({
+  tip,
+  render,
+  children,
+}: {
+  readonly tip: string;
+  readonly render: ReactElement;
+  readonly children: ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger render={render}>{children}</TooltipTrigger>
+      <TooltipPopup>{tip}</TooltipPopup>
+    </Tooltip>
+  );
+}
 
 const NOTE_CLASS =
   "max-w-xl rounded-lg border border-border bg-popover text-sm text-popover-foreground shadow-lg";
@@ -267,12 +293,17 @@ export function CanvasStoryPill({
             </span>
             {edit === undefined ? null : (
               <Menu>
-                <MenuTrigger
-                  render={<Button size="icon-xs" variant="ghost" />}
-                  aria-label="Story options"
+                <PillTip
+                  tip="Story options"
+                  render={
+                    <MenuTrigger
+                      render={<Button size="icon-xs" variant="ghost" />}
+                      aria-label="Story options"
+                    />
+                  }
                 >
                   <EllipsisIcon />
-                </MenuTrigger>
+                </PillTip>
                 <MenuPopup align="end" side="top" sideOffset={PILL_MENU_GAP}>
                   <MenuItem onClick={() => setRenaming(true)}>Rename story</MenuItem>
                   <MenuItem onClick={() => edit({ kind: "remove-story", story })}>
@@ -281,69 +312,97 @@ export function CanvasStoryPill({
                 </MenuPopup>
               </Menu>
             )}
-            <Button
-              size="xs"
-              variant="outline"
-              className="ms-1 shrink-0"
-              onClick={() => {
-                // The pill stays as Present goes, so the arrow keys keep walking from here.
-                pill.current?.focus();
-                go(0);
-              }}
+            <PillTip
+              tip="Present · P"
+              render={
+                <Button
+                  size="xs"
+                  variant="outline"
+                  className="ms-1 shrink-0"
+                  onClick={() => {
+                    // The pill stays as Present goes, so the arrow keys keep walking from here.
+                    pill.current?.focus();
+                    go(0);
+                  }}
+                />
+              }
             >
               <PlayIcon />
               Present
-            </Button>
+            </PillTip>
           </>
         ) : (
           <>
-            <Button
-              size="icon-xs"
-              variant="ghost"
-              aria-label={step === 0 ? "Show the whole board" : "Previous step"}
-              onClick={() => go(step === 0 ? null : step - 1)}
+            <PillTip
+              tip={`${step === 0 ? "Show the whole board" : "Previous step"} · ←`}
+              render={
+                <Button
+                  size="icon-xs"
+                  variant="ghost"
+                  aria-label={step === 0 ? "Show the whole board" : "Previous step"}
+                  onClick={() => go(step === 0 ? null : step - 1)}
+                />
+              }
             >
               <ChevronLeftIcon />
-            </Button>
+            </PillTip>
             {steps.length > MOST_DOTS ? null : (
               <div className="flex items-center px-1 @max-[360px]:hidden">
-                {steps.map((each, index) => (
-                  <button
-                    // oxlint-disable-next-line react/no-array-index-key -- a step is its place in the story; labels can repeat
-                    key={index}
-                    type="button"
-                    aria-label={`Step ${index + 1}${each.label === undefined ? "" : `: ${each.label}`}`}
-                    aria-current={index === step ? "step" : undefined}
-                    className="group grid h-6 w-3 cursor-pointer place-items-center data-current:w-5"
-                    data-current={index === step || undefined}
-                    onClick={() => go(index)}
-                  >
-                    <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40 transition-[width] group-hover:bg-muted-foreground group-data-current:w-3.5 group-data-current:bg-primary" />
-                  </button>
-                ))}
+                {steps.map((each, index) => {
+                  const name = `Step ${index + 1}${each.label === undefined ? "" : `: ${each.label}`}`;
+                  return (
+                    <PillTip
+                      // oxlint-disable-next-line react/no-array-index-key -- a step is its place in the story; labels can repeat
+                      key={index}
+                      tip={name}
+                      render={
+                        <button
+                          type="button"
+                          aria-label={name}
+                          aria-current={index === step ? "step" : undefined}
+                          className="group grid h-6 w-3 cursor-pointer place-items-center data-current:w-5"
+                          data-current={index === step || undefined}
+                          onClick={() => go(index)}
+                        />
+                      }
+                    >
+                      <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40 transition-[width] group-hover:bg-muted-foreground group-data-current:w-3.5 group-data-current:bg-primary" />
+                    </PillTip>
+                  );
+                })}
               </div>
             )}
             <span className="shrink-0 px-1 text-xs whitespace-nowrap text-muted-foreground tabular-nums">
               {step + 1} / {steps.length}
             </span>
-            <Button
-              size="icon-xs"
-              variant="ghost"
-              aria-label="Next step"
-              disabled={step === steps.length - 1}
-              onClick={() => go(step + 1)}
+            <PillTip
+              tip="Next step · →"
+              render={
+                <Button
+                  size="icon-xs"
+                  variant="ghost"
+                  aria-label="Next step"
+                  disabled={step === steps.length - 1}
+                  onClick={() => go(step + 1)}
+                />
+              }
             >
               <ChevronRightIcon />
-            </Button>
+            </PillTip>
             <span className="mx-1 h-4 w-px shrink-0 bg-border" />
             {edit === undefined ? null : (
               <Menu>
-                <MenuTrigger
-                  render={<Button size="icon-xs" variant="ghost" />}
-                  aria-label="Step options"
+                <PillTip
+                  tip="Step options"
+                  render={
+                    <MenuTrigger
+                      render={<Button size="icon-xs" variant="ghost" />}
+                      aria-label="Step options"
+                    />
+                  }
                 >
                   <EllipsisIcon />
-                </MenuTrigger>
+                </PillTip>
                 <MenuPopup align="end" side="top" sideOffset={PILL_MENU_GAP}>
                   <MenuItem
                     disabled={step === 0}
@@ -375,21 +434,36 @@ export function CanvasStoryPill({
               </Menu>
             )}
             {document.fullscreenEnabled ? (
-              <Button
-                size="icon-xs"
-                variant="ghost"
-                aria-label={fullscreen ? "Leave full screen" : "Full screen"}
-                onClick={() => {
-                  if (fullscreen) void document.exitFullscreen();
-                  else void board()?.requestFullscreen();
-                }}
+              <PillTip
+                tip={fullscreen ? "Leave full screen" : "Full screen"}
+                render={
+                  <Button
+                    size="icon-xs"
+                    variant="ghost"
+                    aria-label={fullscreen ? "Leave full screen" : "Full screen"}
+                    onClick={() => {
+                      if (fullscreen) void document.exitFullscreen();
+                      else void board()?.requestFullscreen();
+                    }}
+                  />
+                }
               >
                 {fullscreen ? <MinimizeIcon /> : <MaximizeIcon />}
-              </Button>
+              </PillTip>
             ) : null}
-            <Button size="icon-xs" variant="ghost" aria-label="Stop presenting" onClick={stop}>
+            <PillTip
+              tip="Stop presenting · Esc"
+              render={
+                <Button
+                  size="icon-xs"
+                  variant="ghost"
+                  aria-label="Stop presenting"
+                  onClick={stop}
+                />
+              }
+            >
               <XIcon />
-            </Button>
+            </PillTip>
           </>
         )}
       </div>

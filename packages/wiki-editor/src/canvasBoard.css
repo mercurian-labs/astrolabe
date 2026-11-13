@@ -705,9 +705,6 @@ span.cv-wikilink {
   fill: var(--muted-foreground);
 }
 
-.cv-board[data-editable] {
-  --cv-zoom-room: 182px;
-}
 /* The board's menu and zoom float as chips, like a host's story pill. */
 .cv-menu-button,
 .cv-zoom {
@@ -775,9 +772,6 @@ span.cv-wikilink {
 }
 .cv-board[data-touch] {
   --cv-zoom-room: 136px;
-}
-.cv-board[data-touch][data-editable] {
-  --cv-zoom-room: 216px;
 }
 /* Inline in a page, the zoom waits at the top left until the board is pointed at. */
 .cv-board[data-zoom-hover] .cv-zoom {
@@ -1175,38 +1169,23 @@ textarea.cv-label-editor {
   max-width: 100%;
   pointer-events: auto;
 }
-/* Centred between the zoom chip and its mirror; on a narrow board, above it. */
-.cv-board:not([data-zoom-hover], [data-walking]) .cv-overlay {
+/*
+ * Centred between the zoom chip and its mirror; on a narrow board, above it. An editable board
+ * has no chip: its zoom is in the tool bar.
+ */
+.cv-board:not([data-zoom-hover], [data-walking], [data-editable]) .cv-overlay {
   right: calc(12px + var(--cv-zoom-room));
   left: calc(12px + var(--cv-zoom-room));
 }
 @container (max-width: 540px) {
-  .cv-board:not([data-zoom-hover], [data-walking]) .cv-overlay {
+  .cv-board:not([data-zoom-hover], [data-walking], [data-editable]) .cv-overlay {
     right: 12px;
     bottom: calc(56px + env(safe-area-inset-bottom, 0px));
     left: 12px;
   }
 }
 @container (max-width: 680px) {
-  .cv-board[data-touch]:not([data-zoom-hover], [data-walking]) .cv-overlay {
-    right: 12px;
-    bottom: calc(56px + env(safe-area-inset-bottom, 0px));
-    left: 12px;
-  }
-}
-/* The tool row is wider than a pill: it only shares the zoom chip's line on a wide board. */
-@container (max-width: 960px) {
-  .cv-board[data-editable]:not([data-zoom-hover], [data-walking]) .cv-overlay {
-    right: 12px;
-    bottom: calc(56px + env(safe-area-inset-bottom, 0px));
-    left: 12px;
-  }
-  .cv-board[data-editable]:not([data-zoom-hover]) > .cv-bar {
-    bottom: calc(56px + env(safe-area-inset-bottom, 0px));
-  }
-}
-@container (max-width: 1100px) {
-  .cv-board[data-touch][data-editable]:not([data-zoom-hover], [data-walking]) .cv-overlay {
+  .cv-board[data-touch]:not([data-zoom-hover], [data-walking], [data-editable]) .cv-overlay {
     right: 12px;
     bottom: calc(56px + env(safe-area-inset-bottom, 0px));
     left: 12px;
@@ -1318,18 +1297,74 @@ textarea.cv-label-editor {
   flex-basis: auto;
   align-self: stretch;
 }
-@container (max-width: 1000px) {
-  .cv-tools [data-wide] {
+.cv-tools button[data-step],
+.cv-tools button:has(> svg:only-child) {
+  padding: 0 6px;
+}
+.cv-tools button[data-zoom-level] {
+  justify-content: center;
+  min-width: 44px;
+  padding: 0 4px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.cv-tools-row {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  align-self: stretch;
+}
+/* The tooltip names each tool and its key, so the letters go first as the bar narrows. */
+@container (max-width: 720px) {
+  .cv-tools kbd {
+    display: none;
+  }
+  .cv-tools button[data-tool] {
+    padding: 0 6px;
+  }
+}
+/* Then the bar breaks in two, each line as wide as it needs. */
+@container (max-width: 600px) {
+  .cv-tools:has([data-drag-in]) {
+    flex-direction: column;
+  }
+  .cv-tools:has([data-drag-in]) .cv-tools-row + .cv-tools-row > .cv-tools-separator:first-child {
     display: none;
   }
 }
 @container (max-width: 520px) {
-  .cv-tools kbd {
+  .cv-tools {
+    flex-direction: column;
+  }
+  .cv-tools .cv-tools-row + .cv-tools-row > .cv-tools-separator:first-child {
     display: none;
   }
-  .cv-tools button {
-    padding: 0 6px;
-  }
+}
+/* The board's tooltip, in the app's look; placed by script, so it shows only once it's placed. */
+.cv-tip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 30;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  max-width: 320px;
+  padding: 4px 8px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--popover-foreground, var(--foreground));
+  white-space: nowrap;
+  pointer-events: none;
+  visibility: hidden;
+  background: var(--popover, var(--background));
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05);
+}
+.cv-tip kbd {
+  font: inherit;
+  color: var(--muted-foreground);
 }
 .cv-menu {
   position: absolute;

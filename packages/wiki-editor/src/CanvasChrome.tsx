@@ -438,12 +438,15 @@ export function CanvasToolbarButton({
   disabled,
   pressed,
   onClick,
+  tip,
   children,
 }: {
   readonly label: string;
   readonly disabled?: boolean;
   readonly pressed?: boolean;
   readonly onClick: () => void;
+  /** Names it in the board's tooltip: its name, and the key that does the same. */
+  readonly tip?: readonly [name: string, key?: string];
   readonly children?: ReactNode;
 }) {
   return (
@@ -453,6 +456,7 @@ export function CanvasToolbarButton({
       disabled={disabled}
       aria-pressed={pressed}
       onClick={onClick}
+      {...tipProps(tip)}
     >
       {children ?? label}
     </button>
@@ -461,10 +465,14 @@ export function CanvasToolbarButton({
 
 type DragInKind = "note" | "media";
 
-const DRAG_IN: ReadonlyArray<readonly [DragInKind, string, string]> = [
-  ["note", "Note", "Drag to add a note from this wiki"],
-  ["media", "Media", "Drag to add media from this wiki"],
+const DRAG_IN: ReadonlyArray<readonly [DragInKind, string, string, string]> = [
+  ["note", "Note", "Drag to add a note from this wiki", "Add a note from this wiki"],
+  ["media", "Media", "Drag to add media from this wiki", "Add media from this wiki"],
 ];
+
+/** The data attributes the board's tooltip reads its name and key from. */
+export const tipProps = (tip: readonly [name: string, key?: string] | undefined) =>
+  tip === undefined ? {} : { "data-tip": tip[0], "data-tip-key": tip[1] };
 
 /** A tool's key, its name and its icon's strokes, on a 24-unit grid. */
 const TOOLS: ReadonlyArray<
@@ -527,6 +535,28 @@ const SHAPES: ReadonlyArray<readonly [CanvasShape, string, string]> = [
   ],
 ];
 
+/** A step's viewfinder corners, as the board marks one. */
+const STEP_ICON = [
+  "M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3",
+  "M12 9v6M9 12h6",
+];
+
+/** Strokes for the bar's undo, redo and zoom, on the tools' 24-unit grid. */
+export const CANVAS_VIEW_ICONS = {
+  undo: ["M9 14 4 9l5-5", "M4 9h10.5a5.5 5.5 0 0 1 0 11H11"],
+  redo: ["m15 14 5-5-5-5", "M20 9H9.5a5.5 5.5 0 0 0 0 11H13"],
+  zoomOut: ["M6 12h12"],
+  zoomIn: ["M6 12h12", "M12 6v12"],
+} as const;
+
+export const ToolIcon = ({ strokes }: { readonly strokes: ReadonlyArray<string> }) => (
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    {strokes.map((d) => (
+      <path key={d} d={d} />
+    ))}
+  </svg>
+);
+
 const shapeIcon = (shape: CanvasShape) => SHAPES.find(([each]) => each === shape)?.[2] ?? "";
 
 /** Each tool's key, as the board hears it. */
@@ -549,6 +579,7 @@ export function CanvasToolRow({
   onStep,
   stepReady,
   onDone,
+  view,
   children,
 }: {
   readonly tool: CanvasTool;
@@ -565,6 +596,8 @@ export function CanvasToolRow({
   readonly stepReady: boolean;
   /** Stops editing; left out where editing can't be turned off. */
   readonly onDone?: (() => void) | undefined;
+  /** Undo, redo and zoom, between the step and Done. */
+  readonly view?: ReactNode;
   readonly children?: ReactNode;
 }) {
   const start = useRef<{ readonly x: number; readonly y: number } | null>(null);
@@ -580,105 +613,117 @@ export function CanvasToolRow({
   };
   return (
     <div className="cv-chrome cv-bar cv-tools" role="toolbar" aria-label="Tools">
-      {TOOLS.map((each, at) =>
-        each === "separator" ? (
-          // oxlint-disable-next-line react/no-array-index-key -- the list is fixed
-          <span key={at} className="cv-tools-separator" />
-        ) : (
-          <span key={each[0]} className="cv-tool">
+      {/* One line, or on a narrow board two: what draws, then what steps, undoes, zooms and ends. */}
+      <span className="cv-tools-row">
+        {TOOLS.map((each, at) =>
+          each === "separator" ? (
+            // oxlint-disable-next-line react/no-array-index-key -- the list is fixed
+            <span key={at} className="cv-tools-separator" />
+          ) : (
+            <span key={each[0]} className="cv-tool">
+              <button
+                type="button"
+                data-tool={each[0]}
+                aria-pressed={tool === each[0]}
+                aria-label={`${each[1]} (${each[2]})`}
+                {...tipProps([each[1], each[2]])}
+                {...(each[0] === "shape"
+                  ? { "aria-haspopup": "menu" as const, "aria-expanded": picking }
+                  : {})}
+                onClick={() => {
+                  onTool(each[0]);
+                  setPicking(each[0] === "shape" && !picking);
+                }}
+              >
+                <ToolIcon strokes={each[0] === "shape" ? [shapeIcon(shape)] : each[3]} />
+                <kbd aria-hidden="true">{each[2]}</kbd>
+              </button>
+              {each[0] === "shape" && picking ? (
+                <span className="cv-chrome cv-shape-picker" role="menu" aria-label="Shape">
+                  {SHAPES.map(([kind, name, d]) => (
+                    <button
+                      key={kind}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={shape === kind}
+                      aria-label={name}
+                      onClick={() => {
+                        onShape(kind);
+                        setPicking(false);
+                      }}
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d={d} />
+                      </svg>
+                    </button>
+                  ))}
+                </span>
+              ) : null}
+            </span>
+          ),
+        )}
+        {files ? <span className="cv-tools-separator" /> : null}
+        {files
+          ? DRAG_IN.map(([kind, label, title, tip]) => (
+              <button
+                key={kind}
+                type="button"
+                data-drag-in
+                aria-label={title}
+                {...tipProps([tip])}
+                onPointerDown={(event) => {
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                  start.current = { x: event.clientX, y: event.clientY };
+                }}
+                onPointerUp={(event) => finish(kind, event)}
+                onPointerCancel={() => {
+                  start.current = null;
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter" && event.key !== " ") return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onAdd(kind, null);
+                }}
+              >
+                {label}
+              </button>
+            ))
+          : null}
+        {children}
+      </span>
+      <span className="cv-tools-row">
+        {onStep === undefined ? null : (
+          <>
+            <span className="cv-tools-separator" />
             <button
               type="button"
-              data-tool={each[0]}
-              aria-pressed={tool === each[0]}
-              aria-label={`${each[1]} (${each[2]})`}
-              {...(each[0] === "shape"
-                ? { "aria-haspopup": "menu" as const, "aria-expanded": picking }
-                : {})}
-              onClick={() => {
-                onTool(each[0]);
-                setPicking(each[0] === "shape" && !picking);
-              }}
+              data-step
+              aria-label="Step from selection"
+              disabled={!stepReady}
+              onClick={onStep}
+              {...tipProps(["Step from selection"])}
             >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                {(each[0] === "shape" ? [shapeIcon(shape)] : each[3]).map((d) => (
-                  <path key={d} d={d} />
-                ))}
-              </svg>
-              <kbd aria-hidden="true">{each[2]}</kbd>
+              <ToolIcon strokes={STEP_ICON} />
             </button>
-            {each[0] === "shape" && picking ? (
-              <span className="cv-chrome cv-shape-picker" role="menu" aria-label="Shape">
-                {SHAPES.map(([kind, name, d]) => (
-                  <button
-                    key={kind}
-                    type="button"
-                    role="menuitemradio"
-                    aria-checked={shape === kind}
-                    aria-label={name}
-                    onClick={() => {
-                      onShape(kind);
-                      setPicking(false);
-                    }}
-                  >
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d={d} />
-                    </svg>
-                  </button>
-                ))}
-              </span>
-            ) : null}
-          </span>
-        ),
-      )}
-      {files ? <span className="cv-tools-separator" /> : null}
-      {files
-        ? DRAG_IN.map(([kind, label, title]) => (
+          </>
+        )}
+        {view}
+        {onDone === undefined ? null : (
+          <>
+            <span className="cv-tools-separator" />
             <button
-              key={kind}
               type="button"
-              data-drag-in
-              aria-label={title}
-              onPointerDown={(event) => {
-                event.currentTarget.setPointerCapture(event.pointerId);
-                start.current = { x: event.clientX, y: event.clientY };
-              }}
-              onPointerUp={(event) => finish(kind, event)}
-              onPointerCancel={() => {
-                start.current = null;
-              }}
-              onKeyDown={(event) => {
-                if (event.key !== "Enter" && event.key !== " ") return;
-                event.preventDefault();
-                event.stopPropagation();
-                onAdd(kind, null);
-              }}
+              data-done
+              aria-label="Done editing (E)"
+              onClick={onDone}
+              {...tipProps(["Done editing", "E"])}
             >
-              {label}
+              Done
             </button>
-          ))
-        : null}
-      {children}
-      {onStep === undefined ? null : (
-        <>
-          <span className="cv-tools-separator" />
-          <button
-            type="button"
-            aria-label="Step from selection"
-            disabled={!stepReady}
-            onClick={onStep}
-          >
-            + Step<span data-wide> from selection</span>
-          </button>
-        </>
-      )}
-      {onDone === undefined ? null : (
-        <>
-          <span className="cv-tools-separator" />
-          <button type="button" data-done aria-label="Done editing (E)" onClick={onDone}>
-            Done
-          </button>
-        </>
-      )}
+          </>
+        )}
+      </span>
     </div>
   );
 }
@@ -700,4 +745,98 @@ export function useRestoreFocus(element: () => HTMLElement | null, open: boolean
     if (wasOpen.current && !open && dropped) element()?.focus({ preventScroll: true });
     wasOpen.current = open;
   }, [element, open]);
+}
+
+/** The app's tooltip pause, and how soon after one closes the next opens at once. */
+const TIP_DELAY = 600;
+const TIP_WARM = 400;
+
+type Tip = { readonly name: string; readonly key: string | undefined; readonly anchor: DOMRect };
+
+/**
+ * Names the board's buttons from their `data-tip`: on hover after a pause, and on keyboard focus,
+ * never on touch. It's drawn in the board, clamped to it, so a full screen board keeps it.
+ */
+export function CanvasTips({ board }: { readonly board: () => HTMLElement | null }) {
+  const [tip, setTip] = useState<Tip | null>(null);
+  const tipRef = useRef<HTMLDivElement>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- hover and focus are the browser's: one listener on the board serves every button in it
+  useEffect(() => {
+    const root = board();
+    if (root === null) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let shown: HTMLElement | null = null;
+    let closedAt = -Infinity;
+    const of = (node: EventTarget | null) =>
+      node instanceof Element ? node.closest<HTMLElement>(".cv-chrome [data-tip]") : null;
+    const open = (element: HTMLElement) => {
+      clearTimeout(timer);
+      shown = element;
+      setTip({
+        name: element.dataset.tip ?? "",
+        key: element.dataset.tipKey,
+        anchor: element.getBoundingClientRect(),
+      });
+    };
+    const close = () => {
+      clearTimeout(timer);
+      if (shown !== null) closedAt = performance.now();
+      shown = null;
+      setTip(null);
+    };
+    const onOver = (event: globalThis.PointerEvent) => {
+      const element = of(event.target);
+      if (element === shown) return;
+      if (element === null || event.pointerType === "touch") return close();
+      const warm = shown !== null || performance.now() - closedAt < TIP_WARM;
+      close();
+      if (warm) open(element);
+      else timer = setTimeout(() => open(element), TIP_DELAY);
+    };
+    const onOut = (event: globalThis.PointerEvent) => {
+      if (of(event.relatedTarget) === null) close();
+    };
+    const onFocus = (event: FocusEvent) => {
+      const element = of(event.target);
+      if (element !== null && element.matches(":focus-visible")) open(element);
+    };
+    root.addEventListener("pointerover", onOver);
+    root.addEventListener("pointerout", onOut);
+    root.addEventListener("focusin", onFocus);
+    root.addEventListener("focusout", close);
+    // What a press does can move or remove the button under it.
+    root.addEventListener("pointerdown", close, true);
+    root.addEventListener("keydown", close, true);
+    return () => {
+      clearTimeout(timer);
+      root.removeEventListener("pointerover", onOver);
+      root.removeEventListener("pointerout", onOut);
+      root.removeEventListener("focusin", onFocus);
+      root.removeEventListener("focusout", close);
+      root.removeEventListener("pointerdown", close, true);
+      root.removeEventListener("keydown", close, true);
+    };
+  }, [board]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the tip's size is the browser's to lay out, and it's kept inside the board from that
+  useLayoutEffect(() => {
+    const element = tipRef.current;
+    const root = board();
+    if (tip === null || element === null || root === null) return;
+    const box = root.getBoundingClientRect();
+    const { width, height } = element.getBoundingClientRect();
+    const gap = 6;
+    const above = tip.anchor.top - box.top > box.height / 2;
+    const centre = tip.anchor.left + tip.anchor.width / 2 - box.left;
+    const left = Math.min(Math.max(4, centre - width / 2), box.width - width - 4);
+    const top = above ? tip.anchor.top - box.top - height - gap : tip.anchor.bottom - box.top + gap;
+    element.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
+    element.style.visibility = "visible";
+  }, [tip, board]);
+  if (tip === null) return null;
+  return (
+    <div ref={tipRef} className="cv-tip" role="tooltip">
+      {tip.name}
+      {tip.key === undefined ? null : <kbd>{tip.key}</kbd>}
+    </div>
+  );
 }
