@@ -32,4 +32,10 @@ it("tells the agent only the boards the user changed since its last prompt, as t
   assert.notInclude(note ?? "", "Board before");
   assert.notInclude(note ?? "", "Board drawn");
   assert.isNull(editedCanvasNote([board("drawn"), board("before", "2026-11-12T09:00:00Z")], since));
+  const edited = [board("kept", "2026-11-12T11:00:00Z"), board("left", "2026-11-12T11:30:00Z")];
+  const omitting = editedCanvasNote(edited, since, ["left"]) ?? "";
+  assert.include(omitting, "Board kept");
+  assert.notInclude(omitting, "Board left");
+  assert.include(editedCanvasNote(edited, since, undefined) ?? "", "Board left");
+  assert.isNull(editedCanvasNote(edited, since, ["kept", "left"]));
 });

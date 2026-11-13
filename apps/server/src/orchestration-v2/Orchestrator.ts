@@ -10111,7 +10111,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         ...queuedMessage,
         text: command.text,
         ...editedAttachments,
-        ...(command.context ? { context: command.context } : {}),
+        ...(command.context
+          ? {
+              // Editing a queued message changes its text, not which edited boards it leaves out.
+              context:
+                command.context.omitEditedBoards === undefined &&
+                queuedMessage.context?.omitEditedBoards !== undefined
+                  ? { ...command.context, omitEditedBoards: queuedMessage.context.omitEditedBoards }
+                  : command.context,
+            }
+          : {}),
         updatedAt: now,
       }),
     });

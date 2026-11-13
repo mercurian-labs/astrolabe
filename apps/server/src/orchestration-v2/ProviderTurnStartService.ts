@@ -933,7 +933,11 @@ export const layer: Layer.Layer<
               })
               .pipe(
                 Effect.map(({ turnItems }) =>
-                  editedCanvasNote(turnItems, lastPrompt.startedAt ?? lastPrompt.requestedAt),
+                  editedCanvasNote(
+                    turnItems,
+                    lastPrompt.startedAt ?? lastPrompt.requestedAt,
+                    message.context?.omitEditedBoards,
+                  ),
                 ),
                 Effect.catch((cause) =>
                   Effect.logWarning("Could not read the boards the user edited.", { cause }).pipe(

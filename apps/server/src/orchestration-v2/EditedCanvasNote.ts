@@ -7,16 +7,18 @@ const MAX_NOTE_CHARS = 16_000;
 
 /**
  * Astrolabe: what the agent hears of the boards the user changed since `since`, as they now stand,
- * with the ids its tools name them by. Null when none changed.
+ * with the ids its tools name them by, less those the user's message `omit`s. Null when none.
  */
 export function editedCanvasNote(
   items: ReadonlyArray<OrchestrationV2TurnItem>,
   since: DateTime.Utc,
+  omit: ReadonlyArray<string> = [],
 ): string | null {
   const edited = items.flatMap((item) =>
     item.type === "canvas" &&
     item.editedAt !== undefined &&
-    DateTime.isGreaterThan(item.editedAt, since)
+    DateTime.isGreaterThan(item.editedAt, since) &&
+    !omit.includes(item.id)
       ? [item]
       : [],
   );
