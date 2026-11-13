@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { fileView } from "./fileView";
+import { fileAssetResource, fileView } from "./fileView";
 
 describe("fileView", () => {
   it.each([
@@ -27,5 +27,19 @@ describe("fileView", () => {
     ["program.bin", { kind: "text", rendered: null }],
   ])("%s", (path, expected) => {
     expect(fileView(path)).toEqual(expected);
+  });
+});
+
+describe("fileAssetResource", () => {
+  const cwd = "/repo";
+  it.each([
+    ["src/a.png", "show", { _tag: "draft-workspace-file", cwd, path: "src/a.png" }],
+    [
+      "big.log",
+      "download",
+      { _tag: "draft-workspace-file", cwd, path: "big.log", disposition: "attachment" },
+    ],
+  ] as const)("%s as %s", (path, use, expected) => {
+    expect(fileAssetResource({ cwd, path }, use)).toEqual(expected);
   });
 });

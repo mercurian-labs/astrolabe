@@ -1,3 +1,4 @@
+import type { AssetResource } from "@t3tools/contracts";
 import { filePreviewDelimiter } from "@t3tools/shared/delimitedPreview";
 import {
   binaryPreviewKind,
@@ -7,6 +8,25 @@ import {
   isWorkspaceVideoPreviewPath,
   officePreviewKind,
 } from "@t3tools/shared/filePreview";
+
+/** How a viewer reads the file: shown as its type, or whole as a download (too big, or not text). */
+export type FileAssetUse = "show" | "download";
+
+/**
+ * The asset a viewer loads. A Projects tab has no thread, so the server signs its file for the
+ * folder alone.
+ */
+export function fileAssetResource(
+  target: { readonly cwd: string; readonly path: string },
+  use: FileAssetUse,
+) {
+  return {
+    _tag: "draft-workspace-file",
+    cwd: target.cwd,
+    path: target.path,
+    ...(use === "download" ? { disposition: "attachment" } : {}),
+  } as const satisfies AssetResource;
+}
 
 /** A text file's rendered form, which its tab's header switches the editor for. */
 export type RenderedForm = "table" | "mermaid" | "html";

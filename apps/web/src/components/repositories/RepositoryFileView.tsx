@@ -214,9 +214,9 @@ const RepositoryFileViewer = lazy(() => import("./RepositoryFileViewers"));
 const RenderedFileView = lazy(() =>
   import("./RepositoryFileViewers").then((module) => ({ default: module.RenderedFileView })),
 );
-
-// Files these failures leave out open read only from disk, as before documents.
-const READ_FROM_DISK = new Set(["too-large", "not-text", "other"]);
+const WholeFileView = lazy(() =>
+  import("./RepositoryFileViewers").then((module) => ({ default: module.WholeFileView })),
+);
 
 function RepositoryFile({
   tabKey,
@@ -232,13 +232,32 @@ function RepositoryFile({
   const editorView = useRef<EditorView | null>(null);
   const canWrite = useEnvironmentScope(environmentId, AuthFilesystemWriteScope);
   const { session, state } = useRepositoryDocument(environmentId, cwd, path, canWrite);
-  const fromDisk =
-    state.status === "failed" && state.failure !== null && READ_FROM_DISK.has(state.failure.reason);
+  const failure = state.status === "failed" ? (state.failure?.reason ?? null) : null;
+  const fromDisk = failure === "other";
   const file = useProjectFileQuery(environmentId, cwd, path, fromDisk);
+  // Read whole as bytes: too big for a document, or not text.
+  const whole =
+    failure === "too-large" || (fromDisk && file.data?.truncated === true)
+      ? "large"
+      : failure === "not-text" || (fromDisk && file.readError?.failure === "binary_file")
+        ? "binary"
+        : null;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- registers this tab's unsaved-edits check until unmount
   useEffect(() => registerUnsavedCheck(tabKey, () => session.getState().unsent), [tabKey, session]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- write access came back: sends the edits the session kept meanwhile
+  useEffect(() => {
+    if (canWrite) session.changed();
+  }, [canWrite, session]);
+  const reveal = useSyncExternalStore(repositoryFileReveal.subscribe, repositoryFileReveal.get);
+  const wordWrap = useClientSettings(selectWordWrap);
 
   const contents = fromDisk ? (file.data?.contents ?? null) : session.text();
+  const showsRendered = rendered !== null && renderedForm.shown;
+  // A store read: the compiler keeps `session.text()` above as it was when the session was made.
+  const sessionText = useSyncExternalStore(session.onVersion, () =>
+    showsRendered && !fromDisk ? session.text() : null,
+  );
+  const renderedText = (fromDisk ? contents : sessionText) ?? "";
   const readOnly = !canWrite || fromDisk;
   // The panes this file is in, which its local graph opens beside it in.
   const panes = useContext(PanesHostContext)?.controller ?? workspace.store;
@@ -458,30 +477,39 @@ function RepositoryFile({
     menu: contextMenu.show,
   }));
 
-  if (fromDisk) {
-    if (file.error !== null && file.data === null) return <FileNotice>{file.error}</FileNotice>;
-    if (file.data === null) return <FileNotice>Opening…</FileNotice>;
-  } else if (state.status === "failed") {
-    return <FileNotice>{state.failure?.message ?? "This file cannot be opened."}</FileNotice>;
-  } else if (state.status === "closed") {
-    return <FileNotice>This file was deleted.</FileNotice>;
-  } else if (state.status === "opening") {
-    return <FileNotice>Opening…</FileNotice>;
+  // A file read whole shows below the header.
+  if (whole === null) {
+    if (fromDisk) {
+      if (file.error !== null && file.data === null) return <FileNotice>{file.error}</FileNotice>;
+      if (file.data === null) return <FileNotice>Opening…</FileNotice>;
+    } else if (state.status === "failed") {
+      return <FileNotice>{state.failure?.message ?? "This file cannot be opened."}</FileNotice>;
+    } else if (state.status === "closed") {
+      return <FileNotice>This file was deleted.</FileNotice>;
+    } else if (state.status === "opening") {
+      return <FileNotice>Opening…</FileNotice>;
+    }
   }
-  const tooBig =
-    fromDisk && (file.data?.truncated === true || state.failure?.reason === "too-large");
+  const serverStatus =
+    fromDisk || whole !== null ? null : (
+      <LanguageServerStatusEntry
+        file={languageServer.file}
+        status={languageServer.status}
+        servers={languageServer.servers}
+      />
+    );
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="@container/file flex min-h-0 flex-1 flex-col">
       <TabHeader.Root>
         <FileBreadcrumbs path={path} trail={trail} />
-        <TabHeader.Status className="font-mono">
+        <TabHeader.Status className="font-mono @max-[36rem]/file:hidden">
           <GitBranchIcon className="size-3.5" />
           {tab.checkoutName}
         </TabHeader.Status>
-        {turnAvailable ? (
+        {turnAvailable && whole === null ? (
           <ToggleGroup
             aria-label="Compare changes with"
-            className="shrink-0"
+            className="shrink-0 @max-[26rem]/file:hidden"
             value={diffBase === undefined ? [] : [diffBase]}
             onValueChange={(value) => {
               const next = value[0];
@@ -497,30 +525,24 @@ function RepositoryFile({
           </ToggleGroup>
         ) : null}
         {agentWorking ? (
-          <TabHeader.Status className="text-info-foreground">
+          <TabHeader.Status className="text-info-foreground @max-[36rem]/file:hidden">
             <BotIcon className="size-3.5" />
             An agent is working in this checkout
           </TabHeader.Status>
         ) : null}
-        {fromDisk ? null : (
-          <LanguageServerStatusEntry
-            file={languageServer.file}
-            status={languageServer.status}
-            servers={languageServer.servers}
-          />
-        )}
+        <span className="contents @max-[48rem]/file:hidden">{serverStatus}</span>
         <TabHeader.Status>
-          {readOnly ? (tooBig ? "Too big to edit here" : "Read only") : documentStatusLabel(state)}
+          {whole !== null || readOnly ? "Read only" : documentStatusLabel(state)}
         </TabHeader.Status>
         <TabHeader.Actions>
-          {rendered ? (
+          {rendered && whole === null ? (
             <RenderedFormToggle
               form={rendered}
               shown={renderedForm.shown}
               onToggle={renderedForm.toggle}
             />
           ) : null}
-          {renderedForm.shown || isMarkdownPath(path) ? null : (
+          {renderedForm.shown || isMarkdownPath(path) || whole !== null ? null : (
             <TabHeader.Action
               label="Toggle word wrap"
               onClick={() => {
@@ -533,46 +555,67 @@ function RepositoryFile({
           )}
           <FileOpenIn environmentId={environmentId} cwd={cwd} path={path} />
           {"projectId" in tab ? (
-            <TabHeader.Action label="Open local graph" onClick={showGraph}>
-              <WaypointsIcon />
-            </TabHeader.Action>
+            <span className="contents @max-[26rem]/file:hidden">
+              <TabHeader.Action label="Open local graph" onClick={showGraph}>
+                <WaypointsIcon />
+              </TabHeader.Action>
+            </span>
           ) : null}
         </TabHeader.Actions>
       </TabHeader.Root>
-      {fromDisk || readOnly ? null : (
+      {/* Too wide for a narrow pane's header, where it would push the actions out of view. */}
+      <div className="hidden shrink-0 px-(--workspace-gutter-start) pb-1 *:shrink *:flex-wrap @max-[48rem]/file:not-empty:flex">
+        {serverStatus}
+      </div>
+      {!canWrite && state.unsent ? (
+        <NoticeBar message="Read-only connection. Your unsaved edits are kept until write access returns." />
+      ) : fromDisk || readOnly || whole !== null ? null : (
         <DocumentNotice state={state} session={session} onClosed={() => workspace.close(tabKey)} />
       )}
-      {renderedForm.shown && rendered ? (
+      {renderedForm.shown && rendered && whole === null ? (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <Suspense fallback={<FileNotice>Opening…</FileNotice>}>
-            <RenderedFileView target={tab} form={rendered} contents={contents ?? ""} />
+            <RenderedFileView target={tab} form={rendered} contents={renderedText} />
           </Suspense>
         </div>
       ) : null}
-      {/* Kept while the rendered form shows, so the editor's undo and place stay. */}
-      <div className={renderedForm.shown ? "hidden" : "min-h-0 flex-1 overflow-hidden"}>
-        <FileEditor
-          onView={(view) => {
-            editorView.current = view;
-          }}
-          tabKey={tabKey}
-          checkout={tab}
-          file={importLineKey(tab)}
-          path={path}
-          source={fromDisk ? { contents: contents ?? "" } : { session }}
-          languageServer={fromDisk ? null : languageServer.extension}
-          navigation={navigation}
-          contextMenu={contextMenu}
-          rename={rename}
-          codeActions={codeActions}
-          run={run}
-          runContext={runContext?.trusted ? runContext : null}
-          readOnly={readOnly}
-          baseText={baseText}
-          baseControl={baseControl}
-          onOutlinePath={(next, view) => setTrail({ path: next, view })}
-        />
-      </div>
+      {whole !== null ? (
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <Suspense fallback={<FileNotice>Opening…</FileNotice>}>
+            <WholeFileView
+              target={tab}
+              whole={whole}
+              reveal={reveal?.tabKey === tabKey ? reveal : null}
+              wordWrap={wordWrap}
+            />
+          </Suspense>
+        </div>
+      ) : (
+        // Kept while the rendered form shows, so the editor's undo and place stay.
+        <div className={renderedForm.shown ? "hidden" : "min-h-0 flex-1 overflow-hidden"}>
+          <FileEditor
+            onView={(view) => {
+              editorView.current = view;
+            }}
+            tabKey={tabKey}
+            checkout={tab}
+            file={importLineKey(tab)}
+            path={path}
+            source={fromDisk ? { contents: contents ?? "" } : { session }}
+            languageServer={fromDisk ? null : languageServer.extension}
+            navigation={navigation}
+            contextMenu={contextMenu}
+            rename={rename}
+            codeActions={codeActions}
+            run={run}
+            runContext={runContext?.trusted ? runContext : null}
+            readOnly={readOnly}
+            baseText={baseText}
+            baseControl={baseControl}
+            onOutlinePath={(next, view) => setTrail({ path: next, view })}
+          />
+        </div>
+      )}
     </div>
   );
 }
