@@ -252,7 +252,7 @@ export type CanvasBoardCommand =
 /** What a board's page drives from outside, such as Jump to section. */
 export interface CanvasBoardHandle {
   readonly focusCard: (id: string) => void;
-  /** Brings a card or arrow into view and selects it, above whatever covers it. */
+  /** Brings a card, arrow or drawing into view and selects it, above whatever covers it. */
   readonly selectCard: (id: string) => void;
   readonly run: (command: CanvasBoardCommand) => void;
 }
@@ -1171,10 +1171,12 @@ function EdgeLabelEditor({
 const InkNode = memo(function InkNode({
   shape,
   selected,
+  mark,
   lit,
 }: {
   readonly shape: CanvasInkShape;
   readonly selected: boolean;
+  readonly mark: CanvasMark | undefined;
   readonly lit: boolean | undefined;
 }) {
   const { ink, path, head } = shape;
@@ -1185,6 +1187,7 @@ const InkNode = memo(function InkNode({
       data-kind={ink.type}
       data-drawing-id={ink.id}
       data-selected={selected || undefined}
+      data-mark={mark}
       data-lit={lit}
       style={style}
       {...color}
@@ -2136,13 +2139,16 @@ export function CanvasBoard({
       selectCard: (id) => {
         const node = live.layout.byId.get(id);
         const arrow = live.layout.shapes.find((shape) => shape.edge.id === id);
-        const rect = node ?? arrow?.bounds;
+        const ink = live.layout.inks.find((shape) => shape.ink.id === id);
+        const rect = node ?? arrow?.bounds ?? ink?.bounds;
         if (rect === undefined) return;
         view.focus(rect);
         commands.select(
           node !== undefined
             ? { cards: new Set([id]), arrow: null }
-            : { cards: new Set(), arrow: id },
+            : arrow !== undefined
+              ? { cards: new Set(), arrow: id }
+              : { cards: new Set(), arrow: null, drawings: new Set([id]) },
         );
       },
       run,
@@ -2618,6 +2624,7 @@ export function CanvasBoard({
                 key={shape.ink.id}
                 shape={shape}
                 selected={drawingsSelected.has(shape.ink.id)}
+                mark={marks.drawings?.[shape.ink.id]}
                 // A step holds cards, never drawings: they dim with what it leaves out.
                 lit={shines === null ? undefined : false}
               />

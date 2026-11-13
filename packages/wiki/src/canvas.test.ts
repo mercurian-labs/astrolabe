@@ -132,27 +132,52 @@ describe("reviewCanvas", () => {
   const card = { id: "a", type: "text", text: "One", x: 0, y: 0, width: 250, height: 60 };
   const gone = { ...card, id: "gone", text: "Gone" };
   const kept = { ...card, id: "kept", x: 300 };
+  const stroke = (id: string, x = 0) => ({ id, type: "stroke", x, y: 0, points: [0, 0, 9, 9] });
+  const story = { title: "Tour", steps: [{ note: "Start", cards: ["a"] }] };
   const before = {
     nodes: [card, gone, kept],
     edges: [
       { id: "ag", fromNode: "a", toNode: "gone" },
       { id: "ak", fromNode: "a", toNode: "kept" },
     ],
+    astrolabe: {
+      stories: [story],
+      drawings: [
+        stroke("still"),
+        stroke("rubbed"),
+        { id: "pointer", type: "arrow", from: { node: "gone", side: "top" }, to: { x: 0, y: 0 } },
+      ],
+    },
   };
   const after = {
     nodes: [{ ...card, text: "Uno" }, kept, { ...card, id: "new" }],
     edges: [{ id: "ak", fromNode: "a", toNode: "kept", color: "1" }],
+    astrolabe: { stories: [story], drawings: [stroke("still", 40), stroke("scribble")] },
   };
 
   it("draws the new version with what it removed beneath, marked", () => {
     const review = reviewCanvas(before, after);
     expect(review.data.nodes.map((node) => node.id)).toEqual(["gone", "a", "kept", "new"]);
     expect(review.data.edges.map((edge) => edge.id)).toEqual(["ak", "ag"]);
+    expect(review.data.drawings?.map((ink) => ink.id)).toEqual([
+      "still",
+      "scribble",
+      "rubbed",
+      "pointer",
+    ]);
     expect(review.marks).toEqual({
       cards: { a: "text", new: "added", gone: "removed" },
       arrows: { ak: "restyled", ag: "removed" },
+      drawings: { still: "moved", scribble: "added", rubbed: "removed", pointer: "removed" },
     });
+    expect(review.changes.filter((change) => change.item === "drawing")).toMatchObject([
+      { id: "still", name: "Drawing" },
+      { id: "scribble" },
+      { id: "rubbed" },
+      { id: "pointer", name: "Gone → a point" },
+    ]);
     expect(review.changes.every((change) => change.drawn)).toBe(true);
+    expect(review.rest).toBe(false);
   });
 
   it("says when a change can't be found on the board", () => {
@@ -167,8 +192,8 @@ describe("reviewCanvas", () => {
       if ("invalid" in result) throw new Error(result.invalid);
       return canvasChangeSummary(result.changes);
     };
-    expect(review(null, JSON.stringify(before))).toBe("5 added");
-    expect(review(JSON.stringify(before), null)).toBe("5 removed");
+    expect(review(null, JSON.stringify(before))).toBe("8 added");
+    expect(review(JSON.stringify(before), null)).toBe("8 removed");
   });
 
   it("says which version it can't read", () => {

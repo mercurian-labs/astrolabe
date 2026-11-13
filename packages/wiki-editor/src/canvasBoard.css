@@ -635,6 +635,12 @@ span.cv-wikilink {
 .cv-ink-head {
   fill: currentcolor;
 }
+.cv-ink[data-mark] {
+  color: var(--cv-mark);
+}
+.cv-ink[data-mark="removed"] .cv-ink-line {
+  stroke-dasharray: calc(6px * var(--cv-ui, 1));
+}
 .cv-ink-hit {
   fill: none;
   pointer-events: none;

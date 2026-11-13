@@ -717,6 +717,20 @@ export const CANVAS_ARROW_LOOKS: ReadonlyArray<CanvasLook> = [
   { name: "ends", keys: ["fromEnd", "toEnd"], mark: "restyled" },
 ];
 
+/** A stroke's points and a drawn arrow's label are what it says; the rest is where and how. */
+export const CANVAS_DRAWING_LOOKS: ReadonlyArray<CanvasLook> = [
+  { name: "position", keys: ["x", "y"], mark: "moved" },
+  { name: "ends", keys: ["from", "to"], mark: "moved" },
+  { name: "colour", keys: ["color"], mark: "restyled" },
+];
+
+/** A file's drawings, the same way `canvasData` reads them. */
+export const canvasDrawingEntries = (document: unknown) =>
+  canvasEntries(
+    isRecord(document) && isRecord(document.astrolabe) ? document.astrolabe.drawings : undefined,
+    "drawing",
+  );
+
 /** Same JSON, whatever order its keys were written in. */
 const sorted = (_key: string, value: unknown) =>
   isRecord(value)
@@ -730,7 +744,7 @@ export type CanvasMark = "added" | "removed" | "text" | "restyled" | "moved";
 
 export interface CanvasChange {
   readonly id: string;
-  readonly item: "card" | "arrow";
+  readonly item: "card" | "arrow" | "drawing";
   /** The strongest thing that happened to it. */
   readonly mark: CanvasMark;
   /** What else did, so a card can read as changed and moved. */
@@ -743,7 +757,7 @@ export interface CanvasChange {
 
 export interface CanvasDiff {
   readonly changes: ReadonlyArray<CanvasChange>;
-  /** Something outside the cards and arrows changed, which only the file's JSON shows. */
+  /** Something outside the cards, arrows and drawings changed, which only the file's JSON shows. */
   readonly rest: boolean;
 }
 
@@ -801,6 +815,26 @@ export function canvasArrowName(
   return label === undefined || label === "" ? line : `${line}: ${label}`;
 }
 
+/** A drawing as a person would name it: a drawn arrow by the cards it touches. */
+export function canvasDrawingName(
+  drawing: Readonly<Record<string, unknown>>,
+  cardName: (id: unknown) => string,
+): string {
+  if (drawing.type !== "arrow") {
+    return drawing.type === "stroke" ? "Drawing" : `${text(drawing.type) ?? "Unknown"} drawing`;
+  }
+  const end = (value: unknown) =>
+    isRecord(value) && typeof value.node === "string" ? cardName(value.node) : undefined;
+  const from = end(drawing.from);
+  const to = end(drawing.to);
+  const line =
+    from === undefined && to === undefined
+      ? "Drawn arrow"
+      : `${from ?? "A point"} → ${to ?? "a point"}`;
+  const label = text(drawing.label);
+  return label === undefined || label === "" ? line : `${line}: ${label}`;
+}
+
 /** The first line that differs, as it read before. */
 function wasLine(before: string, after: string) {
   const lines = after.split("\n");
@@ -849,6 +883,7 @@ export function diffCanvas(before: unknown, after: unknown): CanvasDiff {
   const now = isRecord(after) ? after : {};
   const cards = [canvasEntries(was.nodes, "node"), canvasEntries(now.nodes, "node")] as const;
   const arrows = [canvasEntries(was.edges, "edge"), canvasEntries(now.edges, "edge")] as const;
+  const drawings = [canvasDrawingEntries(was), canvasDrawingEntries(now)] as const;
   const names = new Map([...cards[0], ...cards[1]].map(({ id, raw }) => [id, raw]));
   const cardName = (id: unknown) => {
     const card = typeof id === "string" ? names.get(id) : undefined;
@@ -860,7 +895,11 @@ export function diffCanvas(before: unknown, after: unknown): CanvasDiff {
     looks: ReadonlyArray<CanvasLook>,
   ): CanvasChange[] => {
     const name = (raw: Record<string, unknown>) =>
-      item === "card" ? canvasCardName(raw) : canvasArrowName(raw, cardName);
+      item === "card"
+        ? canvasCardName(raw)
+        : item === "arrow"
+          ? canvasArrowName(raw, cardName)
+          : canvasDrawingName(raw, cardName);
     const earlier = new Map(from.map(({ id, raw }) => [id, raw]));
     const later = new Set(to.map(({ id }) => id));
     return [
@@ -879,15 +918,27 @@ export function diffCanvas(before: unknown, after: unknown): CanvasDiff {
       ),
     ];
   };
-  const outside = (document: Record<string, unknown>) => ({
-    ...document,
-    nodes: undefined,
-    edges: undefined,
-  });
+  const outside = (document: Record<string, unknown>) => {
+    const { drawings: _drawings, ...astrolabe } = isRecord(document.astrolabe)
+      ? document.astrolabe
+      : {};
+    return {
+      ...document,
+      nodes: undefined,
+      edges: undefined,
+      astrolabe:
+        isRecord(document.astrolabe) && Object.keys(astrolabe).length === 0
+          ? undefined
+          : isRecord(document.astrolabe)
+            ? astrolabe
+            : document.astrolabe,
+    };
+  };
   return {
     changes: [
       ...compare("card", cards, CANVAS_CARD_LOOKS),
       ...compare("arrow", arrows, CANVAS_ARROW_LOOKS),
+      ...compare("drawing", drawings, CANVAS_DRAWING_LOOKS),
     ],
     rest: !sameJson(outside(was), outside(now)),
   };
@@ -901,10 +952,11 @@ export const canvasChangedCards = (before: CanvasData, after: CanvasData): Reado
       .map((change) => change.id),
   );
 
-/** Which cards and arrows a board marks, by id: a card and an arrow may share one. */
+/** Which cards, arrows and drawings a board marks, by id: kinds may share an id. */
 export interface CanvasMarks {
   readonly cards: Readonly<Record<string, CanvasMark>>;
   readonly arrows: Readonly<Record<string, CanvasMark>>;
+  readonly drawings?: Readonly<Record<string, CanvasMark>>;
 }
 
 /** A board for reviewing a change: the new version, with what it removed still drawn. */
@@ -925,23 +977,30 @@ export function reviewCanvas(before: unknown, after: unknown): CanvasReview {
     Object.fromEntries(
       changes.filter((change) => change.item === item).map(({ id, mark }) => [id, mark]),
     );
-  const marks = { cards: marked("card"), arrows: marked("arrow") };
+  const marks = { cards: marked("card"), arrows: marked("arrow"), drawings: marked("drawing") };
   // Beneath the rest: what replaced a removed card stays on top until the removed one is picked.
   const nodes = [...was.nodes.filter((node) => marks.cards[node.id] === "removed"), ...now.nodes];
   const edges = [...now.edges, ...was.edges.filter((edge) => marks.arrows[edge.id] === "removed")];
-  const onBoard = new Set(nodes.map((node) => node.id));
+  const drawings = [
+    ...(now.drawings ?? []),
+    ...(was.drawings ?? []).filter((ink) => marks.drawings[ink.id] === "removed"),
+  ];
+  const byId = new Map(nodes.map((node) => [node.id, node]));
   const drawnArrows = new Set(
-    edges
-      .filter((edge) => onBoard.has(edge.fromNode) && onBoard.has(edge.toNode))
-      .map((edge) => edge.id),
+    edges.filter((edge) => byId.has(edge.fromNode) && byId.has(edge.toNode)).map((edge) => edge.id),
   );
+  const drawnInks = new Set(
+    drawings.filter((ink) => canvasInkBounds(ink, byId) !== undefined).map((ink) => ink.id),
+  );
+  const drawn = { card: byId, arrow: drawnArrows, drawing: drawnInks };
   return {
-    data: { nodes, edges },
+    data: {
+      nodes,
+      edges,
+      ...(drawings.length === 0 ? {} : { drawings }),
+    },
     marks,
-    changes: changes.map((change) => ({
-      ...change,
-      drawn: change.item === "card" ? onBoard.has(change.id) : drawnArrows.has(change.id),
-    })),
+    changes: changes.map((change) => ({ ...change, drawn: drawn[change.item].has(change.id) })),
     rest,
   };
 }
@@ -995,5 +1054,5 @@ export function canvasChangeSummary(changes: ReadonlyArray<Pick<CanvasChange, "m
     const count = changes.filter((change) => change.mark === mark).length;
     return count === 0 ? [] : [`${count} ${MARK_WORDS[mark]}`];
   });
-  return counts.length > 0 ? counts.join(", ") : "No changes to its cards or arrows";
+  return counts.length > 0 ? counts.join(", ") : "No changes to its cards, arrows or drawings";
 }

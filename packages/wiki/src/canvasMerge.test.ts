@@ -248,6 +248,62 @@ describe("canvasMerge", () => {
     });
   });
 
+  it("merges drawings by id, each on its own, and stories apart from them", () => {
+    const drawn = (drawings: ReadonlyArray<unknown>, rest: Record<string, unknown> = {}) =>
+      serializeCanvas({ nodes: [a, b, c], edges: [], astrolabe: { drawings, ...rest } });
+    const stroke = (id: string, rest = {}) => ({
+      id,
+      type: "stroke",
+      x: 0,
+      y: 0,
+      points: [0, 0, 10, 10],
+      ...rest,
+    });
+    const free = (id: string, node: string) => ({
+      id,
+      type: "arrow",
+      from: { node, side: "right" },
+      to: { x: 500, y: 500 },
+    });
+    const story = { title: "Tour", steps: [{ note: "Start", cards: ["a"] }] };
+    const start = drawn([stroke("s"), free("fc", "c")], { stories: [story] });
+    const { document, resolved } = merged(
+      start,
+      drawn([stroke("s", { x: 40 }), free("fc", "c"), stroke("mine")], { stories: [story] }),
+      drawn([stroke("s", { color: "2" }), free("fc", "c"), stroke("yours")], {
+        stories: [{ ...story, title: "Walk" }],
+      }),
+    );
+    expect(document.astrolabe.drawings.map((ink: { id: string }) => ink.id)).toEqual([
+      "s",
+      "fc",
+      "yours",
+      "mine",
+    ]);
+    expect(document.astrolabe.drawings[0]).toMatchObject({ x: 40, color: "2" });
+    expect(document.astrolabe.stories[0].title).toBe("Walk");
+    expect(resolved).toEqual([]);
+
+    const clash = canvasMerge(
+      start,
+      drawn([stroke("s", { points: [0, 0, 5, 5] }), free("fc", "c")]),
+      drawn([stroke("s", { points: [0, 0, 9, 9] }), free("fc", "c")]),
+    );
+    expect(clash).toMatchObject({
+      status: "conflict",
+      conflicts: [{ kind: "same-value", id: "s" }],
+    });
+
+    const dropped = merged(
+      start,
+      serializeCanvas({ nodes: [a, b], edges: [], astrolabe: { drawings: [stroke("s")] } }),
+      drawn([stroke("s"), free("fc", "c"), free("new", "c")], { stories: [story] }),
+    );
+    expect(dropped.document.astrolabe.drawings.map((ink: { id: string }) => ink.id)).toEqual(["s"]);
+    expect(kinds(dropped.resolved)).toEqual(["arrow-dropped"]);
+    expect(dropped.resolved[0]?.message).toContain("“Gamma”");
+  });
+
   it("reads an empty side as an empty board", () => {
     expect(merged(base, "", base).document).toEqual({});
   });

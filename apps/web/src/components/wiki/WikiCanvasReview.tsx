@@ -186,7 +186,7 @@ export default function WikiCanvasReview({
           ) : null}
           {review.rest ? (
             <p className="px-3 py-2 text-xs text-muted-foreground">
-              Data outside the cards and arrows changed too: see the JSON.
+              Data outside the cards, arrows and drawings changed too: see the JSON.
             </p>
           ) : null}
         </div>
