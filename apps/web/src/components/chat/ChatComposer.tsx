@@ -212,6 +212,7 @@ import {
   ComposerRestingImagePreviews,
 } from "./ComposerAttachmentStrip";
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
+import { ComposerEditedBoards } from "./ComposerEditedBoards";
 import { ComposerFooterPrimaryActions } from "./ComposerFooterControls";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
 import { ComposerPlanFollowUpBanner } from "./ComposerPlanFollowUpBanner";
@@ -3489,6 +3490,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               {composerAttachmentMediaRow}
 
               {composerAttachmentFileList}
+
+              {!isComposerCollapsedMobile && pendingUserInputs.length === 0 ? (
+                <ComposerEditedBoards threadRef={routeThreadRef} />
+              ) : null}
 
               <div className="relative">
                 {previewFile ? (
