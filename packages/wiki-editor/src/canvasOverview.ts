@@ -1,6 +1,7 @@
 import type { CanvasGroupNode, CanvasMarks, CanvasNode } from "@mercurian/wiki/canvas";
 
 import { canvasColor, type CanvasCamera, type CanvasEdgeShape } from "./canvasGeometry";
+import type { CanvasInkShape } from "./canvasInk";
 
 const PRESETS: Readonly<Record<string, string>> = {
   "1": "#e5484d",
@@ -23,15 +24,27 @@ interface OverviewItems {
   readonly groups: ReadonlyArray<CanvasGroupNode>;
   readonly cards: ReadonlyArray<CanvasNode>;
   readonly shapes: ReadonlyArray<CanvasEdgeShape>;
+  readonly inks: ReadonlyArray<CanvasInkShape>;
 }
 
-const paths = new WeakMap<CanvasEdgeShape, Path2D>();
+const paths = new WeakMap<object, Path2D>();
 
-function pathOf(shape: CanvasEdgeShape) {
+function pathOf(shape: object, d: string) {
   let path = paths.get(shape);
   if (path === undefined) {
-    path = new Path2D(shape.path);
+    path = new Path2D(d);
     paths.set(shape, path);
+  }
+  return path;
+}
+
+const heads = new WeakMap<CanvasInkShape, Path2D>();
+
+function headOf(shape: CanvasInkShape, d: string) {
+  let path = heads.get(shape);
+  if (path === undefined) {
+    path = new Path2D(d);
+    heads.set(shape, path);
   }
   return path;
 }
@@ -95,7 +108,7 @@ export function drawCanvasOverview(
   context.globalAlpha = 0.3;
   context.strokeStyle = base;
   context.lineWidth = 1 / camera.zoom;
-  for (const shape of items.shapes) context.stroke(pathOf(shape));
+  for (const shape of items.shapes) context.stroke(pathOf(shape, shape.path));
   context.globalAlpha = 0.55;
   fillRects(context, items.cards, base);
   context.globalAlpha = 1;
@@ -104,5 +117,17 @@ export function drawCanvasOverview(
     if (tint === undefined) continue;
     context.fillStyle = tint;
     context.fillRect(x, y, width, height);
+  }
+  // Drawings sit above the cards, as the board draws them.
+  context.lineWidth = 2 / camera.zoom;
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  for (const shape of items.inks) {
+    const { ink, path, head } = shape;
+    const tint = MARKS[marks.drawings?.[ink.id] ?? ""] ?? tintOf(ink.color, base);
+    context.strokeStyle = tint;
+    context.fillStyle = tint;
+    context.stroke(pathOf(shape, path));
+    if (head !== undefined) context.fill(headOf(shape, head));
   }
 }
