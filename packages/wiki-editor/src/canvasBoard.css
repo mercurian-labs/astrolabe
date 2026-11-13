@@ -239,9 +239,10 @@
 }
 .cv-box-line {
   position: absolute;
-  inset: calc(var(--cv-stroke) * -1);
-  width: auto;
-  height: auto;
+  top: calc(var(--cv-stroke) * -1);
+  left: calc(var(--cv-stroke) * -1);
+  width: calc(100% + var(--cv-stroke) * 2);
+  height: calc(100% + var(--cv-stroke) * 2);
   overflow: visible;
   pointer-events: none;
   fill: none;
@@ -1182,36 +1183,182 @@ textarea.cv-label-editor {
 .cv-toolbar-list button[aria-checked="true"]::before {
   content: "✓ ";
 }
-.cv-colors {
+/* The style panel, at the board's top left, in the app's menu look; it scrolls above the foot. */
+.cv-style {
+  position: absolute;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  left: 12px;
   display: flex;
-  flex-basis: 100%;
-  gap: 4px;
-  align-items: center;
-  padding: 4px;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+  max-height: calc(100% - 88px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  pointer-events: none;
 }
-.cv-colors > button {
-  min-height: 24px;
-  padding: 0 6px;
+.cv-style > * {
+  pointer-events: auto;
+}
+.cv-style-toggle {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  cursor: pointer;
+  background: var(--popover, var(--background));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--cv-chip-shadow);
+}
+.cv-style-toggle:hover,
+.cv-style-toggle[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--foreground) 8%, var(--popover, var(--background)));
+}
+.cv-style-toggle svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.4;
+}
+.cv-style-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-sizing: border-box;
+  /* Nine swatches and their gaps, inside its padding and border. */
+  width: 226px;
+  min-height: 0;
+  padding: 10px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--popover, var(--background));
+  border: 1px solid
+    color-mix(in srgb, var(--contrast-foreground, var(--foreground)) 10%, transparent);
+  border-radius: var(--radius, 8px);
+  box-shadow: 0 16px 40px -18px rgb(0 0 0 / 55%);
+}
+:is(.dark, .dark *) .cv-style-panel {
+  box-shadow: 0 18px 44px -18px rgb(0 0 0 / 80%);
+}
+.cv-style-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.cv-style-label {
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--muted-foreground);
+}
+.cv-style-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  align-items: center;
+}
+.cv-style-swatch,
+.cv-style-custom {
+  box-sizing: border-box;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  background: var(--cv-tint);
+  border: 1px solid color-mix(in srgb, var(--foreground) 14%, transparent);
+  border-radius: 5px;
+}
+.cv-style-swatch[data-soft] {
+  background: color-mix(in srgb, var(--cv-tint) 22%, var(--background));
+  border-color: color-mix(in srgb, var(--cv-tint) 45%, transparent);
+}
+.cv-style-swatch[data-swatch="default"] {
+  background: var(--background);
+  box-shadow:
+    inset 0 0 0 3px var(--background),
+    inset 0 0 0 20px var(--muted-foreground);
+}
+.cv-style-row[aria-label="Background"] .cv-style-swatch[data-swatch="default"] {
+  box-shadow: none;
+}
+.cv-style-swatch[data-swatch="none"] {
+  background:
+    linear-gradient(
+      to top right,
+      transparent calc(50% - 0.75px),
+      var(--destructive, #e5484d) calc(50% - 0.75px) calc(50% + 0.75px),
+      transparent calc(50% + 0.75px)
+    ),
+    var(--background);
+}
+.cv-style-custom {
+  background: conic-gradient(#e5484d, #d6a100, #30a46c, #00a2c7, #8e4ec6, #e5484d);
+}
+.cv-style-custom::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+.cv-style-custom::-webkit-color-swatch {
+  border: 0;
+  border-radius: 4px;
+}
+.cv-style-custom:not([data-pressed])::-webkit-color-swatch {
+  opacity: 0;
+}
+.cv-style-custom::-moz-color-swatch {
+  border: 0;
+  border-radius: 4px;
+}
+.cv-style-swatch[aria-pressed="true"],
+.cv-style-custom[data-pressed] {
+  outline: 2px solid var(--ring, var(--primary));
+  outline-offset: 1px;
+}
+.cv-style-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 26px;
+  padding: 0;
   cursor: pointer;
   background: none;
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  border: 0;
+  border-radius: calc(var(--radius, 8px) - 2px);
 }
-.cv-colors .cv-swatch {
-  width: 24px;
-  padding: 0;
-  background: var(--cv-tint);
+.cv-style-icon:hover {
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
 }
-.cv-colors > button[aria-pressed="true"] {
-  outline: 2px solid var(--ring, var(--primary));
+.cv-style-icon[aria-pressed="true"] {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
 }
-.cv-colors input[type="color"] {
-  width: 28px;
-  height: 24px;
-  padding: 0;
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: 4px;
+.cv-style-icon svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+}
+.cv-style-row:last-child .cv-style-options {
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+.cv-style-range {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  accent-color: var(--primary);
+}
+.cv-style-value {
+  width: 34px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+  text-align: right;
 }
 /* Presenting moves the camera for the reader. */
 .cv-board[data-walking] .cv-zoom {

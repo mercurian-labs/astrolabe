@@ -181,55 +181,6 @@ export function CanvasMenu({
   );
 }
 
-const PRESETS: ReadonlyArray<readonly [string, string]> = [
-  ["1", "Red"],
-  ["2", "Orange"],
-  ["3", "Yellow"],
-  ["4", "Green"],
-  ["5", "Cyan"],
-  ["6", "Purple"],
-];
-
-export function CanvasColorPicker({
-  value,
-  onPick,
-}: {
-  readonly value: string | undefined;
-  readonly onPick: (color: string | null) => void;
-}) {
-  return (
-    <div className="cv-chrome cv-colors" role="group" aria-label="Set color">
-      <button
-        type="button"
-        aria-label="No color"
-        aria-pressed={value === undefined}
-        onClick={() => onPick(null)}
-      >
-        None
-      </button>
-      {PRESETS.map(([preset, name]) => (
-        <button
-          key={preset}
-          type="button"
-          className="cv-swatch"
-          data-color={preset}
-          aria-label={name}
-          aria-pressed={value === preset}
-          onClick={() => onPick(preset)}
-        >
-          {preset}
-        </button>
-      ))}
-      <input
-        type="color"
-        aria-label="Custom color"
-        value={value?.startsWith("#") && value.length === 7 ? value : "#888888"}
-        onChange={(event) => onPick(event.target.value)}
-      />
-    </div>
-  );
-}
-
 const ARRANGEMENTS: ReadonlyArray<readonly [CanvasArrangement, string]> = [
   ["align-left", "Align left"],
   ["align-center", "Align center"],

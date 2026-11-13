@@ -99,6 +99,10 @@ export interface CanvasGestureHost {
   readonly raise: (id: string) => void;
   /** Edits land here; null keeps the board read only. */
   readonly document: () => CanvasDocument | null;
+  /** A new arrow or drawing, in the style the next thing drawn takes. */
+  readonly styled: <Raw extends Readonly<Record<string, unknown>>>(kind: "arrow", raw: Raw) => Raw;
+  /** How the Pen's stroke draws as it's drawn: its width in board units, and its colour. */
+  readonly pen: () => { readonly width: number; readonly color: string | undefined };
   readonly snap: () => { readonly grid: boolean; readonly objects: boolean };
   /** The tap that toggles, for a finger with no Shift. */
   readonly selectMode: () => boolean;
@@ -741,6 +745,11 @@ export class CanvasGestures {
         return;
       case "ink":
         session.draft = this.#newDraft(".cv-inks", "cv-ink-draft");
+        if (session.draft !== null) {
+          const pen = host.pen();
+          session.draft.style.setProperty("--cv-w", String(pen.width));
+          if (pen.color !== undefined) session.draft.style.stroke = pen.color;
+        }
         return;
       case "ink-end": {
         const shape = host.inks().find((each) => each.ink.id === session.ink.id);
@@ -1126,7 +1135,9 @@ export class CanvasGestures {
     if (document === null) return;
     if ("node" in from && "node" in to) {
       if (from.node !== to.node) {
-        document.commit([{ op: "put-arrow", edge: arrowBetween(document.mint(), from, to) }]);
+        document.commit([
+          { op: "put-arrow", edge: host.styled("arrow", arrowBetween(document.mint(), from, to)) },
+        ]);
       }
       return;
     }
@@ -1139,7 +1150,10 @@ export class CanvasGestures {
       "node" in end ? end : { x: Math.round(end.x), y: Math.round(end.y) };
     const id = document.mint();
     document.commit([
-      { op: "put-drawing", drawing: { id, type: "arrow", from: whole(from), to: whole(to) } },
+      {
+        op: "put-drawing",
+        drawing: host.styled("arrow", { id, type: "arrow", from: whole(from), to: whole(to) }),
+      },
     ]);
     host.select({ cards: new Set(), arrow: null, drawings: new Set([id]) });
   }
@@ -1167,6 +1181,7 @@ export class CanvasGestures {
             ...arrowBetween(id, from, to),
             ...(ink.color === undefined ? {} : { color: ink.color }),
             ...(ink.label === undefined ? {} : { label: ink.label }),
+            ...(ink.astrolabe === undefined ? {} : { astrolabe: ink.astrolabe }),
           },
         },
       ]);
@@ -1226,7 +1241,7 @@ export class CanvasGestures {
         { node: session.from.id, side: fromSide },
         { node: target.id, side: toSide },
       );
-      document.commit([{ op: "put-arrow", edge: arrow }]);
+      document.commit([{ op: "put-arrow", edge: host.styled("arrow", arrow) }]);
       return;
     }
     const { arrow, end, fixed, fixedSide } = session;

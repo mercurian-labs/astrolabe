@@ -2,6 +2,8 @@ import { CANVAS_MAX_DRAWINGS, type CanvasHandEdit } from "@mercurian/wiki/canvas
 import {
   canvasArrowSides,
   canvasCardName,
+  canvasDrawingEntries,
+  canvasEntries,
   canvasInkBounds,
   type CanvasBounds,
   type CanvasData,
@@ -57,6 +59,8 @@ import type { CanvasDocument } from "./canvasDocument";
 import { canvasFileKind, cardFileName, overlaps } from "./canvasGeometry";
 import { selectedDrawings, type CanvasLooseEnd, type CanvasSelection } from "./canvasGestures";
 import { canvasStroke, inkMovedWith, movedInk } from "./canvasInk";
+import { canvasPaintKind, type CanvasPaintKind } from "./canvasPaint";
+import { canvasPenKeys, canvasWithPen, type CanvasPen } from "./canvasPen";
 import { baseViewNames, noteBlocks, noteHeadings, noteWithBlockId } from "./canvasNote";
 import type { CanvasView } from "./canvasView";
 
@@ -138,6 +142,8 @@ export interface CanvasCommandAccess {
   readonly reread: (file: string) => void;
   readonly element: (id: string) => HTMLElement | null;
   readonly openExport: () => void;
+  /** The style the next thing drawn takes. */
+  readonly pen: () => CanvasPen;
 }
 
 const NOTE_FILE = /\.(md|canvas|base)$/i;
@@ -194,6 +200,12 @@ export class CanvasCommands {
     return { x: x + width / 2, y: y + height / 2 };
   }
 
+  /** A new item of `kind`, in the style the next thing drawn takes. */
+  readonly styled = <Raw extends Readonly<Record<string, unknown>>>(
+    kind: CanvasPaintKind,
+    raw: Raw,
+  ): Raw => canvasWithPen(kind, raw, this.#board.pen());
+
   #selectOne(id: string) {
     this.#board.select({ cards: new Set([id]), arrow: null });
   }
@@ -214,7 +226,7 @@ export class CanvasCommands {
     if (document === null) return;
     const id = document.mint();
     const at = point === null ? this.#room(TEXT_CARD_SIZE) : centeredOn(point, TEXT_CARD_SIZE);
-    document.commit([{ op: "put-card", node: textCard(id, at) }]);
+    document.commit([{ op: "put-card", node: this.styled("card", textCard(id, at)) }]);
     this.#selectOne(id);
     this.editCard(id);
   }
@@ -225,7 +237,9 @@ export class CanvasCommands {
     if (document === null) return;
     const id = document.mint();
     const rect = drawnBox(box, at, TEXT_CARD_SIZE, DRAWN_CARD_LEAST);
-    document.commit([{ op: "put-card", node: { ...textCard(id, rect), ...rect } }]);
+    document.commit([
+      { op: "put-card", node: this.styled("card", { ...textCard(id, rect), ...rect }) },
+    ]);
     this.#selectOne(id);
     this.editCard(id);
   }
@@ -238,7 +252,10 @@ export class CanvasCommands {
     document.commit([
       {
         op: "put-card",
-        node: groupCard(id, drawnBox(box, at, FILE_CARD_SIZE, DRAWN_SECTION_LEAST)),
+        node: this.styled(
+          "section",
+          groupCard(id, drawnBox(box, at, FILE_CARD_SIZE, DRAWN_SECTION_LEAST)),
+        ),
       },
     ]);
     this.#selectOne(id);
@@ -252,7 +269,10 @@ export class CanvasCommands {
     const id = document.mint();
     const rect = drawnBox(box, at, TEXT_CARD_SIZE, DRAWN_CARD_LEAST);
     document.commit([
-      { op: "put-card", node: { ...textCard(id, rect), ...rect, astrolabe: { shape } } },
+      {
+        op: "put-card",
+        node: this.styled("shape", { ...textCard(id, rect), ...rect, astrolabe: { shape } }),
+      },
     ]);
     this.#selectOne(id);
     this.editCard(id);
@@ -266,7 +286,9 @@ export class CanvasCommands {
       this.#board.notify(`A board holds at most ${CANVAS_MAX_DRAWINGS} drawings.`);
       return;
     }
-    document.commit([{ op: "put-drawing", drawing: canvasStroke(document.mint(), points) }]);
+    document.commit([
+      { op: "put-drawing", drawing: this.styled("stroke", canvasStroke(document.mint(), points)) },
+    ]);
   }
 
   /** From a menu: its top-left at the click. */
@@ -275,7 +297,10 @@ export class CanvasCommands {
     if (document === null) return;
     const id = document.mint();
     document.commit([
-      { op: "put-card", node: textCard(id, { x: Math.round(at.x), y: Math.round(at.y) }) },
+      {
+        op: "put-card",
+        node: this.styled("card", textCard(id, { x: Math.round(at.x), y: Math.round(at.y) })),
+      },
     ]);
     this.#selectOne(id);
     this.editCard(id);
@@ -438,27 +463,55 @@ export class CanvasCommands {
     this.#board.select({ cards: new Set(), arrow: null });
   }
 
-  setColor(color: string | null) {
+  /** What's selected, cards, sections, arrows and drawings alike, by its kind and file JSON. */
+  get #styleTargets() {
     const document = this.#document;
-    if (document === null) return;
+    if (document === null) return [];
     const { arrow } = this.#board.selection();
-    const keys = { color };
-    document.commit(
-      arrow !== null
-        ? [{ op: "set-arrow", arrow, keys }]
-        : [
-            ...this.selected.map((node): CanvasHandEdit => ({
-              op: "set-card",
-              card: node.id,
-              keys,
-            })),
-            ...this.selectedDrawings.map((ink): CanvasHandEdit => ({
-              op: "set-drawing",
-              drawing: ink.id,
-              keys,
-            })),
-          ],
-    );
+    const file = document.document as { readonly edges?: unknown } | null;
+    if (arrow !== null) {
+      const edge = this.#edge(arrow);
+      const raw = canvasEntries(file?.edges, "edge").find((entry) => entry.id === arrow)?.raw;
+      return edge === undefined || raw === undefined
+        ? []
+        : [{ edit: { op: "set-arrow", arrow } as const, kind: canvasPaintKind(edge), raw }];
+    }
+    const drawn = new Map(canvasDrawingEntries(file).map(({ id, raw }) => [id, raw]));
+    return [
+      ...this.selected.flatMap((node) => {
+        const raw = document.raw(node.id);
+        return raw === undefined
+          ? []
+          : [
+              {
+                edit: { op: "set-card", card: node.id } as const,
+                kind: canvasPaintKind(node),
+                raw,
+              },
+            ];
+      }),
+      ...this.selectedDrawings.flatMap((ink) => {
+        const raw = drawn.get(ink.id);
+        return raw === undefined
+          ? []
+          : [
+              {
+                edit: { op: "set-drawing", drawing: ink.id } as const,
+                kind: canvasPaintKind(ink),
+                raw,
+              },
+            ];
+      }),
+    ];
+  }
+
+  /** Sets part of the style of everything selected, as one step to undo. */
+  setStyle(patch: Partial<CanvasPen>) {
+    const edits = this.#styleTargets.flatMap(({ edit, kind, raw }): CanvasHandEdit[] => {
+      const keys = canvasPenKeys(kind, raw, patch);
+      return Object.keys(keys).length === 0 ? [] : [{ ...edit, keys }];
+    });
+    if (edits.length > 0) this.#document?.commit(edits);
   }
 
   zoomToSelection() {
@@ -919,10 +972,13 @@ export class CanvasCommands {
     document.commit([
       {
         op: "put-arrow",
-        edge: arrowBetween(
-          document.mint(),
-          { node: id, side: fromSide },
-          { node: to.id, side: toSide },
+        edge: this.styled(
+          "arrow",
+          arrowBetween(
+            document.mint(),
+            { node: id, side: fromSide },
+            { node: to.id, side: toSide },
+          ),
         ),
       },
     ]);
@@ -978,7 +1034,10 @@ export class CanvasCommands {
     const id = document.mint();
     const side = end.kind === "new" ? end.from.side : end.fixed.side;
     const place = cardAtConnectionDrop(side, at, TEXT_CARD_SIZE);
-    const node = textCard(id, { x: Math.round(place.x), y: Math.round(place.y) });
+    const node = this.styled(
+      "card",
+      textCard(id, { x: Math.round(place.x), y: Math.round(place.y) }),
+    );
     document.commit([{ op: "put-card", node }, this.#loosened(end, id, OPPOSITE_SIDE[side])]);
     this.#selectOne(id);
     this.editCard(id);
@@ -1002,7 +1061,10 @@ export class CanvasCommands {
     if (end.kind === "new") {
       return {
         op: "put-arrow",
-        edge: arrowBetween(document?.mint() ?? "", end.from, { node, side: side ?? "left" }),
+        edge: this.styled(
+          "arrow",
+          arrowBetween(document?.mint() ?? "", end.from, { node, side: side ?? "left" }),
+        ),
       };
     }
     return {

@@ -136,14 +136,6 @@ export function canvasPaintKind(item: CanvasNode | CanvasEdge | CanvasInk): Canv
   return item.type === "text" && item.astrolabe?.shape !== undefined ? "shape" : "card";
 }
 
-/** Whether a style's part means anything for a kind. */
-export const canvasStyleApplies = (kind: CanvasPaintKind, part: keyof CanvasStyle | "stroke") =>
-  part === "fill"
-    ? kind !== "arrow" && kind !== "stroke"
-    : part === "corners"
-      ? kind === "card" || kind === "section"
-      : true;
-
 function fillOf(kind: CanvasPaintKind, color: string | undefined, fill: string | undefined) {
   if (kind === "arrow" || kind === "stroke") return { kind: "none" } as const;
   const over = kind === "section" ? "clear" : "surface";

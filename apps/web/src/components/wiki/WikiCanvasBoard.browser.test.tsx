@@ -723,6 +723,37 @@ describe("editing a board", () => {
     await vi.waitFor(() => expect(drawings().map((ink) => ink.type)).toEqual(["arrow"]));
   });
 
+  it("styles a card and a stroke together from the panel, one undo a change", async () => {
+    using _capture = setup();
+    const stroke = { id: "s", type: "stroke", x: 600, y: 300, points: [0, 0, 80, 40] };
+    const canvas = new CanvasDocument({
+      document: { nodes: [text("a", 300, 200)], edges: [], astrolabe: { drawings: [stroke] } },
+      revision: "r0",
+    });
+    await using screen = await render(<Editing canvas={canvas} />, { router: false });
+    await vi.waitFor(() => expect(element("a")).not.toBeNull());
+    const styles = () => [
+      nodeIn(canvas, "a")?.astrolabe?.style,
+      canvas.getState().data.drawings?.[0]?.astrolabe?.style,
+    ];
+    click(element("a"), { x: 350, y: 250 });
+    const line = document.querySelector('[data-drawing-id="s"] .cv-ink-hit')!;
+    click(line, { x: 640, y: 320, shiftKey: true });
+    await vi.waitFor(() => expect(line.parentElement?.hasAttribute("data-selected")).toBe(true));
+
+    await userEvent.click(screen.getByLabelText("Bold"));
+    await vi.waitFor(() => expect(styles()).toEqual([{ width: 4 }, { width: 5 }]));
+    await expect.element(screen.getByLabelText("Bold")).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(screen.getByLabelText("Green background"));
+    await vi.waitFor(() => expect(styles()).toEqual([{ width: 4, fill: "4" }, { width: 5 }]));
+    expect(element("a").style.getPropertyValue("--cv-w")).toBe("4");
+
+    await userEvent.click(screen.getByLabelText("Undo"));
+    await vi.waitFor(() => expect(styles()).toEqual([{ width: 4 }, { width: 5 }]));
+    await userEvent.click(screen.getByLabelText("Undo"));
+    await vi.waitFor(() => expect(styles()).toEqual([undefined, undefined]));
+  });
+
   it("finds room for a card added without a point", async () => {
     using _capture = setup();
     const canvas = newCanvas([text("a", -1000, -1000, { width: 2000, height: 2000 })]);
@@ -852,11 +883,9 @@ describe("editing a board", () => {
     await using screen = await render(<Editing canvas={canvas} />, { router: false });
     await vi.waitFor(() => expect(element("a")).not.toBeNull());
     click(element("a"), { x: 50, y: 50 });
-    await vi.waitFor(() =>
-      expect(buttons()).toEqual(["Remove", "Set color", "Zoom to selection", "Edit"]),
-    );
+    await vi.waitFor(() => expect(buttons()).toEqual(["Remove", "Zoom to selection", "Edit"]));
     click(element("f"), { x: 450, y: 50 });
-    await vi.waitFor(() => expect(buttons()).toEqual(["Remove", "Set color", "Zoom to selection"]));
+    await vi.waitFor(() => expect(buttons()).toEqual(["Remove", "Zoom to selection"]));
     await screen.rerender(<Editing canvas={canvas} readOnly />);
     await vi.waitFor(() => expect(buttons()).toEqual(["Zoom to selection"]));
     expect(document.querySelector(".cv-bar")).toBeNull();

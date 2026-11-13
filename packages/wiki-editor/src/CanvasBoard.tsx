@@ -51,7 +51,6 @@ import { lineDirectionOf, type CanvasHandle, type CanvasPoint } from "./canvasAr
 import {
   arrangementEntries,
   CANVAS_TOOL_KEYS,
-  CanvasColorPicker,
   CanvasEmptyHint,
   CanvasHelp,
   CanvasMenu,
@@ -97,7 +96,15 @@ import {
   type CanvasEdgeShape,
 } from "./canvasGeometry";
 import { drawCanvasOverview } from "./canvasOverview";
-import { canvasPaint, type CanvasPaint as Paint } from "./canvasPaint";
+import {
+  CANVAS_WIDTH_STEPS,
+  canvasPaint,
+  canvasTint,
+  type CanvasPaintKind,
+  type CanvasPaint as Paint,
+} from "./canvasPaint";
+import { canvasPenOfItems, canvasPenOfTool, type CanvasPen } from "./canvasPen";
+import { CanvasStylePanel, canvasStyleSession, useCanvasStyleSession } from "./CanvasStylePanel";
 import { CanvasMarkdown, type CanvasMarkdownHost } from "./CanvasMarkdown";
 import { CanvasMinimap } from "./CanvasMinimap";
 import { arrowMenu, boardMenu, cardMenu, readOnlyMenu, selectionMenu } from "./canvasMenus";
@@ -1456,7 +1463,19 @@ interface OpenMenu {
   readonly onClose?: () => void;
 }
 
-type ToolbarPopover = "color" | "align" | "direction" | "background" | null;
+type ToolbarPopover = "align" | "direction" | "background" | null;
+
+/** The kind a tool draws, whose style the panel shows with nothing selected. */
+const TOOL_KINDS: Partial<Record<CanvasTool, CanvasPaintKind>> = {
+  card: "card",
+  section: "section",
+  shape: "shape",
+  arrow: "arrow",
+  pen: "stroke",
+};
+
+/** Smaller than this, a board opens its style panel over what it shows only when asked. */
+const ROOMY_BOARD = { width: 640, height: 480 };
 
 /** Entries without a separator first, last, or twice over. */
 const tidySeparators = (entries: ReadonlyArray<CanvasMenuEntry>) =>
@@ -1578,6 +1597,7 @@ export function CanvasBoard({
   const worldRef = useRef<HTMLDivElement>(null);
   const overviewRef = useRef<HTMLCanvasElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
+  const styleRef = useRef<HTMLDivElement>(null);
   const zoomRef = useRef<HTMLSpanElement | null>(null);
   const tipBoard = useCallback(() => boardRef.current, []);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
@@ -1632,6 +1652,15 @@ export function CanvasBoard({
   const tool = editable ? toolChosen : "select";
   const [shapeKind, setShapeKind] = useState<CanvasShape>("ellipse");
   const [localNotice, setNotice] = useState<string | null>(null);
+  const styleSession = useCanvasStyleSession();
+  const [stylePeek, setStylePeek] = useState(false);
+  const [compact, setCompact] = useState(false);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the board's size is the browser's layout, read before the first paint so a small board never flashes its panel open
+  useLayoutEffect(() => {
+    const board = boardRef.current;
+    if (board === null) return;
+    setCompact(board.clientWidth < ROOMY_BOARD.width || board.clientHeight < ROOMY_BOARD.height);
+  }, []);
   const notice = localNotice ?? documentState?.notice ?? null;
   const [reads] = useState(() => ({
     files: new BatchedReads<CanvasFileRead>(FILE_READ_BATCH),
@@ -1663,8 +1692,13 @@ export function CanvasBoard({
     const { x, y } = view.toFrame({ x: (left + right) / 2, y: top });
     const frame = boardRef.current;
     const half = toolbar.offsetWidth / 2;
-    const clampedX = Math.max(half + 4, Math.min(x, (frame?.clientWidth ?? 0) - half - 4));
+    let clampedX = Math.max(half + 4, Math.min(x, (frame?.clientWidth ?? 0) - half - 4));
     const clampedY = Math.max(toolbar.offsetHeight + 8, y - 12);
+    // Beside the style panel, never over it.
+    const panel = styleRef.current;
+    if (panel !== null && clampedY - toolbar.offsetHeight < panel.offsetTop + panel.offsetHeight) {
+      clampedX = Math.max(clampedX, panel.offsetLeft + panel.offsetWidth + 8 + half);
+    }
     toolbar.style.transform = `translate(${clampedX}px, ${clampedY}px) translate(-50%, -100%)`;
   }, [view, live]);
 
@@ -1677,6 +1711,7 @@ export function CanvasBoard({
       drawCanvasOverview(overviewRef.current, camera, width, height, next, live.marks);
     }
     const mounted = overview ? OVERVIEW : next;
+    setCompact(width < ROOMY_BOARD.width || height < ROOMY_BOARD.height);
     setShown((now) => (sameShown(now, mounted) ? now : mounted));
     if (zoomRef.current !== null) zoomRef.current.textContent = `${Math.round(camera.zoom * 100)}%`;
     live.onCamera?.(view.fitted ? null : camera);
@@ -1737,6 +1772,7 @@ export function CanvasBoard({
         element: (id) =>
           live.world?.querySelector<HTMLElement>(`[data-card-id="${CSS.escape(id)}"]`) ?? null,
         openExport: () => setDialog({ kind: "export" }),
+        pen: () => canvasStyleSession.get().pen,
       }),
   );
 
@@ -1835,6 +1871,14 @@ export function CanvasBoard({
             return next;
           }),
         document: () => (live.editable ? live.canvasDocument : null),
+        styled: commands.styled,
+        pen: () => {
+          const { pen } = canvasStyleSession.get();
+          return {
+            width: CANVAS_WIDTH_STEPS.stroke[pen.width ?? "medium"],
+            color: canvasTint(pen.color ?? undefined),
+          };
+        },
         snap: () => ({
           grid: live.settings.snapToGrid,
           objects: live.settings.snapToObjects,
@@ -2467,11 +2511,38 @@ export function CanvasBoard({
   const single = selection.cards.size === 1 ? layout.byId.get(lone ?? "") : undefined;
   const hasSelection =
     selection.cards.size > 0 || selection.arrow !== null || drawingsSelected.size > 0;
-  const showToolbar = mode === "free" && hasSelection && editing === null;
   const selectedEdge =
     selection.arrow === null
       ? undefined
       : layout.shapes.find((shape) => shape.edge.id === selection.arrow)?.edge;
+  const showToolbar = mode === "free" && hasSelection && editing === null;
+  const toolKind = TOOL_KINDS[tool];
+  // With Select or Hand and nothing picked there's nothing to style: it waits as its button.
+  const styleIdle = !hasSelection && toolKind === undefined;
+  const styleShown = hasSelection
+    ? canvasPenOfItems([
+        ...[...selection.cards].flatMap((id) => layout.byId.get(id) ?? []),
+        ...(selectedEdge === undefined ? [] : [selectedEdge]),
+        ...layout.inks.flatMap((shape) => (drawingsSelected.has(shape.ink.id) ? shape.ink : [])),
+      ])
+    : canvasPenOfTool(toolKind ?? "card", styleSession.pen);
+  const styleOpen = styleIdle
+    ? stylePeek
+    : (styleSession.open ?? !(host.touch === true || compact));
+  const showStyle = editable && active === null;
+  const toggleStyle = () => {
+    if (styleOpen) {
+      setStylePeek(false);
+      if (!styleIdle) canvasStyleSession.set({ open: false });
+    } else {
+      setStylePeek(styleIdle);
+      canvasStyleSession.set({ open: true });
+    }
+  };
+  const setStyle = (patch: Partial<CanvasPen>) => {
+    if (hasSelection) commands.setStyle(patch);
+    else canvasStyleSession.set({ pen: { ...styleSession.pen, ...patch } });
+  };
   const editedArrow =
     editing?.kind === "arrow"
       ? layout.shapes.find((shape) => shape.edge.id === editing.id)
@@ -2736,6 +2807,16 @@ export function CanvasBoard({
         />
       ) : null}
       {overlaid ? null : addBar}
+      {showStyle ? (
+        <CanvasStylePanel
+          ref={styleRef}
+          open={styleOpen}
+          onToggle={toggleStyle}
+          shown={styleShown}
+          onChange={setStyle}
+          compact={compact}
+        />
+      ) : null}
       {mode === "free" ? (
         <>
           <div className="cv-chrome cv-menu-button">
@@ -2894,7 +2975,6 @@ function SelectionToolbar({
     );
   }
   const [drawn, another] = drawings;
-  const color = edge?.color ?? single?.color ?? (count === 0 ? drawn?.color : undefined);
   const inkArrow = count === 0 && another === undefined && drawn?.type === "arrow";
   const group = single?.type === "group" ? single : undefined;
   const editsText =
@@ -2906,13 +2986,6 @@ function SelectionToolbar({
   return (
     <div ref={ref} className="cv-chrome cv-toolbar" role="toolbar" aria-label="Selection">
       <CanvasToolbarButton label="Remove" onClick={() => commands.remove()} />
-      <CanvasToolbarButton
-        label="Set color"
-        pressed={popover === "color"}
-        onClick={() => toggle("color")}
-      >
-        Color
-      </CanvasToolbarButton>
       {zoom}
       {onStep === undefined || edge !== undefined || count === 0 ? null : (
         <CanvasToolbarButton label="Add as a step" onClick={closeThen(onStep)}>
@@ -2968,14 +3041,6 @@ function SelectionToolbar({
             }
           />
         </>
-      ) : null}
-      {popover === "color" ? (
-        <CanvasColorPicker
-          value={color}
-          onPick={(next) => {
-            commands.setColor(next);
-          }}
-        />
       ) : null}
       {popover === "align" ? (
         <div className="cv-toolbar-list" role="menu" aria-label="Align">
