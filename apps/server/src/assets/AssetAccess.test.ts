@@ -276,15 +276,30 @@ describe("AssetAccess", () => {
         "archive.zip",
         "no-extension",
       ]) {
-        for (const directory of [root, outside]) {
+        for (const [directory, owner] of [
+          [root, "thread"],
+          [outside, "thread"],
+          // Astrolabe: a Projects tab's file, which no thread owns.
+          [root, "none"],
+          [outside, "none"],
+        ] as const) {
           const filePath = path.join(directory, name);
           yield* fs.writeFileString(filePath, "shared file bytes");
-          const resource = {
-            _tag: "media-file" as const,
-            threadId: ThreadId.make("thread-1"),
-            path: directory === root ? name : filePath,
-            disposition: "attachment" as const,
-          };
+          const requestedPath = directory === root ? name : filePath;
+          const resource =
+            owner === "thread"
+              ? {
+                  _tag: "media-file" as const,
+                  threadId: ThreadId.make("thread-1"),
+                  path: requestedPath,
+                  disposition: "attachment" as const,
+                }
+              : {
+                  _tag: "draft-workspace-file" as const,
+                  cwd: root,
+                  path: requestedPath,
+                  disposition: "attachment" as const,
+                };
           const result = yield* issueAssetUrl({ resource, workspaceRoot: root });
           const suffix = result.relativeUrl.slice(`${ASSET_ROUTE_PREFIX}/`.length);
           const separator = suffix.indexOf("/");
@@ -406,13 +421,20 @@ describe("AssetAccess", () => {
           yield* fs.writeFileString(path.join(root, name), "workspace bytes");
           yield* fs.writeFileString(path.join(directory, name), "outside bytes");
         }
-        for (const [requestedPath, tag] of [
-          ["../video.mp4", "AssetWorkspacePathValidationError"],
-          ["../audio.wav", "AssetWorkspacePathValidationError"],
-          ["secret.txt", "AssetPreviewTypeValidationError"],
+        for (const [requestedPath, tag, download] of [
+          ["../video.mp4", "AssetWorkspacePathValidationError", false],
+          ["../audio.wav", "AssetWorkspacePathValidationError", false],
+          ["secret.txt", "AssetPreviewTypeValidationError", false],
+          // A download skips the type check, never the folder's bounds.
+          ["../secret.txt", "AssetWorkspacePathValidationError", true],
         ] as const) {
           const error = yield* issueAssetUrl({
-            resource: { _tag: "draft-workspace-file", cwd: root, path: requestedPath },
+            resource: {
+              _tag: "draft-workspace-file",
+              cwd: root,
+              path: requestedPath,
+              ...(download ? { disposition: "attachment" as const } : {}),
+            },
             workspaceRoot: root,
           }).pipe(Effect.flip);
           expect(error._tag).toBe(tag);
@@ -669,6 +691,13 @@ describe("AssetAccess", () => {
         },
         { _tag: "media-file", threadId, path: config.dbPath },
         { _tag: "draft-workspace-file", cwd: config.stateDir, path: "statev2.sqlite" },
+        {
+          _tag: "draft-workspace-file",
+          cwd: config.stateDir,
+          path: "statev2.sqlite",
+          disposition: "attachment",
+        },
+        { _tag: "draft-workspace-file", cwd: root, path: "alias", disposition: "attachment" },
       ] as const) {
         const error = yield* issueAssetUrl({ resource }).pipe(Effect.flip);
         expect(error._tag).toBe("AssetWorkspaceAssetNotFoundError");
