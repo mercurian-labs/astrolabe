@@ -58,14 +58,16 @@ import {
   type LanguageServerId,
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
-import { BotIcon, GitBranchIcon, WaypointsIcon } from "lucide-react";
+import { BotIcon, GitBranchIcon, WaypointsIcon, WrapTextIcon } from "lucide-react";
 import { useAtomMount } from "@effect/atom-react";
 import type {
   DocumentSession,
   DocumentSessionState,
 } from "@t3tools/client-runtime/state/document-session";
 import {
+  lazy,
   type ReactNode,
+  Suspense,
   useContext,
   useEffect,
   useLayoutEffect,
@@ -128,6 +130,8 @@ import { LanguageServerStatusEntry } from "./LanguageServerStatus";
 import { lastRunStarter, startRun } from "./runTabs";
 import { useLanguageServer } from "./useLanguageServer";
 import { useRepositoryDocument } from "./useRepositoryDocument";
+import { fileView, type RenderedForm } from "./fileView";
+import { FileOpenIn, RenderedFormToggle, useRenderedForm } from "./RepositoryFileHeader";
 
 // The editor reads the app's theme tokens, as a wiki note does. Module-level: a new object would
 // rebuild the editor's styles.
@@ -192,15 +196,40 @@ export function RepositoryFileView({
   readonly tab: FileTab;
 }) {
   const { environmentId, cwd, path } = tab;
+  const key = `${environmentId}\0${cwd}\0${path}`;
+  const view = fileView(path);
+  if (view.kind !== "text") {
+    return (
+      <Suspense fallback={<FileNotice>Opening…</FileNotice>}>
+        <RepositoryFileViewer key={key} tab={tab} kind={view.kind} />
+      </Suspense>
+    );
+  }
   // The view can be handed another tab: each file gets its own document session.
-  return <RepositoryFile key={`${environmentId}\0${cwd}\0${path}`} tabKey={tabKey} tab={tab} />;
+  return <RepositoryFile key={key} tabKey={tabKey} tab={tab} rendered={view.rendered} />;
 }
+
+// Viewers stay out of the bundle until a file needs one, as in the thread's file panel.
+const RepositoryFileViewer = lazy(() => import("./RepositoryFileViewers"));
+const RenderedFileView = lazy(() =>
+  import("./RepositoryFileViewers").then((module) => ({ default: module.RenderedFileView })),
+);
 
 // Files these failures leave out open read only from disk, as before documents.
 const READ_FROM_DISK = new Set(["too-large", "not-text", "other"]);
 
-function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab: FileTab }) {
+function RepositoryFile({
+  tabKey,
+  tab,
+  rendered,
+}: {
+  readonly tabKey: string;
+  readonly tab: FileTab;
+  readonly rendered: RenderedForm | null;
+}) {
   const { environmentId, cwd, path } = tab;
+  const renderedForm = useRenderedForm(rendered, tabKey);
+  const editorView = useRef<EditorView | null>(null);
   const canWrite = useEnvironmentScope(environmentId, AuthFilesystemWriteScope);
   const { session, state } = useRepositoryDocument(environmentId, cwd, path, canWrite);
   const fromDisk =
@@ -483,19 +512,49 @@ function RepositoryFile({ tabKey, tab }: { readonly tabKey: string; readonly tab
         <TabHeader.Status>
           {readOnly ? (tooBig ? "Too big to edit here" : "Read only") : documentStatusLabel(state)}
         </TabHeader.Status>
-        {"projectId" in tab ? (
-          <TabHeader.Actions>
+        <TabHeader.Actions>
+          {rendered ? (
+            <RenderedFormToggle
+              form={rendered}
+              shown={renderedForm.shown}
+              onToggle={renderedForm.toggle}
+            />
+          ) : null}
+          {renderedForm.shown || isMarkdownPath(path) ? null : (
+            <TabHeader.Action
+              label="Toggle word wrap"
+              onClick={() => {
+                const view = editorView.current;
+                if (view) setSoftWrap(view, !softWrapOn(view.state));
+              }}
+            >
+              <WrapTextIcon />
+            </TabHeader.Action>
+          )}
+          <FileOpenIn environmentId={environmentId} cwd={cwd} path={path} />
+          {"projectId" in tab ? (
             <TabHeader.Action label="Open local graph" onClick={showGraph}>
               <WaypointsIcon />
             </TabHeader.Action>
-          </TabHeader.Actions>
-        ) : null}
+          ) : null}
+        </TabHeader.Actions>
       </TabHeader.Root>
       {fromDisk || readOnly ? null : (
         <DocumentNotice state={state} session={session} onClosed={() => workspace.close(tabKey)} />
       )}
-      <div className="min-h-0 flex-1 overflow-hidden">
+      {renderedForm.shown && rendered ? (
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <Suspense fallback={<FileNotice>Opening…</FileNotice>}>
+            <RenderedFileView target={tab} form={rendered} contents={contents ?? ""} />
+          </Suspense>
+        </div>
+      ) : null}
+      {/* Kept while the rendered form shows, so the editor's undo and place stay. */}
+      <div className={renderedForm.shown ? "hidden" : "min-h-0 flex-1 overflow-hidden"}>
         <FileEditor
+          onView={(view) => {
+            editorView.current = view;
+          }}
           tabKey={tabKey}
           checkout={tab}
           file={importLineKey(tab)}
@@ -618,6 +677,7 @@ function FileNotice({ children }: { readonly children: string }) {
  * session and stay out of undo.
  */
 function FileEditor({
+  onView,
   tabKey,
   checkout,
   file,
@@ -635,6 +695,8 @@ function FileEditor({
   baseControl,
   onOutlinePath,
 }: {
+  /** Told of the CodeMirror view when it is built and gone, for the tab's header. */
+  readonly onView: (view: EditorView | null) => void;
   readonly tabKey: string;
   /** Where the file is, for edits made to many files at once (`openFileEditors`). */
   readonly checkout: Pick<FileTab, "environmentId" | "cwd">;
@@ -703,6 +765,7 @@ function FileEditor({
   }));
   // The view is built from the file as it first shows (the parent keys it by path).
   const [initial] = useState(() => ({
+    onView,
     tabKey,
     environmentId: checkout.environmentId,
     cwd: checkout.cwd,
@@ -772,6 +835,7 @@ function FileEditor({
       }),
     });
     viewRef.current = view;
+    initial.onView(view);
     session?.attach(view);
     const unregister = registerFileEditor({
       environmentId: initial.environmentId,
@@ -806,6 +870,7 @@ function FileEditor({
       session?.detach();
       view.destroy();
       viewRef.current = null;
+      initial.onView(null);
     };
   }, [compartments, initial]);
 
