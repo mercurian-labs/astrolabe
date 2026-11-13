@@ -138,10 +138,13 @@ function MenuPanel({
               item.run?.();
             }}
           >
-            <span className="cv-menu-check" aria-hidden="true">
-              {item.checked ? "✓" : ""}
-            </span>
-            {item.icon === undefined ? null : <span className="cv-menu-icon">{item.icon}</span>}
+            {item.icon === undefined ? (
+              <span className="cv-menu-check" aria-hidden="true">
+                {item.checked ? "✓" : ""}
+              </span>
+            ) : (
+              <span className="cv-menu-icon">{item.icon}</span>
+            )}
             {item.label}
             {item.detail === undefined ? null : (
               <span className="cv-menu-detail">{item.detail}</span>

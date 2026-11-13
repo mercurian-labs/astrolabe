@@ -1619,6 +1619,17 @@ textarea.cv-label-editor {
 .cv-menu button:disabled:hover {
   background: none;
 }
+/* A row with an icon has no tick column: the one that's on takes the tool's pressed look. */
+.cv-menu button:has(> .cv-menu-icon) {
+  padding-left: 8px;
+}
+.cv-menu button[aria-checked="true"]:has(> .cv-menu-icon) {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+}
+.cv-tools button[data-more][aria-expanded="true"]:not([data-active]) {
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+}
 .cv-menu-icon {
   display: grid;
   flex: none;
