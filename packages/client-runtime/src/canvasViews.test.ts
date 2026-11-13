@@ -1,6 +1,7 @@
+import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
-import { canvasViewFromItem } from "./canvasViews.ts";
+import { canvasViewFromItem, editedBoardsSinceLastPrompt } from "./canvasViews.ts";
 
 const input = { title: "Flow", cards: [{ id: "a", text: "A" }] };
 const item = (overrides: Record<string, unknown>) => ({
@@ -55,5 +56,63 @@ describe("canvasViewFromItem", () => {
     ]) {
       expect(canvasViewFromItem(item(overrides))).toBeUndefined();
     }
+  });
+});
+
+describe("editedBoardsSinceLastPrompt", () => {
+  const at = (iso: string) => DateTime.makeUnsafe(iso);
+  const run = (
+    userMessageId: string,
+    startedAt: string | null,
+    requestedAt = "2026-11-12T08:00:00Z",
+  ) => ({
+    userMessageId,
+    requestedAt: at(requestedAt),
+    startedAt: startedAt === null ? null : at(startedAt),
+  });
+  const board = (id: string, editedAt?: string) => ({
+    id,
+    type: "canvas",
+    title: `Board ${id}`,
+    ...(editedAt === undefined ? {} : { editedAt: at(editedAt) }),
+  });
+  const thread = {
+    runs: [run("prompt", "2026-11-12T10:00:00Z"), run("slash", "2026-11-12T12:00:00Z")],
+    messages: [
+      { id: "prompt", text: "Draw the flow" },
+      { id: "slash", text: " /compact" },
+    ],
+    turnItems: [
+      board("drawn"),
+      board("before", "2026-11-12T09:00:00Z"),
+      board("after", "2026-11-12T11:00:00Z"),
+    ],
+  };
+
+  it("finds the boards edited since the last prompt, which a slash command is not", () => {
+    expect(editedBoardsSinceLastPrompt(thread, {})).toEqual([
+      { id: "after", title: "Board after", editedAt: "2026-11-12T11:00:00.000Z", dismissed: false },
+    ]);
+    expect(editedBoardsSinceLastPrompt({ ...thread, runs: [] }, {})).toEqual([]);
+  });
+
+  it("counts a queued message as the last prompt, so its turn tells the agent", () => {
+    const queued = {
+      ...thread,
+      runs: [...thread.runs, run("queued", null, "2026-11-12T11:30:00Z")],
+    };
+    expect(
+      editedBoardsSinceLastPrompt(
+        { ...queued, messages: [...queued.messages, { id: "queued", text: "Next" }] },
+        {},
+      ),
+    ).toEqual([]);
+  });
+
+  it("keeps a board left out until it is edited again", () => {
+    const dismissed = { after: "2026-11-12T11:00:00.000Z" };
+    expect(editedBoardsSinceLastPrompt(thread, dismissed)[0]?.dismissed).toBe(true);
+    const reedited = { ...thread, turnItems: [board("after", "2026-11-12T11:45:00Z")] };
+    expect(editedBoardsSinceLastPrompt(reedited, dismissed)[0]?.dismissed).toBe(false);
   });
 });
