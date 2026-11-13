@@ -37,6 +37,7 @@ import {
   canvasInkTouches,
   canvasStrokePath,
   inkArrowEndAt,
+  inkMovedWith,
   movedInk,
   type CanvasInkShape,
 } from "./canvasInk";
@@ -705,12 +706,14 @@ export class CanvasGestures {
             ? NO_DRAWINGS
             : new Set([session.card]);
         session.drawings = held ? drawings : session.ink ? new Set([session.card]) : NO_DRAWINGS;
+        session.moved = movedWith(nodes, pressed);
+        const carried = inkMovedWith(nodes, host.data().drawings ?? [], session.moved);
+        if (carried.size > 0) session.drawings = new Set([...session.drawings, ...carried]);
         session.inks = host
           .inks()
           .flatMap((shape) =>
             session.drawings.has(shape.ink.id) ? (this.#inkElement(shape) ?? []) : [],
           );
-        session.moved = movedWith(nodes, pressed);
         const moving = nodes.filter((node) => session.moved.has(node.id));
         session.box = boundsOfRects(moving);
         const mounted = new Map<string, HTMLElement>();
@@ -1088,31 +1091,13 @@ export class CanvasGestures {
     if (document === null || (dx === 0 && dy === 0)) return;
     const inks = (host.data().drawings ?? []).filter((ink) => session.drawings.has(ink.id));
     if (press.alt) {
-      const clip = canvasClip(document.document, nodes, moved);
+      const clip = canvasClip(document.document, host.data(), moved, session.drawings);
       const placed = placeClip(clip, dx, dy, document.mint);
-      const copies = new Map(clip.nodes.map((node, at) => [node.id, placed.cards[at]]));
-      const copied = (end: CanvasInkEnd): CanvasInkEnd => {
-        if (!("node" in end)) return end;
-        const node = copies.get(end.node);
-        return node === undefined ? end : { ...end, node };
-      };
-      const drawings = inks.map((ink) => {
-        const next = { ...ink, id: document.mint(), ...movedInk(ink, dx, dy) } as CanvasInk;
-        return next.type === "arrow"
-          ? { ...next, from: copied(next.from), to: copied(next.to) }
-          : next;
-      });
-      document.commit([
-        ...placed.edits,
-        ...drawings.map((drawing): CanvasHandEdit => ({
-          op: "put-drawing",
-          drawing: { ...drawing },
-        })),
-      ]);
+      document.commit(placed.edits);
       host.select({
         cards: new Set(placed.cards),
         arrow: null,
-        drawings: new Set(drawings.map((drawing) => drawing.id)),
+        drawings: new Set(placed.drawings),
       });
       return;
     }

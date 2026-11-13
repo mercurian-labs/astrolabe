@@ -56,7 +56,7 @@ import {
 import type { CanvasDocument } from "./canvasDocument";
 import { canvasFileKind, cardFileName, overlaps } from "./canvasGeometry";
 import { selectedDrawings, type CanvasLooseEnd, type CanvasSelection } from "./canvasGestures";
-import { canvasStroke } from "./canvasInk";
+import { canvasStroke, inkMovedWith, movedInk } from "./canvasInk";
 import { baseViewNames, noteBlocks, noteHeadings, noteWithBlockId } from "./canvasNote";
 import type { CanvasView } from "./canvasView";
 
@@ -522,18 +522,30 @@ export class CanvasCommands {
 
   nudge(dx: number, dy: number, large: boolean) {
     const document = this.#document;
-    const { cards } = this.#board.selection();
-    if (document === null || cards.size === 0) return;
+    const selection = this.#board.selection();
+    const { cards } = selection;
+    const picked = selectedDrawings(selection);
+    if (document === null || (cards.size === 0 && picked.size === 0)) return;
     const step = large ? CANVAS_NUDGE_LARGE : CANVAS_NUDGE;
-    const { nodes } = this.#board.data();
+    const { nodes, drawings = [] } = this.#board.data();
     const moved = movedWith(nodes, cards);
+    const carried = new Set([...picked, ...inkMovedWith(nodes, drawings, moved)]);
     document.commit(
-      nodes.flatMap((node): CanvasHandEdit[] =>
-        moved.has(node.id)
-          ? [{ op: "move", card: node.id, x: node.x + dx * step, y: node.y + dy * step }]
-          : [],
-      ),
-      { merge: `nudge:${[...cards].join(",")}` },
+      [
+        ...nodes.flatMap((node): CanvasHandEdit[] =>
+          moved.has(node.id)
+            ? [{ op: "move", card: node.id, x: node.x + dx * step, y: node.y + dy * step }]
+            : [],
+        ),
+        ...drawings.flatMap((ink): CanvasHandEdit[] => {
+          if (!carried.has(ink.id)) return [];
+          const keys = movedInk(ink, dx * step, dy * step);
+          return Object.keys(keys).length === 0
+            ? []
+            : [{ op: "set-drawing", drawing: ink.id, keys }];
+        }),
+      ],
+      { merge: `nudge:${[...cards, ...picked].join(",")}` },
     );
   }
 
@@ -587,10 +599,11 @@ export class CanvasCommands {
   }
 
   clip(): { readonly clip: CanvasClip; readonly text: string } | null {
-    const { cards } = this.#board.selection();
+    const selection = this.#board.selection();
+    const drawings = selectedDrawings(selection);
     const document = this.#document;
-    if (cards.size === 0 || document === null) return null;
-    const clip = canvasClip(document.document, this.#board.data().nodes, cards);
+    if ((selection.cards.size === 0 && drawings.size === 0) || document === null) return null;
+    const clip = canvasClip(document.document, this.#board.data(), selection.cards, drawings);
     const copied = { clip, text: clipText(clip) };
     lastClip = copied;
     return copied;
@@ -609,9 +622,9 @@ export class CanvasCommands {
   pasteClip(clip: CanvasClip, at: CanvasPoint) {
     const document = this.#document;
     if (document === null) return;
-    const { edits, cards } = pasteClip(clip, at, document.mint);
+    const { edits, cards, drawings } = pasteClip(clip, at, document.mint);
     document.commit(edits);
-    this.#board.select({ cards: new Set(cards), arrow: null });
+    this.#board.select({ cards: new Set(cards), arrow: null, drawings: new Set(drawings) });
   }
 
   /** Whatever was copied, from a menu. */
@@ -642,16 +655,21 @@ export class CanvasCommands {
   /** The cards a duplicate gives: as Alt-drag does, 20 down and across, for a finger or a menu. */
   duplicate() {
     const document = this.#document;
-    const { cards } = this.#board.selection();
-    if (document === null || cards.size === 0) return;
+    const selection = this.#board.selection();
+    const drawings = selectedDrawings(selection);
+    if (document === null || (selection.cards.size === 0 && drawings.size === 0)) return;
     const placed = placeClip(
-      canvasClip(document.document, this.#board.data().nodes, cards),
+      canvasClip(document.document, this.#board.data(), selection.cards, drawings),
       CANVAS_GAP,
       CANVAS_GAP,
       document.mint,
     );
     document.commit(placed.edits);
-    this.#board.select({ cards: new Set(placed.cards), arrow: null });
+    this.#board.select({
+      cards: new Set(placed.cards),
+      arrow: null,
+      drawings: new Set(placed.drawings),
+    });
   }
 
   /** A text card as a note: the same place and size, under a new id, arrows kept. */

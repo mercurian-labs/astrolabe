@@ -1,4 +1,5 @@
 import {
+  canvasInkBounds,
   canvasInkEnd,
   CANVAS_MAX_STROKE_POINTS,
   type CanvasBounds,
@@ -6,10 +7,11 @@ import {
   type CanvasInk,
   type CanvasInkArrow,
   type CanvasInkEnd,
+  type CanvasNode,
   type CanvasSide,
 } from "@mercurian/wiki/canvas";
 
-import type { CanvasPoint } from "./canvasArrange";
+import { containsFully, type CanvasPoint } from "./canvasArrange";
 
 /** What the board draws for a drawing, worked out once per change to it. */
 export interface CanvasInkShape {
@@ -254,6 +256,34 @@ export function movedInk(
     ...("node" in ink.from ? {} : { from: shifted(ink.from) }),
     ...("node" in ink.to ? {} : { to: shifted(ink.to) }),
   };
+}
+
+const NO_RECTS: Rects = new Map();
+
+/**
+ * The drawings the moved groups carry, by the rule their cards follow: wholly inside. A drawn
+ * arrow counts by its free ends alone, since an end on a card goes where the card goes.
+ */
+export function inkMovedWith(
+  nodes: ReadonlyArray<CanvasNode>,
+  drawings: ReadonlyArray<CanvasInk>,
+  moved: ReadonlySet<string>,
+): ReadonlySet<string> {
+  const groups = nodes.filter((node) => node.type === "group" && moved.has(node.id));
+  if (groups.length === 0) return new Set();
+  const carried = new Set<string>();
+  for (const ink of drawings) {
+    const parts =
+      ink.type === "stroke"
+        ? [canvasInkBounds(ink, NO_RECTS)]
+        : [ink.from, ink.to].flatMap((end) =>
+            "node" in end ? [] : [{ x: end.x, y: end.y, width: 0, height: 0 }],
+          );
+    const inside = (part: CanvasBounds | undefined) =>
+      part !== undefined && groups.some((group) => containsFully(group, part));
+    if (parts.length > 0 && parts.every(inside)) carried.add(ink.id);
+  }
+  return carried;
 }
 
 /** The end of an arrow a press is on, if it's near one. */

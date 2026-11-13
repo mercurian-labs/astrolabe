@@ -2246,7 +2246,9 @@ export function CanvasBoard({
       const [dx = 0, dy = 0] = arrow;
       if (event.altKey) commands.selectToward(dx, dy);
       else if (mod && canEdit) commands.grow(dx, dy, event.shiftKey);
-      else if (selection.cards.size > 0 && canEdit) commands.nudge(dx, dy, event.shiftKey);
+      else if ((selection.cards.size > 0 || drawingsSelected.size > 0) && canEdit) {
+        commands.nudge(dx, dy, event.shiftKey);
+      }
       // A story being presented is stepped by its host.
       else if (active !== null) return;
       else view.pan(-dx * PAN_STEP, -dy * PAN_STEP);

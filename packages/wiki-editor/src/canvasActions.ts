@@ -1,8 +1,14 @@
 import type { CanvasHandEdit } from "@mercurian/wiki/canvas-edits";
 import {
+  canvasBounds,
+  canvasData,
+  canvasDrawingEntries,
   canvasEntries,
+  canvasInkEnd,
   type CanvasBounds,
+  type CanvasData,
   type CanvasEdge,
+  type CanvasInkEnd,
   type CanvasNode,
   type CanvasSide,
 } from "@mercurian/wiki/canvas";
@@ -20,6 +26,7 @@ import {
   type CanvasLineDirection,
   type CanvasPoint,
 } from "./canvasArrange";
+import { inkMovedWith } from "./canvasInk";
 
 /** What a person's commands do to a board, as edits, from what's selected. */
 
@@ -147,16 +154,27 @@ export function replaceCard(
 export interface CanvasClip {
   readonly nodes: ReadonlyArray<Raw>;
   readonly edges: ReadonlyArray<Raw>;
+  /** Each drawn arrow's ends are on the clip's own cards, or free. */
+  readonly drawings: ReadonlyArray<Raw>;
 }
 
-/** The selection, a group's contents, and the arrows that join only those. */
+/**
+ * The selection, a group's contents and drawings, and the arrows that join only those. A drawn
+ * arrow's end on a card left behind is free where it was.
+ */
 export function canvasClip(
   document: unknown,
-  nodes: ReadonlyArray<CanvasNode>,
+  data: Pick<CanvasData, "nodes" | "drawings">,
   ids: Iterable<string>,
+  drawingIds: Iterable<string> = [],
 ): CanvasClip {
-  const taken = movedWith(nodes, ids);
+  const taken = movedWith(data.nodes, ids);
+  const inked = new Set([...drawingIds, ...inkMovedWith(data.nodes, data.drawings ?? [], taken)]);
   const { nodes: rawNodes, edges: rawEdges } = (document ?? {}) as Record<string, unknown>;
+  const rects = new Map(data.nodes.map((node) => [node.id, node]));
+  const drawn = new Map((data.drawings ?? []).map((ink) => [ink.id, ink]));
+  const loose = (raw: unknown, end: CanvasInkEnd) =>
+    "node" in end && !taken.has(end.node) ? canvasInkEnd(end, rects) : raw;
   return {
     nodes: canvasEntries(rawNodes, "node").flatMap(({ id, raw }) =>
       taken.has(id) ? [{ ...raw, id }] : [],
@@ -164,6 +182,13 @@ export function canvasClip(
     edges: canvasEntries(rawEdges, "edge").flatMap(({ raw }) =>
       taken.has(String(raw.fromNode)) && taken.has(String(raw.toNode)) ? [raw] : [],
     ),
+    drawings: canvasDrawingEntries(document).flatMap(({ id, raw }) => {
+      if (!inked.has(id)) return [];
+      const ink = drawn.get(id);
+      if (ink?.type !== "arrow") return [{ ...raw, id }];
+      const [from, to] = [loose(raw.from, ink.from), loose(raw.to, ink.to)];
+      return from === undefined || to === undefined ? [] : [{ ...raw, id, from, to }];
+    }),
   };
 }
 
@@ -189,7 +214,9 @@ export function filesOfDrop(
 
 export const CANVAS_CLIP_TYPE = "application/x-astrolabe-canvas";
 
-export const serializeClip = (clip: CanvasClip): string => JSON.stringify(clip);
+/** As a file holds it, so a board's own text pastes as a clip too. */
+export const serializeClip = ({ nodes, edges, drawings }: CanvasClip): string =>
+  JSON.stringify({ nodes, edges, ...(drawings.length === 0 ? {} : { astrolabe: { drawings } }) });
 
 const isRecord = (value: unknown): value is Raw =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -200,9 +227,11 @@ export function parseClip(text: string): CanvasClip | null {
   try {
     const value: unknown = JSON.parse(text);
     if (!isRecord(value) || !Array.isArray(value.nodes)) return null;
+    const drawings = isRecord(value.astrolabe) ? value.astrolabe.drawings : undefined;
     return {
       nodes: value.nodes.filter(isRecord),
       edges: Array.isArray(value.edges) ? value.edges.filter(isRecord) : [],
+      drawings: Array.isArray(drawings) ? drawings.filter(isRecord) : [],
     };
   } catch {
     return null;
@@ -236,6 +265,7 @@ export interface PlacedClip {
   readonly edits: ReadonlyArray<CanvasHandEdit>;
   /** The new cards' ids. */
   readonly cards: ReadonlyArray<string>;
+  readonly drawings: ReadonlyArray<string>;
 }
 
 /**
@@ -262,18 +292,41 @@ export function placeClip(
       ? []
       : [{ ...edge, id: mint(), fromNode, toNode }];
   });
+  /** A free end moves with the rest; one on a card the clip doesn't hold can't be placed. */
+  const placedEnd = (end: unknown) => {
+    if (!isRecord(end)) return undefined;
+    if (typeof end.node === "string") {
+      const node = ids.get(end.node);
+      return node === undefined ? undefined : { ...end, node };
+    }
+    return { ...end, x: numberOr(end.x, 0) + dx, y: numberOr(end.y, 0) + dy };
+  };
+  const drawings = clip.drawings.flatMap((ink): Raw[] => {
+    if (ink.type !== "arrow") {
+      return [{ ...ink, id: mint(), x: numberOr(ink.x, 0) + dx, y: numberOr(ink.y, 0) + dy }];
+    }
+    const [from, to] = [placedEnd(ink.from), placedEnd(ink.to)];
+    return from === undefined || to === undefined ? [] : [{ ...ink, id: mint(), from, to }];
+  });
   return {
     edits: [
       ...nodes.map((node): CanvasHandEdit => ({ op: "put-card", node })),
       ...edges.map((edge): CanvasHandEdit => ({ op: "put-arrow", edge })),
+      ...drawings.map((drawing): CanvasHandEdit => ({ op: "put-drawing", drawing })),
     ],
     cards: nodes.map((node) => node.id as string),
+    drawings: drawings.map((drawing) => drawing.id as string),
   };
 }
 
 /** A clip pasted around `at`, on the grid, so what it holds keeps its arrangement. */
 export function pasteClip(clip: CanvasClip, at: CanvasPoint, mint: () => string): PlacedClip {
-  const bounds = boundsOfRaw(clip.nodes);
+  const inked = canvasData({ nodes: clip.nodes, astrolabe: { drawings: clip.drawings } });
+  const drawn = inked.drawings === undefined ? [] : [canvasBounds(inked)];
+  const bounds = boundsOfRects([
+    ...(clip.nodes.length === 0 ? [] : [boundsOfRaw(clip.nodes)]),
+    ...drawn,
+  ]);
   const { x, y } = centeredOn(at, bounds);
   const snapped = (value: number) => Math.round(value / CANVAS_GRID) * CANVAS_GRID;
   return placeClip(clip, snapped(x) - bounds.x, snapped(y) - bounds.y, mint);
