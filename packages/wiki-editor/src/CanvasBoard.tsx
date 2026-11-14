@@ -1597,8 +1597,8 @@ export function CanvasBoard({
     [steps, current, openFrame, onFrame],
   );
   const whole = useMemo(() => canvasBounds(data), [data]);
-  const bounds = active?.bounds ?? whole;
   // A step moves the cards it recalls beside its frame; an edited board always shows where they are.
+  const bounds = active === null ? whole : canvasDocument === null ? active.bounds : active.inPlace;
   const shownData = useMemo(
     () => (active === null || canvasDocument !== null ? data : canvasStepData(data, active)),
     [data, active, canvasDocument],

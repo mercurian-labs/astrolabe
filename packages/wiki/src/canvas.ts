@@ -276,6 +276,8 @@ export interface CanvasStep {
   readonly docked: ReadonlyMap<string, CanvasDocked>;
   /** What the camera shows: the frame and the cards docked beside it. */
   readonly bounds: CanvasBounds;
+  /** What the camera shows on a board being edited, which leaves docked cards where they are. */
+  readonly inPlace: CanvasBounds;
 }
 
 export interface CanvasDocked extends CanvasBounds {
@@ -365,6 +367,7 @@ export function canvasSteps(data: CanvasData, story = 0): ReadonlyArray<CanvasSt
     if (frame === undefined) return [];
     const { heading } = step;
     let bounds = heading === undefined ? frame : unionBounds(frame, heading);
+    let inPlace = bounds;
     const docked = new Map<string, CanvasDocked>();
     const along = { top: frame.x, bottom: frame.x, left: frame.y, right: frame.y };
     // Cards docked on one side keep the order they stand in on the board.
@@ -390,6 +393,7 @@ export function canvasSteps(data: CanvasData, story = 0): ReadonlyArray<CanvasSt
       const rect = { ...spot, width, height };
       docked.set(node.id, { ...rect, from: home(node.id), group: groupOf(node) });
       bounds = unionBounds(bounds, rect);
+      inPlace = unionBounds(inPlace, boxOf(node));
     }
     const lit = new Set(nodes.map((node) => node.id));
     const arrows = new Set(
@@ -410,6 +414,7 @@ export function canvasSteps(data: CanvasData, story = 0): ReadonlyArray<CanvasSt
         arrows,
         docked,
         bounds,
+        inPlace,
       },
     ];
   });

@@ -696,6 +696,13 @@ describe("placeCanvas", () => {
       expect(contains(fourth.bounds, docked)).toBe(true);
       const whole = canvasBounds(board);
       expect(fourth.bounds.width * fourth.bounds.height).toBeLessThan(whole.width * whole.height);
+
+      // A board being edited leaves `a` where it is, so the camera goes there for it.
+      const a = board.nodes.find((node) => node.id === "a");
+      if (a === undefined) throw new Error("a isn't on the board");
+      expect(contains(fourth.inPlace, a)).toBe(true);
+      expect(contains(fourth.inPlace, fourth.frame)).toBe(true);
+      expect(walked[0]?.inPlace).toEqual(walked[0]?.bounds);
     });
 
     it("lets later stories, and stories on a map, walk the board without moving a card", () => {
