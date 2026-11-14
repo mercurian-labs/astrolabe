@@ -1,4 +1,4 @@
-import { canvasBounds } from "@mercurian/wiki/canvas";
+import { canvasBounds, canvasLayerOf, canvasStack, type CanvasNode } from "@mercurian/wiki/canvas";
 import { documentTitle } from "@t3tools/client-runtime/wikiLogic";
 import type { CanvasView } from "@t3tools/client-runtime/canvasViews";
 import { canvasEdgeShapes } from "@mercurian/wiki-editor/canvas-geometry";
@@ -96,6 +96,68 @@ function firstLine(text: string, width: number) {
   return line.length > fits ? `${line.slice(0, Math.max(1, fits - 1))}…` : line;
 }
 
+/** A card or section as native shapes: its outline as its paint has it, and its first line. */
+function CardShape({
+  node,
+  zoom,
+  lines,
+  border,
+  subtle,
+  foreground,
+  background,
+}: {
+  readonly node: CanvasNode;
+  readonly zoom: number;
+  readonly lines: number;
+  readonly border: string;
+  readonly subtle: string;
+  readonly foreground: string;
+  readonly background: string;
+}) {
+  const paint = canvasPaint(node);
+  const isGroup = node.type === "group";
+  const label =
+    node.type === "group"
+      ? (node.label ?? "")
+      : node.type === "text"
+        ? node.text
+        : node.type === "file"
+          ? node.file
+          : (node.astrolabe?.code?.path.split("/").at(-1) ?? node.url);
+  const shape = canvasOutline(node, paint);
+  const outline = {
+    ...fillProps(paint, background, subtle),
+    ...lineProps(paint, paint.stroke ?? border, lines),
+  };
+  return (
+    <G opacity={paint.opacity}>
+      {shape.kind === "path" ? (
+        <Path d={shape.d} {...outline} />
+      ) : (
+        <Rect
+          x={shape.x}
+          y={shape.y}
+          width={shape.width}
+          height={shape.height}
+          rx={shape.radius}
+          {...outline}
+        />
+      )}
+      {zoom < MIN_READABLE_ZOOM ? null : (
+        <SvgText
+          x={node.x + 12}
+          y={node.y + 24}
+          fontSize={14}
+          fontWeight={isGroup ? "600" : "400"}
+          fill={foreground}
+        >
+          {firstLine(label, node.width - 24)}
+        </SvgText>
+      )}
+    </G>
+  );
+}
+
 /**
  * A canvas in the feed: its layout as native shapes, since a feed can hold many and each page in
  * a web view is heavy. Tapping opens the board, to read and pan.
@@ -112,14 +174,23 @@ export function ThreadCanvas(props: {
   const { view } = props;
   const height = frameHeight(view, props.frameWidth);
   const bounds = useMemo(() => canvasBounds(view.data), [view.data]);
-  const edges = useMemo(() => canvasEdgeShapes(view.data), [view.data]);
-  const inks = useMemo(() => canvasInkShapes(view.data), [view.data]);
+  const stack = useMemo(() => canvasStack(view.data), [view.data]);
+  // Kinds may share an id, so each is found among its own.
+  const edges = useMemo(
+    () => new Map(canvasEdgeShapes(view.data).map((shape) => [shape.edge.id, shape])),
+    [view.data],
+  );
+  const inks = useMemo(
+    () => new Map(canvasInkShapes(view.data).map((shape) => [shape.ink.id, shape])),
+    [view.data],
+  );
   const zoom = Math.min(props.frameWidth / bounds.width, height / bounds.height);
   const border = String(theme["--color-border"]);
   const subtle = String(theme["--color-icon-subtle"]);
   const foreground = String(theme["--color-foreground-secondary"]);
   const background = String(theme["--color-screen"]);
   const lines = canvasLineScale(zoom);
+  const cardStyle = { zoom, lines, border, subtle, foreground, background };
   return (
     <Pressable
       accessibilityRole="button"
@@ -144,67 +215,36 @@ export function ThreadCanvas(props: {
         height={height}
         viewBox={`${bounds.x} ${bounds.y} ${bounds.width} ${bounds.height}`}
       >
-        {view.data.nodes.map((node) => {
-          const paint = canvasPaint(node);
-          const isGroup = node.type === "group";
-          const label =
-            node.type === "group"
-              ? (node.label ?? "")
-              : node.type === "text"
-                ? node.text
-                : node.type === "file"
-                  ? node.file
-                  : (node.astrolabe?.code?.path.split("/").at(-1) ?? node.url);
-          const shape = canvasOutline(node, paint);
-          const outline = {
-            ...fillProps(paint, background, subtle),
-            ...lineProps(paint, paint.stroke ?? border, lines),
-          };
-          return (
-            <G key={node.id} opacity={paint.opacity}>
-              {shape.kind === "path" ? (
-                <Path d={shape.d} {...outline} />
-              ) : (
-                <Rect
-                  x={shape.x}
-                  y={shape.y}
-                  width={shape.width}
-                  height={shape.height}
-                  rx={shape.radius}
-                  {...outline}
-                />
-              )}
-              {zoom < MIN_READABLE_ZOOM ? null : (
-                <SvgText
-                  x={node.x + 12}
-                  y={node.y + 24}
-                  fontSize={14}
-                  fontWeight={isGroup ? "600" : "400"}
-                  fill={foreground}
-                >
-                  {firstLine(label, node.width - 24)}
-                </SvgText>
-              )}
-            </G>
-          );
-        })}
-        {edges.map(({ edge, path, heads }) => {
-          const paint = canvasPaint(edge);
-          const color = paint.stroke ?? subtle;
-          return (
-            <G key={edge.id} opacity={paint.opacity}>
-              <Path d={path} fill="none" {...lineProps(paint, color, lines)} />
-              {heads.map((head) => (
-                <Path key={head} d={head} fill={color} />
-              ))}
-            </G>
-          );
-        })}
-        {inks.map(({ ink, path, head }) => {
+        {/* Sections beneath, then the rest in the one order the board draws it in. */}
+        {stack.sections.map((node) => (
+          <CardShape key={`card:${node.id}`} node={node} {...cardStyle} />
+        ))}
+        {stack.content.map((layer) => {
+          const { id } = canvasLayerOf(layer);
+          if (layer.kind === "card") {
+            return <CardShape key={`card:${id}`} node={layer.node} {...cardStyle} />;
+          }
+          if (layer.kind === "arrow") {
+            const shape = edges.get(id);
+            if (shape === undefined) return null;
+            const paint = canvasPaint(shape.edge);
+            const color = paint.stroke ?? subtle;
+            return (
+              <G key={`arrow:${id}`} opacity={paint.opacity}>
+                <Path d={shape.path} fill="none" {...lineProps(paint, color, lines)} />
+                {shape.heads.map((head) => (
+                  <Path key={head} d={head} fill={color} />
+                ))}
+              </G>
+            );
+          }
+          const shape = inks.get(id);
+          if (shape === undefined) return null;
+          const { ink, path, head } = shape;
           const paint = canvasPaint(ink);
           const color = paint.stroke ?? (ink.type === "stroke" ? foreground : subtle);
           return (
-            <G key={ink.id} opacity={paint.opacity}>
+            <G key={`drawing:${id}`} opacity={paint.opacity}>
               <Path d={path} fill="none" {...lineProps(paint, color, lines)} />
               {head === undefined ? null : <Path d={head} fill={color} />}
             </G>

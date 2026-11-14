@@ -1,4 +1,11 @@
-import { CANVAS_MAX_DRAWINGS, type CanvasHandEdit } from "@mercurian/wiki/canvas-edits";
+import {
+  CANVAS_MAX_DRAWINGS,
+  canvasOrderChanges,
+  canvasOrderEdits,
+  type CanvasHandEdit,
+  type CanvasLayerRef,
+  type CanvasOrderMove,
+} from "@mercurian/wiki/canvas-edits";
 import {
   canvasArrowSides,
   canvasCardName,
@@ -512,6 +519,21 @@ export class CanvasCommands {
       return Object.keys(keys).length === 0 ? [] : [{ ...edit, keys }];
     });
     if (edits.length > 0) this.#document?.commit(edits);
+  }
+
+  /** Moves what's selected in the board's order, sections among sections, as one step to undo. */
+  order(move: CanvasOrderMove) {
+    const document = this.#document;
+    if (document === null) return;
+    const selection = this.#board.selection();
+    const picked: CanvasLayerRef[] = [
+      ...[...selection.cards].map((id) => ({ kind: "card" as const, id })),
+      ...(selection.arrow === null ? [] : [{ kind: "arrow" as const, id: selection.arrow }]),
+      ...[...selectedDrawings(selection)].map((id) => ({ kind: "drawing" as const, id })),
+    ];
+    const changes = canvasOrderChanges(this.#board.data(), picked, move);
+    const edits = canvasOrderEdits(document.document, changes);
+    if (edits.length > 0) document.commit(edits);
   }
 
   zoomToSelection() {

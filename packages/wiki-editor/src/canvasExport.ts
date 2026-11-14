@@ -1,12 +1,19 @@
 import {
   canvasBounds,
+  canvasLayerOf,
+  canvasStack,
   type CanvasBounds,
   type CanvasData,
   type CanvasNode,
 } from "@mercurian/wiki/canvas";
 
-import { canvasEdgeShapes, canvasFileKind, cardFileName } from "./canvasGeometry";
-import { canvasInkShapes } from "./canvasInk";
+import {
+  canvasEdgeShapes,
+  canvasFileKind,
+  cardFileName,
+  type CanvasEdgeShape,
+} from "./canvasGeometry";
+import { canvasInkShapes, type CanvasInkShape } from "./canvasInk";
 import {
   canvasLineScale,
   canvasOutline,
@@ -223,13 +230,9 @@ export function drawCanvasExport(
   context.fillStyle = colors.background;
   context.fillRect(area.x, area.y, area.width, area.height);
 
-  const area2 = (node: CanvasNode) => node.width * node.height;
-  const groups = data.nodes
-    .filter((node) => node.type === "group")
-    .sort((a, b) => area2(b) - area2(a));
+  const { sections, content } = canvasStack(data);
   const lines = canvasLineScale(scale);
-  for (const group of groups) {
-    if (group.type !== "group") continue;
+  for (const group of sections) {
     const paint = canvasPaint(group);
     context.globalAlpha = paint.opacity;
     const tint = paint.stroke ?? colors.muted;
@@ -254,7 +257,7 @@ export function drawCanvasExport(
     context.globalAlpha = 1;
   }
 
-  for (const shape of canvasEdgeShapes(data)) {
+  const drawEdge = (shape: CanvasEdgeShape) => {
     const paint = canvasPaint(shape.edge);
     const tint = paint.stroke ?? colors.line;
     context.globalAlpha = paint.opacity;
@@ -274,10 +277,8 @@ export function drawCanvasExport(
       context.textAlign = "start";
     }
     context.globalAlpha = 1;
-  }
-
-  for (const node of data.nodes) {
-    if (node.type === "group") continue;
+  };
+  const drawCard = (node: CanvasNode) => {
     const paint = canvasPaint(node);
     context.globalAlpha = paint.opacity;
     const { path, inside } = outline(node, paint);
@@ -305,9 +306,8 @@ export function drawCanvasExport(
       }
     }
     context.globalAlpha = 1;
-  }
-
-  for (const shape of canvasInkShapes(data)) {
+  };
+  const drawInk = (shape: CanvasInkShape) => {
     const { ink } = shape;
     const paint = canvasPaint(ink);
     const tint = paint.stroke ?? (ink.type === "stroke" ? colors.foreground : colors.line);
@@ -325,6 +325,17 @@ export function drawCanvasExport(
       context.textAlign = "start";
     }
     context.globalAlpha = 1;
+  };
+  // Kinds may share an id, so each is found among its own; all draw in the board's one order.
+  const edges = new Map(canvasEdgeShapes(data).map((shape) => [shape.edge.id, shape]));
+  const inks = new Map(canvasInkShapes(data).map((shape) => [shape.ink.id, shape]));
+  for (const layer of content) {
+    const { id } = canvasLayerOf(layer);
+    const edge = layer.kind === "arrow" ? edges.get(id) : undefined;
+    const ink = layer.kind === "drawing" ? inks.get(id) : undefined;
+    if (layer.kind === "card") drawCard(layer.node);
+    else if (edge !== undefined) drawEdge(edge);
+    else if (ink !== undefined) drawInk(ink);
   }
   context.lineCap = "butt";
 

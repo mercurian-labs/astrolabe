@@ -365,6 +365,8 @@ const HELP: ReadonlyArray<readonly [string, string]> = [
   ["Hold to an axis", "⇧ drag"],
   ["Turn snapping off", "⌃ during a drag"],
   ["Menu", "Right-click, or ⇧F10"],
+  ["Bring forward, or send backward", "⌘] or ⌘["],
+  ["Bring to front, or send to back", "⌘⇧] or ⌘⇧["],
   ["Remove", "Backspace or Delete"],
   ["Undo", "⌘Z"],
   ["Redo", "⌘⇧Z or ⌘Y"],

@@ -258,6 +258,38 @@ function Opacity({
   );
 }
 
+/** Where an order puts what's selected. */
+export type CanvasLayerMove = "forward" | "backward" | "front" | "back";
+
+/** Low to high, with each one's key: ⌘ is Ctrl away from a Mac, as the board's other keys. */
+export const CANVAS_LAYER_MOVES: ReadonlyArray<
+  readonly [CanvasLayerMove, string, string, ReactNode]
+> = [
+  ["back", "Send to back", "⌘⇧[", <path key="l" d="M10 4v9M6 9l4 4 4-4M5 16.5h10" />],
+  ["backward", "Send backward", "⌘[", <path key="l" d="M10 5v10M6 11l4 4 4-4" />],
+  ["forward", "Bring forward", "⌘]", <path key="l" d="M10 15V5M6 9l4-4 4 4" />],
+  ["front", "Bring to front", "⌘⇧]", <path key="l" d="M10 16V7M6 11l4-4 4 4M5 3.5h10" />],
+];
+
+function Layers({ onOrder }: { readonly onOrder: (move: CanvasLayerMove) => void }) {
+  return (
+    <Row name="Layers">
+      {CANVAS_LAYER_MOVES.map(([move, label, key, icon]) => (
+        <button
+          key={move}
+          type="button"
+          className="cv-style-icon"
+          aria-label={label}
+          onClick={() => onOrder(move)}
+          {...tipProps([label, key])}
+        >
+          <Icon>{icon}</Icon>
+        </button>
+      ))}
+    </Row>
+  );
+}
+
 const PaletteIcon = () => (
   <svg viewBox="0 0 16 16" aria-hidden="true">
     <path d="M8 2.5a5.5 5.5 0 1 0 0 11c.9 0 1.2-.6 1-1.3-.3-.9.3-1.7 1.2-1.7h1.3a2 2 0 0 0 2-2A5.5 5.5 0 0 0 8 2.5Z" />
@@ -277,6 +309,7 @@ export function CanvasStylePanel({
   onToggle,
   shown,
   onChange,
+  onOrder,
   compact,
 }: {
   readonly ref?: Ref<HTMLDivElement>;
@@ -284,6 +317,8 @@ export function CanvasStylePanel({
   readonly onToggle: () => void;
   readonly shown: CanvasPenShown;
   readonly onChange: (patch: Partial<CanvasPen>) => void;
+  /** What's selected moves in the board's order; nothing selected, nothing to order. */
+  readonly onOrder: ((move: CanvasLayerMove) => void) | undefined;
   /** A board too small to keep it open beside what it shows: it opens over it, and scrolls. */
   readonly compact: boolean;
 }) {
@@ -352,6 +387,7 @@ export function CanvasStylePanel({
           {has("opacity") ? (
             <Opacity value={value("opacity")} onPick={(opacity) => onChange({ opacity })} />
           ) : null}
+          {onOrder === undefined ? null : <Layers onOrder={onOrder} />}
         </div>
       ) : null}
     </div>

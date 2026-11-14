@@ -1427,6 +1427,10 @@ function OpenCommandPaletteDialog(props: {
       canvasAction("create-group", "Create section", ["section", "group"]);
       canvasAction("convert-to-file", "Convert to file", ["convert", "note"]);
       canvasAction("select-all", "Select all", ["select"]);
+      canvasAction("bring-forward", "Bring forward", ["order", "layer", "raise"]);
+      canvasAction("send-backward", "Send backward", ["order", "layer", "lower"]);
+      canvasAction("bring-to-front", "Bring to front", ["order", "layer", "top"]);
+      canvasAction("send-to-back", "Send to back", ["order", "layer", "bottom"]);
       canvasAction("undo", "Undo", []);
       canvasAction("redo", "Redo", []);
     }

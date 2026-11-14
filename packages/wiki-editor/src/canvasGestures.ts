@@ -95,8 +95,6 @@ export interface CanvasGestureHost {
   readonly inks: () => ReadonlyArray<CanvasInkShape>;
   readonly selection: () => CanvasSelection;
   readonly select: (selection: CanvasSelection) => void;
-  /** A card clicked: it comes up for the session. */
-  readonly raise: (id: string) => void;
   /** Edits land here; null keeps the board read only. */
   readonly document: () => CanvasDocument | null;
   /** A new arrow or drawing, in the style the next thing drawn takes. */
@@ -193,6 +191,8 @@ type Session =
       started: boolean;
       moved: ReadonlySet<string>;
       elements: ReadonlyArray<MovedElement>;
+      /** The selected card's frame, which moves with it unless Alt leaves it behind. */
+      frames: ReadonlyArray<HTMLElement>;
       ghosts: ReadonlyArray<HTMLElement>;
       others: ReadonlyArray<CanvasBounds>;
       box: CanvasBounds;
@@ -206,6 +206,7 @@ type Session =
       readonly card: CanvasNode;
       readonly handle: CanvasHandle;
       readonly element: HTMLElement | null;
+      readonly frame: HTMLElement | null;
       readonly aspect: number | undefined;
       readonly followers: Followers;
       rect: CanvasBounds;
@@ -250,8 +251,11 @@ interface Press {
   session: Session;
 }
 
-const cardIdOf = (target: Element) =>
-  target.closest("[data-card-id]")?.getAttribute("data-card-id") ?? null;
+/** The card a press is on, or whose selection frame it's on. */
+const cardIdOf = (target: Element) => {
+  const held = target.closest("[data-card-id], [data-frame-for]");
+  return held?.getAttribute("data-card-id") ?? held?.getAttribute("data-frame-for") ?? null;
+};
 
 const arrowOf = (target: Element) => {
   const hit = target.closest("[data-edge-id], [data-edge-label]");
@@ -454,7 +458,6 @@ export class CanvasGestures {
         const { cards } = host.selection();
         host.select({ cards: new Set([...cards, card]), arrow: null });
       }
-      host.raise(card);
       return this.#dragSession(card, false);
     }
     if (touch && !host.selectMode()) return { kind: "pan" };
@@ -471,6 +474,7 @@ export class CanvasGestures {
       started: false,
       moved: new Set(),
       elements: [],
+      frames: [],
       ghosts: [],
       others: [],
       box: { x: 0, y: 0, width: 0, height: 0 },
@@ -494,6 +498,7 @@ export class CanvasGestures {
       card: node,
       handle,
       element,
+      frame: this.#frameOf(node.id),
       aspect,
       followers: this.#followers(new Set([node.id])),
       rect: node,
@@ -606,6 +611,12 @@ export class CanvasGestures {
       group,
       label: world.querySelector<HTMLElement>(`[data-drawing-label="${id}"]`),
     };
+  }
+
+  #frameOf(id: string) {
+    return (
+      this.#host.world()?.querySelector<HTMLElement>(`[data-frame-for="${CSS.escape(id)}"]`) ?? null
+    );
   }
 
   #elementOf(id: string) {
@@ -728,6 +739,7 @@ export class CanvasGestures {
           const element = mounted.get(node.id);
           return element === undefined ? [] : [{ element, node }];
         });
+        session.frames = moving.flatMap((node) => this.#frameOf(node.id) ?? []);
         session.rects = new Map(nodes.map((node) => [node.id, node]));
         const inView = host.view.window(200);
         session.others = nodes.filter(
@@ -744,7 +756,7 @@ export class CanvasGestures {
         session.draft = this.#newDraft();
         return;
       case "ink":
-        session.draft = this.#newDraft(".cv-inks", "cv-ink-draft");
+        session.draft = this.#newDraft("cv-ink-draft");
         if (session.draft !== null) {
           const pen = host.pen();
           session.draft.style.setProperty("--cv-w", String(pen.width));
@@ -794,8 +806,8 @@ export class CanvasGestures {
     });
   }
 
-  #newDraft(layer = ".cv-edges", className = "cv-edge-draft") {
-    const svg = this.#host.world()?.querySelector(layer);
+  #newDraft(className = "cv-edge-draft") {
+    const svg = this.#host.world()?.querySelector(".cv-drafts");
     if (svg === undefined || svg === null) return null;
     const draft = document.createElementNS("http://www.w3.org/2000/svg", "path");
     draft.setAttribute("class", className);
@@ -831,6 +843,9 @@ export class CanvasGestures {
           (mover instanceof HTMLElement ? mover : mover.element).style.transform = transform;
         }
         if (session.ghosts.length === 0) {
+          for (const frame of session.frames) frame.style.transform = transform;
+        }
+        if (session.ghosts.length === 0) {
           const rectOf = (id: string) => {
             const rect = session.rects.get(id);
             return rect !== undefined && session.moved.has(id)
@@ -851,6 +866,7 @@ export class CanvasGestures {
         });
         session.rect = rect;
         this.#setBox(session.element, rect);
+        this.#setBox(session.frame, rect);
         const { nodes } = host.data();
         this.#drawArrows(session.followers, (id) =>
           id === session.card.id ? rect : nodes.find((node) => node.id === id),
@@ -962,6 +978,7 @@ export class CanvasGestures {
       case "drag":
         host.board()?.classList.remove("cv-moving");
         for (const { element } of session.elements) element.style.transform = "";
+        for (const frame of session.frames) frame.style.transform = "";
         for (const ghost of session.ghosts) ghost.remove();
         if (session.started) {
           const rectOf = (id: string) => session.rects.get(id);
@@ -971,6 +988,7 @@ export class CanvasGestures {
         return;
       case "resize": {
         this.#setBox(session.element, session.card);
+        this.#setBox(session.frame, session.card);
         const { nodes } = host.data();
         this.#drawArrows(session.followers, (id) => nodes.find((node) => node.id === id));
         return;
@@ -1118,9 +1136,6 @@ export class CanvasGestures {
         x: node.x + dx,
         y: node.y + dy,
       })),
-      ...(moving.length === 0
-        ? []
-        : [{ op: "reorder", cards: moving.map((node) => node.id) } as const]),
       ...inks.flatMap((ink): CanvasHandEdit[] => {
         const keys = movedInk(ink, dx, dy);
         return Object.keys(keys).length === 0 ? [] : [{ op: "set-drawing", drawing: ink.id, keys }];
@@ -1348,7 +1363,6 @@ export class CanvasGestures {
     }
     if (press.touch && press.wasSelected && !double && host.followSmallLink(id)) return;
     host.select({ cards: new Set([id]), arrow: null });
-    host.raise(id);
     if (editable && (double || press.wasSelected)) host.editCard(id);
   }
 }

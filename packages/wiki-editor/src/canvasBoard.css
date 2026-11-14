@@ -5,8 +5,6 @@
  */
 .cv-board {
   --cv-tint: var(--muted-foreground);
-  /* Drawings sit above every card, however far a click has raised one. */
-  --cv-ink-layer: 100000;
   /* What the zoom chip at the foot's corner takes, and the gap beside it. */
   --cv-zoom-room: 116px;
   --cv-chip-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
@@ -99,9 +97,6 @@
 .cv-card[data-selected],
 .cv-group[data-selected] {
   outline: calc(2px * var(--cv-ui, 1)) solid var(--ring, var(--primary));
-}
-.cv-card[data-selected] {
-  z-index: 1;
 }
 .cv-card-content {
   width: 100%;
@@ -671,13 +666,16 @@ span.cv-wikilink {
   text-align: center;
 }
 
+/*
+ * Arrows and drawings each have an svg of their own, so they stack among the cards in the one
+ * order the file keeps: the page's order is the stacking order, with no z-index of their own.
+ */
+.cv-layer {
+  position: absolute;
+  overflow: visible;
+  pointer-events: none;
+}
 /* Strokes and drawn arrows. Only their lines take a press, and only while editing. */
-.cv-inks {
-  z-index: var(--cv-ink-layer);
-}
-.cv-world > [data-drawing-label] {
-  z-index: var(--cv-ink-layer);
-}
 .cv-ink {
   color: var(--foreground);
 }
@@ -890,7 +888,18 @@ span.cv-wikilink {
   display: none;
 }
 .cv-card[data-editing] {
-  z-index: calc(var(--cv-ink-layer) + 1);
+  z-index: 1;
+}
+/* The only card selected: its outline, handles and dots above whatever stacks over it. */
+.cv-selection-frame {
+  position: absolute;
+  z-index: 2;
+  box-sizing: border-box;
+  pointer-events: none;
+  outline: calc(2px * var(--cv-ui, 1)) solid var(--ring, var(--primary));
+}
+.cv-selection-frame > * {
+  pointer-events: auto;
 }
 .cv-card-editor {
   box-sizing: border-box;
@@ -1007,7 +1016,8 @@ textarea.cv-label-editor {
   border-radius: 50%;
 }
 .cv-card:hover > .cv-dot,
-[data-selected] > .cv-dot {
+[data-selected] > .cv-dot,
+.cv-selection-frame > .cv-dot {
   display: block;
 }
 .cv-moving .cv-dot,
@@ -1343,7 +1353,7 @@ textarea.cv-label-editor {
   stroke-linejoin: round;
   stroke-width: 1.5;
 }
-.cv-style-row:last-child .cv-style-options {
+.cv-style-row[aria-label="Opacity"] .cv-style-options {
   flex-wrap: nowrap;
   gap: 8px;
 }

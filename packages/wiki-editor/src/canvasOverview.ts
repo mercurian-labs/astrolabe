@@ -12,11 +12,16 @@ const MARKS: Readonly<Record<string, string>> = {
   restyled: "#00a2c7",
 };
 
+/** One of what stacks above the sections, as a board draws it. */
+export type CanvasBoardLayer =
+  | { readonly kind: "card"; readonly node: Exclude<CanvasNode, CanvasGroupNode> }
+  | { readonly kind: "arrow"; readonly shape: CanvasEdgeShape }
+  | { readonly kind: "drawing"; readonly shape: CanvasInkShape };
+
 interface OverviewItems {
   readonly groups: ReadonlyArray<CanvasGroupNode>;
-  readonly cards: ReadonlyArray<CanvasNode>;
-  readonly shapes: ReadonlyArray<CanvasEdgeShape>;
-  readonly inks: ReadonlyArray<CanvasInkShape>;
+  /** Bottom first. */
+  readonly layers: ReadonlyArray<CanvasBoardLayer>;
 }
 
 const paths = new WeakMap<object, Path2D>();
@@ -97,32 +102,34 @@ export function drawCanvasOverview(
   const base = getComputedStyle(canvas).color;
   context.globalAlpha = 0.12;
   fillRects(context, items.groups, base);
-  context.globalAlpha = 0.3;
-  context.strokeStyle = base;
   const lines = canvasLineScale(camera.zoom);
-  for (const shape of items.shapes) {
-    context.lineWidth = canvasPaint(shape.edge).width * lines;
-    context.stroke(pathOf(shape, shape.path));
-  }
-  context.globalAlpha = 0.55;
-  fillRects(context, items.cards, base);
-  context.globalAlpha = 1;
-  for (const { id, x, y, width, height } of items.cards) {
-    const tint = MARKS[marks.cards[id] ?? ""];
-    if (tint === undefined) continue;
-    context.fillStyle = tint;
-    context.fillRect(x, y, width, height);
-  }
-  // Drawings sit above the cards, as the board draws them.
   context.lineCap = "round";
   context.lineJoin = "round";
-  for (const shape of items.inks) {
-    const { ink, path, head } = shape;
-    const tint = MARKS[marks.drawings?.[ink.id] ?? ""] ?? tintOf(ink.color, base);
-    context.strokeStyle = tint;
-    context.fillStyle = tint;
-    context.lineWidth = canvasPaint(ink).width * lines;
-    context.stroke(pathOf(shape, path));
-    if (head !== undefined) context.fill(headOf(shape, head));
+  // One pass in the order the board stacks them, so what covers what is the same at any zoom.
+  for (const layer of items.layers) {
+    if (layer.kind === "card") {
+      const { id, x, y, width, height, color } = layer.node;
+      const mark = MARKS[marks.cards[id] ?? ""];
+      context.globalAlpha = mark === undefined ? 0.55 : 1;
+      context.fillStyle = mark ?? tintOf(color, base);
+      context.fillRect(x, y, width, height);
+    } else if (layer.kind === "arrow") {
+      const { shape } = layer;
+      context.globalAlpha = 0.3;
+      context.strokeStyle = base;
+      context.lineWidth = canvasPaint(shape.edge).width * lines;
+      context.stroke(pathOf(shape, shape.path));
+    } else {
+      const { shape } = layer;
+      const { ink, path, head } = shape;
+      const tint = MARKS[marks.drawings?.[ink.id] ?? ""] ?? tintOf(ink.color, base);
+      context.globalAlpha = 1;
+      context.strokeStyle = tint;
+      context.fillStyle = tint;
+      context.lineWidth = canvasPaint(ink).width * lines;
+      context.stroke(pathOf(shape, path));
+      if (head !== undefined) context.fill(headOf(shape, head));
+    }
   }
+  context.globalAlpha = 1;
 }

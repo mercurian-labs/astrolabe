@@ -5,6 +5,8 @@ import {
   canvasBounds,
   canvasChangedCards,
   canvasGroups,
+  canvasLayerOf,
+  canvasStack,
   CANVAS_MARK_LABELS,
   parseCanvas,
   type CanvasBounds,
@@ -28,6 +30,7 @@ import { canvasStepPick, canvasStoryEdit } from "@mercurian/wiki/canvas-edits";
 import { pastedFileName } from "@mercurian/wiki/placement";
 import {
   createContext,
+  Fragment,
   memo,
   use,
   useCallback,
@@ -93,7 +96,7 @@ import {
   type CanvasCamera,
   type CanvasEdgeShape,
 } from "./canvasGeometry";
-import { drawCanvasOverview } from "./canvasOverview";
+import { drawCanvasOverview, type CanvasBoardLayer } from "./canvasOverview";
 import {
   CANVAS_WIDTH_STEPS,
   canvasPaint,
@@ -253,6 +256,10 @@ export type CanvasBoardCommand =
   | "add-media"
   | "add-web-page"
   | "create-group"
+  | "bring-forward"
+  | "send-backward"
+  | "bring-to-front"
+  | "send-to-back"
   | "help";
 
 /** What a board's page drives from outside, such as Jump to section. */
@@ -806,6 +813,27 @@ const Dots = () => (
   </>
 );
 
+/**
+ * The only card selected, framed above everything on the board so its handles and dots stay in
+ * reach whatever stacks over it. Only they take a press: the rest clicks through to the board.
+ */
+const SelectionFrame = memo(function SelectionFrame({
+  node,
+}: {
+  readonly node: Exclude<CanvasNode, CanvasGroupNode>;
+}) {
+  return (
+    <div
+      className="cv-selection-frame"
+      data-frame-for={node.id}
+      style={{ ...position(node), borderRadius: canvasPaint(node).radius }}
+    >
+      <Dots />
+      <Handles />
+    </div>
+  );
+});
+
 /** A shaped card's outline, stretched to its box with the line's width kept. */
 const ShapeOutline = ({
   shape,
@@ -846,7 +874,6 @@ const CardNode = memo(function CardNode({
   flash,
   editing,
   editable,
-  raised,
   lit,
   focus,
   steps,
@@ -862,8 +889,6 @@ const CardNode = memo(function CardNode({
   readonly flash: string | undefined;
   readonly editing: boolean;
   readonly editable: boolean;
-  /** Where a click left it among the cards it overlaps, for this session. */
-  readonly raised: number | undefined;
   /** Whether the step being walked shows it; unset outside a walk. */
   readonly lit: boolean | undefined;
   /** It's what the step walked or peeked at points at, being one of its loose cards. */
@@ -892,7 +917,7 @@ const CardNode = memo(function CardNode({
       data-focus={focus || undefined}
       data-from={from}
       data-editing={editing || undefined}
-      style={{ ...position(node), ...style, ...(raised === undefined ? {} : { zIndex: raised }) }}
+      style={{ ...position(node), ...style }}
       {...painted}
     >
       {node.type === "file" ? <FileCardLabel node={node} /> : null}
@@ -932,8 +957,8 @@ const CardNode = memo(function CardNode({
           <LinkCard node={node} live={live} />
         )}
       </div>
-      {editable && !editing ? <Dots /> : null}
-      {editable && alone && !editing ? <Handles /> : null}
+      {/* The only card selected has its dots and handles above everything, on its frame. */}
+      {editable && !editing && !alone ? <Dots /> : null}
     </article>
   );
 });
@@ -1136,22 +1161,51 @@ const EdgeNode = memo(function EdgeNode({
   const { edge, path, heads } = shape;
   const { props } = paintProps(edge);
   return (
-    <g
-      className="cv-edge"
-      data-edge-id={edge.id}
-      data-selected={selected || undefined}
-      data-mark={mark}
-      data-lit={lit}
-      {...props}
-    >
-      <path className="cv-edge-line" d={path} />
-      <path className="cv-edge-hit" d={path} />
-      {heads.map((head) => (
-        <path key={head} className="cv-edge-head" d={head} />
-      ))}
-    </g>
+    <LayerSvg bounds={shape.bounds}>
+      <g
+        className="cv-edge"
+        data-edge-id={edge.id}
+        data-selected={selected || undefined}
+        data-mark={mark}
+        data-lit={lit}
+        {...props}
+      >
+        <path className="cv-edge-line" d={path} />
+        <path className="cv-edge-hit" d={path} />
+        {heads.map((head) => (
+          <path key={head} className="cv-edge-head" d={head} />
+        ))}
+      </g>
+    </LayerSvg>
   );
 });
+
+/** Room round a line's box for its width and heads; past it, the svg still paints. */
+const LAYER_PAD = 16;
+
+/** An arrow's or drawing's own svg, sized to it, so it stacks among the cards as one of them. */
+const LayerSvg = ({
+  bounds,
+  children,
+}: {
+  readonly bounds: CanvasBounds;
+  readonly children: ReactNode;
+}) => {
+  const x = bounds.x - LAYER_PAD;
+  const y = bounds.y - LAYER_PAD;
+  const width = bounds.width + LAYER_PAD * 2;
+  const height = bounds.height + LAYER_PAD * 2;
+  return (
+    <svg
+      className="cv-layer"
+      aria-hidden="true"
+      style={{ left: x, top: y, width, height }}
+      viewBox={`${x} ${y} ${width} ${height}`}
+    >
+      {children}
+    </svg>
+  );
+};
 
 function EdgeLabel({
   edge,
@@ -1219,28 +1273,41 @@ const InkNode = memo(function InkNode({
   const { ink, path, head } = shape;
   const { props } = paintProps(ink);
   return (
-    <g
-      className="cv-ink"
-      data-kind={ink.type}
-      data-drawing-id={ink.id}
-      data-selected={selected || undefined}
-      data-mark={mark}
-      data-lit={lit}
-      {...props}
-    >
-      <path className="cv-ink-hit" d={path} />
-      <path className="cv-ink-line" d={path} />
-      {head === undefined ? null : <path className="cv-ink-head" d={head} />}
-    </g>
+    <LayerSvg bounds={shape.bounds}>
+      <g
+        className="cv-ink"
+        data-kind={ink.type}
+        data-drawing-id={ink.id}
+        data-selected={selected || undefined}
+        data-mark={mark}
+        data-lit={lit}
+        {...props}
+      >
+        <path className="cv-ink-hit" d={path} />
+        <path className="cv-ink-line" d={path} />
+        {head === undefined ? null : <path className="cv-ink-head" d={head} />}
+      </g>
+    </LayerSvg>
   );
 });
 
+type Layer = CanvasBoardLayer;
+
+const layerKey = (layer: Layer) =>
+  layer.kind === "card"
+    ? `card:${layer.node.id}`
+    : layer.kind === "arrow"
+      ? `arrow:${layer.shape.edge.id}`
+      : `drawing:${layer.shape.ink.id}`;
+
 interface Layout {
-  /** Largest first, so each draws above those it sits in. */
+  /** As they stack, bottom first: see `canvasStack`. */
   readonly groups: ReadonlyArray<CanvasGroupNode>;
   readonly cards: ReadonlyArray<Exclude<CanvasNode, CanvasGroupNode>>;
   readonly shapes: ReadonlyArray<CanvasEdgeShape>;
   readonly inks: ReadonlyArray<CanvasInkShape>;
+  /** Cards, arrows and drawings in the one order they stack in, bottom first. */
+  readonly layers: ReadonlyArray<Layer>;
   readonly byId: ReadonlyMap<string, CanvasNode>;
 }
 
@@ -1259,47 +1326,73 @@ function sameFields<A extends object>(a: A, b: A) {
 
 /** What didn't change keeps its object: a card's memo is what keeps it from drawing again. */
 function layoutOf(data: CanvasData, previous: Layout | null): Layout {
-  const area = (node: CanvasNode) => node.width * node.height;
   const nodes = data.nodes.map((node) => {
     const before = previous?.byId.get(node.id);
     return before !== undefined && sameFields(before, node) ? before : node;
   });
+  const byId = new Map(nodes.map((node) => [node.id, node]));
   const shapesBefore = new Map(previous?.shapes.map((shape) => [shape.edge.id, shape]));
   const inksBefore = new Map(previous?.inks.map((shape) => [shape.ink.id, shape]));
+  const shapes = canvasEdgeShapes(data).map((shape) => {
+    const before = shapesBefore.get(shape.edge.id);
+    return before !== undefined &&
+      before.path === shape.path &&
+      sameFields(before.edge, shape.edge) &&
+      before.heads.join() === shape.heads.join()
+      ? before
+      : shape;
+  });
+  const inks = canvasInkShapes(data).map((shape) => {
+    const before = inksBefore.get(shape.ink.id);
+    return before !== undefined &&
+      before.path === shape.path &&
+      before.head === shape.head &&
+      sameFields(before.ink, shape.ink)
+      ? before
+      : shape;
+  });
+  // Kinds can share an id, so each is found among its own.
+  const shapeOf = new Map(shapes.map((shape) => [shape.edge.id, shape]));
+  const inkOf = new Map(inks.map((shape) => [shape.ink.id, shape]));
+  const stack = canvasStack(data);
+  const layersBefore = new Map(previous?.layers.map((layer) => [layerKey(layer), layer]));
+  // A layer holding what it held keeps its object, so what's shown is seen to be the same.
+  const kept = (layer: Layer): Layer => {
+    const before = layersBefore.get(layerKey(layer));
+    if (before === undefined) return layer;
+    const same =
+      before.kind === "card" && layer.kind === "card"
+        ? before.node === layer.node
+        : before.kind !== "card" && layer.kind !== "card" && before.shape === layer.shape;
+    return same ? before : layer;
+  };
+  const layers = stack.content.flatMap((layer): Layer[] => {
+    const { id } = canvasLayerOf(layer);
+    if (layer.kind === "card") {
+      const node = byId.get(id);
+      return node === undefined || node.type === "group" ? [] : [kept({ kind: "card", node })];
+    }
+    const shape = layer.kind === "arrow" ? shapeOf.get(id) : undefined;
+    if (shape !== undefined) return [kept({ kind: "arrow", shape })];
+    const ink = layer.kind === "drawing" ? inkOf.get(id) : undefined;
+    return ink === undefined ? [] : [kept({ kind: "drawing", shape: ink })];
+  });
   return {
-    groups: nodes
-      .filter((node): node is CanvasGroupNode => node.type === "group")
-      .sort((a, b) => area(b) - area(a)),
-    cards: nodes.filter(
-      (node): node is Exclude<CanvasNode, CanvasGroupNode> => node.type !== "group",
-    ),
-    shapes: canvasEdgeShapes(data).map((shape) => {
-      const before = shapesBefore.get(shape.edge.id);
-      return before !== undefined &&
-        before.path === shape.path &&
-        sameFields(before.edge, shape.edge) &&
-        before.heads.join() === shape.heads.join()
-        ? before
-        : shape;
+    groups: stack.sections.flatMap((node) => {
+      const kept = byId.get(node.id);
+      return kept?.type === "group" ? [kept] : [];
     }),
-    inks: canvasInkShapes(data).map((shape) => {
-      const before = inksBefore.get(shape.ink.id);
-      return before !== undefined &&
-        before.path === shape.path &&
-        before.head === shape.head &&
-        sameFields(before.ink, shape.ink)
-        ? before
-        : shape;
-    }),
-    byId: new Map(nodes.map((node) => [node.id, node])),
+    cards: layers.flatMap((layer) => (layer.kind === "card" ? [layer.node] : [])),
+    shapes,
+    inks,
+    layers,
+    byId,
   };
 }
 
 interface Shown {
   readonly groups: ReadonlyArray<CanvasGroupNode>;
-  readonly cards: ReadonlyArray<Exclude<CanvasNode, CanvasGroupNode>>;
-  readonly shapes: ReadonlyArray<CanvasEdgeShape>;
-  readonly inks: ReadonlyArray<CanvasInkShape>;
+  readonly layers: ReadonlyArray<Layer>;
   readonly simple: boolean;
 }
 
@@ -1311,7 +1404,7 @@ const dockedLabel = (step: CanvasStep | null, id: string) => {
   return docked.group === undefined ? "" : `From ${docked.group}`;
 };
 
-const NOTHING: Shown = { groups: [], cards: [], shapes: [], inks: [], simple: false };
+const NOTHING: Shown = { groups: [], layers: [], simple: false };
 const NO_MARKS: CanvasMarks = { cards: {}, arrows: {} };
 /** As long as `.cv-flash` plays, and a little over. */
 const FLASH_MS = 1400;
@@ -1322,12 +1415,12 @@ interface Flashed {
 }
 const OVERVIEW: Shown = { ...NOTHING, simple: true };
 
+const boundsOfLayer = (layer: Layer) => (layer.kind === "card" ? layer.node : layer.shape.bounds);
+
 function inView(layout: Layout, view: CanvasBounds, simple: boolean): Shown {
   return {
     groups: layout.groups.filter((node) => overlaps(node, view)),
-    cards: layout.cards.filter((node) => overlaps(node, view)),
-    shapes: layout.shapes.filter((shape) => overlaps(shape.bounds, view)),
-    inks: layout.inks.filter((shape) => overlaps(shape.bounds, view)),
+    layers: layout.layers.filter((layer) => overlaps(boundsOfLayer(layer), view)),
     simple,
   };
 }
@@ -1336,11 +1429,10 @@ const sameItems = <A,>(a: ReadonlyArray<A>, b: ReadonlyArray<A>) =>
   a.length === b.length && a.every((item, position) => item === b[position]);
 
 const sameShown = (a: Shown, b: Shown) =>
-  a.simple === b.simple &&
-  sameItems(a.cards, b.cards) &&
-  sameItems(a.groups, b.groups) &&
-  sameItems(a.shapes, b.shapes) &&
-  sameItems(a.inks, b.inks);
+  a.simple === b.simple && sameItems(a.layers, b.layers) && sameItems(a.groups, b.groups);
+
+const shownCards = (shown: Shown) =>
+  shown.layers.flatMap((layer) => (layer.kind === "card" ? [layer.node] : []));
 
 /** What gestures and commands read at the moment they act, outside any render. */
 class BoardLive {
@@ -1610,7 +1702,6 @@ export function CanvasBoard({
   const [menu, setMenu] = useState<OpenMenu | null>(null);
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [popover, setPopover] = useState<ToolbarPopover>(null);
-  const [raised, setRaised] = useState<ReadonlyMap<string, number>>(new Map());
   const [selecting, setSelecting] = useState(false);
   const [toolChosen, setTool] = useState<CanvasTool>("select");
   // Leaving editing puts the tools down: a board opened for editing again starts on Select.
@@ -1675,7 +1766,8 @@ export function CanvasBoard({
     // A walk's camera moves are animated: what's about to come into view must already be there.
     const window = live.walkable ? live.whole : cameraWindow(camera, width, height, CULL_MARGIN);
     const next = inView(live.layout, window, camera.zoom < live.settings.simpleZoom);
-    const overview = next.simple && next.cards.length > OVERVIEW_CARDS;
+    const cards = shownCards(next);
+    const overview = next.simple && cards.length > OVERVIEW_CARDS;
     if (overview && overviewRef.current !== null) {
       drawCanvasOverview(overviewRef.current, camera, width, height, next, live.marks);
     }
@@ -1687,12 +1779,12 @@ export function CanvasBoard({
     placeToolbar();
     if (next.simple) return;
     reads.files.want(
-      next.cards.flatMap((card) =>
+      cards.flatMap((card) =>
         card.type === "file" && live.marks.cards[card.id] !== "removed" ? [card.file] : [],
       ),
     );
     reads.code.want(
-      next.cards.flatMap((card) => {
+      cards.flatMap((card) => {
         const code = card.type === "link" ? card.astrolabe?.code : undefined;
         return code?.repository !== undefined && code.commit !== undefined ? [codeKey(code)] : [];
       }),
@@ -1830,14 +1922,6 @@ export function CanvasBoard({
         inks: () => live.layout.inks,
         selection: () => live.selection,
         select: commands.select,
-        raise: (id) =>
-          setRaised((now) => {
-            if (now.size > 0 && [...now.keys()].at(-1) === id) return now;
-            const next = new Map(now);
-            next.delete(id);
-            next.set(id, next.size + 2);
-            return next;
-          }),
         document: () => (live.editable ? live.canvasDocument : null),
         styled: commands.styled,
         pen: () => {
@@ -2200,6 +2284,18 @@ export function CanvasBoard({
         case "create-group":
           commands.createGroup(null);
           return;
+        case "bring-forward":
+          commands.order("forward");
+          return;
+        case "send-backward":
+          commands.order("backward");
+          return;
+        case "bring-to-front":
+          commands.order("front");
+          return;
+        case "send-to-back":
+          commands.order("back");
+          return;
         case "help":
           setDialog({ kind: "help" });
           return;
@@ -2331,6 +2427,10 @@ export function CanvasBoard({
       // A story being presented is stepped by its host.
       else if (active !== null) return;
       else view.pan(-dx * PAN_STEP, -dy * PAN_STEP);
+    } else if (mod && (event.code === "BracketRight" || event.code === "BracketLeft")) {
+      if (!canEdit || !anything) return;
+      const up = event.code === "BracketRight";
+      commands.order(event.shiftKey ? (up ? "front" : "back") : up ? "forward" : "backward");
     } else if (mod && key.toLowerCase() === "a") {
       commands.selectAll();
     } else if (mod && key.toLowerCase() === "z" && canEdit) {
@@ -2673,29 +2773,76 @@ export function CanvasBoard({
               />
             ),
           )}
-          <svg className="cv-edges" aria-hidden="true" width="1" height="1">
-            {shown.shapes.map((shape) => (
-              <EdgeNode
-                key={shape.edge.id}
-                shape={shape}
-                selected={shape.edge.id === selection.arrow}
-                mark={marks.arrows[shape.edge.id]}
-                lit={shines === null ? undefined : shines.arrows.has(shape.edge.id)}
-              />
-            ))}
-          </svg>
-          {shown.shapes.flatMap(({ edge, labelAt }) =>
-            edge.label === undefined || editedArrow?.edge.id === edge.id
-              ? []
-              : [
-                  <EdgeLabel
-                    key={edge.id}
-                    edge={edge}
-                    at={labelAt}
-                    lit={shines === null ? undefined : shines.arrows.has(edge.id)}
-                  />,
-                ],
-          )}
+          {shown.layers.map((layer) => {
+            if (layer.kind === "card") {
+              const { node } = layer;
+              return (
+                <CardNode
+                  key={`card:${node.id}`}
+                  node={node}
+                  selected={selection.cards.has(node.id)}
+                  alone={single === node}
+                  simple={shown.simple}
+                  mark={marks.cards[node.id]}
+                  flash={flash?.cards.has(node.id) ? flash.revision : undefined}
+                  editing={
+                    (editing?.kind === "card" || editing?.kind === "note") && editing.id === node.id
+                  }
+                  editable={editable}
+                  lit={shines === null ? undefined : shines.cards.has(node.id)}
+                  focus={shines !== null && shines.groups.length === 0 && shines.cards.has(node.id)}
+                  steps={chips.byCard.get(node.id)}
+                  from={dockedLabel(active, node.id)}
+                />
+              );
+            }
+            if (layer.kind === "arrow") {
+              const { shape } = layer;
+              const { edge, labelAt } = shape;
+              const lit = shines === null ? undefined : shines.arrows.has(edge.id);
+              return (
+                <Fragment key={`arrow:${edge.id}`}>
+                  <EdgeNode
+                    shape={shape}
+                    selected={edge.id === selection.arrow}
+                    mark={marks.arrows[edge.id]}
+                    lit={lit}
+                  />
+                  {edge.label === undefined || editedArrow?.edge.id === edge.id ? null : (
+                    <EdgeLabel edge={edge} at={labelAt} lit={lit} />
+                  )}
+                </Fragment>
+              );
+            }
+            const { shape } = layer;
+            const { ink, labelAt } = shape;
+            // A step holds cards, never drawings: they dim with what it leaves out.
+            const lit = shines === null ? undefined : false;
+            return (
+              <Fragment key={`drawing:${ink.id}`}>
+                <InkNode
+                  shape={shape}
+                  selected={drawingsSelected.has(ink.id)}
+                  mark={marks.drawings?.[ink.id]}
+                  lit={lit}
+                />
+                {ink.type !== "arrow" ||
+                ink.label === undefined ||
+                editedInk?.ink.id === ink.id ? null : (
+                  <span
+                    className="cv-edge-label"
+                    data-drawing-label={ink.id}
+                    data-lit={lit}
+                    style={{ left: labelAt.x, top: labelAt.y }}
+                  >
+                    {ink.label}
+                  </span>
+                )}
+              </Fragment>
+            );
+          })}
+          {/* What's being drawn and edited, and the selected card's frame, sit above it all. */}
+          <svg className="cv-edges cv-drafts" aria-hidden="true" width="1" height="1" />
           {editedArrow === undefined ? null : (
             <EdgeLabelEditor
               label={editedArrow.edge.label}
@@ -2703,60 +2850,15 @@ export function CanvasBoard({
               onDone={(text) => finishArrowLabel(editedArrow.edge.id, text)}
             />
           )}
-          {shown.cards.map((node) => (
-            <CardNode
-              key={node.id}
-              node={node}
-              selected={selection.cards.has(node.id)}
-              alone={single === node}
-              simple={shown.simple}
-              mark={marks.cards[node.id]}
-              flash={flash?.cards.has(node.id) ? flash.revision : undefined}
-              editing={
-                (editing?.kind === "card" || editing?.kind === "note") && editing.id === node.id
-              }
-              editable={editable}
-              raised={raised.get(node.id)}
-              lit={shines === null ? undefined : shines.cards.has(node.id)}
-              focus={shines !== null && shines.groups.length === 0 && shines.cards.has(node.id)}
-              steps={chips.byCard.get(node.id)}
-              from={dockedLabel(active, node.id)}
-            />
-          ))}
-          {/* Drawings sit above the cards; only their lines take a press. */}
-          <svg className="cv-edges cv-inks" aria-hidden="true" width="1" height="1">
-            {shown.inks.map((shape) => (
-              <InkNode
-                key={shape.ink.id}
-                shape={shape}
-                selected={drawingsSelected.has(shape.ink.id)}
-                mark={marks.drawings?.[shape.ink.id]}
-                // A step holds cards, never drawings: they dim with what it leaves out.
-                lit={shines === null ? undefined : false}
-              />
-            ))}
-          </svg>
-          {shown.inks.flatMap(({ ink, labelAt }) =>
-            ink.type !== "arrow" || ink.label === undefined || editedInk?.ink.id === ink.id
-              ? []
-              : [
-                  <span
-                    key={ink.id}
-                    className="cv-edge-label"
-                    data-drawing-label={ink.id}
-                    data-lit={shines === null ? undefined : false}
-                    style={{ left: labelAt.x, top: labelAt.y }}
-                  >
-                    {ink.label}
-                  </span>,
-                ],
-          )}
           {editedInk?.ink.type === "arrow" ? (
             <EdgeLabelEditor
               label={editedInk.ink.label}
               at={editedInk.labelAt}
               onDone={(text) => finishInkLabel(editedInk.ink.id, text)}
             />
+          ) : null}
+          {editable && single !== undefined && single.type !== "group" && editing === null ? (
+            <SelectionFrame node={single} />
           ) : null}
         </div>
       </Board.Provider>
@@ -2784,6 +2886,7 @@ export function CanvasBoard({
           onToggle={toggleStyle}
           shown={styleShown}
           onChange={setStyle}
+          onOrder={hasSelection ? (move) => commands.order(move) : undefined}
           compact={compact}
         />
       ) : null}
