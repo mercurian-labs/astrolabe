@@ -3,9 +3,12 @@
  * rename. Server side only, so `canvas.ts` stays light enough for the phone's engine.
  */
 import {
+  canvasInkBounds,
+  canvasStack,
   insideGroup,
   parseCanvas,
   serializeCanvas,
+  type CanvasBounds,
   type CanvasData,
   type CanvasGroupNode,
   type CanvasNode,
@@ -98,10 +101,45 @@ function cardLines(node: CanvasNode): string[] {
 
 const groupTitle = (group: CanvasGroupNode) => group.label ?? "Unlabelled group";
 
+const overlap = (a: CanvasBounds, b: CanvasBounds) =>
+  a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+
+/** Past this, an outline says how many more overlap rather than each. */
+const OVERLAPS_SHOWN = 40;
+
+/** Which of the cards that overlap is on top, and the drawings each is over or under. */
+function overlapLines(data: CanvasData): string[] {
+  const nodes = new Map(data.nodes.map((node) => [node.id, node]));
+  const content = canvasStack(data).content;
+  const cards: Array<{ readonly node: CanvasNode; readonly at: number }> = [];
+  const drawings: Array<{ readonly bounds: CanvasBounds; readonly at: number }> = [];
+  content.forEach((layer, at) => {
+    if (layer.kind === "card") cards.push({ node: layer.node, at });
+    if (layer.kind !== "drawing") return;
+    const bounds = canvasInkBounds(layer.ink, nodes);
+    if (bounds !== undefined) drawings.push({ bounds, at });
+  });
+  const lines: string[] = [];
+  for (const top of cards) {
+    const under = cards.filter((other) => other.at < top.at && overlap(other.node, top.node));
+    const below = drawings.filter((each) => each.at < top.at && overlap(each.bounds, top.node));
+    const above = drawings.filter((each) => each.at > top.at && overlap(each.bounds, top.node));
+    const count = (n: number) => (n === 1 ? "a drawing" : `${n} drawings`);
+    const parts = [
+      ...(under.length === 0 ? [] : [`over ${under.map(({ node }) => `[${node.id}]`).join(" ")}`]),
+      ...(below.length === 0 ? [] : [`over ${count(below.length)}`]),
+      ...(above.length === 0 ? [] : [`under ${count(above.length)}`]),
+    ];
+    if (parts.length > 0) lines.push(`[${top.node.id}] ${parts.join(", ")}`);
+  }
+  if (lines.length <= OVERLAPS_SHOWN) return lines;
+  return [...lines.slice(0, OVERLAPS_SHOWN), `…and ${lines.length - OVERLAPS_SHOWN} more.`];
+}
+
 /**
  * A canvas as an agent reads it: cards under the smallest group holding them, in reading order,
- * then the arrows between them, then its stories. No coordinates: a position is no use to something
- * that can't see.
+ * then the arrows between them, then which overlapping card is on top, then its stories. No
+ * coordinates: a position is no use to something that can't see.
  */
 export function canvasOutline(file: string, data: CanvasData): string {
   const groups = data.nodes.filter((node): node is CanvasGroupNode => node.type === "group");
@@ -135,6 +173,8 @@ export function canvasOutline(file: string, data: CanvasData): string {
     const label = edge.label === undefined ? "" : `: ${edge.label}`;
     lines.push(`[${edge.fromNode}] ${both ? "<->" : none ? "--" : "->"} [${edge.toNode}]${label}`);
   }
+  const overlaps = overlapLines(data);
+  if (overlaps.length > 0) lines.push("", "Overlapping", ...overlaps);
   for (const story of data.stories ?? []) {
     lines.push("", `Story: ${story.title}`);
     story.steps.forEach((step, index) => {

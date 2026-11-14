@@ -199,6 +199,19 @@ const CanvasAgentEdits = [
     to: Schema.optional(end),
     color,
   }),
+  Schema.Struct({
+    op: Schema.Literal("order"),
+    card: Schema.optional(card),
+    from: Schema.optional(end),
+    to: Schema.optional(end),
+    layer: Schema.optional(
+      Schema.Literals(["front", "back"]).annotate({
+        description: "To the front of the board, or the back, behind drawings too.",
+      }),
+    ),
+    above: Schema.optional(said("A card it goes in front of.")),
+    below: Schema.optional(said("A card it goes behind.")),
+  }),
 ] as const;
 
 /** A change an agent makes to a canvas. It never sends coordinates. */
@@ -270,7 +283,7 @@ const canvasTransform = <Edit extends Schema.Top>(edit: Edit, maxEdits: number) 
     file: said("The canvas's path from the root, with .canvas."),
     edits: Schema.Array(edit).check(Schema.isMinLength(1), Schema.isMaxLength(maxEdits)).annotate({
       description:
-        "In order, all or none. create: first, for a new canvas. delete: alone. add: ref, and one of text, url or file. edit: card, and what it now says. remove: card; its arrows go, a group's cards stay. connect, disconnect: from, to. label: a group as card, or an arrow as from and to; no label clears it. group: ref, label, around. color: as label.",
+        "In order, all or none. create: first, for a new canvas. delete: alone. add: ref, and one of text, url or file. edit: card, and what it now says. remove: card; its arrows go, a group's cards stay. connect, disconnect: from, to. label: a group as card, or an arrow as from and to; no label clears it. group: ref, label, around. color: as label. order: as label, with layer, above or below; groups stay beneath cards.",
     }),
   });
 

@@ -6,10 +6,18 @@
 import {
   canvasData,
   canvasEntries,
+  canvasInkBounds,
+  canvasLayerOf,
+  canvasOrderKeyBetween,
+  canvasOrderKeyOf,
+  canvasOrderKeys,
+  canvasOrderKeysBetween,
+  canvasStack,
   parseCanvas,
   serializeCanvas,
   type CanvasBounds,
   type CanvasData,
+  type CanvasEdge,
   type CanvasGroupNode,
   type CanvasNode,
   type CanvasSide,
@@ -86,6 +94,14 @@ type CanvasStructureEdit =
       readonly op: "color";
       readonly card?: string | undefined;
       readonly color?: CanvasEditColor | undefined;
+    } & ArrowEnds)
+  /** Names a card, or an arrow by its ends, and one of where it goes. */
+  | ({
+      readonly op: "order";
+      readonly card?: string | undefined;
+      readonly layer?: "front" | "back" | undefined;
+      readonly above?: string | undefined;
+      readonly below?: string | undefined;
     } & ArrowEnds);
 
 /**
@@ -346,6 +362,8 @@ export function applyCanvasHandEdits(
 
   const restored: Array<Extract<CanvasHandEdit, { op: "put-card" | "put-arrow" }>> = [];
   const others: CanvasHandEdit[] = [];
+  /** A card's or section's order key changed, so the file's list is put in that order. */
+  let reordered = false;
 
   const patch = (id: string, keys: Readonly<Record<string, unknown>>) => {
     const position = nodeAt.get(id);
@@ -356,6 +374,7 @@ export function applyCanvasHandEdits(
       (raw, [key, value]) => withKey(raw, key, value),
       before,
     );
+    if (canvasOrderKeyOf(before) !== canvasOrderKeyOf(nodes[position])) reordered = true;
   };
 
   const removeArrow = (position: number) => {
@@ -458,6 +477,22 @@ export function applyCanvasHandEdits(
     return end;
   };
 
+  // Something new goes on top, once the board keeps an order; a copy never takes its source's key.
+  let top: string | null | undefined;
+  const topKey = () =>
+    (top ??= highestKey([
+      ...nodes.filter((raw) => isRecord(raw) && raw.type !== "group"),
+      ...edges,
+      ...(ink.list ?? given(astrolabe?.drawings)),
+    ]));
+  const fresh = (raw: Raw, section: boolean): Raw => {
+    const below = section ? null : topKey();
+    if (below === null) return withoutOrderKey(raw);
+    const z = canvasOrderKeyBetween(below, null);
+    top = z;
+    return { ...raw, ...canvasOrderKeys(raw, z) };
+  };
+
   for (let index = 0; index < edits.length;) {
     const edit = edits[index] as CanvasHandEdit;
     switch (edit.op) {
@@ -475,7 +510,7 @@ export function applyCanvasHandEdits(
         } else if (id !== "" && drawingCount() < CANVAS_MAX_DRAWINGS) {
           others.push({ op: "remove-drawing", drawing: id });
           ink.at?.set(id, list.length);
-          list.push(edit.drawing);
+          list.push(fresh(edit.drawing, false));
           placed(list.length - 1);
         }
         break;
@@ -551,15 +586,17 @@ export function applyCanvasHandEdits(
         const id = idOf(edit.node);
         const position = nodeAt.get(id);
         if (position !== undefined) {
-          others.push({ op: "put-card", node: nodes[position] as Raw });
+          const before = nodes[position] as Raw;
+          others.push({ op: "put-card", node: before });
           nodes[position] = edit.node;
+          if (canvasOrderKeyOf(before) !== canvasOrderKeyOf(edit.node)) reordered = true;
         } else if (edit.at !== undefined) {
           index = putRun(index);
           continue;
         } else {
           others.push({ op: "remove-card", card: id });
           nodeAt.set(id, nodes.length);
-          nodes.push(edit.node);
+          nodes.push(fresh(edit.node, edit.node.type === "group"));
         }
         break;
       }
@@ -602,7 +639,8 @@ export function applyCanvasHandEdits(
         others.push({ op: "remove-arrow", arrow: id });
         closeHoles();
         const place = Math.min(edit.at ?? edges.length, edges.length);
-        edges = [...edges.slice(0, place), edit.edge, ...edges.slice(place)];
+        const edge = edit.at === undefined ? fresh(edit.edge, false) : edit.edge;
+        edges = [...edges.slice(0, place), edge, ...edges.slice(place)];
         edgeAt = placesIn(edges, "edge");
         arrowsOn = null;
         break;
@@ -623,10 +661,66 @@ export function applyCanvasHandEdits(
     const kept = withKey(astrolabe ?? {}, "drawings", ink.list.length === 0 ? null : ink.list);
     astrolabe = Object.keys(kept).length === 0 ? undefined : kept;
   }
+  // Obsidian stacks by the list alone, so a new order puts the list in it too.
+  const sorted = reordered ? stackedNodes(nodes, edges, astrolabe?.drawings) : null;
+  const unsorted = sorted === null ? [] : [sorted.inverse];
+  if (sorted !== null) nodes = sorted.nodes;
   restored.sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
   const rest = withKey({ ...document, nodes, edges }, "astrolabe", astrolabe ?? null);
   inkRestored.sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
-  return { document: rest, inverse: [...restored, ...inkRestored, ...others.reverse()] };
+  return {
+    document: rest,
+    inverse: [...unsorted, ...restored, ...inkRestored, ...others.reverse()],
+  };
+}
+
+/** The highest order key among `raws`, or null when none has one. */
+function highestKey(raws: ReadonlyArray<unknown>): string | null {
+  let highest: string | null = null;
+  for (const raw of raws) {
+    const z = canvasOrderKeyOf(raw);
+    if (z !== undefined && (highest === null || z > highest)) highest = z;
+  }
+  return highest;
+}
+
+function withoutOrderKey(raw: Raw): Raw {
+  if (!isRecord(raw.astrolabe) || !("z" in raw.astrolabe)) return raw;
+  const astrolabe = withKey(raw.astrolabe, "z", null);
+  return withKey(raw, "astrolabe", Object.keys(astrolabe).length === 0 ? null : astrolabe);
+}
+
+/**
+ * `nodes` in the order the board stacks them, sections first, with the `reorder` that puts them
+ * back. Null when they're already in it, hold no order key, or have ids a list can't be put back by.
+ */
+function stackedNodes(
+  nodes: ReadonlyArray<unknown>,
+  edges: ReadonlyArray<unknown>,
+  drawings: unknown,
+): { readonly nodes: unknown[]; readonly inverse: CanvasHandEdit } | null {
+  if (!nodes.some((raw) => canvasOrderKeyOf(raw) !== undefined)) return null;
+  const ids = nodes.map((raw) => (isRecord(raw) && typeof raw.id === "string" ? raw.id : ""));
+  if (ids.includes("") || new Set(ids).size !== ids.length) return null;
+  const { sections, content } = canvasStack(canvasData({ nodes, edges, astrolabe: { drawings } }));
+  const rank = new Map<string, number>();
+  for (const node of sections) rank.set(node.id, rank.size);
+  for (const layer of content) if (layer.kind === "card") rank.set(layer.node.id, rank.size);
+  // What this version can't draw stays just after what it followed.
+  let last = -1;
+  const ranks = ids.map((id) => {
+    const known = rank.get(id);
+    if (known === undefined) return last + 0.5;
+    last = known;
+    return known;
+  });
+  const order = ids.map((_, at) => at).sort((a, b) => ranks[a]! - ranks[b]! || a - b);
+  if (order.every((from, at) => from === at)) return null;
+  const moved = order.flatMap((from, at) => (from === at ? [] : [from]));
+  return {
+    nodes: order.map((from) => nodes[from]),
+    inverse: { op: "reorder", cards: moved.map((from) => ids[from]!), at: moved },
+  };
 }
 
 function replay(file: string, source: string, edits: ReadonlyArray<CanvasEdit>, seed: string) {
@@ -713,6 +807,75 @@ function replay(file: string, source: string, edits: ReadonlyArray<CanvasEdit>, 
   const writeArrows = (found: ReadonlyArray<number>, key: string, value: unknown) => {
     for (const position of found) edges[position] = withKey(edges[position] as Raw, key, value);
   };
+  let drawings: unknown[] | null = null;
+  const drawingsNow = () =>
+    (drawings ??= given(isRecord(document.astrolabe) ? document.astrolabe.drawings : undefined));
+  let nodesReordered = false;
+  let drawingsKeyed = false;
+  // Once a board keeps an order, what an agent adds goes on top of it, as a person's does.
+  let top: string | null | undefined;
+  const ordered = (raw: Raw): Raw => {
+    top ??= highestKey([
+      ...nodes.filter((node) => isRecord(node) && node.type !== "group"),
+      ...edges,
+      ...drawingsNow(),
+    ]);
+    if (top === null) return raw;
+    top = canvasOrderKeyBetween(top, null);
+    return { ...raw, ...canvasOrderKeys(raw, top) };
+  };
+  const current = () =>
+    canvasData({
+      nodes: nodes.filter((node) => node !== undefined),
+      edges: edges.filter((edge) => edge !== undefined),
+      astrolabe: { drawings: drawingsNow() },
+    });
+  const order = (edit: Extract<CanvasStructureEdit, { op: "order" }>) => {
+    const places = [edit.layer, edit.above, edit.below].filter((place) => place !== undefined);
+    if (places.length !== 1) {
+      throw new CanvasEditError("An order says one of layer, above or below.");
+    }
+    const picked: CanvasLayerRef[] =
+      edit.card !== undefined
+        ? [{ kind: "card", id: linkable(edit.card) }]
+        : arrowsNamed(edit).flatMap((position) => {
+            const id = (edges[position] as Raw).id;
+            return typeof id === "string" ? [{ kind: "arrow" as const, id }] : [];
+          });
+    const beside = edit.above ?? edit.below;
+    const other = beside === undefined ? undefined : linkable(beside);
+    if (other !== undefined) {
+      const section = (id: string) => nodeOf(id).type === "group";
+      const name = edit.card ?? `${edit.from} -> ${edit.to}`;
+      if (picked.some((ref) => ref.kind === "card" && ref.id === other)) {
+        throw new CanvasEditError(`"${name}" can't go above or below itself.`);
+      }
+      if (picked.some((ref) => (ref.kind === "card" && section(ref.id)) !== section(other))) {
+        throw new CanvasEditError(
+          `"${name}" and "${beside}" can't stack on each other: groups are always beneath cards and arrows.`,
+        );
+      }
+    }
+    const ref = { kind: "card" as const, id: other ?? "" };
+    const move: CanvasOrderMove =
+      edit.layer ?? (edit.above !== undefined ? { above: ref } : { below: ref });
+    for (const change of canvasOrderChanges(current(), picked, move)) {
+      const keyed = (raw: unknown) => ({
+        ...(raw as Raw),
+        ...canvasOrderKeys(raw as Raw, change.z),
+      });
+      if (change.ref.kind === "card") {
+        writeNode(change.ref.id, keyed(nodeOf(change.ref.id)));
+        nodesReordered = true;
+      } else {
+        const list = change.ref.kind === "arrow" ? edges : drawingsNow();
+        const at = list.findIndex((raw) => isRecord(raw) && raw.id === change.ref.id);
+        if (at !== -1) list[at] = keyed(list[at]);
+        if (change.ref.kind === "drawing") drawingsKeyed = true;
+      }
+    }
+    top = undefined;
+  };
   /** Removed nodes' ids as stored, for the drawn arrows that go with them. */
   const removed = new Set<unknown>();
   const dropNode = (id: string) => {
@@ -742,18 +905,20 @@ function replay(file: string, source: string, edits: ReadonlyArray<CanvasEdit>, 
         const size = canvasCardSize({ text });
         newCards.set(id, { id, ...size, in: edit.in, near: edit.near });
         nodeAt.set(id, nodes.length);
-        nodes.push({
-          id,
-          x: 0,
-          y: 0,
-          ...size,
-          ...(text !== undefined
-            ? { type: "text", text }
-            : url !== undefined
-              ? { type: "link", url }
-              : { type: "file", file: path, ...(subpath === undefined ? {} : { subpath }) }),
-          ...(edit.color === undefined ? {} : { color: presetOf(edit.color) }),
-        });
+        nodes.push(
+          ordered({
+            id,
+            x: 0,
+            y: 0,
+            ...size,
+            ...(text !== undefined
+              ? { type: "text", text }
+              : url !== undefined
+                ? { type: "link", url }
+                : { type: "file", file: path, ...(subpath === undefined ? {} : { subpath }) }),
+            ...(edit.color === undefined ? {} : { color: presetOf(edit.color) }),
+          }),
+        );
         return;
       }
       case "group": {
@@ -828,15 +993,17 @@ function replay(file: string, source: string, edits: ReadonlyArray<CanvasEdit>, 
         const to = linkable(edit.to);
         if (from === to) throw new CanvasEditError(`An arrow can't join "${edit.from}" to itself.`);
         newArrows.push({ at: edges.length, from, to });
-        edges.push({
-          id: mint(),
-          fromNode: from,
-          toNode: to,
-          ...(edit.ends === "both" ? { fromEnd: "arrow" } : {}),
-          ...(edit.ends === "none" ? { toEnd: "none" } : {}),
-          ...(edit.color === undefined ? {} : { color: presetOf(edit.color) }),
-          ...(edit.label === undefined ? {} : { label: edit.label }),
-        });
+        edges.push(
+          ordered({
+            id: mint(),
+            fromNode: from,
+            toNode: to,
+            ...(edit.ends === "both" ? { fromEnd: "arrow" } : {}),
+            ...(edit.ends === "none" ? { toEnd: "none" } : {}),
+            ...(edit.color === undefined ? {} : { color: presetOf(edit.color) }),
+            ...(edit.label === undefined ? {} : { label: edit.label }),
+          }),
+        );
         return;
       }
       case "disconnect": {
@@ -867,6 +1034,9 @@ function replay(file: string, source: string, edits: ReadonlyArray<CanvasEdit>, 
         }
         return;
       }
+      case "order":
+        order(edit);
+        return;
     }
   };
   for (const edit of edits as ReadonlyArray<CanvasStructureEdit>) apply(edit);
@@ -923,22 +1093,25 @@ function replay(file: string, source: string, edits: ReadonlyArray<CanvasEdit>, 
 
   // A drawn arrow on a removed card goes with it, as a person's removal takes it.
   let astrolabe = document.astrolabe;
-  if (isRecord(astrolabe) && removed.size > 0) {
-    const drawings = given(astrolabe.drawings);
+  if (isRecord(astrolabe) && (removed.size > 0 || drawingsKeyed)) {
+    const list = drawingsNow();
     const goes = (raw: unknown) =>
       isRecord(raw) && [raw.from, raw.to].some((end) => isRecord(end) && removed.has(end.node));
-    const kept = drawings.filter((raw) => !goes(raw));
-    if (kept.length < drawings.length) {
+    const kept = list.filter((raw) => !goes(raw));
+    if (kept.length < list.length || drawingsKeyed) {
       const next = withKey(astrolabe, "drawings", kept.length === 0 ? null : kept);
       astrolabe = Object.keys(next).length === 0 ? undefined : next;
     }
   }
+  const shown = nodes.filter((node) => node !== undefined);
+  const edgesShown = edges.filter((edge) => edge !== undefined);
+  const drawnNow = isRecord(astrolabe) ? astrolabe.drawings : undefined;
   return {
     // The serializer leaves out a key whose value is undefined.
     source: serializeCanvas({
       ...document,
-      nodes: nodes.filter((node) => node !== undefined),
-      edges: edges.filter((edge) => edge !== undefined),
+      nodes: (nodesReordered ? stackedNodes(shown, edgesShown, drawnNow)?.nodes : null) ?? shown,
+      edges: edgesShown,
       astrolabe,
     }),
     cards: Object.fromEntries([...refs].filter(([, id]) => nodeAt.has(id))),
@@ -1209,3 +1382,195 @@ const newStep = (pick: CanvasStepPick, section: string | undefined): Raw =>
       : "groups" in pick
         ? { note: "", groups: [...pick.groups], cards: [...pick.cards] }
         : { note: "", cards: [...pick.cards] };
+
+/** What an order names: kinds may share an id. A section is a card here, as the file has it. */
+export interface CanvasLayerRef {
+  readonly kind: "card" | "arrow" | "drawing";
+  readonly id: string;
+}
+
+/** Where a pick goes. `above` and `below` name something in the same band. */
+export type CanvasOrderMove =
+  | "forward"
+  | "backward"
+  | "front"
+  | "back"
+  | { readonly above: CanvasLayerRef }
+  | { readonly below: CanvasLayerRef };
+
+/** A new key for one thing. */
+export interface CanvasOrderChange {
+  readonly ref: CanvasLayerRef;
+  readonly z: string;
+}
+
+const refKey = (ref: CanvasLayerRef) => `${ref.kind}:${ref.id}`;
+
+interface StackEntry {
+  readonly ref: CanvasLayerRef;
+  readonly z: string | undefined;
+  readonly bounds: CanvasBounds | undefined;
+}
+
+const touching = (a: CanvasBounds | undefined, b: CanvasBounds | undefined) =>
+  a !== undefined &&
+  b !== undefined &&
+  a.x <= b.x + b.width &&
+  b.x <= a.x + a.width &&
+  a.y <= b.y + b.height &&
+  b.y <= a.y + a.height;
+
+const middleOf = (node: CanvasBounds) => ({
+  x: node.x + node.width / 2,
+  y: node.y + node.height / 2,
+});
+
+/** Roughly what an arrow covers, between its cards' middles: enough to tell what it crosses. */
+function arrowBox(edge: CanvasEdge, nodes: ReadonlyMap<string, CanvasBounds>) {
+  const from = nodes.get(edge.fromNode);
+  const to = nodes.get(edge.toNode);
+  if (from === undefined || to === undefined) return undefined;
+  const [a, b] = [middleOf(from), middleOf(to)];
+  const x = Math.min(a.x, b.x);
+  const y = Math.min(a.y, b.y);
+  return { x, y, width: Math.abs(a.x - b.x), height: Math.abs(a.y - b.y) };
+}
+
+/** `band` with `picked` moved together as `move` says, the rest kept in order; null for no change. */
+function movedBand(
+  band: ReadonlyArray<StackEntry>,
+  picked: ReadonlySet<string>,
+  move: CanvasOrderMove,
+): { readonly next: ReadonlyArray<StackEntry>; readonly moved: ReadonlySet<StackEntry> } | null {
+  const mine = band.filter((entry) => picked.has(refKey(entry.ref)));
+  if (mine.length === 0) return null;
+  const place = new Map(band.map((entry, at) => [entry, at]));
+  const placeOf = (entry: StackEntry) => place.get(entry) ?? 0;
+  let moving = mine;
+  let target: StackEntry | undefined;
+  let above = true;
+  if (move === "forward" || move === "backward") {
+    // One step that shows: past the nearest thing it covers or is covered by, and no further.
+    above = move === "forward";
+    const passes = (entry: StackEntry, own: StackEntry) =>
+      (above ? placeOf(entry) > placeOf(own) : placeOf(entry) < placeOf(own)) &&
+      touching(entry.bounds, own.bounds);
+    const candidates = band.filter(
+      (entry) => !picked.has(refKey(entry.ref)) && mine.some((own) => passes(entry, own)),
+    );
+    target = above ? candidates[0] : candidates[candidates.length - 1];
+    if (target === undefined) return null;
+    const at = placeOf(target);
+    moving = mine.filter((own) => (above ? placeOf(own) < at : placeOf(own) > at));
+  } else if (typeof move === "object") {
+    const ref = "above" in move ? move.above : move.below;
+    above = "above" in move;
+    target = band.find((entry) => refKey(entry.ref) === refKey(ref));
+    if (target === undefined || picked.has(refKey(ref))) return null;
+  }
+  const going = new Set(moving);
+  const rest = band.filter((entry) => !going.has(entry));
+  const at =
+    target === undefined
+      ? move === "back"
+        ? 0
+        : rest.length
+      : rest.indexOf(target) + (above ? 1 : 0);
+  const next = [...rest.slice(0, at), ...moving, ...rest.slice(at)];
+  return next.every((entry, index) => entry === band[index]) ? null : { next, moved: going };
+}
+
+/** Keys for a band now in `next`: between the neighbours of what moved, or all of them anew. */
+function bandKeys(
+  band: ReadonlyArray<StackEntry>,
+  next: ReadonlyArray<StackEntry>,
+  moved: ReadonlySet<StackEntry>,
+): CanvasOrderChange[] {
+  // The first order on a board keys all it holds, as it showed them, which later orders keep.
+  const keyed = band.every(
+    (entry, at) => entry.z !== undefined && (at === 0 || band[at - 1]!.z! < entry.z),
+  );
+  if (!keyed) {
+    const keys = canvasOrderKeysBetween(null, null, next.length);
+    return next.flatMap((entry, at) =>
+      entry.z === keys[at] ? [] : [{ ref: entry.ref, z: keys[at]! }],
+    );
+  }
+  const changes: CanvasOrderChange[] = [];
+  for (let start = 0; start < next.length;) {
+    if (!moved.has(next[start]!)) {
+      start += 1;
+      continue;
+    }
+    let end = start;
+    while (end < next.length && moved.has(next[end]!)) end += 1;
+    const keys = canvasOrderKeysBetween(
+      start === 0 ? null : next[start - 1]!.z!,
+      end === next.length ? null : next[end]!.z!,
+      end - start,
+    );
+    for (let at = start; at < end; at++) changes.push({ ref: next[at]!.ref, z: keys[at - start]! });
+    start = end;
+  }
+  return changes;
+}
+
+/**
+ * The keys that move `picked` as `move` says, each in its own band: a section among sections, the
+ * rest among each other. None for a move that changes nothing.
+ */
+export function canvasOrderChanges(
+  data: Pick<CanvasData, "nodes" | "edges" | "drawings">,
+  picked: ReadonlyArray<CanvasLayerRef>,
+  move: CanvasOrderMove,
+): CanvasOrderChange[] {
+  const stack = canvasStack(data);
+  const nodes = new Map<string, CanvasBounds>(data.nodes.map((node) => [node.id, node]));
+  const wanted = new Set(picked.map(refKey));
+  const sections = stack.sections.map((node): StackEntry => ({
+    ref: { kind: "card", id: node.id },
+    z: node.astrolabe?.z,
+    bounds: node,
+  }));
+  const content = stack.content.map((layer): StackEntry => {
+    const item = canvasLayerOf(layer);
+    const bounds =
+      layer.kind === "card"
+        ? layer.node
+        : layer.kind === "arrow"
+          ? arrowBox(layer.edge, nodes)
+          : canvasInkBounds(layer.ink, nodes);
+    return { ref: { kind: layer.kind, id: item.id }, z: item.astrolabe?.z, bounds };
+  });
+  return [sections, content].flatMap((band) => {
+    const moved = movedBand(band, wanted, move);
+    return moved === null ? [] : bandKeys(band, moved.next, moved.moved);
+  });
+}
+
+/** The hand edits that give each its key, from the file's own JSON so nothing else is touched. */
+export function canvasOrderEdits(
+  document: unknown,
+  changes: ReadonlyArray<CanvasOrderChange>,
+): CanvasHandEdit[] {
+  const file = isRecord(document) ? document : {};
+  const lists = {
+    card: new Map(canvasEntries(file.nodes, "node").map(({ id, raw }) => [id, raw])),
+    arrow: new Map(canvasEntries(file.edges, "edge").map(({ id, raw }) => [id, raw])),
+    drawing: new Map(
+      canvasEntries(isRecord(file.astrolabe) ? file.astrolabe.drawings : undefined, "drawing").map(
+        ({ id, raw }) => [id, raw],
+      ),
+    ),
+  };
+  return changes.flatMap(({ ref, z }): CanvasHandEdit[] => {
+    const raw = lists[ref.kind].get(ref.id);
+    if (raw === undefined) return [];
+    const keys = canvasOrderKeys(raw, z);
+    return ref.kind === "card"
+      ? [{ op: "set-card", card: ref.id, keys }]
+      : ref.kind === "arrow"
+        ? [{ op: "set-arrow", arrow: ref.id, keys }]
+        : [{ op: "set-drawing", drawing: ref.id, keys }];
+  });
+}

@@ -69,6 +69,38 @@ describe("diffCanvas", () => {
     ]);
   });
 
+  it("says a first order, which keys everything, once as order rather than as each card's change", () => {
+    const before = {
+      nodes: [card, other],
+      edges: [{ ...arrow }],
+      astrolabe: { drawings: [{ id: "s", type: "stroke", x: 0, y: 0, points: [0, 0] }] },
+    };
+    const keyed = (thing: object, z: string) => ({ ...thing, astrolabe: { z } });
+    const after = {
+      nodes: [keyed(other, "a1"), keyed(card, "a3")],
+      edges: [keyed(arrow, "a0")],
+      astrolabe: {
+        drawings: [keyed({ id: "s", type: "stroke", x: 0, y: 0, points: [0, 0] }, "a2")],
+      },
+    };
+    const diff = diffCanvas(before, after);
+    expect(diff).toMatchObject({ changes: [], order: true, rest: false });
+    expect(canvasChangeSummary(diff.changes, diff.order)).toBe("Order changed");
+    // Keys that keep the order as it showed say nothing.
+    const same = {
+      ...after,
+      nodes: [keyed(card, "a1"), keyed(other, "a3")],
+      astrolabe: {
+        drawings: [keyed({ id: "s", type: "stroke", x: 0, y: 0, points: [0, 0] }, "a4")],
+      },
+    };
+    expect(diffCanvas(before, same)).toMatchObject({ changes: [], order: false });
+    const moved = { ...after, nodes: [{ ...keyed(other, "a1"), x: 9 }, keyed(card, "a3")] };
+    expect(canvasChangeSummary(diffCanvas(before, moved).changes, true)).toBe(
+      "1 moved, order changed",
+    );
+  });
+
   it("matches by id, ignoring key order, and sees what's added and removed", () => {
     const reordered = { height: 60, width: 250, y: 0, x: 0, text: "One", type: "text", id: "a" };
     expect(marks({ nodes: [card] }, { nodes: [reordered] })).toEqual([]);
@@ -247,6 +279,20 @@ describe("parseCanvas", () => {
     const rewritten = JSON.parse(serializeCanvas(parsed.document));
     expect(rewritten).toEqual(JSON.parse(fixture("survive-input.canvas")));
     expect(Object.keys(rewritten)).toEqual(["extra", "nodes", "edges", "zzz"]);
+  });
+
+  it("is saved back by Obsidian with a card's and an arrow's nested objects, where order keys live", () => {
+    // Obsidian opened survive-input, moved a card and saved: it keeps the objects nested in a
+    // link card and an edge, though it drops a card type it doesn't know and the edge to it.
+    const was = JSON.parse(fixture("survive-input.canvas"));
+    const now = JSON.parse(fixture("survive-after-move-edit.canvas"));
+    const find = (list: ReadonlyArray<{ id: string }>, id: string) =>
+      list.find((each) => each.id === id);
+    expect(find(now.nodes, "link")).toMatchObject({
+      astrolabe: find(was.nodes, "link")!.astrolabe,
+    });
+    expect(find(now.edges, "e1")).toMatchObject({ meta: { a: 1 }, style: "dashed" });
+    expect(Object.keys(now)).toEqual(["extra", "nodes", "edges", "zzz"]);
   });
 
   it.each([
@@ -452,6 +498,52 @@ describe("canvasOutline", () => {
         "2. [a] [b] Then. Out to the note.",
       ].join("\n"),
     );
+  });
+
+  it("says which card is on top where cards overlap, and the drawings each is over or under", () => {
+    const box = (id: string, x: number, z?: string) => ({
+      id,
+      type: "text",
+      text: id,
+      x,
+      y: 0,
+      width: 100,
+      height: 100,
+      ...(z === undefined ? {} : { astrolabe: { z } }),
+    });
+    const outline = canvasOutline(
+      "Board.canvas",
+      canvasData({
+        nodes: [box("under", 0, "a2"), box("over", 50, "a3"), box("alone", 500, "a1")],
+        edges: [],
+        astrolabe: {
+          drawings: [
+            {
+              id: "s",
+              type: "stroke",
+              x: 60,
+              y: 10,
+              points: [0, 0, 10, 10],
+              astrolabe: { z: "a4" },
+            },
+            {
+              id: "t",
+              type: "stroke",
+              x: 510,
+              y: 10,
+              points: [0, 0, 10, 10],
+              astrolabe: { z: "a0" },
+            },
+          ],
+        },
+      }),
+    );
+    expect(outline.split("\n").slice(-4)).toEqual([
+      "Overlapping",
+      "[alone] over a drawing",
+      "[under] under a drawing",
+      "[over] over [under], under a drawing",
+    ]);
   });
 
   it("says what's wrong with a file that isn't JSON, and shows it", () => {

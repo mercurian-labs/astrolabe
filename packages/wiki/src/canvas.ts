@@ -5,6 +5,13 @@
  */
 
 export * from "./canvasPlace.ts";
+export * from "./canvasOrder.ts";
+import {
+  canvasLayerOf,
+  canvasOrderKeysBetween,
+  canvasStack,
+  isCanvasOrderKey,
+} from "./canvasOrder.ts";
 import { canvasArrowSides, canvasStepFrame, insideGroup } from "./canvasPlace.ts";
 
 export type CanvasSide = "top" | "right" | "bottom" | "left";
@@ -45,13 +52,18 @@ export interface CanvasStyle {
 export const CANVAS_MAX_STYLE_WIDTH = 64;
 
 interface Styled {
-  readonly astrolabe?: { readonly style?: CanvasStyle };
+  readonly astrolabe?: { readonly style?: CanvasStyle; readonly z?: string };
 }
 
 export interface CanvasTextNode extends CanvasNodeBase {
   readonly type: "text";
   readonly text: string;
-  readonly astrolabe?: { readonly shape?: CanvasShape; readonly style?: CanvasStyle };
+  readonly astrolabe?: {
+    readonly shape?: CanvasShape;
+    readonly style?: CanvasStyle;
+    /** Where it stacks among the board's cards, arrows and drawings: see `canvasStack`. */
+    readonly z?: string;
+  };
 }
 
 /** Code a link card cites. Kept beside `url` so the card still works away from the product. */
@@ -70,6 +82,7 @@ export interface CanvasLinkNode extends CanvasNodeBase {
     readonly caption?: string;
     readonly code?: CanvasCodeReference;
     readonly style?: CanvasStyle;
+    readonly z?: string;
   };
 }
 
@@ -157,12 +170,12 @@ export type CanvasInk = CanvasInkStroke | CanvasInkArrow;
 
 /** What a board draws. A file's exact contents live in the document `parseCanvas` returns. */
 export interface CanvasData {
-  /** Earlier nodes draw beneath later ones. */
+  /** Without order keys, earlier nodes draw beneath later ones: `canvasStack` says how they draw. */
   readonly nodes: ReadonlyArray<CanvasNode>;
   readonly edges: ReadonlyArray<CanvasEdge>;
   /** Kept at the file's top level, under `astrolabe`, which Obsidian writes back untouched. */
   readonly stories?: ReadonlyArray<CanvasStory>;
-  /** Under `astrolabe` too, as `drawings`; above the cards, in the file's order. */
+  /** Under `astrolabe` too, as `drawings`; without order keys, above the cards in the file's order. */
   readonly drawings?: ReadonlyArray<CanvasInk>;
 }
 
@@ -530,10 +543,23 @@ export function canvasStyle(astrolabe: unknown): CanvasStyle | undefined {
   return Object.keys(style).length === 0 ? undefined : style;
 }
 
-const styled = (raw: Record<string, unknown>) => {
-  const style = canvasStyle(raw.astrolabe);
-  return style === undefined ? {} : { astrolabe: { style } };
-};
+const orderKey = (astrolabe: unknown) =>
+  isRecord(astrolabe) && isCanvasOrderKey(astrolabe.z) ? astrolabe.z : undefined;
+
+/** What `astrolabe` holds that was read, or nothing when that's nothing. */
+function kept<A extends Record<string, unknown>>(
+  astrolabe: A,
+): { astrolabe?: { [Key in keyof A]?: Exclude<A[Key], undefined> } } {
+  const held = Object.fromEntries(
+    Object.entries(astrolabe).filter(([, value]) => value !== undefined),
+  );
+  return Object.keys(held).length === 0
+    ? {}
+    : { astrolabe: held as { [Key in keyof A]?: Exclude<A[Key], undefined> } };
+}
+
+const styled = (raw: Record<string, unknown>) =>
+  kept({ style: canvasStyle(raw.astrolabe), z: orderKey(raw.astrolabe) });
 
 const shapeOf = (astrolabe: unknown): CanvasShape | undefined =>
   isRecord(astrolabe) && (astrolabe.shape === "ellipse" || astrolabe.shape === "diamond")
@@ -597,19 +623,11 @@ function canvasNode(raw: Record<string, unknown>, id: string): CanvasNode | unde
   switch (raw.type) {
     case "text": {
       const shape = shapeOf(raw.astrolabe);
-      const style = canvasStyle(raw.astrolabe);
       return {
         ...base,
         type: "text",
         text: text(raw.text) ?? "",
-        ...(shape === undefined && style === undefined
-          ? {}
-          : {
-              astrolabe: {
-                ...(shape === undefined ? {} : { shape }),
-                ...(style === undefined ? {} : { style }),
-              },
-            }),
+        ...kept({ shape, style: canvasStyle(raw.astrolabe), z: orderKey(raw.astrolabe) }),
       };
     }
     case "file": {
@@ -624,22 +642,16 @@ function canvasNode(raw: Record<string, unknown>, id: string): CanvasNode | unde
     }
     case "link": {
       const astrolabe = isRecord(raw.astrolabe) ? raw.astrolabe : undefined;
-      const caption = text(astrolabe?.caption);
-      const code = codeReference(astrolabe);
-      const style = canvasStyle(astrolabe);
       return {
         ...base,
         type: "link",
         url: text(raw.url) ?? "",
-        ...(caption === undefined && code === undefined && style === undefined
-          ? {}
-          : {
-              astrolabe: {
-                ...(caption === undefined ? {} : { caption }),
-                ...(code === undefined ? {} : { code }),
-                ...(style === undefined ? {} : { style }),
-              },
-            }),
+        ...kept({
+          caption: text(astrolabe?.caption),
+          code: codeReference(astrolabe),
+          style: canvasStyle(astrolabe),
+          z: orderKey(astrolabe),
+        }),
       };
     }
     case "group": {
@@ -787,14 +799,21 @@ export const serializeCanvas = (document: unknown): string => written(document, 
 
 /** How looks name a card's, arrow's or drawing's `astrolabe.style`. */
 export const STYLE_KEY = "astrolabe.style";
+/** And its order key, `astrolabe.z`. */
+export const ORDER_KEY = "astrolabe.z";
 
-/** What a look's keys do to a card or arrow: anything not named here is what it says. */
+/**
+ * What a look's keys do to a card or arrow: anything not named here is what it says. An order
+ * marks nothing of its own: a diff says once that the board's order changed.
+ */
 export interface CanvasLook {
   /** As a merge's preview names it, such as "position". */
   readonly name: string;
   readonly keys: ReadonlyArray<string>;
-  readonly mark: "moved" | "restyled";
+  readonly mark: "moved" | "restyled" | "order";
 }
+
+const ORDER_LOOK: CanvasLook = { name: "order", keys: [ORDER_KEY], mark: "order" };
 
 export const CANVAS_CARD_LOOKS: ReadonlyArray<CanvasLook> = [
   { name: "position", keys: ["x", "y"], mark: "moved" },
@@ -802,6 +821,7 @@ export const CANVAS_CARD_LOOKS: ReadonlyArray<CanvasLook> = [
   { name: "colour", keys: ["color"], mark: "restyled" },
   { name: "background", keys: ["background", "backgroundStyle"], mark: "restyled" },
   { name: "style", keys: [STYLE_KEY], mark: "restyled" },
+  ORDER_LOOK,
 ];
 
 export const CANVAS_ARROW_LOOKS: ReadonlyArray<CanvasLook> = [
@@ -809,6 +829,7 @@ export const CANVAS_ARROW_LOOKS: ReadonlyArray<CanvasLook> = [
   { name: "colour", keys: ["color"], mark: "restyled" },
   { name: "ends", keys: ["fromEnd", "toEnd"], mark: "restyled" },
   { name: "style", keys: [STYLE_KEY], mark: "restyled" },
+  ORDER_LOOK,
 ];
 
 /** A stroke's points and a drawn arrow's label are what it says; the rest is where and how. */
@@ -817,29 +838,36 @@ export const CANVAS_DRAWING_LOOKS: ReadonlyArray<CanvasLook> = [
   { name: "ends", keys: ["from", "to"], mark: "moved" },
   { name: "colour", keys: ["color"], mark: "restyled" },
   { name: "style", keys: [STYLE_KEY], mark: "restyled" },
+  ORDER_LOOK,
 ];
 
 /**
- * `raw` with `astrolabe.style` as a key of its own, as looks name it, so a style that changed
- * reads as restyled while the rest of `astrolabe` (a shape, a code card's code) still says.
+ * `raw` with `astrolabe.style` and `astrolabe.z` as keys of their own, as looks name them, so a
+ * style or order that changed reads as that while the rest of `astrolabe` (a shape, a code card's
+ * code) still says.
  */
 export function canvasLookKeys(raw: Record<string, unknown>): Record<string, unknown> {
-  if (!isRecord(raw.astrolabe) || !("style" in raw.astrolabe)) return raw;
-  const { style, ...astrolabe } = raw.astrolabe;
+  if (!isRecord(raw.astrolabe) || !("style" in raw.astrolabe || "z" in raw.astrolabe)) return raw;
+  const { style, z, ...astrolabe } = raw.astrolabe;
   return {
     ...raw,
     astrolabe: Object.keys(astrolabe).length === 0 ? undefined : astrolabe,
     [STYLE_KEY]: style,
+    [ORDER_KEY]: z,
   };
 }
 
 /** What `canvasLookKeys` lifted, back where the file keeps it. */
 export function canvasLookRaw(raw: Record<string, unknown>): Record<string, unknown> {
-  if (!(STYLE_KEY in raw)) return raw;
-  const { [STYLE_KEY]: style, ...rest } = raw;
-  if (style === undefined) return rest;
-  const astrolabe = isRecord(rest.astrolabe) ? rest.astrolabe : {};
-  return { ...rest, astrolabe: { ...astrolabe, style } };
+  if (!(STYLE_KEY in raw) && !(ORDER_KEY in raw)) return raw;
+  const { [STYLE_KEY]: style, [ORDER_KEY]: z, ...rest } = raw;
+  if (style === undefined && z === undefined) return rest;
+  const astrolabe = {
+    ...(isRecord(rest.astrolabe) ? rest.astrolabe : {}),
+    ...(style === undefined ? {} : { style }),
+    ...(z === undefined ? {} : { z }),
+  };
+  return { ...rest, astrolabe };
 }
 
 /** A file's drawings, the same way `canvasData` reads them. */
@@ -875,6 +903,8 @@ export interface CanvasChange {
 
 export interface CanvasDiff {
   readonly changes: ReadonlyArray<CanvasChange>;
+  /** What's on top of what changed among the things both versions hold, however many keys that took. */
+  readonly order: boolean;
   /** Something outside the cards, arrows and drawings changed, which only the file's JSON shows. */
   readonly rest: boolean;
 }
@@ -981,7 +1011,9 @@ function changeOf(
   const said = [...new Set([...Object.keys(before), ...Object.keys(after)])].some(
     (key) => !looked.has(key) && differs(key),
   );
-  const marks = looks.filter((look) => look.keys.some(differs)).map((look) => look.mark);
+  const marks = looks
+    .filter((look) => look.mark !== "order" && look.keys.some(differs))
+    .map((look) => look.mark);
   const restyled = marks.includes("restyled");
   const moved = marks.includes("moved");
   if (said) {
@@ -1060,8 +1092,29 @@ export function diffCanvas(before: unknown, after: unknown): CanvasDiff {
       ...compare("arrow", arrows, CANVAS_ARROW_LOOKS),
       ...compare("drawing", drawings, CANVAS_DRAWING_LOOKS),
     ],
+    order: orderChanged(canvasData(was), canvasData(now)),
     rest: !sameJson(outside(was), outside(now)),
   };
+}
+
+/** Whether what both boards hold stacks differently, band by band. */
+function orderChanged(before: CanvasData, after: CanvasData): boolean {
+  const bands = (data: CanvasData) => {
+    const { sections, content } = canvasStack(data);
+    return [
+      sections.map((node) => `card:${node.id}`),
+      content.map((layer) => `${layer.kind}:${canvasLayerOf(layer).id}`),
+    ];
+  };
+  const was = bands(before);
+  const now = bands(after);
+  return was.some((band, at) => {
+    const later = now[at]!;
+    const earlier = new Set(band);
+    const shared = new Set(later.filter((key) => earlier.has(key)));
+    const kept = later.filter((key) => shared.has(key));
+    return band.filter((key) => shared.has(key)).some((key, place) => key !== kept[place]);
+  });
 }
 
 /** The cards still on the board that changed between two versions: what to catch the eye. */
@@ -1085,12 +1138,13 @@ export interface CanvasReview {
   readonly marks: CanvasMarks;
   /** `drawn` is false for what the board can't show, such as a card type it doesn't know. */
   readonly changes: ReadonlyArray<CanvasChange & { readonly drawn: boolean }>;
+  readonly order: boolean;
   readonly rest: boolean;
 }
 
 /** Two versions of a file's document as one board to review. */
 export function reviewCanvas(before: unknown, after: unknown): CanvasReview {
-  const { changes, rest } = diffCanvas(before, after);
+  const { changes, order, rest } = diffCanvas(before, after);
   const was = canvasData(before);
   const now = canvasData(after);
   const marked = (item: CanvasChange["item"]) =>
@@ -1099,7 +1153,22 @@ export function reviewCanvas(before: unknown, after: unknown): CanvasReview {
     );
   const marks = { cards: marked("card"), arrows: marked("arrow"), drawings: marked("drawing") };
   // Beneath the rest: what replaced a removed card stays on top until the removed one is picked.
-  const nodes = [...was.nodes.filter((node) => marks.cards[node.id] === "removed"), ...now.nodes];
+  const removed = was.nodes.filter((node) => marks.cards[node.id] === "removed");
+  const lowest = canvasStack(now).content.find((layer) => canvasLayerOf(layer).astrolabe?.z);
+  const under = canvasOrderKeysBetween(
+    null,
+    lowest === undefined ? null : (canvasLayerOf(lowest).astrolabe?.z ?? null),
+    removed.length,
+  );
+  const nodes = [
+    ...removed.map((node, at): CanvasNode => {
+      if (node.type === "group") return node;
+      const { z: _z, ...astrolabe } = node.astrolabe ?? {};
+      const z = lowest === undefined ? {} : { z: under[at]! };
+      return { ...node, astrolabe: { ...astrolabe, ...z } } as CanvasNode;
+    }),
+    ...now.nodes,
+  ];
   const edges = [...now.edges, ...was.edges.filter((edge) => marks.arrows[edge.id] === "removed")];
   const drawings = [
     ...(now.drawings ?? []),
@@ -1121,6 +1190,7 @@ export function reviewCanvas(before: unknown, after: unknown): CanvasReview {
     },
     marks,
     changes: changes.map((change) => ({ ...change, drawn: drawn[change.item].has(change.id) })),
+    order,
     rest,
   };
 }
@@ -1168,11 +1238,16 @@ export function canvasChangeSections<A extends Pick<CanvasChange, "mark">>(
   };
 }
 
-/** A change list in one line, such as "2 added, 1 changed, 4 moved". */
-export function canvasChangeSummary(changes: ReadonlyArray<Pick<CanvasChange, "mark">>): string {
+/** A change list in one line, such as "2 added, 1 changed, 4 moved, order changed". */
+export function canvasChangeSummary(
+  changes: ReadonlyArray<Pick<CanvasChange, "mark">>,
+  order = false,
+): string {
   const counts = MARK_ORDER.flatMap((mark) => {
     const count = changes.filter((change) => change.mark === mark).length;
     return count === 0 ? [] : [`${count} ${MARK_WORDS[mark]}`];
   });
-  return counts.length > 0 ? counts.join(", ") : "No changes to its cards, arrows or drawings";
+  if (counts.length === 0)
+    return order ? "Order changed" : "No changes to its cards, arrows or drawings";
+  return [...counts, ...(order ? ["order changed"] : [])].join(", ");
 }

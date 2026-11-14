@@ -94,6 +94,30 @@ describe("canvasMerge", () => {
     expect(resolved).toEqual([]);
   });
 
+  it("merges an order on one side with a style or shape on the other, and keeps this change's order when both moved it", () => {
+    const shaped = { ...a, astrolabe: { shape: "ellipse" } };
+    const { document, resolved } = merged(
+      board([shaped, b, c]),
+      board([{ ...a, astrolabe: { shape: "ellipse", z: "a3" } }, b, c]),
+      board([{ ...a, astrolabe: { shape: "diamond", style: { width: 4 } } }, b, c]),
+    );
+    expect(document.nodes[0].astrolabe).toEqual({
+      shape: "diamond",
+      style: { width: 4 },
+      z: "a3",
+    });
+    expect(resolved).toEqual([]);
+    const both = merged(
+      base,
+      board([{ ...a, astrolabe: { z: "a1" } }, b, c]),
+      board([{ ...a, astrolabe: { z: "a5" } }, b, c]),
+    );
+    expect(both.document.nodes[0].astrolabe).toEqual({ z: "a5" });
+    expect(both.resolved).toMatchObject([
+      { kind: "both-changed", message: expect.stringContaining("order") },
+    ]);
+  });
+
   it("drops an arrow into a card the merge deletes, and says so", () => {
     const { document, resolved } = merged(
       base,

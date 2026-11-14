@@ -6,6 +6,8 @@ import {
   canvasBounds,
   canvasData,
   canvasInkEnd,
+  canvasLayerOf,
+  canvasStack,
   canvasSteps,
   parseCanvas,
   serializeCanvas,
@@ -15,6 +17,8 @@ import {
   applyCanvasEdits,
   applyCanvasHandEdits,
   CANVAS_MAX_DRAWINGS,
+  canvasOrderChanges,
+  canvasOrderEdits,
   canvasSectionAround,
   canvasStepPick,
   canvasStoryEdit,
@@ -22,6 +26,8 @@ import {
   CanvasEditError,
   type CanvasEdit,
   type CanvasHandEdit,
+  type CanvasLayerRef,
+  type CanvasOrderMove,
   type CanvasStoryChange,
 } from "./canvasEdits.ts";
 import { canvasPlace } from "./canvasPlace.ts";
@@ -54,6 +60,17 @@ const board = (nodes: ReadonlyArray<object>, edges: ReadonlyArray<object> = []) 
   serializeCanvas({ nodes, edges });
 const apply = (source: string | null, edits: ReadonlyArray<CanvasEdit>) =>
   applyCanvasEdits("Board.canvas", source, edits, "seed");
+/** What a board draws, bottom first. */
+const stacked = (document: unknown) =>
+  canvasStack(canvasData(document)).content.map((layer) => canvasLayerOf(layer).id);
+const listed = (document: unknown) =>
+  (document as { nodes: ReadonlyArray<{ id: string }> }).nodes.map(({ id }) => id);
+/** The edits the board makes for an order. */
+const ordering = (
+  document: unknown,
+  picked: ReadonlyArray<CanvasLayerRef>,
+  move: CanvasOrderMove,
+) => canvasOrderEdits(document, canvasOrderChanges(canvasData(document), picked, move));
 const read = (source: string | null) => {
   const parsed = parseCanvas(source ?? "");
   if (!parsed.ok) throw new Error(parsed.error);
@@ -329,6 +346,63 @@ describe("applyCanvasEdits", () => {
   });
 });
 
+describe("an agent's order", () => {
+  const three = board(
+    [card("a", 0, 0), card("b", 50, 0), card("c", 100, 0), group("g", -50, -50, 600, 300)],
+    [{ id: "e", fromNode: "a", toNode: "b" }],
+  );
+  const after = (edits: ReadonlyArray<CanvasEdit>) => read(apply(three, edits).source).document;
+
+  it.each<[string, CanvasEdit, ReadonlyArray<string>]>([
+    ["in front of a card", { op: "order", card: "a", above: "c" }, ["e", "b", "c", "a"]],
+    ["behind a card", { op: "order", card: "c", below: "a" }, ["e", "c", "a", "b"]],
+    [
+      "to the back, under its arrows too",
+      { op: "order", card: "c", layer: "back" },
+      ["c", "e", "a", "b"],
+    ],
+    [
+      "an arrow to the front",
+      { op: "order", from: "b", to: "a", layer: "front" },
+      ["a", "b", "c", "e"],
+    ],
+  ])("puts something %s, keying the board once, and lists its cards so", (_name, edit, order) => {
+    const document = after([edit]);
+    expect(stacked(document)).toEqual(order);
+    expect(listed(document)).toEqual(["g", ...order.filter((id) => id !== "e")]);
+  });
+
+  it("puts what it adds on top once the board keeps an order, and orders it in the same call", () => {
+    const keyed = apply(three, [{ op: "order", card: "a", layer: "front" }]).source;
+    const { source, cards } = apply(keyed, [
+      { op: "add", ref: "n", text: "New" },
+      { op: "connect", from: "n", to: "b" },
+      { op: "order", card: "b", above: "n" },
+    ]);
+    const order = stacked(read(source).document);
+    expect(order.slice(0, 3)).toEqual(["e", "c", "a"]);
+    expect(order.slice(3, 5)).toEqual([cards.n, "b"]);
+    // What it added came keyed, so the order moved only `b`, not the whole board again.
+    const keys = (from: string) => {
+      const { nodes, edges } = read(from).data;
+      return [...nodes, ...edges].flatMap((each) =>
+        each.id === "b" || each.id === cards.n ? [] : [[each.id, each.astrolabe?.z]],
+      );
+    };
+    expect(keys(source).slice(0, 4)).toEqual(keys(keyed!));
+  });
+
+  it.each<[string, CanvasEdit, string]>([
+    ["no place", { op: "order", card: "a" }, "one of layer, above or below"],
+    ["two places", { op: "order", card: "a", layer: "front", below: "b" }, "one of layer"],
+    ["a group beside a card", { op: "order", card: "a", above: "g" }, "beneath cards"],
+    ["itself", { op: "order", card: "a", above: "a" }, "itself"],
+    ["nothing", { op: "order", layer: "front" }, "Name a card"],
+  ])("says what's wrong with an order of %s", (_name, edit, message) => {
+    expect(() => apply(three, [edit])).toThrow(message);
+  });
+});
+
 describe("canvasPlace", () => {
   const rect = (x: number, y: number, id = `${x},${y}`) => ({
     id,
@@ -544,6 +618,10 @@ describe("a person's edits", () => {
         { op: "remove-drawing", drawing: "f1" },
       ],
     ],
+    [
+      "a first order, which keys the whole board and its list",
+      ordering(read(SURVIVORS).document, [{ kind: "card", id: "a" }], "front"),
+    ],
   ])("%s undoes back to the same bytes, unknowns and all", (_name, edits) => {
     const { after, undone } = roundTrip(SURVIVORS, edits);
     expect(after).not.toBe(SURVIVORS);
@@ -615,7 +693,58 @@ describe("a person's edits", () => {
     expect(read(source).data.nodes.map((node) => node.id)).toEqual(["a", "c"]);
   });
 
-  it("moves a dragged card to the top, and undo restores its place in the file", () => {
+  it("orders by keys: the first keys what the board holds as it shows it, later ones what moves", () => {
+    const three = read(board([card("a", 0, 0), card("b", 50, 0), card("c", 100, 0)])).document;
+    const first = ordering(three, [{ kind: "card", id: "a" }], "front");
+    expect(first).toHaveLength(3);
+    const raised = applyCanvasHandEdits(three, first);
+    expect(stacked(raised.document)).toEqual(["b", "c", "a"]);
+    expect(listed(raised.document)).toEqual(["b", "c", "a"]);
+    const second = ordering(raised.document, [{ kind: "card", id: "c" }], "back");
+    expect(second).toMatchObject([{ op: "set-card", card: "c" }]);
+    const lowered = applyCanvasHandEdits(raised.document, second);
+    expect(stacked(lowered.document)).toEqual(["c", "b", "a"]);
+    expect(listed(lowered.document)).toEqual(["c", "b", "a"]);
+    const undone = applyCanvasHandEdits(lowered.document, lowered.inverse).document;
+    expect(stacked(undone)).toEqual(["b", "c", "a"]);
+    expect(listed(undone)).toEqual(["b", "c", "a"]);
+  });
+
+  it("steps forward or back past the nearest thing it overlaps, and not past what it doesn't", () => {
+    // `far` overlaps nothing, so a step never stops on it.
+    const four = read(
+      board([card("a", 0, 0), card("b", 100, 0), card("far", 2000, 0), card("d", 150, 0)]),
+    ).document;
+    const step = (document: unknown, id: string, move: CanvasOrderMove) =>
+      applyCanvasHandEdits(document, ordering(document, [{ kind: "card", id }], move)).document;
+    const forward = step(four, "a", "forward");
+    expect(stacked(forward)).toEqual(["b", "a", "far", "d"]);
+    expect(stacked(step(forward, "d", "backward"))).toEqual(["b", "d", "a", "far"]);
+    expect(ordering(four, [{ kind: "card", id: "far" }], "forward")).toEqual([]);
+    expect(ordering(four, [{ kind: "card", id: "d" }], "front")).toEqual([]);
+  });
+
+  it("puts something new on top once the board keeps an order, and a copy never takes its source's key", () => {
+    const two = read(board([card("a", 0, 0), card("b", 50, 0)])).document;
+    const copy = card("copy", 0, 0, { astrolabe: { z: "a0", shape: "ellipse" } });
+    const unkeyed = applyCanvasHandEdits(two, [{ op: "put-card", node: copy }]).document;
+    expect(listed(unkeyed)).toEqual(["a", "b", "copy"]);
+    expect((unkeyed as { nodes: Array<{ astrolabe?: unknown }> }).nodes[2]!.astrolabe).toEqual({
+      shape: "ellipse",
+    });
+    const keyed = applyCanvasHandEdits(
+      two,
+      ordering(two, [{ kind: "card", id: "a" }], "front"),
+    ).document;
+    const added = applyCanvasHandEdits(keyed, [
+      { op: "put-card", node: copy },
+      { op: "put-arrow", edge: { id: "e", fromNode: "a", toNode: "b" } },
+      { op: "put-drawing", drawing: { id: "s", type: "stroke", x: 0, y: 0, points: [0, 0] } },
+    ]).document;
+    expect(stacked(added)).toEqual(["b", "a", "copy", "e", "s"]);
+  });
+
+  it("replays an old save's raise, and undo restores its place in the file", () => {
     const three = board([card("a", 0, 0), card("b", 0, 0), card("c", 0, 0)]);
     const raised = applyCanvasHandEdits(read(three).document, [
       { op: "reorder", cards: ["a", "b"] },
