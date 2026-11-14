@@ -713,7 +713,7 @@ describe("worktree setup visibility", () => {
     stages: [stage("checkout", "done"), stage("setup-script", "done"), stage("agent", "done")],
   };
 
-  it("uses streamed setup progress immediately without reverting to an older held snapshot", () => {
+  it("uses streamed setup progress immediately, never an older or ended held snapshot", () => {
     const newest = { ...settledDone, sequence: 9 };
     const resolve = (latest: WorktreeSetupSnapshot | null, held: WorktreeSetupSnapshot | null) =>
       resolveWorktreeSetupProgress({
@@ -727,6 +727,12 @@ describe("worktree setup visibility", () => {
     expect(resolve(base, newest)).toEqual({ snapshot: newest, isPreparingWorktree: false });
     const other = { ...base, threadId: ThreadId.make("another-thread") };
     expect(resolve(other, other)).toEqual({ snapshot: null, isPreparingWorktree: false });
+    // The server drops a setup only after it ends, so a held running snapshot missed its finish.
+    expect(resolve(null, base)).toEqual({ snapshot: null, isPreparingWorktree: false });
+    expect(resolve(null, settledDone)).toEqual({
+      snapshot: settledDone,
+      isPreparingWorktree: false,
+    });
   });
 });
 

@@ -36,6 +36,7 @@ import {
   groupSidebarThreadsByProject,
   resolveSidebarFolderDot,
   sidebarFolderExpansionKeys,
+  sidebarRowProjectName,
 } from "./Sidebar.logic";
 import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import {
@@ -190,6 +191,24 @@ function makeLatestRun(overrides?: {
       overrides?.completedAt !== undefined ? overrides.completedAt : "2026-03-09T10:05:00.000Z",
   };
 }
+
+describe("sidebarRowProjectName", () => {
+  const identity = {
+    canonicalKey: "github.com/mercurian-labs/astrolabe",
+    locator: { source: "git-remote", remoteName: "origin", remoteUrl: "git@github.com:x/y.git" },
+    displayName: "mercurian-labs/astrolabe",
+  } as const;
+  it.each([
+    ["mercurian-labs/astrolabe", identity, "astrolabe"],
+    ["client/web app", identity, "client/web app"],
+    ["My project", null, "My project"],
+  ])(
+    "drops the owner only from a repository-named group: %s",
+    (displayName, repositoryIdentity, expected) => {
+      expect(sidebarRowProjectName({ displayName, repositoryIdentity })).toBe(expected);
+    },
+  );
+});
 
 describe("orderItemsByPreferredIds", () => {
   it("resolves legacy preference aliases without materializing project state", () => {

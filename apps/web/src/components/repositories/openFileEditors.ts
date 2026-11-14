@@ -18,6 +18,8 @@ export interface OpenFileEditor {
   readonly view: EditorView;
   /** Whether it is the live document and you may edit it. */
   readonly writable: () => boolean;
+  /** Writes what isn't on disk yet, and says whether the file now holds what this editor does. */
+  readonly save: () => Promise<boolean>;
 }
 
 const editors = new Set<OpenFileEditor>();
@@ -53,6 +55,16 @@ export function openFileEditor(
     }
   }
   return null;
+}
+
+/** Saves every editor of the file open here, so something can read it; false if one couldn't. */
+export async function saveOpenFile(environmentId: EnvironmentId, cwd: string, path: string) {
+  const open = [...editors].filter(
+    (editor) =>
+      editor.environmentId === environmentId && editor.cwd === cwd && editor.path === path,
+  );
+  const saved = await Promise.all(open.map((editor) => editor.save()));
+  return saved.every(Boolean);
 }
 
 /**

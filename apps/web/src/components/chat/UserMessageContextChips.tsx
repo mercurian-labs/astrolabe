@@ -53,6 +53,7 @@ import { formatComposerContextReference } from "@t3tools/shared/composerContextR
 import { ContextChip, ContextChipLabel, type ContextChipKind } from "../ContextChip";
 import { showThreadCanvas } from "../canvas/threadCanvasStore";
 import { CanvasContextChip } from "./CanvasContextChip";
+import { ChangeGroupContextChip } from "./ChangeGroupContextChip";
 import { createContextPresentationRegistry } from "../contextPresentationRegistry";
 import type { ChatMarkdownContextReference } from "../ChatMarkdown";
 import {
@@ -350,6 +351,16 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
       render: (record, context) =>
         record.kind === "canvas" ? (
           <UserMessageCanvasChip record={record} copyMarkdown={context.copyMarkdown} />
+        ) : (
+          <UnavailableUserMessageContextChip {...context} />
+        ),
+    },
+    {
+      kind: "change-group",
+      canRender: (record) => record.kind === "change-group",
+      render: (record, context) =>
+        record.kind === "change-group" ? (
+          <ChangeGroupContextChip record={record} copyMarkdown={context.copyMarkdown} />
         ) : (
           <UnavailableUserMessageContextChip {...context} />
         ),

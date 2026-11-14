@@ -17,6 +17,7 @@ import {
   type CodeOutline,
   type CodeResolution,
   type CodeSymbolEntry,
+  type CodeSymbols,
   type CodeUse,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -63,6 +64,10 @@ export interface Snapshot {
   /** The checkout's files defining each name. */
   readonly definers: (
     names: ReadonlyArray<string>,
+  ) => Effect.Effect<ReadonlyMap<string, ReadonlyArray<string>>, CodeIndexError>;
+  /** The checkout's files defining each name that holds `text`, ignoring case. */
+  readonly definersLike: (
+    text: string,
   ) => Effect.Effect<ReadonlyMap<string, ReadonlyArray<string>>, CodeIndexError>;
   /** The checkout's files referencing or importing a name. */
   readonly users: (name: string) => Effect.Effect<ReadonlyArray<string>, CodeIndexError>;
@@ -1011,6 +1016,41 @@ export const find = Effect.fn("CodeIndex.find.build")(function* (
       users.length > FIND_USER_FILES ||
       uses.length > FIND_USES,
   } satisfies CodeFindResult;
+});
+
+const SYMBOLS_LISTED = 200;
+
+/** Definitions by part of their name: the whole name first, then its start, then shortest. */
+export const symbols = Effect.fn("CodeIndex.symbols.build")(function* (
+  snapshot: Snapshot,
+  query: string,
+) {
+  const wanted = query.toLowerCase();
+  const rank = (name: string) => {
+    const lowered = name.toLowerCase();
+    return lowered === wanted ? 0 : lowered.startsWith(wanted) ? 1 : 2;
+  };
+  const definers = yield* snapshot.definersLike(query);
+  const names = [...definers.keys()].toSorted(
+    (a, b) => rank(a) - rank(b) || a.length - b.length || (a < b ? -1 : a > b ? 1 : 0),
+  );
+  const paths = new Set<string>();
+  for (const name of names) {
+    if (paths.size >= SYMBOLS_LISTED) break;
+    for (const path of definers.get(name) ?? []) paths.add(path);
+  }
+  const files = yield* snapshot.files(paths);
+  const entries = names.flatMap((name) =>
+    (definers.get(name) ?? []).flatMap((path) =>
+      (files.get(path)?.facts.symbols ?? [])
+        .filter((symbol) => symbol.name === name)
+        .map((symbol) => entryOf(askerPath(snapshot.prefix, path), symbol)),
+    ),
+  );
+  return {
+    symbols: entries.slice(0, SYMBOLS_LISTED),
+    truncated: entries.length > SYMBOLS_LISTED,
+  } satisfies CodeSymbols;
 });
 
 // Changes.

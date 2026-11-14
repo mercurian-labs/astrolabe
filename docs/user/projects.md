@@ -95,8 +95,8 @@ code opens with line numbers and its language's colours, with Vim if you turned 
 Settings. Your edits save on their own a moment after you stop typing. Changes from agents, the
 terminal, and other windows with the same file open show up as they happen, and an edit never
 overwrites newer changes saved there. A file shows when an agent is working in the same copy.
-TypeScript and JavaScript files show the [problems](keybindings.md#problems-in-a-code-file) their
-language server finds.
+Code files show the [problems](keybindings.md#problems-in-a-code-file) and
+[language features](keybindings.md#language-features-in-a-code-file) of their language servers.
 
 If a file you have edits in is deleted, it stays open with **Save**, which recreates it, and
 **Discard**. Edits made while you were offline are sent when you reconnect; if the file changed
@@ -135,7 +135,9 @@ opens your branch's, from the **⋯** menu on a worktree's header. To compare wi
 branch, pick it from the branch name in the changes tab's title. Comment on lines to send them to the thread working in that copy, or to the
 project's new thread.
 
-In a thread, the **Files** and **Diff** tabs offer **Open in Projects** from their tab menu.
+In a thread, the **Files** and **Diff** tabs offer **Open in Projects** from their tab menu. A file
+shown in **Files** opens in Projects from its **Open** button too; your other editors are in the
+menu beside it.
 
 ## Manage projects
 

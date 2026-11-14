@@ -135,18 +135,48 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   `role=toolbar[name=Change]`: **Restore this change**, **Previous change**, **Next change**;
   Cmd+Shift+' shows every change; Cmd+F8 / Cmd+Shift+F8 step.
 - **Language server** (`apps/server/src/languageServers/`, client `packages/editor/src/lsp/`):
-  the header's `span[role=status]` reads `TypeScript <version>`, `… starting…`, `… needs a
-  download` (**Download**), or failed / stopped / paused to save memory (**Restart**). The
+  the header's `span[role=status]` reads `TypeScript <version>`, `… starting…`, `… needs this
+  project trusted` (**Trust project**), or failed / stopped / paused to save memory (**Restart**).
+  Clicking it opens its menu: each server on the file (`+N` in the status counts the companions:
+  Ruff, and ESLint or Tailwind where the project uses them) with state, memory, Restart, Stop, View
+  logs (a `repo-lsp-logs:` tab with Server log, RPC trace, Server info), then **Language server
+  settings**; Settings → Projects says why a companion isn't active. The primary's commands are under `e L` in the keyboard menu. The
   toolchain is the checkout's own TypeScript (7 runs `tsc --lsp`, ≤6 typescript-language-server),
-  else a cached download. Problems underline with the message below the line
+  else a cached download. Problems underline (`cm-lintRange-error`, with `cm-lint-marker-error` in
+  the gutter), and while the cursor is on the line the message and its server's name show below it
   (`.atlas-diagnostic-messages`; F8 / Shift+F8 step); completion as you type; hover
   (`.cm-lsp-hover-tooltip`) and signature help; F12 / Cmd-click definition (another file opens
   beside), Cmd+F12 type definition, Shift+F12 implementation, Alt+Shift+F12 references; F2
-  rename (`input[aria-label="Rename <name>"]`, then a "Renamed X to Y" toast with **Undo**);
+  rename (`input[aria-label="Rename <name>"]`, then a `repo-locations:` tab titled "Renamed X to
+  Y" with one **Undo rename**, which says after what it put back; a wiki's file keeps a toast);
   Cmd+. code actions (`.atlas-lightbulb`, `[aria-label="Code actions"]`); Cmd+Shift+I format.
+  Inlay hints (`.atlas-inlay-hint`) and symbol marks (`.atlas-symbol-read`, `-write`) are on by
+  default; inline diagnostics (`.atlas-inline-diagnostic`), semantic colours and code lens
+  (`.atlas-code-lens`) are off, in Settings → Appearance. Typing in a JSX tag writes its pair.
+  Back and Forward (`ctrl+-`, `ctrl+shift+-` in a code file) cross go-tos and results tabs.
+  `mod+alt+o` opens the palette's `project-symbol-picker`; a server must be running, else the
+  code index answers.
+- **Language server settings** (`components/settings/LanguageServerSettings.tsx`, stored in the
+  environment's `language-server-settings.json`): Settings → Projects → Language servers.
+  **Changes here apply to** picks this project or all projects; each row has a switch, up and down
+  arrows where a language has several, and **Configure** (binary, arguments, environment, JSON
+  initialization options and settings; bad JSON shows at its field, `role=alert`, and saves
+  nothing). Turning off a server reads `<name>: Off in settings` in the header, with **Turn on**,
+  and an open file moves to the next server without reopening. **Add language server** adds a
+  `custom:` one; its row has **Edit** and **Remove** under **Configure**. A bad
+  `.astrolabe/language-servers.json` shows as a row and in the status menu's message. Python files
+  show the interpreter in the status menu with a **Select Python interpreter** submenu, and the
+  same command opens the palette's `interpreter-picker`.
+- **Run markers** (`packages/editor/src/run/`, `components/repositories/runTabs.ts`): in a trusted
+  project a code file shows `.atlas-run-marker` in `.atlas-run-gutter` beside tests and entry points,
+  its `title` the exact command; untrusted the column stays, empty, so opening a file moves nothing.
+  Click runs in a tab named after the test, beside the file, with the command in its header; running
+  again reuses it. Right-click has the command, **Run** and **Copy command**. **Run at cursor**,
+  **Run last**, and **Run markers** in Settings → Appearance. Closing the tab ends its terminal.
 - **Right-click menu** (`packages/editor/src/lsp/contextMenu.ts`): moves the cursor to the
   click unless it lands in the selection, then Go to Definition / Type Definition /
-  Implementation / Find All References | Rename Symbol… / Code Actions… / Format Document |
+  Implementation / Find All References / Show Incoming Calls / Show Outgoing Calls |
+  Rename Symbol… / Code Actions… / Format Document |
   Cut / Copy / Paste | Copy Relative Path / Open Local Graph. Language rows show only with a
   server and are faint while it starts or lacks the feature; Cut/Copy are faint with no
   selection. On the web its items are `role=menuitem` by name; on desktop the menu is native.
@@ -178,6 +208,10 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   file's header has **Open**. Line
   comments go to the composer of the thread in that checkout, else the project's
   new-thread draft, else its newest thread; with none, a note asks to start a thread.
+- **A thread's Files** (right panel `file:`/`files` surfaces): upstream's `FilePreviewPanel.tsx`,
+  whose open-in picker's primary action is **Open in Projects** (`useThreadFileOpen`) for a file in
+  the thread's checkout, carrying its revealed line; the external editors stay in its menu. A host
+  file, an attachment, a folder or a draft thread keeps the picker as upstream has it.
 - **Manage projects** (the filter's foot) opens Settings → Projects.
 - **Open in Projects**: a thread's right-panel **Files**, a file opened there, and
   **Diff** offer it in the tab's context menu; it opens the same file or its uncommitted
@@ -282,14 +316,20 @@ now**. With the **server** project that makes two projects.
    graph canvas's centre returns a `CANVAS`. Open another file with **Following** pressed and
    the graph re-roots on it; unpress it and it stays.
 10. Language server: in the `.ts` file wait for the header status `TypeScript <version>` (a
-    fresh machine asks to **Download** first). Type `const x: number = "a";`: Saving… → Saved
-    and a wavy underline with `.atlas-diagnostic-messages`.
+    an untrusted project reads `TypeScript <version> needs this project trusted` with **Trust
+    project** first). Type `const x: number = "a";`: Saving… → Saved and a wavy underline
+    (`cm-lintRange-error`, gutter `cm-lint-marker-error`); `.atlas-diagnostic-messages` shows only
+    with the cursor on that line.
 11. Right-click a call: the cursor moves there and the menu lists the language rows; choose
     **Find All References**: a `repo-locations:` tab opens beside with `[data-excerpt]`
     editors. Click a sidebar file: it opens after the results tab, which stays.
 12. Cmd+K `e` `v`: a `repo-problems:` tab ("N errors, …"). With that tab focused, Cmd+Shift+F,
     type a name: "N results in M files"; Cmd+Enter opens a `repo-search:` tab.
 13. Delete the file on disk: status **Deleted**; **Save** recreates it.
+14. In a Python file with a second venv in the checkout, select that venv from the status menu: the
+    server restarts, and an import only that venv has stops being a problem. **Automatic** brings it
+    back. Turn the server off in Settings: the header reads **Off in settings**; **Turn on** there
+    undoes it.
 
 ## Source
 

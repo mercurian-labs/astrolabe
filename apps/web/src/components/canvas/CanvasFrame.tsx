@@ -86,14 +86,14 @@ export function CanvasFrame({
                   <Button
                     variant="ghost"
                     size="icon-xs"
-                    aria-label={`Open ${view.title} in a tab`}
+                    aria-label={`Open ${view.title} in a linked tab`}
                     onClick={() => showThreadCanvas(threadRef, id)}
                   />
                 }
               >
                 <SquareArrowOutUpRightIcon />
               </TooltipTrigger>
-              <TooltipPopup side="bottom">Open in a tab</TooltipPopup>
+              <TooltipPopup side="bottom">Open in a linked tab</TooltipPopup>
             </Tooltip>
           )}
         </div>

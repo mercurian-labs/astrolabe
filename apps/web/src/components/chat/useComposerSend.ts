@@ -60,6 +60,7 @@ import {
 import { resolvePlanFollowUpSubmission } from "../../proposedPlan";
 import { type ChatMessage } from "../../types";
 import { recordPromptSent } from "../GitHubStarPrompt";
+import { draftThreadSent } from "../changeRequests/groups/changeGroupJoins";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { newMessageId, newThreadId } from "~/lib/utils";
 import { useNewThreadHandler } from "../../hooks/useHandleNewThread";
@@ -1418,6 +1419,7 @@ export function useComposerSend(input: ComposerSendInput) {
         failure = startResult;
       } else {
         turnStartSucceeded = true;
+        if (sentDraftThreadRef) draftThreadSent(sentDraftThreadRef);
         setKeepFullHistory(routeThreadKey, false);
         clearUsageLimitsFor(routeThreadKey);
         if (turnUsesAttachmentUploads) {

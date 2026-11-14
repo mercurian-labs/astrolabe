@@ -472,12 +472,6 @@ function addActions(panel: PanelProps | null): AddAction[] {
       invoke: (current) => current.onAddPullRequest(),
     },
     {
-      label: "Linked pull requests",
-      available: panel.pullRequestsAvailable,
-      singleton: "pull-requests",
-      invoke: (current) => current.onAddPullRequests(),
-    },
-    {
       label: "Device",
       available: panel.deviceAvailable,
       singleton: null,
@@ -636,7 +630,6 @@ function EmptyLauncher({
       onAddDiff={run("Diff")}
       onAddFiles={run("Files")}
       onAddPullRequest={run("Pull request")}
-      onAddPullRequests={run("Linked pull requests")}
       onAddDevice={run("Device")}
       onAddGraph={run("Graph")}
       onAddLineage={run("Lineage")}
@@ -646,7 +639,6 @@ function EmptyLauncher({
       diffAvailable={available("Diff")}
       filesAvailable={available("Files")}
       pullRequestAvailable={available("Pull request")}
-      pullRequestsAvailable={available("Linked pull requests")}
       deviceAvailable={available("Device")}
       graphAvailable={available("Graph")}
       lineageAvailable={available("Lineage")}

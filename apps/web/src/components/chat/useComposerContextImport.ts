@@ -419,6 +419,13 @@ export function useComposerContextImport(input: {
           rewritten.set(record.contextId, record.contextId);
           break;
         }
+        case "change-group": {
+          // Its agent reads groups on its own server only.
+          if (record.environmentId !== environmentId) break;
+          addComposerDraftWikiContexts(composerDraftTarget, [record]);
+          rewritten.set(record.contextId, record.contextId);
+          break;
+        }
         case "environment": {
           // A machine means the same machine from any thread, so a pasted one is kept,
           // but not in an answer to an agent's question, which carries no machines.

@@ -68,6 +68,13 @@ export function BaseBlock({
   };
   return (
     <div className="base-view">
+      {base?.result?.warnings?.length ? (
+        <ul className="base-error">
+          {base.result.warnings.map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      ) : null}
       {base?.result ? (
         <BaseLayout result={base.result} host={host} />
       ) : base?.error ? (

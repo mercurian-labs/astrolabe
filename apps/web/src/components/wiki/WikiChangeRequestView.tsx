@@ -28,6 +28,7 @@ import { useEnvironmentQuery } from "~/state/query";
 import { wikiEnvironment } from "~/state/wiki";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { TabHeader } from "~/panes/TabHeader";
+import { ChangeGroupHeaderLink } from "../changeRequests/groups/ChangeGroupHeaderLink";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import type { FullPullRequestTarget } from "../pullRequest/pullRequestTabs";
 import {
@@ -42,7 +43,7 @@ import { Spinner } from "../ui/spinner";
 import { toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
-  describeIndexError,
+  changeRequestProblems,
   describeWikiFailure,
   hasUnpublishedWork,
   isCanvasName,
@@ -144,7 +145,7 @@ export function WikiChangeRequestView({
   const { changeRequest, files, mergePreview } = detail.data;
   const open = changeRequest.status === "open";
   const blocked = mergeBlockedReason({ canWrite: canMerge, preview: mergePreview });
-  const errors = (open ? mergePreview.errors : detail.data.errors).map(describeIndexError);
+  const errors = changeRequestProblems(detail.data);
   const target = { wikiId, changeRequestId };
 
   const runMerge = async () => {
@@ -181,6 +182,14 @@ export function WikiChangeRequestView({
   return frame(
     changeRequest.title,
     <>
+      <ChangeGroupHeaderLink
+        isMember={(group, member) =>
+          group.environmentId === environmentId &&
+          member.ref.kind === "wiki-change-request" &&
+          member.ref.wikiId === wikiId &&
+          member.ref.changeRequestId === changeRequestId
+        }
+      />
       <TabHeader.Status>
         {changeRequest.draft
           ? changeRequest.status === "open"

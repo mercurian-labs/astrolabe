@@ -12,8 +12,10 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   document**. The filter (`wiki/wikiFilter.ts`, the menu and pills in `WikiSidebar.tsx`) is a
   multi-select `role=combobox` named `Filter documents`, or `Filter documents (filtered)` with
   a dot. Its popup (`Search filters`) has a **Status** group, **Has changes** with its count
-  (documents an open pull request touches), and a **Wikis** group: All wikis, each wiki
-  with a settings gear; then **Add a wiki**, which opens the palette's add-wiki flow. Rows are checkboxes and picking
+  (documents an open pull request touches); a **List** group, **Flat list, newest first** and
+  **Hidden files**; and a **Wikis** group: All wikis, each wiki with `Show <wiki>'s worktrees`
+  and a settings gear (`Settings for <wiki>`); then the **New folder** and **Add a wiki**
+  buttons, the second opening the palette's add-wiki flow. Rows are checkboxes and picking
   keeps it open; with no wiki picked every wiki shows ticked, unticking one keeps the rest,
   and ticking every one or unticking the last is All wikis. Kept in
   `astrolabe:wiki-filter:v1` as `{wikis, changed}` (the old `astrolabe:wiki-scope:v1` is
@@ -28,13 +30,13 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   (pull-requests.md): with any open, a first row **Open changes · N →** sets the
   kind and that section's wiki to the Wikis filter's wiki when it picks exactly one (else
   every wiki) and goes there. The tree's rows show a time, or a change's mark; right-click or
-  Shift-F10 opens a row's menu, F2 renames, a drag onto a folder moves (`wiki.move`) and a drag
+  Shift-F10 opens a row's menu (`WikiDocumentTree.tsx`): a folder's has New document here, New
+  folder here, Rename and Move to…; a file's has Open in new tab, Open to the right (or Open N
+  in new tabs with a selection), Rename and Move to…. F2 renames, a drag onto a folder moves (`wiki.move`) and a drag
   out carries the selection to panes and boards. **Flat list, newest first** and search use the
   settled threads' slim row (`[data-testid=wiki-sidebar-row-slim]`: dimmed wiki icon, name, a pen icon
   when an open change holds the document, time). Hovering a row opens the threads' hover
-  card: wiki, machine, links and the open changes holding it. A wiki pull request
-  opened here (the finder, a deep link) is a foreign tab offering **Open in Changes**.
-  The row of the focused tab's document is `aria-current="page"`. Search shows
+  card: wiki, machine, links and the open changes holding it. The row of the focused tab's document is `aria-current="page"`. Search shows
   `listbox "Document search results"`, whose rows are `option`s (not buttons), or
   "No documents found".
 - **Worktrees** (with a wiki picked, or the only wiki): `combobox "Work on a pull request in a worktree"`
@@ -60,9 +62,9 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   shows its number before its ✕; opening such a note numbers the worktree
   (`useNumberWhenOpened`). A `.md` or `.canvas`
   clicked in a tree, at any depth, on the main line or a `cr/` branch, opens as
-  `wiki-note:<env>:<wiki>:<pull request id or empty>:<file>`; README, AGENTS, CLAUDE,
-  `*.skillmap.md`, any `.md` on another branch, and every other file open as
-  `wiki-file:` file tabs; tree rows open on a plain click only (no middle-click
+  `wiki-note:<env>:<wiki>:<pull request id or empty>:<file>` (README, AGENTS and CLAUDE
+  too); `*.skillmap.md` (`packages/wiki/src/resolveLink.ts` `isDocumentFile`), any `.md` on
+  another branch, and every other file open as `wiki-file:` file tabs; tree rows open on a plain click only (no middle-click
   or modifiers). A pull request worktree's menu adds **Save edits to the change
   request** while it has uncommitted files (`wiki.saveWorktree`, one amendment, worktree left
   clean; refused with "No document in this worktree has unsaved changes." when only non-note
@@ -99,7 +101,9 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   the New tab's place.
   Mod-click on a wikilink follows it in the same tab, unless the target is open in
   another tab (that one comes forward) or the note has unsaved edits (it opens in a
-  new tab). Clicking inside a pane focuses it.
+  new tab). Hovering a link (`[data-wikilink=…]`) shows `.cm-wiki-link-preview` in a hover
+  tooltip, with `Open <name>` (text "Open"); a link to a missing note renders red
+  (`cm-wiki-link-missing`). Clicking inside a pane focuses it.
 - **Drafts**: nothing in a document saves by hand. The first edit on main starts one draft per
   wiki (`wiki.autosave` with no `changeRequestId`), and main's folder doesn't change. The tab key
   stays on main: a document reads from the draft once the draft holds it
@@ -129,7 +133,8 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   (`chat:<env>:<thread>` tab), as a sidebar click does. See panes.md, "Chats as tabs".
 - **Pull requests** open as tabs with the shared tab header
   (`nav[aria-label='Pull request breadcrumb']`: the wiki, muted / the title; the state as
-  quiet status; **Open thread**, **Close pull request** / **Reopen pull request** and
+  quiet status, after `button "Change group: <title>"` when it is in a change group (opens
+  the group's tab, pull-requests.md); **Open thread**, **Close pull request** / **Reopen pull request** and
   **Merge**), then who opened it, amendments with Revert, and files that open inside the
   pull request.
 - **Deep links**: `/wikis/<wikiId>?environmentId=…&note=…` show
@@ -144,14 +149,26 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   (`/settings/wikis?wiki=<environmentId>:<wikiId>`, the filter's gear opens it) and in
   Settings → a project's **Wikis** section (**Add a wiki** when its servers have no wikis).
   Both are lists with **Unlink** and a searchable **Link a project** or **Link a wiki** picker,
-  and a chat in a linked project shows a chip per wiki in its header, hidden below `sm`.
+  and a thread in a linked project lists each wiki under **Wikis** in thread details
+  (`button "Open the wiki <name>"`, then one `button "<title>, <Open|Draft|Merged|Closed>"`
+  per wiki pull request this thread opened there; none on a draft thread or in a project
+  with no linked wiki; **Choose what to show** → Wikis hides it). The chat header has no
+  wiki chips.
+- **Settings → Wikis** also holds **New files** (`WikiLocationSettings.tsx`: Attachments,
+  default Wiki root; New notes, default Beside the linking file) and **Canvases**
+  (`WikiCanvasSettings.tsx`: New canvases, Mouse wheel, Card names, Snap to grid, Snap to
+  objects and Hide card content below).
 - **Agent note**: the first prompt of every new native conversation in a linked project,
-  including after a provider restart or handoff, gets an `<astrolabe_wikis>` note naming the
-  wikis and the `astrolabe_wiki_*` tools (`WikiService.agentNote`,
-  `ProviderTurnStartService.ts`); a conversation with turns gets it on its next prompt for wikis
+  including after a provider restart or handoff, gets an `<astrolabe_wikis>` note naming each
+  wiki, the absolute path of the thread's checkout of it, and how this session reaches it
+  (edits there; Cursor with its sandbox on writes with a shell command, as its edit tool and every
+  MCP call are refused; Antigravity can't reach it and is told to use `astrolabe_wiki_read`, `_search` and
+  `_write` for a small read or edit, and `delegate_task`'s `wiki` for a larger job: moving, splitting or merging notes, or editing more than three) (`WikiService.agentNote`, `wikiCheckoutReach`,
+  `ProviderTurnStartService.ts`). A conversation with turns gets it on its next prompt for wikis
   linked since its last one (links with no `projectLinkedAt` time never do); a prompt that
-  starts with `/` never does and doesn't count as its last. Only the provider
-  sees it, not the user's bubble. Prove it with a real turn that never names the wiki. The
+  starts with `/` never does and doesn't count as its last. A child started with `wiki` is told
+  once that its working folder is that wiki. Only the provider sees it, not the user's bubble;
+  how to use a wiki is in the fixed **Astrolabe wikis** instructions section. Prove it with a real turn that never names the wiki. The
   host T3 instance you drive from still has its own `t3_wiki_*` tools; don't mix them up.
 - **`[[` in the composer** (web only; `composer-logic.ts` `detectWikiNoteTrigger`,
   `chat/composerWikiNoteItems.ts`): opens `listbox "Wiki notes"` with this server's notes,
@@ -178,8 +195,7 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   error and its raw text. A change landing on the canvas refreshes it with the camera where it was.
 - **Agents on a canvas** (`packages/wiki/src/canvasEdits.ts`, `canvasPlace.ts`, the transform in
   `WikiService.transform`): ask an agent to add to a canvas with the board open in its change
-  request. It calls `astrolabe_wiki_transform` with kind `canvas`, no coordinates; `astrolabe_wiki_amend`
-  refuses and names the transform. No existing card moves, unless a group had to grow, and its
+  request. It calls `astrolabe_wiki_transform` with kind `canvas`, no coordinates. No existing card moves, unless a group had to grow, and its
   cards stay. The camera stays; each changed card highlights once (`.cv-flash`, gone after about a
   second, nothing repainting at rest), then keeps its mark until the pull request is merged or
   closed. On main there are no marks. The tool row's **Open canvas** opens the board in that change
@@ -193,7 +209,14 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   ` ```base ` block in a note shows the same view in place (`.cm-md-host-block`, via the
   editor's `codeBlocks` option) and its YAML once the caret is in it. Row names and `[[links]]`
   in cells open notes: in a base's own tab the note replaces it (Back returns); a view with no name column gets a "Name" column. A base outside the
-  supported subset shows "This base can't be shown" naming the unsupported part. On the phone,
+  supported subset shows "This base can't be shown" naming the unsupported part. One that runs
+  with warnings (`baseWarnings` in `bases.ts`: unknown keys, `properties` or a sort under a view's
+  `order`, a link method on a file) shows "Parts of this base don't work as written" above its
+  view, each warning a line; the phone's `BaseBlock` lists them above the view, and a pull
+  request lists its changed bases' warnings with its standing errors. A turn that saves a broken
+  base gets one system message in its thread, "A base needs fixing", naming each base and problem
+  (`brokenBasesMessage`, `RunFinalizationService.saveWikiEdits`); the turn it starts never gets
+  another. On the phone,
   the page asks the app for each block (`queryBase`/`baseResult` in `wiki-editor/protocol.ts`)
   and draws its first view. A `.base` file lists on the phone too, `button "<name>.base, <wiki>"`
   with a table icon and "Base · read only" under it, and opens in `WikiDocument` (the same
@@ -281,6 +304,7 @@ clean or seeded home may have none: before walking, add one with the palette's *
 ```
 preview_act click     role=navigation[name='Sections'] >> role=button[name='Wikis']
 preview_act click     role=button[name='<document>, <wiki>']        # replaces the tab in front
+preview_act click     role=treeitem[name=/<document>/]             # a tree row, through its shadow root
 preview_evaluate  dispatch a click with altKey on a row          # new tab
 preview_evaluate  dispatch a click with metaKey on a row         # selects it (data-selected), opens nothing
 preview_act click     [data-focused="true"] >> role=button[name='Back']   # the focused tab's history
@@ -330,15 +354,30 @@ a screenshot of the section.
    neither is overwritten.
 10. Phone: the same, from Edit; no Save, the bar opens the sheet, and backgrounding the app saves.
 
+### Walk an agent's wiki edits
+
+Needs a real agent (its cheapest model); Replay doesn't edit files.
+
+1. In a project linked to a wiki, ask the agent, without naming any folder, to add a line to a
+   note. It edits under `<state>/wiki-checkouts/<thread>/<wiki>`, and `git -C <wiki> log` is
+   unchanged until the turn ends; then the thread's wiki pull request gains one amendment.
+2. Ask it to add a base, and tell it to leave the base as written with a view's columns under
+   `properties`. The base's tab shows "Parts of this base don't work as written", and so does the
+   pull request.
+3. After that turn, one "A base needs fixing" message arrives in the thread, and the agent fixes
+   the base in the turn it starts. That turn sends no second message, even if the base is still
+   broken. Without step 2's instruction, an agent usually runs `astrolabe_wiki_query` and fixes the
+   warnings in its own turn, so no message comes.
+
 ## Gotchas
 
 - A fixture wiki needs a git repository at its top level, with a branch checked
-  out and at least one commit; `*.md` files count at any depth (never README,
-  AGENTS, CLAUDE, in any folder), and a dot-folder's show only under **Hidden files**. Clone one (for example the almagest vault) anywhere the server
+  out and at least one commit; `*.md` files count at any depth, and a dot-folder's show only
+  under **Hidden files**. Clone one (for example the almagest vault) anywhere the server
   can read, such as `<home>/wiki-fixtures/`, and register it: the palette's **Add wiki** (or
   the filter's **Add a wiki**) → **Local folder** → type the absolute path, Enter. No project
   is made; the palette then offers the link step (pick a project or **Not now**). **New wiki**
-  makes a repo with only README, so it lists no documents.
+  makes a repo with only README, so README is its one document.
 - Wikis registered before wikis stopped being projects load with `projectIds: []`; the
   `wiki-<id>` projects older builds made stay behind as ordinary projects.
 - The settings gear in the filter is `aria-hidden`; reach it by
@@ -365,8 +404,8 @@ Changes), `wiki/wikiFilter.ts` and `components/projects/storedChoice.ts` (behind
 and the palette's link step in `CommandPalette.tsx`, the Wikis section in
 `settings/ProjectSettingsPanel.tsx`, server `wiki/WikiService.ts` and
 `orchestration-v2/ProviderTurnStartService.ts`. Settings → Wikis:
-`settings/WikisSettings.tsx`, `routes/_chat.settings.wikis.tsx`. The chat header's chips:
-`wiki/LinkedWikiChips.tsx`. `[[`: `composer-logic.ts`
+`settings/WikisSettings.tsx`, `routes/_chat.settings.wikis.tsx`. Thread details' Wikis section:
+`chat/ThreadWikisSection.tsx` (its toggle in `chat/threadDetailsItems.ts`). `[[`: `composer-logic.ts`
 (`detectWikiNoteTrigger`), `chat/composerWikiNoteItems.ts`, `WikiNoteContextChip.tsx`, and
 mobile `features/threads/ThreadFeed.tsx` (the sent chip). Bases: `wiki/WikiBaseView.tsx`,
 `packages/wiki/src/bases.ts`, `baseExpression.ts` and `properties.ts`,

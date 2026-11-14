@@ -1,7 +1,16 @@
-import type { ChangeGroupDecisions } from "@t3tools/contracts";
+import {
+  DEFAULT_CHANGE_GROUP_GROUPING_SETTINGS,
+  type ChangeGroupDecisions,
+  type ThreadPullRequestLink,
+} from "@t3tools/contracts";
+import { deriveChangeGroups, type ChangeGroupThread } from "@t3tools/shared/changeGroups";
 import { describe, expect, it } from "vite-plus/test";
 
-import { applyChangeGroupChange, foldThreadBranches } from "./ChangeGroupService.ts";
+import {
+  applyChangeGroupChange,
+  describeChangeGroup,
+  foldThreadBranches,
+} from "./ChangeGroupService.ts";
 
 const empty: ChangeGroupDecisions = {
   groupId: "thread-1",
@@ -92,5 +101,64 @@ describe("a thread's branches", () => {
   it("stay the same record when no event names a new branch", () => {
     const threads = { t1: ["main"] };
     expect(foldThreadBranches(threads, [{ threadId: "t1", branch: "main" }])).toBe(threads);
+  });
+});
+
+describe("one group in full", () => {
+  it("gives each pull request its branches, checks and review, and counts agent runs", () => {
+    const link = (number: number, checksState: "passing" | "failing") =>
+      ({
+        host: "github.com",
+        repository: "acme/app",
+        number,
+        url: `https://github.com/acme/app/pull/${number}`,
+        source: "created",
+        linkedAt: at,
+        snapshot: {
+          state: "open",
+          title: `Change ${number}`,
+          headBranch: `feature-${number}`,
+          baseBranch: "main",
+          isDraft: false,
+          updatedAt: at,
+          syncedAt: at,
+          checksState,
+          reviewDecision: "approved",
+        },
+        stack: null,
+      }) as unknown as ThreadPullRequestLink;
+    const threads: ChangeGroupThread[] = [
+      {
+        id: "root",
+        title: "Refunds",
+        lineage: { parentThreadId: null, relationshipToParent: null },
+        pullRequests: [link(1, "passing")],
+        branch: "feature-1",
+      },
+      {
+        id: "child",
+        title: "Refunds API",
+        lineage: { parentThreadId: "root", relationshipToParent: "subagent" },
+        pullRequests: [link(2, "failing")],
+        branch: "feature-2",
+      },
+    ];
+    const [group] = deriveChangeGroups({
+      threads,
+      wikiChanges: [],
+      decisions: [],
+      settings: DEFAULT_CHANGE_GROUP_GROUPING_SETTINGS,
+    });
+    const detail = describeChangeGroup(group!, threads);
+    expect(
+      detail.members.map((member) => [member.key, member.branch, member.checks, member.review]),
+    ).toEqual([
+      ["pr:github.com/acme/app#1", "feature-1", "passing", "approved"],
+      ["pr:github.com/acme/app#2", "feature-2", "failing", "approved"],
+    ]);
+    expect(detail.threads.map((entry) => [entry.threadId, entry.branch])).toEqual([
+      ["root", "feature-1"],
+    ]);
+    expect(detail.agentRuns).toBe(1);
   });
 });

@@ -409,3 +409,9 @@
 .cm-md-host-block {
   contain: inline-size;
 }
+
+/* A note's gutters hold only markers (change strips, a code action's bulb): no rail of their own. */
+.cm-editor:not(.cm-code) .cm-gutters {
+  background: transparent;
+  border: none;
+}

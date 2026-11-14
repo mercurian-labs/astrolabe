@@ -15,7 +15,8 @@ thread's own Pull request tab. Shown only when a connected server reports
   upstream's own strings ("Open pull requests" in the palette, "pull request" inside a
   review) are unchanged.
 - **Wiki changes** (web, `components/changeRequests/WikiChangesGroup.tsx`): the wikis' change
-  requests in their own group above the pull requests (`ul[aria-label='Wiki changes']`):
+  requests in their own group above the pull requests (`ul[aria-label='Wiki changes']`). A **Your
+  drafts** shelf with its count sits above it while you have drafts, expanded by default. Then
   "Wiki changes" with its count at the right (`Wiki changes · <wiki>` with a clear button,
   `button "Show every wiki's changes, not only <wiki>'s"`, when this section's own wiki,
   `astrolabe:change-request-wiki-scope:v1`, picks one: set by Filter by project, or copied
@@ -24,7 +25,9 @@ thread's own Pull request tab. Shown only when a connected server reports
   rows. The section search narrows them by title. A click shows one in the focused
   pane's tab in front (`showChangeRequestTab`), Option-click a new tab, Cmd/Shift
   select, drag places them; a pull request row over a wiki change replaces it, and
-  Back/Forward walk across both kinds. Hidden when a project or a single host is picked.
+  Back/Forward walk across both kinds. Hidden when a project or a single host is picked. With
+  the kind All and no host or project picked, a host-connected wiki's pull requests show only
+  here, not in the pull request list (`PullRequestsPage.tsx`).
 - **A wiki pull request's pull requests** (`client-runtime/src/wikiPullRequests.ts`):
   its view lists the writing thread's pull requests (`ul[aria-label='Pull requests']`,
   state per row, **Open** shows one beside it as a tab, or as the thread's own Pull
@@ -53,20 +56,50 @@ thread's own Pull request tab. Shown only when a connected server reports
   from suggestions (decisions keyed `thread:<threadId>`); a thread can be in several groups. The
   tab (`change-group:<env>:<id>`) has the shared tab header (`nav[aria-label='Change group
   breadcrumb']` reading `Changes / <title>`, the state as quiet status) whose icon buttons are
-  **Ask to update the docs** / **Draft the docs**, **Ask for suggestions** (when
-  agent suggestions are on; messages the root thread to use `astrolabe_change_group_suggest`),
-  **Add a pull request**, **Add a thread** and **Open as a tab group**; below it the counts,
-  `switch "Merge with the code"`, Suggested rows (✓ / ✕, threads too), Code /
-  Documentation rows (each opens beside) and a **Threads** section (each `button "Open <title>"`
-  with its reason and Working / Settled / Idle; `workspace.openChat`: comes forward if open, else
-  fills a focused empty tab, else a new tab after the chat in front) with ✕ to take out. **Open as a tab group**
+  exactly **Add a pull request** (a pull request glyph with a plus), **Add a thread** and
+  **Open as a tab group**; below it the counts, `switch "Merge with the code"`, Suggested rows
+  (✓ / ✕, threads too; only agents calling `astrolabe_change_group_suggest` fill it, nothing in
+  the app asks), Code / Documentation rows (each opens beside) and a **Threads** section (each
+  `button "Open <title>"` with its reason and Working / Settled / Idle; `workspace.openChat`:
+  comes forward if open, else fills a focused empty tab, else a new tab after the chat in front)
+  with ✕ to take out. **Add a thread** (`useChangeGroupActions.ts`, search `Search threads`,
+  empty text "No other threads.") lists **New thread**, then the starters **Update the docs**
+  (Docs behind) and **Draft the docs** (Docs missing with Offer drafts on), then the
+  environment's other threads. New thread or a starter opens a draft in the root thread's
+  project in a pane right of the group's (`SectionTabContent.tsx` `showBeside`; the group stays
+  in front of its own pane) with the group's chip `button "Change group, <title>. Show
+  details"` in its composer (a starter adds its sentence after it; nothing sends). Until its
+  first send the Threads section shows it as a draft row (`button "Open draft <first line or
+  New thread>"`, "Draft · joins when sent", `button "Discard draft …"` with the usual undo);
+  the send adds the thread (Added by hand) and the row goes. Drafts are per device
+  (`localStorage['astrolabe:change-group-drafts:v1']`, `changeGroupJoins.ts`) and survive a
+  reload. New thread again while that draft still holds only what it started with brings it
+  forward instead of making another. Picking an existing thread adds it at once, puts the chip
+  in its draft unsent and shows it beside; its own pull requests join under Code as **From its
+  thread**, and taking the thread out takes them back to its own group. **Open as a tab group**
   opens the group's threads as chats after the front chat (which stays in front); when the
   front chat is in the group, the other tabs (the group's, its members') open linked to the
-  group, else they stand on their own, together in one new pane beside it. **Ask to update the docs** shows on Docs behind;
-  **Draft the docs** on Docs missing with drafts on. The server sweeps armed groups each minute
-  and merges their open docs once all live code merged. A thread's header shows
-  `button "Change group: <title>, <state>"`, which opens the group's tab beside the chat (in
-  front where it is open) and stays in Agents. Tab groups
+  group, else they stand on their own, together in one new pane beside it. The server sweeps
+  armed groups each minute and merges their open docs once all live code merged. A thread's
+  way to its group is thread details (`button "Toggle thread details panel"`): under Version
+  Control, a server thread in a group shows `button "Change group: <title>, <m> of <n>
+  merged"` (`ThreadChangeGroupRows.tsx`), which opens the group's tab beside the chat (in
+  front where it is open); the chat header has no group pill. A pull request's and a wiki
+  change request's header shows `button "Change group: <title>"` (state in its tooltip,
+  `ChangeGroupHeaderLink.tsx`) back to the group. **A thread's linked pull requests open as its
+  change group**, or its one pull request when it is in no group
+  (`openThreadChangeRequests.ts`): the sidebar row's pull request badge, the branch toolbar's
+  list button, the palette's **Show linked pull requests** ("Opens its change group, or its
+  pull request") and the automatic open after a turn. Linking moved off the retired right-panel
+  list: right-click a pull request row in thread details (Open, Copy link, Watch for changes /
+  Stop watching, Unlink from thread / Dismiss from thread, Link pull request;
+  `ThreadDetailsPrRowMenu.tsx`), or the palette's **Manage linked pull requests...** (per pull
+  request: Open, Copy link, Watch / Stop watching, Unlink / Dismiss;
+  `linkedPullRequestsSubmenu.tsx`). **@ a group**: in any composer, `@` plus a group's title,
+  a member's title or a pull request number lists up to three groups (the thread's own first),
+  each option reading `<title> · Change group · <state>`; picking one inserts the chip and does
+  **not** add the thread. The chip's popover lists the members and has **Open group**; a sent
+  chip tells the agent to call `astrolabe_change_groups({groupId, memberKeys})`. Tab groups
   (`panes/tabGroups.tsx`, see panes.md): in any panes, a group's run of tabs (its chats, change
   requests, and project file, changes and graph tabs keyed by any branch its threads ever
   worked on, main/master/develop/trunk excepted; main-checkout tabs are keyed by folder and
@@ -76,22 +109,27 @@ thread's own Pull request tab. Shown only when a connected server reports
   of the run when it is not open; right-click (plain buttons on web): Expand the group /
   Collapse the group (only the pane's front tab stays beside the marker), Merge with the code
   (Stop merging with the code once armed), Close the group's tabs.
-  MCP: `astrolabe_change_groups`, `astrolabe_change_group_suggest`, `astrolabe_change_group_update`.
+  MCP: `astrolabe_change_groups` (optional `groupId` and `memberKeys` read one group in full
+  as `{group}`; without them it lists every group), `astrolabe_change_group_suggest`,
+  `astrolabe_change_group_update`.
   Mobile: the Changes tab leads with `Groups · N` and cards
   `button "<title>, change group, <state>"` (route `ChangeGroup`: Merge with the code switch,
   members and a Threads section as buttons, "Take … out of the group"); Settings → Changes
-  (`SettingsChangeRequests`) holds the Grouping switches. No tab groups or agent asks on the phone.
+  (`SettingsChangeRequests`) holds the Grouping switches. A sent message's change group chip
+  (layers icon) opens the `ChangeGroup` route on tap, or a sheet reading "Not on a connected
+  environment now." when the group can't be found (`ThreadFeed.tsx`,
+  `ComposerContextSheet.tsx`). No tab groups or thread starters on the phone.
 - **Settings › Changes** (`/settings/change-requests`,
-  `settings/ChangeRequestSettings.tsx`; the palette finds it as "Grouping"): server-scoped
+  `components/settings/ChangeRequestSettings.tsx`; the palette finds it as "Grouping"): server-scoped
   switches, each `switch "<title>"`: Same thread, Same coordinator, Thread lineage,
-  References, Same branch, Agent suggestions, Flag documentation that falls behind, Offer drafts for
+  References, Same branch, Flag documentation that falls behind, Offer drafts for
   missing documentation, Merge new groups with the code (all on by default except Offer
-  drafts). One reads `aria-checked="mixed"` when the selected environments disagree. Agent
-  suggestions shows **Ask for suggestions** on a group's tab, Flag documentation lets a
-  group reach Docs behind (**Ask to update the docs**), Offer drafts shows **Draft the
-  docs**, and Merge new groups turns on a new group's Merge with the code. Walk:
-  `preview_navigate /settings/change-requests`, read each switch's `aria-checked`, turn
-  Agent suggestions off, check the group's tab loses **Ask for suggestions**, turn it back on.
+  drafts). One reads `aria-checked="mixed"` when the selected environments disagree. Flag
+  documentation lets a group reach Docs behind (**Update the docs** in **Add a thread**),
+  Offer drafts adds **Draft the docs** there on a Docs missing group, and Merge new groups
+  turns on a new group's Merge with the code. Walk: `preview_navigate
+  /settings/change-requests`, read each switch's `aria-checked`, turn Offer drafts on, check
+  a Docs missing group's **Add a thread** lists **Draft the docs** second, turn it back off.
 - **Project filter** (`changeRequests/ChangeRequestSourceFilter.tsx` over the shared
   `projects/projectFilter.ts`, `combobox "Filter by project: <name>"` beside Sort and Filters, in
   place of upstream's provider menu): a searchable list of All, **Projects** and each
@@ -104,9 +142,10 @@ thread's own Pull request tab. Shown only when a connected server reports
   hold the choice; both are read once per page load, so a value seeded from
   `preview_evaluate` needs a reload. A project is the list's `projectId` scope; choosing All
   afterwards drops `projectId` but keeps `environmentId` in the URL. Projects (all or one)
-  hides Wiki changes; Wikis (all or one) hides the pull requests, Sort and Filters, and an
-  empty wiki says `No pull requests in <wiki> yet` (with no wikis at all, "No wiki change
-  requests yet"). With only wikis, "All wikis" is the kind All, so Sort, Filters and the
+  hides Wiki changes; Wikis (all or one) hides the pull requests, Sort and Filters. The empty
+  text reads "No pull requests found" while searching, `No <host's plural> in <wiki> yet`
+  scoped to a wiki (default "pull requests"), else "No wiki pull requests yet". A draft counts
+  as content, so the empty text needs no drafts. With only wikis, "All wikis" is the kind All, so Sort, Filters and the
   pull requests stay. Change groups follow the filter on web: Projects keeps groups with a
   pull request, one project only its threads' groups, Wikis only wiki change-request members. The Agents filter (`projects/useThreadsFilter.ts`, `Filter threads`; see
   [sidebar-header.md](sidebar-header.md)) lists the same projects and no wikis, but picks
@@ -176,15 +215,17 @@ thread's own Pull request tab. Shown only when a connected server reports
   text) or a Changes row click replaces that review's tab, which pushes onto its history.
 - **Header** (`PullRequestTabHeading.tsx`, the shared `TabHeader`, panes.md): in the shared
   panes, `nav[aria-label='Pull request breadcrumb']` reads `<owner/repo> / #<n> <title>`, the
-  title truncating before the repository; then **Open** or **Draft** as quiet status, **Edit
+  title truncating before the repository; then `button "Change group: <title>"` when the pull
+  request is in a group (opens the group's tab); then **Open** or **Draft** as quiet status, **Edit
   title** only when the pull request can be edited (opens the title field below), and T3 Code's actions in the same row (Merge,
   Check out, **More pull request actions**; a merged or closed one's state badge). A thread's
-  pull request adds **This thread's pull requests**. Below it the author, branches and diff
+  pull request in a group adds **This thread's change group** (opens the group). Below it the author, branches and diff
   stat, then the Summary/Timeline/Code strip with no line above it; the review scrolls under a
   line, not a fade (Summary's section headings and Code's file headers are sticky). Outside
   the shared panes the panel keeps T3 Code's crumbs.
 - **The review**: `nav[aria-label='Pull request tabs']` holds **Summary** (reviewers,
-  labels, description, checks, comments), **Guide** (only with Settings → Source Control
+  labels, description, checks, comments), **Wiki** (second, only on a pull request that is a
+  host-connected wiki's change; `PullRequestDetailPanel.tsx`), **Guide** (only with Settings → Source Control
   → review guides on), **Timeline** and **Code** (the diff, with scope, split/stacked,
   file tree, Viewed). Every review opens on Summary. A written guide coming on screen in
   the focused pane collapses the sidebar (wide windows only, on Changes) and maximizes the pane when
@@ -192,7 +233,9 @@ thread's own Pull request tab. Shown only when a connected server reports
   as in T3 Code; leaving Changes opens the sidebar again unless it was opened by hand
   since. **More pull request actions**: Link to thread, Refresh, Ask a question, Explain
   this PR, Fix findings in a thread, Open on GitHub, Copy link, Copy PR number. Commenting and reviewing use the floating
-  **Comment on pull request** button.
+  **Comment on pull request** button. Both names follow the host's term (`More <term> actions`,
+  `Comment on <term>`: "merge request" on GitLab; `PullRequestActionsMenu.tsx`,
+  `PullRequestComposer.tsx`).
 
 ## How to get to it (user POV)
 
@@ -235,8 +278,8 @@ Save a screenshot of the section.
 - The URL keeps the last pull request while a wiki pull request or other foreign tab
   is focused (it follows only pull requests).
 - A real link test needs a thread with a linked pull request that wrote a wiki change:
-  add a scratch folder as a project, start a Claude thread there, ask it to amend a note
-  with `astrolabe_wiki_amend` only, then **Link pull request to thread** (palette) with a merged
+  add a scratch folder as a project with a wiki linked to it, start a Claude thread there, ask
+  it to edit a note in that wiki and let the turn end, then **Link pull request to thread** (palette) with a merged
   and an open upstream pull request URL; nothing is written to the host.
 - Escape with nothing open goes back to the previous page, whichever section that was (`useEscapeToGoBack`,
   `pullRequest/PullRequestsPage.tsx`). It does not yet clear a selection here as it does in
@@ -253,14 +296,27 @@ Save a screenshot of the section.
   `PullRequestListFilters.tsx` when a hover times out.
 - The row's checks badge counts skipped checks as passing, so it can say "All checks
   have passed" while Summary says "22 of 31 passing".
+- A thread started from a group and sent with only the chip takes the group's title, so seeded
+  data can hold several threads named like the group. Thread details' Wikis rows and **This
+  thread's change group** belong to the thread that opened the change, so open the root from
+  the group's Threads row ("Opened a pull request"), not a same-named sidebar row. A settled
+  root isn't under Active in the sidebar; merged groups are hidden from the Changes list, so
+  reach one through a member thread's thread details row.
+- Thread starters and draft rows write nothing until a send: discard each draft from its row
+  (and turn Offer drafts back off) before ending a walk.
 
 ## Owns
 
 `components/pullRequest/PullRequestsSidebar.tsx`, `pullRequestTabs.ts`,
 `pullRequestWorkspace.ts`, `components/changeRequests/` (project filter, kind, Wiki changes,
-and `groups/` with the thread header's pill), `state/changeGroups.ts`,
+and `groups/`: the group's tab, the header link, thread details' group row, drafts that join on
+send), `state/changeGroups.ts`, `client-runtime/src/changeGroups.ts` (opening a thread's group,
+the @ items), `chat/ChangeGroupContextChip.tsx`, `chat/ThreadDetailsPrRowMenu.tsx`,
+`pullRequest/linkedPullRequestsSubmenu.tsx`, the change-group kind in
+`shared/src/composerContextReferences.ts` and `contracts/src/composerContext.ts`, mobile
+`state/changeGroups.ts` and the change-group chip in `features/threads/ThreadFeed.tsx`,
 `components/projects/` (the project filter, shared with the Agents sidebar),
-`settings/ChangeRequestSettings.tsx` and `routes/_chat.settings.change-requests.tsx`,
+`components/settings/ChangeRequestSettings.tsx` and `routes/_chat.settings.change-requests.tsx`,
 `pullRequest/PullRequestTabHeading.tsx` (the header), the
 change-group branch of `sectionTabs/`, `packages/shared/src/changeGroups.ts`,
 `packages/contracts/src/changeGroups.ts`, `client-runtime/src/wikiPullRequests.ts`, server

@@ -51,6 +51,8 @@ export const ProviderAdapterV2RuntimePolicy = Schema.Struct({
   cwd: Schema.NullOr(Schema.String),
   approvalPolicy: Schema.optional(Schema.Unknown),
   sandboxPolicy: Schema.optional(Schema.Unknown),
+  /** Folders besides `cwd` the agent reads and writes, such as the thread's wiki checkouts. */
+  writableRoots: Schema.optional(Schema.Array(Schema.String)),
   /**
    * The administrator's ceiling, when a managed policy sets one. `runtimeMode` is already under
    * it; adapters use it to refuse native mode choices a user makes beside T3 Code's own.

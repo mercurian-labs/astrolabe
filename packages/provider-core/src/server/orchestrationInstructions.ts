@@ -1,6 +1,9 @@
 import type { ProviderInteractionMode } from "@t3tools/contracts";
 
-import { ASTROLABE_CODE_INDEX_INSTRUCTIONS } from "./astrolabeInstructions.ts";
+import {
+  ASTROLABE_CODE_INDEX_INSTRUCTIONS,
+  ASTROLABE_WIKI_INSTRUCTIONS,
+} from "./astrolabeInstructions.ts";
 
 // Codex truncates entries over 4,000 bytes; keep each section self-contained and below that limit.
 export const T3_CODE_ORCHESTRATION_SECTIONS: ReadonlyArray<string> = [
@@ -25,6 +28,7 @@ Ordinary coding tasks need no T3 tools.
 - Show trends and comparisons as a chart, even unasked, and any visual the user asks for here that is not boxes and arrows: pass its HTML to \`html_preview\`, then \`html_render\`. If the visual is a file, pass that file's HTML. A screenshot on disk or a text description does not show it. Never start a server for it. Tools a web page exposes give data only. Never use them to show results. Asked for an image to post, send, or use elsewhere: a \`.png\` file and its path, never \`html_render\`.
 - Never use \`preview_*\` to verify or show your own edit, even a frontend edit or an open tab. Do not repeat preview calls from an earlier turn. Use them only when the current request asks for browser work or names a page or tab. Public pages: web fetch or search unless browser work was asked; then preview tools only, no web fetch. Close a tab you opened before you reply, unless the user asked for it or uses it.`,
   ASTROLABE_CODE_INDEX_INSTRUCTIONS,
+  ASTROLABE_WIKI_INSTRUCTIONS,
 ];
 
 export const T3_CODE_ORCHESTRATION_INSTRUCTIONS = `
@@ -116,24 +120,32 @@ function prependT3OrchestrationInstructions(prompt: string, instructions: string
   return `<t3_code_orchestration_instructions>${instructions.trim()}</t3_code_orchestration_instructions>\n\n<user_request>\n${prompt}\n</user_request>`;
 }
 
-/** For providers whose instructions ride on the prompt, so a compacted conversation loses them. */
-export function t3OrchestrationPrompt(input: {
-  readonly prompt: string;
+interface T3OrchestrationDelivery {
   readonly hasT3Mcp: boolean;
   readonly hasDeviceTools: boolean;
   readonly orchestrationDelivered: boolean;
   readonly deviceInstructionsDelivered: boolean;
-}): string {
-  if (!input.hasT3Mcp) return input.prompt;
-  if (!input.orchestrationDelivered) {
-    return prependT3OrchestrationInstructions(
-      input.prompt,
-      orchestrationInstructions(input.hasDeviceTools),
-    );
-  }
+}
+
+/** The instructions a prompt-riding session still lacks, or none when it has them all. */
+export function t3OrchestrationInstructionsToSend(
+  input: T3OrchestrationDelivery,
+): string | undefined {
+  if (!input.hasT3Mcp) return undefined;
+  if (!input.orchestrationDelivered) return orchestrationInstructions(input.hasDeviceTools);
   return input.hasDeviceTools && !input.deviceInstructionsDelivered
-    ? prependT3OrchestrationInstructions(input.prompt, T3_CODE_DEVICE_TOOL_INSTRUCTIONS)
-    : input.prompt;
+    ? T3_CODE_DEVICE_TOOL_INSTRUCTIONS
+    : undefined;
+}
+
+/** For providers whose instructions ride on the prompt, so a compacted conversation loses them. */
+export function t3OrchestrationPrompt(
+  input: T3OrchestrationDelivery & { readonly prompt: string },
+): string {
+  const instructions = t3OrchestrationInstructionsToSend(input);
+  return instructions === undefined
+    ? input.prompt
+    : prependT3OrchestrationInstructions(input.prompt, instructions);
 }
 
 export function t3OrchestrationSystemPrompt(

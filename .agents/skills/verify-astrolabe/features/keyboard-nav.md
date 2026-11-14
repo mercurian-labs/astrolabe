@@ -26,8 +26,8 @@ composer. Never anything inside one (no stop for a tab strip, the timeline or th
   `data-workspace-order` and wrap: the rail (`rail`, `aria-label="Sections"`), the sidebar
   (`sidebar`, labelled "Agents"), the conversation and the message input, thread details,
   each pane (`pane`, one stop per pane, keyed `data-workspace-focus-key="pane:<id>"`), panels and the
-  terminal. Each restores its last focused control; the first landing on a chat pane focuses
-  its first tab's close button. Panes `inert` behind a maximized one and a
+  terminal. Each restores its last focused control; the first landing in a pane focuses its
+  tab in front (`[data-pane-tab][aria-selected=true]`). Panes `inert` behind a maximized one and a
   collapsed sidebar are skipped; Settings cycles only its section list and content.
 - **Landing**: back on what last had focus in that place, if still there; else the
   composer (`[data-testid=composer-editor]`, a chat tab's pane included), a pane's tab in front
@@ -68,7 +68,9 @@ composer. Never anything inside one (no stop for a tab strip, the timeline or th
   button's light ring shows where focus is.
 - **Sidebar list** (focus on a row: `sidebar-row-card`, `sidebar-row-slim`,
   `sidebar-draft-row`, `wiki-sidebar-row[-slim]` outside search results, a PR row's
-  button under `[data-pull-request-key]`):
+  button under `[data-pull-request-key]`, a project folder's header
+  (`[data-testid='sidebar-project-folder'] > [data-sidebar-row]`) and the thread rows inside it
+  (`sidebar-row-folder`); `keyboardNav/placeLists.ts`):
   `j`/`k`/ArrowDown/ArrowUp step, `gg`/`G`/ Home/End jump, folded and hidden rows
   skipped; Enter clicks the row, showing it in the tab in front, and keeps focus on it
   (Agents: the opened thread's composer does not take focus, `keepsListFocus`; a click
@@ -211,7 +213,8 @@ dark: only one pill carries the bar.
 1. **Sidebar to chat to panes.** On a chat tab with its linked tabs showing and split right:
    Cmd+K `h` to a sidebar row (a click on a row already focuses the composer) → Ctrl+L →
    the chat's pane (`pane <id>`, not `chat`), element `composer-editor`, the chat
-   tab's bar → click the chat's title (focus on the page) → Ctrl+L → the left linked pane, its
+   tab's bar → click the chat's title (focus leaves every place, `place: null`, and Ctrl+L
+   still moves on from the chat) → Ctrl+L → the left linked pane, its
    active pill, the bar moved to that pill → Ctrl+L → the right pane → Ctrl+L →
    unchanged (no wrap) → Ctrl+H twice → the chat's pane → Ctrl+H → sidebar, the row clicked
    first, no bar anywhere.

@@ -9,7 +9,7 @@ import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import { encodeMessage, MessageDecoder } from "./framing.ts";
-import { parseJson } from "./json.ts";
+import { parseJson, stringifyJson } from "./json.ts";
 
 /** JSON-RPC to one language-server process over stdio. Writes are synchronous and ordered. */
 
@@ -38,6 +38,11 @@ export interface LspHandlers {
    * answers when it settles.
    */
   readonly onRequest: (method: string, params: unknown) => unknown;
+  /** Each chunk the process writes to stderr, as it comes. */
+  readonly onStderr: (text: string) => void;
+  /** Whether to hand `onMessage` each message: writing one out as text is not free. */
+  readonly tracing: () => boolean;
+  readonly onMessage: (direction: "sent" | "received", text: string) => void;
 }
 
 export interface LspConnection {
@@ -78,7 +83,9 @@ export const connect = Effect.fn("LanguageServers.connect")(function* (
   let nextId = 1;
   let stderr = "";
   const write = (message: object) => {
-    Queue.offerUnsafe(input, encodeMessage({ jsonrpc: "2.0", ...message }));
+    const framed = { jsonrpc: "2.0", ...message };
+    if (handlers.tracing()) handlers.onMessage("sent", stringifyJson(framed));
+    Queue.offerUnsafe(input, encodeMessage(framed));
   };
 
   const dispatch = (message: {
@@ -126,6 +133,7 @@ export const connect = Effect.fn("LanguageServers.connect")(function* (
     Stream.runForEach((chunk) =>
       Effect.try(() => {
         for (const text of decoder.push(chunk)) {
+          if (handlers.tracing()) handlers.onMessage("received", text);
           const message = parseJson(text);
           if (typeof message === "object" && message !== null) dispatch(message);
         }
@@ -139,6 +147,7 @@ export const connect = Effect.fn("LanguageServers.connect")(function* (
     Stream.runForEach((text) =>
       Effect.sync(() => {
         stderr = (stderr + text).slice(-STDERR_KEPT);
+        handlers.onStderr(text);
       }),
     ),
     Effect.ignore,

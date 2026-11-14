@@ -127,6 +127,7 @@ import { isLiveCallerShell, threadNotFound } from "./threadAccess.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as PeerForwarding from "../peer/PeerForwarding.ts";
 import * as RemoteDelegation from "../peer/RemoteDelegation.ts";
+import * as ThreadWikiCheckouts from "../wiki/ThreadWikiCheckouts.ts";
 
 const DEFAULT_WAIT_TIMEOUT_MS = 10 * 60 * 1_000;
 const MAX_WAIT_TIMEOUT_MS = 60 * 60 * 1_000;
@@ -1036,6 +1037,8 @@ const make = Effect.gen(function* () {
   const gitDriver = yield* GitVcsDriver.GitVcsDriver;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
   const remoteDelegation = yield* RemoteDelegation.RemoteDelegation;
+  // Astrolabe: optional, so a runtime without wikis delegates unchanged.
+  const wikiCheckouts = yield* Effect.serviceOption(ThreadWikiCheckouts.ThreadWikiCheckouts);
 
   const requireProject = (projectId: ProjectId) =>
     projects.getById(projectId).pipe(
@@ -2391,6 +2394,15 @@ const make = Effect.gen(function* () {
         input.target === undefined
           ? undefined
           : PeerForwarding.remoteTarget(callerScope, input.target.environmentId);
+      if (
+        input.wiki !== undefined &&
+        (input.isolation === "worktree" || environmentId !== undefined)
+      ) {
+        return yield* failure(
+          "invalid_request",
+          "A child given `wiki` works in your checkout of it here; omit isolation 'worktree' and target.environmentId.",
+        );
+      }
       if (input.target !== undefined && environmentId !== undefined) {
         yield* requireCapability(callerScope);
         const scope = yield* requireThreadScope(callerScope, "delegate_task");
@@ -2449,6 +2461,31 @@ const make = Effect.gen(function* () {
         parent.thread.interactionMode,
         input.interactionMode,
       );
+      const { wiki } = input;
+      const wikiCheckout =
+        wiki === undefined
+          ? undefined
+          : yield* Option.match(wikiCheckouts, {
+              onNone: () => Effect.fail(failure("invalid_request", "This server has no wikis.")),
+              onSome: (checkouts) =>
+                checkouts
+                  .checkoutFor({
+                    threadId: parent.thread.id,
+                    projectId: parent.thread.projectId,
+                    worktreePath: parent.thread.worktreePath,
+                    wiki: wiki.trim(),
+                  })
+                  .pipe(
+                    Effect.mapError((error) =>
+                      failure(
+                        error.reason === "not-found" || error.reason === "invalid"
+                          ? "invalid_request"
+                          : "orchestration_error",
+                        error.message,
+                      ),
+                    ),
+                  ),
+            });
       let workspaceStrategy: OrchestrationV2ThreadLaunchWorkspaceStrategy | undefined;
       if (input.isolation === "worktree" && !isRetryOfAcceptedDelegation) {
         const project = yield* requireProject(parent.thread.projectId);
@@ -2497,6 +2534,7 @@ const make = Effect.gen(function* () {
           runtimeMode,
           interactionMode,
           ...(workspaceStrategy === undefined ? {} : { workspaceStrategy }),
+          ...(wikiCheckout === undefined ? {} : { worktreePath: wikiCheckout }),
           // Async delegations wake the parent on every child terminal; wait
           // delegations deliver through the blocking tool call, so a wake is
           // only needed if the parent settled first (timeout, disconnect).

@@ -1,20 +1,24 @@
 import type { EnvironmentChangeGroup } from "@t3tools/client-runtime/changeGroups";
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { ThreadId, type ChangeGroupChange, type EnvironmentId } from "@t3tools/contracts";
 import type { ChangeGroupMember } from "@t3tools/shared/changeGroups";
 
-import { newMessageId } from "~/lib/utils";
+import { changeGroupContextRecord } from "@t3tools/shared/composerContextReferences";
+
+import { useComposerDraftStore, type ComposerThreadTarget } from "~/composerDraftStore";
+import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
+import { formatInlineContextReference } from "~/lib/composerContextReferences";
+import { wikiContextReference } from "~/lib/composerContextRecords";
 import { surfaceKey } from "~/panes/arrangement";
 import { pullRequestSurfaceId } from "~/rightPanelStore";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { changeGroupEnvironment } from "~/state/changeGroups";
 import { readThreadShell } from "~/state/entities";
-import { threadEnvironment } from "~/state/threads";
 import { useAtomCommand } from "~/state/use-atom-command";
-import { useOrchestrationCommand } from "~/state/use-orchestration-command";
 import { toastManager } from "../../ui/toast";
 import { wikiTabKey } from "../../wiki/wikiTabs";
 import { chatTabKey } from "~/sectionTabs/sectionTabs";
+import { joinChangeGroupOnFirstSend, useChangeGroupDraftStore } from "./changeGroupJoins";
 
 /**
  * The tab a member opens in: a pull request's (named by the project of the thread that linked
@@ -70,31 +74,85 @@ export function useUpdateChangeGroup() {
   };
 }
 
+/** The chip naming a group, at the start of a draft's prompt or after what it holds. */
+function placeGroupChip(target: ComposerThreadTarget, group: EnvironmentChangeGroup) {
+  const store = useComposerDraftStore.getState();
+  const record = changeGroupContextRecord(group);
+  const existing = store.getComposerDraft(target)?.wikiContexts ?? [];
+  store.setWikiContexts(target, [
+    ...existing.filter((each) => each.contextId !== record.contextId),
+    record,
+  ]);
+}
+
 /**
- * Asks a thread's agent to do something for the group, as a message queued behind whatever it is
- * doing, in the thread's own modes. False when the thread is gone or the message did not send.
+ * Starts a thread for the group, as a new thread in its root thread's project does, with the
+ * group's chip and `sentence` in the draft, opened by `show`. It joins the group on its first
+ * send (`joinChangeGroupOnFirstSend`); a draft never sent adds nothing. A draft from the group
+ * still holding just that is shown again instead.
  */
-export function useAskThread() {
-  const startTurn = useOrchestrationCommand(threadEnvironment.startTurn, { reportFailure: false });
-  return async (environmentId: EnvironmentId, threadId: string, text: string) => {
-    const thread = readThreadShell(scopeThreadRef(environmentId, ThreadId.make(threadId)));
-    if (thread === null) return false;
-    const result = await startTurn({
-      environmentId,
-      input: {
-        threadId: thread.id,
-        message: { messageId: newMessageId(), role: "user", text, attachments: [] },
-        runtimeMode: thread.runtimeMode,
-        interactionMode: thread.interactionMode,
-        dispatchMode: "queue",
-      },
-    });
-    const sent = result._tag === "Success";
-    toastManager.add(
-      sent
-        ? { type: "success", title: `Asked “${thread.title}”` }
-        : { type: "error", title: "The message could not be sent" },
+export function useStartChangeGroupThread(show: (chatKey: string) => void) {
+  const newThread = useNewThreadHandler();
+  return async (group: EnvironmentChangeGroup, sentence = "") => {
+    const reference = formatInlineContextReference(
+      wikiContextReference(changeGroupContextRecord(group)),
     );
-    return sent;
+    const prompt = `${reference} ${sentence}`;
+    const untouched = untouchedChangeGroupDraft(group, prompt);
+    if (untouched !== undefined) {
+      show(chatTabKey(scopeThreadRef(group.environmentId, untouched.threadId)));
+      return;
+    }
+    const project = [group.groupId, ...group.threadIds]
+      .map((threadId) =>
+        readThreadShell(scopeThreadRef(group.environmentId, ThreadId.make(threadId))),
+      )
+      .find((shell) => shell !== null)?.projectId;
+    if (project === undefined) {
+      toastManager.add({ type: "error", title: "This group's threads are gone" });
+      return;
+    }
+    const opened = await newThread(scopeProjectRef(group.environmentId, project), { prompt });
+    if (opened === null) return;
+    placeGroupChip(opened.draftId, group);
+    const ref = scopeThreadRef(group.environmentId, opened.threadId);
+    joinChangeGroupOnFirstSend(opened.draftId, ref, group);
+    show(chatTabKey(ref));
   };
+}
+
+function untouchedChangeGroupDraft(group: EnvironmentChangeGroup, prompt: string) {
+  const composer = useComposerDraftStore.getState();
+  return Object.values(useChangeGroupDraftStore.getState().drafts).find((draft) => {
+    const session = composer.draftThreadsByThreadKey[draft.draftId];
+    const held = composer.draftsByThreadKey[draft.draftId];
+    return (
+      draft.environmentId === group.environmentId &&
+      draft.groupId === group.groupId &&
+      session !== undefined &&
+      !session.promotedTo &&
+      held !== undefined &&
+      held.prompt.trim() === prompt.trim() &&
+      held.images.length === 0 &&
+      held.files.length === 0
+    );
+  });
+}
+
+/** Adds a thread to the group, puts the group's chip in its draft unsent, and opens it. */
+export async function pointThreadAtChangeGroup(
+  group: EnvironmentChangeGroup,
+  threadId: ThreadId,
+  update: ReturnType<typeof useUpdateChangeGroup>,
+  show: (chatKey: string) => void,
+) {
+  const ref = scopeThreadRef(group.environmentId, threadId);
+  placeGroupChip(ref, group);
+  show(chatTabKey(ref));
+  await update(group, {
+    type: "add",
+    member: { kind: "thread", threadId },
+    reason: "manual",
+    note: "",
+  });
 }

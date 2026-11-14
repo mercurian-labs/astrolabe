@@ -5,6 +5,7 @@ import { focusedPane, openTab } from "~/panes/arrangement";
 import type { PaneArrangementStore } from "~/panes/panesHost";
 import { workspace } from "~/panes/workspace";
 import { readListedProjectWorktrees } from "~/state/worktrees";
+import type { UndoableRename } from "../renameUndo";
 import {
   parseRepositoryTabKey,
   repositoryTabKey,
@@ -37,6 +38,14 @@ export interface MultibufferLocation {
 export interface LocationList {
   readonly title: string;
   readonly locations: readonly MultibufferLocation[];
+  /** The edit that changed these places, which the view offers to take back. */
+  readonly edit?: {
+    /** Every place it changed, of which `locations` may be the first few. */
+    readonly edits: number;
+    readonly files: number;
+    readonly undoLabel: string;
+    readonly undo: UndoableRename;
+  };
 }
 
 // Lists live as long as the page: a locations tab restored after a reload says they are gone.

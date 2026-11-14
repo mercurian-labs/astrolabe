@@ -354,6 +354,15 @@ export function mergeConflictAdvice(
 }
 
 /** A standing index error in plain words. */
+/** What stands wrong in a change request: after its merge while open, then its bases' warnings. */
+export function changeRequestProblems(detail: WikiChangeRequestDetail): ReadonlyArray<string> {
+  const open = detail.changeRequest.status === "open";
+  return [
+    ...(open ? detail.mergePreview.errors : detail.errors).map(describeIndexError),
+    ...(detail.warnings ?? []).map(({ file, warning }) => `${file}: ${warning}`),
+  ];
+}
+
 export function describeIndexError(error: WikiIndexError): string {
   if (error.edge) {
     return `A map edge lost its prose link: ${error.edge.from} → ${error.edge.to} (${error.edge.type}) in ${error.file}. Link the two notes in prose, or remove the edge.`;

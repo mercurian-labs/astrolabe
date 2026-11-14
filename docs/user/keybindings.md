@@ -332,19 +332,125 @@ This Turn** in the Command Palette, switches too.
 
 ## Problems in a code file
 
-TypeScript and JavaScript files show the problems TypeScript's language server finds: a wavy
-underline, a mark beside the line number, and the message on hover. The messages of the line the
+Code files show the problems their language servers find: a wavy underline, a mark beside the
+line number, and the message on hover, naming the server that found it. Astrolabe has language
+servers for TypeScript and JavaScript (TypeScript), Python (basedpyright), Rust (rust-analyzer),
+Go (gopls), C and C++ (clangd), Java (jdtls), JSON, CSS, SCSS and Less, HTML, YAML, Bash,
+Dockerfiles, TOML (Taplo), Lua (LuaLS) and Markdown (Marksman). Repository files get Marksman;
+notes in a wiki don't, since a wiki has its own links. Zig (zls), Swift (SourceKit-LSP), Ruby
+(Ruby LSP), PHP (Phpactor), C# (csharp-ls or OmniSharp), Kotlin, Elixir (ElixirLS) and Dart work
+once installed, and you can [add your own](#add-your-own-language-server). Bash files find
+problems through ShellCheck, so install it for those. Others join them where they apply: Ruff on
+every Python file, ESLint when the project has an ESLint config or `eslint` in its `package.json`,
+and Tailwind CSS when it has a Tailwind config or `tailwindcss` there. After adding one to a
+project with files open, restart a language server to pick it up. The messages of the line the
 cursor is on also show below it. `f8` and `shift+f8` move to the next and previous problem; `e`
 `.` and `e` `,` in the keyboard menu do too. Change these under **Editors** as well.
 
-The header names the language server and says when it is starting. It runs the project's own
-TypeScript when it has one. Without one, the first time an environment needs a language server
-it asks to download it: click **Download**. If a server keeps stopping, or was paused because
-several ran at once, click **Restart** in the header.
+The header names the language server and says when it is starting. A trusted project runs its
+own server when it has one (its TypeScript, or basedpyright in its `.venv`), then one installed on
+the machine, such as rustup's rust-analyzer or Xcode's clangd, and downloads one when neither is
+there, the first time you open a file of that language. gopls is built with the machine's Go, so
+Go files need Go installed. jdtls runs on the machine's Java, so Java files need Java 21 or newer.
+When a server isn't installed the header says so: click it for what to install, then **Try again**. If a server
+keeps stopping, or was paused because several ran at once, click **Restart** in the header.
+
+Clicking the server's name in the header lists every server on the file, a `+1` beside the name
+counting the others, with each one's state and memory, and **Restart**, **Stop** and
+**View logs**. A stopped server stays stopped until you restart it. These are commands too, for
+the file you're in; find them in the Command Palette or under `e` `L` in the keyboard menu, and
+rebind them under **Editors**:
+
+| Command                   | Keyboard menu |
+| ------------------------- | ------------- |
+| Restart language server   | `e` `L` `r`   |
+| Stop language server      | `e` `L` `s`   |
+| Trust project             | `e` `L` `t`   |
+| Check language servers    | `e` `L` `c`   |
+| View language server logs | `e` `L` `l`   |
+| Select Python interpreter | `e` `L` `p`   |
+
+**View logs** opens a tab with what the server wrote (**Server log**), the process behind it
+(**Server info**) and every message between it and Astrolabe (**RPC trace**). Turn on **Record** to
+collect a trace. Messages can hold file contents, so a trace stays in memory on the machine and
+stops a few minutes after you close its tab.
+
+Language servers can run a project's code, so each project starts out untrusted, once per machine.
+An untrusted project runs only the servers that never run project code and are already on the
+machine or downloaded, marked restricted in the header; the others wait, and agents' code tools
+say so unless it is only ESLint or Tailwind waiting. Click **Trust project** in the header to run them, downloads included. A worktree shares
+its repository's trust. To take it back, go to **Settings → Projects → Language servers** and
+click **Revoke**: the project's servers restart restricted. A restricted server fetches nothing a
+file names, so JSON, YAML and TOML schemas at a URL load once the project is trusted.
+
+**Settings → Projects → Language servers** shows what each server would run for a project and
+what is missing, without starting any, and whether Ruff, ESLint and Tailwind apply and why. clangd reads each file's compiler flags from a
+`compile_commands.json`; without one it guesses, so have your build tool write one (CMake:
+`-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`).
+
+### Change how a language server runs
+
+**Settings → Projects → Language servers** also changes what runs. **Changes here apply to** says
+whether a change is for this project, in all its worktrees, or for all projects on this machine; a
+project's own setting wins. Only the servers a change reaches restart.
+
+- The switch beside a server turns it off. A server that's off says **Off in settings** in the
+  header's menu, which has **Turn on** to bring it back for this project.
+- The arrows order a language's servers. The first one that's on leads: it answers for the file, and
+  the others join it.
+- **Configure** sets a server's binary, arguments, environment variables, initialization options and
+  settings. The last two are JSON, merged over what it normally gets. Each row lists what's changed
+  and where the change came from.
+
+A server with its own binary, arguments or environment runs only in a trusted project, even one
+that would otherwise run restricted. Its settings and initialization options still reach servers
+running restricted in projects that aren't trusted.
+
+Environment values, arguments and settings can hold tokens, so only someone who can manage the
+environment sees them. Others see which variables are set, by name.
+
+A project can keep servers' settings in its repository, in `.astrolabe/language-servers.json`:
+
+```json
+{
+  "servers": {
+    "basedpyright": {
+      "settings": { "basedpyright": { "analysis": { "typeCheckingMode": "strict" } } }
+    }
+  }
+}
+```
+
+Each server takes `settings` and `initializationOptions`, and nothing else: a repository can never
+say what to run. It's read only in a trusted project, over settings for all projects and under this
+project's own. A file with a mistake in it is ignored, and Settings and the header's menu say why.
+
+### Add your own language server
+
+Any language server that speaks LSP over stdio works, for any file extension, with no extension or
+code to write. In **Settings → Projects → Language servers**, click **Add** beside **Add language
+server** and give it a name, a command, and the file extensions it reads, each with the language id
+it expects, like `foo foolang`. It can either join the usual server on those files or replace it.
+Root files are optional: with some listed, it runs only in checkouts with one of them at the top.
+
+Your servers are on that machine, for all its projects, and run only in trusted projects. They show
+in the header's menu and logs like any other, and agents' code tools use them on their files. A file
+no other server reads still gets language features, but no syntax colours. **Configure** on its row
+has **Edit** and **Remove**; removing a server stops it.
+
+### Choose a Python interpreter
+
+basedpyright resolves imports against a Python interpreter. By default that's the checkout's `.venv`
+or `venv`. To use another, click the server's name in a Python file's header and choose **Select
+Python interpreter**, or run that command. It lists virtual environments in the checkout, and conda,
+pyenv, uv, Homebrew and system Pythons on the machine, without running any of them. The menu shows
+which one is active. **Automatic** goes back to the default. The choice is per checkout, and applies
+once the project is trusted. If the chosen interpreter is deleted, the menu says so and offers to
+clear it, and the default is used until you do.
 
 ## Language features in a code file
 
-TypeScript and JavaScript files also take these from their language server. Each is in the
+Code files also take these from their language servers. Each is in the
 Command Palette, and you can rebind it under **Editors**.
 
 | Key                          | Does                       | Keyboard menu | Vim     |
@@ -357,6 +463,10 @@ Command Palette, and you can rebind it under **Editors**.
 | `mod+f12`                    | Go to type definition      | `e` `g` `t`   | `g` `y` |
 | `shift+f12`                  | Go to implementation       | `e` `g` `i`   | `g` `I` |
 | `alt+shift+f12`              | Find references            | `e` `g` `r`   | `g` `r` |
+|                              | Show incoming calls        | `e` `g` `h`   | `g` `h` |
+|                              | Show outgoing calls        | `e` `g` `H`   | `g` `H` |
+| `mod+alt+o`                  | Go to symbol in project    | `e` `g` `s`   | `g` `W` |
+| `ctrl+-` `ctrl+shift+-`      | Back and forward           | `t`           |         |
 | `f2`                         | Rename symbol              | `e` `e`       |         |
 |                              | Undo rename or code action | `e` `z`       |         |
 | `mod+shift+i`                | Format document            | `e` `=`       |         |
@@ -379,20 +489,79 @@ finds the references instead. Find References opens every use, the declaration i
 [one editor of excerpts](projects.md#results-in-one-editor) in a tab beside the file; so does
 Go to Implementation when there are several. Uses outside the checkout are left out of it. With
 `mod` held, a click on a name goes to its definition; a click off a name still adds a cursor.
+Back returns from any of these to where you were, and Forward goes there again.
+
+Show Incoming Calls and Show Outgoing Calls, also in the right-click menu, list what calls the
+function at the cursor and what it calls, one level at a time, in the same kind of editor. To go a
+level further, open a result in its file and run the command again.
+
+Go to Symbol in Project searches names across the project in front, by part of a name. It asks
+the language servers already running there, and the code index when none is or they have no
+answer.
 
 Rename Symbol opens a box below the name: type the new name and press Enter, or Escape to
-cancel. The rename reaches every file that uses the name, open or not, and they are saved. It is
-not in the file's own undo: click **Undo** on the notice, or run Undo Rename, to put every file
-back. Edits made since are kept.
+cancel. The rename reaches every file that uses the name, open or not, and they are saved. Then
+every changed place opens in one editor of excerpts, with **Undo rename** at the top. It is not in
+the file's own undo: use that button, or run Undo Rename, to put every file back. Edits made since
+are kept. Closing the tab keeps the rename.
 
-Format Document reformats the file with its language server, as one step you can undo. Repository
-files save themselves as you type; `mod+s` (`:w` in Vim) also saves now, and formats the file
-first. A formatter that takes more than two seconds is skipped and the file saves as it is. Turn
+Format Document reformats the file with its language server, Ruff for Python, as one step you can
+undo. Repository files save themselves as you type; `mod+s` (`:w` in Vim) also saves now, and
+formats the file first. A formatter that takes more than two seconds is skipped and the file saves as it is. Turn
 this off with **Format on save** in Settings → Appearance.
 
-When the server has fixes or refactors for where the cursor rests, a light bulb shows beside the
-line. Click it, or press `mod+.`, for the list; Enter applies one. Like a rename, the environment
-applies it to every file it touches, and the notice's **Undo** (or Undo Rename) takes it back.
+When a server has fixes or refactors for where the cursor rests, a light bulb shows beside the
+line. Click it, or press `mod+.`, for every server's in one list; Enter applies one. Like a rename, the environment
+applies it to every file it touches, and Undo Rename takes it back, as does **Undo** on its notice,
+or at the top of the changed places when it touched several files.
+
+While your cursor rests on a name, its other uses in the file are marked, writes more strongly than
+reads. Typing in an HTML or JSX tag writes its closing tag too, where the language server offers it.
+
+**Settings → Appearance** chooses what else language servers draw in a code file, on this device:
+
+| Setting            | Does                                                                                      | Toggle in keyboard menu |
+| ------------------ | ----------------------------------------------------------------------------------------- | ----------------------- |
+| Inlay hints        | Shows types and parameter names beside the text; click a hint to write it into the file   | `e` `L` `h`             |
+| Inline diagnostics | Shows each line's worst problem at its end. Off at first                                  | `e` `L` `d`             |
+| Semantic colours   | Colours code by what the server knows it is. Off at first; large files keep their colours |                         |
+| Code lens          | Shows counts and actions above definitions. Off at first; click one to run it             |                         |
+| Run markers        | Shows a marker beside what can run in a code file. On at first                            |                         |
+
+## Run a test or program from a code file
+
+In a trusted project, a code file shows a marker in its gutter beside what can run. Running is
+running the project's code, so a project that isn't trusted shows none.
+
+| Language                  | What can run                                                   | Runs with                                                     |
+| ------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------- |
+| Rust                      | `fn main`, `#[test]`, test modules                             | `cargo`                                                       |
+| Go                        | `func main`, `TestX`, `BenchmarkX`                             | `go`                                                          |
+| Python                    | `test_` functions and `Test` classes in test files, `__main__` | `pytest`, with the interpreter you chose in the header's menu |
+| TypeScript and JavaScript | `test`, `it` and `describe` in test files                      | vitest or jest, whichever the package uses; or `node --test`  |
+| Java                      | JUnit `@Test`, `main`                                          | The project's Maven or Gradle wrapper, or `mvn` or `gradle`   |
+
+Hover a marker to read the exact command. Click it to run: the file saves, and the command is typed
+into a terminal in its own tab, named after the test, in the folder of the nearest manifest. Its
+output stays there, with the command at the top. Run it again and the same tab is reused, stopping
+what was still running; **Stop** and **Run again** are in the tab's header. Closing the tab ends
+its terminal.
+
+Right-click a marker for **Run** and **Copy command**. **Run at cursor** runs the test or program
+around the cursor, and **Run last** runs the last one again from anywhere. Both are in the Command
+Palette and rebindable under **Editors**, with no shortcut at first:
+
+| Command       | Keyboard menu | Vim  |
+| ------------- | ------------- | ---- |
+| Run at cursor | `e` `R` `r`   | `gR` |
+| Run last      | `e` `R` `l`   | `gL` |
+
+A test whose name holds a control character can't be run from here, so it shows no marker. Nothing
+runs if the file can't be saved, and a run that ignores the interrupt is left alone, with a note in
+its tab, rather than typed over.
+
+Turn the markers off with **Run markers** in Settings → Appearance. The commands still work, reading
+the file when you run them.
 
 ## Search results and problems in one editor
 
@@ -538,7 +707,8 @@ field gets its own undo back. Terminals always keep their native shortcut.
 `navigation.back` (`mod+[` by default) and `navigation.forward` (`mod+]`) move
 through the pages you have visited, like a browser's back and forward buttons. In
 every section they go back and forward in the focused tab instead, as the arrows at the start of
-each tab's header do for their own tab.
+each tab's header do for their own tab. After a jump to a definition or into results they go back
+to where you were first. In a code file those keys indent, so use `ctrl+-` and `ctrl+shift+-`.
 
 Space `p` `f` takes the focused pane full screen: it fills the panes. Press it
 again to restore it. Space `p` `r` hides the

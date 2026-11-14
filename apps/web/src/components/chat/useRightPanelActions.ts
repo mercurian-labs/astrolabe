@@ -57,7 +57,6 @@ interface RightPanelActionsInput {
   readonly canMaximizeRightPanel: boolean;
   readonly rightPanelMaximized: boolean;
   readonly supportsPullRequests: boolean;
-  readonly pullRequestsSurfaceAvailable: boolean;
   readonly gitCwd: string | null;
   readonly activeProjectCwd: string | null;
   readonly explicitDiffOpenRef: { current: ScopedThreadRef | null };
@@ -91,7 +90,6 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     canMaximizeRightPanel,
     rightPanelMaximized,
     supportsPullRequests,
-    pullRequestsSurfaceAvailable,
     gitCwd,
     activeProjectCwd,
     explicitDiffOpenRef,
@@ -148,11 +146,6 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     useRightPanelStore.getState().open(activeThreadRef, "files");
   };
   const addFilesSurfaceStable = useStableCallback(addFilesSurface);
-  const addPullRequestsSurface = () => {
-    if (!activeThreadRef || !pullRequestsSurfaceAvailable) return;
-    useRightPanelStore.getState().open(activeThreadRef, "pull-requests");
-  };
-  const addPullRequestsSurfaceStable = useStableCallback(addPullRequestsSurface);
   const addGraphSurface = () => {
     if (!activeThreadRef || !isServerThread) return;
     useRightPanelStore.getState().open(activeThreadRef, "graph");
@@ -362,7 +355,6 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     addGraphSurfaceStable,
     addLineageSurfaceStable,
     addPullRequestSurfaceStable,
-    addPullRequestsSurfaceStable,
     closePreviewPanelStable,
     copyRightPanelFilePathStable,
     createBrowserSurface,

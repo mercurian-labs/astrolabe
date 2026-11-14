@@ -337,6 +337,19 @@ export const CodeFindInput = Schema.Struct({
 });
 export type CodeFindInput = typeof CodeFindInput.Type;
 
+export const CodeSymbolsInput = Schema.Struct({
+  ...CodeCheckout.fields,
+  /** Part of a name, in any case. */
+  query: TrimmedNonEmptyString,
+});
+export type CodeSymbolsInput = typeof CodeSymbolsInput.Type;
+
+export const CodeSymbols = Schema.Struct({
+  symbols: Schema.Array(CodeSymbolEntry),
+  truncated: Schema.Boolean,
+});
+export type CodeSymbols = typeof CodeSymbols.Type;
+
 export const CodeUse = Schema.Struct({
   path: TrimmedNonEmptyString,
   line: PositiveInt,

@@ -37,8 +37,14 @@ export interface NavigationHost {
     view: EditorView,
     title: string,
     locations: readonly NavigationLocation[],
-    kind: GoToKind | "references",
+    kind: PlacesKind,
   ) => void;
+  /** Says a call hierarchy found nothing, which `title` names. */
+  readonly nothing: (title: string) => void;
+  /** The cursor is about to jump within this file. */
+  readonly jumping: () => void;
+  /** Opens the search for names across the project, where the file has one. */
+  readonly projectSymbols: () => void;
 }
 
 const navigationHost = Facet.define<NavigationHost, NavigationHost | null>({
@@ -46,6 +52,11 @@ const navigationHost = Facet.define<NavigationHost, NavigationHost | null>({
 });
 
 export type GoToKind = "definition" | "declaration" | "typeDefinition" | "implementation";
+
+export type CallDirection = "incoming" | "outgoing";
+
+/** What a list of places is. */
+export type PlacesKind = GoToKind | "references" | CallDirection;
 
 const REQUESTS: Readonly<
   Record<
@@ -122,6 +133,7 @@ function placesOf(
 export function goToLocation(view: EditorView, location: NavigationLocation) {
   if (location.here) {
     const { from, to } = location.here;
+    view.state.facet(navigationHost)?.jumping();
     view.dispatch({
       selection: EditorSelection.range(from, to),
       effects: EditorView.scrollIntoView(from, { y: "center" }),
@@ -143,6 +155,7 @@ function show(
   const here = places.flatMap((place) => (place.here ? [place.here] : []));
   const lines = here.map((range) => view.state.doc.lineAt(range.from).number);
   if (here.length === places.length && Math.max(...lines) - Math.min(...lines) <= CLOSE_LINES) {
+    view.state.facet(navigationHost)?.jumping();
     view.dispatch({
       selection: EditorSelection.create(
         here.map((range) => EditorSelection.range(range.from, range.to)),
@@ -155,7 +168,11 @@ function show(
   view.state.facet(navigationHost)?.pick(view, title, places, kind);
 }
 
-function ask(view: EditorView, kind: GoToKind | "references"): boolean {
+function ask(
+  view: EditorView,
+  kind: GoToKind | "references",
+  head = view.state.selection.main.head,
+): boolean {
   const plugin = LSPPlugin.get(view);
   const request = REQUESTS[kind];
   const capabilities = plugin?.client.serverCapabilities;
@@ -163,7 +180,6 @@ function ask(view: EditorView, kind: GoToKind | "references"): boolean {
     return false;
   }
   plugin.client.sync();
-  const head = view.state.selection.main.head;
   const word = view.state.wordAt(head);
   const name = word ? view.state.sliceDoc(word.from, word.to) : "";
   void plugin.client.withMapping((mapping) =>
@@ -193,6 +209,52 @@ function ask(view: EditorView, kind: GoToKind | "references"): boolean {
       ),
   );
   return true;
+}
+
+interface CallItem {
+  readonly name: string;
+}
+
+/** One level of calls to or from the symbol at the cursor, always as a list under a heading. */
+function calls(view: EditorView, direction: CallDirection): boolean {
+  const plugin = LSPPlugin.get(view);
+  const capabilities = plugin?.client.serverCapabilities;
+  if (!plugin || (capabilities && !capabilities.callHierarchyProvider)) return false;
+  plugin.client.sync();
+  const head = view.state.selection.main.head;
+  const host = view.state.facet(navigationHost);
+  const label = direction === "incoming" ? "Incoming calls" : "Outgoing calls";
+  void plugin.client.withMapping(async (mapping) => {
+    try {
+      const items = await plugin.client.request<object, readonly CallItem[] | null>(
+        "textDocument/prepareCallHierarchy",
+        { textDocument: { uri: plugin.uri }, position: plugin.toPosition(head) },
+      );
+      const item = items?.[0];
+      const word = view.state.wordAt(head);
+      const name = item?.name ?? (word ? view.state.sliceDoc(word.from, word.to) : "");
+      const title = name ? `${label} of ${name}` : label;
+      const answer = item
+        ? await plugin.client.request<object, LspAnswer>(`callHierarchy/${direction}Calls`, {
+            item,
+          })
+        : null;
+      const places = placesOf(answer, plugin, mapping);
+      if (places.length === 0) host?.nothing(title);
+      else host?.pick(view, title, places, direction);
+    } catch (error) {
+      plugin.reportError(`${label} failed`, error);
+    }
+  });
+  return true;
+}
+
+export const showIncomingCalls: Command = (view) => calls(view, "incoming");
+export const showOutgoingCalls: Command = (view) => calls(view, "outgoing");
+
+/** The references or implementations of the symbol at `pos`, the cursor staying where it is. */
+export function lookUpAt(view: EditorView, kind: "references" | "implementation", pos: number) {
+  return ask(view, kind, pos);
 }
 
 export const goToDefinition: Command = (view) => ask(view, "definition");
@@ -228,6 +290,8 @@ export interface NavigationKeys {
   readonly typeDefinition: readonly string[];
   readonly implementation: readonly string[];
   readonly references: readonly string[];
+  readonly incomingCalls: readonly string[];
+  readonly outgoingCalls: readonly string[];
 }
 
 const COMMANDS: Readonly<Record<keyof NavigationKeys, Command>> = {
@@ -236,9 +300,11 @@ const COMMANDS: Readonly<Record<keyof NavigationKeys, Command>> = {
   typeDefinition: goToTypeDefinition,
   implementation: goToImplementation,
   references: findReferences,
+  incomingCalls: showIncomingCalls,
+  outgoingCalls: showOutgoingCalls,
 };
 
-/** Navigation by key, Mod-click and Vim's `gd` `gD` `gy` `gI` `gr`, opening through `host`. */
+/** Navigation by key, Mod-click and Vim's `gd` `gD` `gy` `gI` `gr` `gh` `gH`, through `host`. */
 export function environmentNavigation(options: {
   readonly keys: NavigationKeys;
   readonly host: NavigationHost;
@@ -256,6 +322,12 @@ export function environmentNavigation(options: {
           })),
       ),
     ),
-    lspVimKeys(COMMANDS),
+    lspVimKeys({
+      ...COMMANDS,
+      projectSymbols: () => {
+        options.host.projectSymbols();
+        return true;
+      },
+    }),
   ];
 }

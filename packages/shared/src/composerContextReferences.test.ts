@@ -1,13 +1,16 @@
 import {
+  ChangeGroupContextRecord,
   ComposerContextId,
   type ComposerContextRecord,
   EnvironmentId,
   ThreadId,
 } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   canvasContextRecord,
+  changeGroupContextRecord,
   formatComposerContextReference,
   ATTACHMENT_ONLY_BOOTSTRAP_PROMPT,
   collectComposerContextReferences,
@@ -25,6 +28,7 @@ import {
 } from "./composerContextReferences.ts";
 
 const ctx = (value: string) => value as ComposerContextId;
+const isChangeGroupContextRecord = Schema.is(ChangeGroupContextRecord);
 
 describe("href codec", () => {
   it("round-trips kind and id", () => {
@@ -355,7 +359,7 @@ describe("provider projection", () => {
         "wiki: Plans",
         "wikiId: wiki-1",
         "note: Login flow",
-        "Read it with astrolabe_wiki_read(wiki=wikiId, name=note).",
+        "It is that note's file in your checkout of the wiki: read it with your file tools.",
         "</context>",
         "</t3_context>",
       ].join("\n"),
@@ -408,6 +412,28 @@ describe("provider projection", () => {
       }),
     ).toContain(
       "step: Refunds over $50, step 3 of 5, Manager review: Over $50 waits for a manager.",
+    );
+  });
+
+  it("projects a change group as its identity and how to read it live, never its members", () => {
+    const record = changeGroupContextRecord({
+      environmentId: EnvironmentId.make("env-1"),
+      groupId: "thread-root",
+      title: "Refunds [v2]",
+      members: [{ key: "pr:github.com/acme/app#12" }, { key: "wiki:w1/cr1" }],
+    });
+    expect(record.contextId).toBe(
+      changeGroupContextRecord({ ...record, title: "Renamed", members: [] }).contextId,
+    );
+    expect(isChangeGroupContextRecord(record)).toBe(true);
+    const projected = projectComposerContextForProvider({
+      text: `Update ${formatComposerContextReference(record)}`,
+      records: [record],
+    });
+    expect(projected).toContain(`[Change group: Refunds v2; ref=${record.contextId}]`);
+    expect(projected).toContain("groupId: thread-root\nenvironmentId: env-1");
+    expect(projected).toContain(
+      'astrolabe_change_groups({"groupId":"thread-root","memberKeys":["pr:github.com/acme/app#12","wiki:w1/cr1"]})',
     );
   });
 

@@ -119,6 +119,12 @@ export const mapParams = (params: Json, m: OffsetMapper): Json => {
   return params;
 };
 
+/** Whole-file answers with no positions to map: right only for the text the editor has. */
+export const SEMANTIC_TOKENS_METHODS = new Set([
+  "textDocument/semanticTokens/full",
+  "textDocument/semanticTokens/full/delta",
+]);
+
 export const LOCATION_METHODS = new Set([
   "textDocument/definition",
   "textDocument/declaration",
@@ -164,6 +170,43 @@ export const mapResult = (method: string, result: Json, uri: string, m: OffsetMa
     case "textDocument/rangeFormatting":
       for (const edit of Array.isArray(result) ? result : []) mapEdit(m, edit, true);
       return result;
+    case "textDocument/documentHighlight":
+      for (const highlight of Array.isArray(result) ? result : []) {
+        highlight.range = mapRange(m, highlight.range, false);
+      }
+      return result;
+    case "textDocument/codeLens":
+      for (const lens of Array.isArray(result) ? result : []) {
+        lens.range = mapRange(m, lens.range, false);
+      }
+      return result;
+    case "codeLens/resolve":
+      if (result.range) result.range = mapRange(m, result.range, false);
+      return result;
+    case "experimental/runnables":
+      for (const { location } of Array.isArray(result) ? result : []) {
+        if (location?.targetUri !== uri) continue;
+        location.targetRange = mapRange(m, location.targetRange, false);
+        location.targetSelectionRange = mapRange(m, location.targetSelectionRange, false);
+      }
+      return result;
+    case "textDocument/linkedEditingRange":
+      result.ranges = result.ranges?.map((range: Json) => mapRange(m, range, true));
+      return result;
+    case "textDocument/inlayHint":
+      return (Array.isArray(result) ? result : []).flatMap((hint: Json) => {
+        const offset = fromPosition(m.from, hint.position);
+        // In text the editor lacks a hint has no place; its next ask finds that text received.
+        if (!m.rangeSafe(offset, offset)) return [];
+        hint.position = toPosition(m.to, m.point(offset, 1));
+        try {
+          for (const edit of hint.textEdits ?? []) mapEdit(m, edit, true);
+        } catch (error) {
+          if (!(error instanceof Unrepresentable)) throw error;
+          delete hint.textEdits;
+        }
+        return [hint];
+      });
     case "textDocument/prepareRename":
       if (result.start) return mapRange(m, result, false);
       if (result.range) result.range = mapRange(m, result.range, false);

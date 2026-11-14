@@ -12,7 +12,7 @@ Notes are the repository's `.md` files, in any folder, and `[[Name]]` finds a no
 
 Link a wiki to the projects it plans, so their agents know where research and plans live. After you add a wiki or a project, the command palette offers to link it to one on the same computer; **Not now** skips it. Change links any time under **Projects** on a wiki's page in **Settings → Wikis**, or **Wikis** in a project's settings (**Settings → Projects**). A wiki can plan several projects, and a project can have several wikis.
 
-A linked project's chats show each of its wikis in the header; click one to open it.
+A linked project's threads list each of its wikis under **Wikis** in the thread details card, with the thread's pull request on it; click either to open it.
 
 When a conversation starts in a linked project, its agent is told which wikis hold that project's research and plans: to look there first when it researches, plans, or builds a feature, and to write what it learns back to the wiki. A thread that already exists hears about a new link with its next message, never during a turn. Unlinking stops new threads hearing about the wiki; a thread that already heard keeps what it knows. **What agents are told** on a wiki's page shows the exact words.
 
@@ -54,7 +54,7 @@ When a note is renamed where it is, names in bases that link to it or compare a 
 
 As in Obsidian, a base with no filters lists every file: notes in every folder, other bases, canvases and attachments. Folders starting with a dot, such as `.git` and `.obsidian`, are left out. Add a filter such as `file.ext == "md"` or `file.inFolder("projects")` to narrow it. A file's created and modified times are those of the first and last commit that changed it.
 
-Bases support Obsidian's whole language: filters, formulas, every function, regular expressions, summaries, `groupBy` and `groupOrder`. Two details catch people out, in Obsidian too. A property's `displayName` is keyed by its full id (`note.status`, `formula.total`), and a bare `status` is ignored. And `Average` divides by every row, a missing value counting as nothing. A base that names a function or property that doesn't exist says so instead of showing results.
+Bases support Obsidian's whole language: filters, formulas, every function, regular expressions, summaries, `groupBy` and `groupOrder`. Two details catch people out, in Obsidian too. A property's `displayName` is keyed by its full id (`note.status`, `formula.total`), and a bare `status` is ignored. And `Average` divides by every row, a missing value counting as nothing. A base that names a function or property that doesn't exist says so instead of showing results. One that runs but holds something nothing reads, such as a key Bases doesn't have, columns listed anywhere but `order`, or a sort written among them, shows its results with a warning above them naming each part.
 
 ## Canvases
 
@@ -154,11 +154,11 @@ A note opened from a pull request's worktree reads from that pull request. When 
 
 ## Agents in wikis
 
-Agents in any thread can read, search and amend your wikis. Their amendments go into that thread's own pull request on the wiki, one per thread, which you review and merge like any other. They can list a folder, name a note by its path, and move a note or a whole folder as one amendment, with links following. A hidden file stays out of what they list and search, and they read one only by its exact path.
+Each thread in a linked project gets its own copy of every wiki linked to the project, and its agent reads, searches and edits the notes there with its own tools. When the turn ends, its edits land as one amendment in that thread's own pull request on the wiki, one per thread, which you review and merge like any other; agents never merge. Moving a note or a whole folder goes through Astrolabe, so links follow. Cursor with its sandbox on can't use its edit tool outside the project's folder, so it writes notes in the thread's copy with a shell command. Antigravity can't reach files outside the project's folder, so it reads and edits a few notes through Astrolabe's wiki tools and hands a larger job, such as moving, splitting or merging notes or editing more than three, to a helper agent that works in the thread's copy. When a turn leaves a base it changed broken, Astrolabe sends the agent one message in the thread naming each problem, and the agent fixes it in a new turn; if it's still broken after that, the warnings stay in the base and its pull request.
 
 To point an agent at a note, type `[[` in a thread's message and pick the note; the agent reads it. Notes from the project's linked wikis come first. While the project has no linked wiki, the list also offers to link one.
 
-When an agent amends a note you have open in that pull request, its changes appear in the editor as it makes them, marked as its own, and deletions stay visible so you can restore them. Anything you type or change while the agent's turn is running saves to the pull request when the turn ends.
+When an agent's edits land on a note you have open in that pull request, they appear in the editor marked as its own, and deletions stay visible so you can restore them. Anything you type or change while the agent's turn is running saves to the pull request when the turn ends.
 
 ## Keep a wiki on a git host
 

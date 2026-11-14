@@ -57,7 +57,9 @@ so seed that home with the server stopped:
 `vp run migrate-dev-db --base-dir "$run/home"` (or seed the worktree's `.t3`, as
 AGENTS.md describes, and use the `--home-dir "$PWD/.t3"` path above). The script reads
 `~/.t3/userdata` by default; on a machine that runs Astrolabe itself, its real data is in
-`~/.astrolabe/userdata`, so add `--source ~/.astrolabe/userdata/statev2.sqlite`. Wikis are not
+`~/.astrolabe/userdata`, so add `--source ~/.astrolabe/userdata/statev2.sqlite`. The seed
+brings the source server's scratch folder (`~/.astrolabe/scratch`) in as an ordinary project
+named "No project"; that's a seeding artifact, not a product bug. Wikis are not
 seeded; add a scratch one (below).
 
 ## Checks before driving
@@ -93,10 +95,12 @@ tests mock away.
 
 Account, workspace and remote-access features need the local cloud stack:
 `vp run dev` in `infra/cloud` (Postgres, Electric, the API and SES under
-Alchemy's local AWS emulator; see its README), with the worktree's gitignored
-`.env` holding `T3CODE_AUTH_URL=<the API URL it prints>` and
-`T3CODE_RELAY_URL=https://relay.invalid` (or a real local relay). Restart the dev
-server after changing `.env`.
+Alchemy's local AWS emulator; see its README). A second stage runs as
+`ALCHEMY_STAGE=<stage> CLOUD_POSTGRES_PORT=<port> vp run dev`; `vp run dev -- --stage <stage>`
+passes the `--` through and fails. A fresh worktree has no `.env` unless the main checkout has
+one to link (`scripts/setup-worktree.ts`): write the gitignored file for the walk with `T3CODE_AUTH_URL=<the API URL it prints>` and
+`T3CODE_RELAY_URL=https://relay.invalid` (or a real local relay), and delete it after. Restart
+the dev server after changing `.env`.
 
 [`scripts/cloud-kit.sh`](scripts/cloud-kit.sh) replaces hand-written SQL and
 curl during walks. Set `CLOUD_API_URL` (and `CLOUD_POSTGRES_PORT` when the stack
@@ -108,9 +112,12 @@ $k person ben@walk.test "Ben"                 # approved account; prints a beare
 $k approve <user-code> venkat@walk.test       # approve the code a client is showing
 $k approve-latest astrolabe-mobile venkat@walk.test
 $k mail ben@walk.test                         # invitations and sign-in codes sent
-$k invitations ben@walk.test                  # pending invitation ids for ben
+$k invitations ben@walk.test                  # prints <id>  <workspace>  (<role>) per invitation
 $k write ben@walk.test acceptInvitation '{"invitationId":"<id>"}'   # ben acts while you watch
 ```
+
+Pass only the first field of an `invitations` line to `acceptInvitation`; the whole line
+returns `INVITATION_NOT_FOUND`.
 
 Doctor the stack before driving: `curl -s $CLOUD_API_URL/health` answers, and
 `$k person doctor@walk.test` prints a token.
@@ -166,17 +173,27 @@ when the feature needs a real thread. Then:
 - Prefer `role=…[name='…']` locators from the feature files over coordinates.
   `preview_act` takes Playwright `role=` locators, chained with `>>` (`… >> nth=1`) and
   `aria-ref=` refs from `preview_snapshot`. Its CSS is narrow: an attribute selector needs a
-  value (`[data-new-linked-tab="true"]`, spaced values in single quotes:
+  value (`[data-focused="true"]`, spaced values in single quotes:
   `[aria-label='Pane actions']`); a bare `[data-x]`, `tag[data-x]` or any CSS descendant chain
   (`[data-x] >> [data-y]` too) is rejected as invalid, so the feature files' `[data-…] >> …`
-  forms read as `preview_evaluate` queries, not `preview_act` locators. A few names are
-  rejected outright (any locator holding "Add a wiki"); then read the element's centre with
+  forms read as `preview_evaluate` queries, not `preview_act` locators. Reach an element whose
+  attribute has no value (`data-new-linked-tab`) by its role:
+  `role=button[name='New linked tab']`. A few names are
+  rejected outright (any locator holding "Add a wiki"), and a regex name with an escaped
+  parenthesis (`name=/^Linked tabs \(/`) times out. A menu of plain buttons (the tab and row
+  context menus) can time out on `role=menu >> role=button[…]`, and chains such as
+  `[data-focused="true"] >> role=…` can be flaky the same way. For all of these, read the
+  element's centre with
   `preview_evaluate`, check `document.elementFromPoint` hits it (a popup can cover a copy of
   the same button), and click `x`/`y`. A role's `name` matches a
   substring: `button "Changes"` also hits the Projects list's Changes rows, and
   `Filter by project:` exists in both Projects and Changes. Scope to the section
   (`role=navigation[name='Changes'] >> …`) or match exactly with `[name="Changes" s]`; a
   click on an ambiguous locator waits out its timeout.
+- `@pierre/trees` rows are clickable with `role=treeitem[name=…]`: Playwright pierces the
+  tree's open shadow root.
+- Toasts are brief. To prove one, start a `MutationObserver` in `preview_evaluate` before the
+  action and read what it caught; a read afterwards misses it.
 - **Add a project** / **Add a wiki** → **Local folder** opens a path field prefilled with
   `~/`: typed text lands after it, so `/private/tmp/x` becomes `~/private/tmp/x`, and Enter on
   a folder that doesn't exist is **Create & Add**, which makes it under your home. Select all
@@ -221,9 +238,10 @@ when the feature needs a real thread. Then:
   without a screenshot, and surviving `location.reload()` proves persistence. Tab histories
   live in `astrolabe:workspace-tab-history:v1`.
 - The `incognito` profile is shared by every incognito tab in this session (a tab the user
-  walks in, for one), so its localStorage is too. Before driving, copy every `astrolabe:*` and
-  `t3code:*` localStorage key into your tab's sessionStorage, and write them back before
-  closing your tab (desktop Browser panel; the server browser isolates each incognito tab).
+  walks in, for one), so its localStorage is too, per origin. Only when another incognito tab
+  is on your origin (the same port), copy every `astrolabe:*` and `t3code:*` localStorage key
+  into your tab's sessionStorage before driving, and write them back before closing your tab
+  (desktop Browser panel; the server browser isolates each incognito tab).
 - Panel shortcuts (Cmd+J, Cmd+Alt+B) act on the focused pane's chat only; Cmd+Alt+B also
   on the chat whose linked tab has focus (`takesTerminalToggle`/`takesPanelShortcut` in
   `useChatShortcuts.ts`, `workspace.ts`). Click the target pane's `[data-testid=composer-editor]` first so it is the
@@ -261,6 +279,16 @@ your tab with `t3_preview_close`. If you started the server, also run:
 `stop-dev.sh` stops the recorded PID and all of its descendants. Stopping only
 the runner leaves Vite and the server holding their ports. Never stop anything
 by name. Saved screenshots are not in `$run`, so removing it keeps the evidence.
+
+If you started the cloud stack, tear it down (its [README](../../../infra/cloud/README.md)
+explains the filtered nuke):
+
+1. Stop its dev PID tree. The containers keep running after it.
+2. In `infra/cloud`, run `alchemy unsafe nuke --local --include 'AWS.*' --filter '!JSON.stringify(resource).includes("<stage>")'`
+   with `--dry-run` first, then `--yes`. The emulator is shared with other stacks.
+3. `docker rm -f` the stage's `mercuriancloud-postgres-*` container.
+4. `docker stop alchemy-floci` only if this run started it.
+5. `rm -rf infra/cloud/.alchemy/state/MercurianCloud/<stage>`.
 
 ## After an upstream sync
 

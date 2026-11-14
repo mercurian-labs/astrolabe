@@ -1558,9 +1558,12 @@ export function deriveThreadFeedPresentation(
       (row) =>
         row.id === LIVE_ACTIVITY_ROW_ID ||
         (row.type === "activity-group" &&
-          isContextCompactionActivityGroup(row) &&
           row.runId === activeRunId &&
-          row.activities[0]?.projectedItem.item.status === "running"),
+          ((isContextCompactionActivityGroup(row) &&
+            row.activities[0]?.projectedItem.item.status === "running") ||
+            row.activities.some((activity) =>
+              isLiveSubagentTurnItem(activity.projectedItem.item),
+            ))),
     )
   ) {
     result.push(thinkingRow(activeWorkStartedAt, activeRunId));

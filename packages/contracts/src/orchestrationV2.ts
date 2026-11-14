@@ -3366,6 +3366,8 @@ export const OrchestrationV2Command = Schema.Union([
     runtimeMode: RuntimeMode,
     interactionMode: ProviderInteractionMode,
     workspaceStrategy: Schema.optional(OrchestrationV2ThreadLaunchWorkspaceStrategy),
+    // A folder the child works in as it stands, such as the parent's checkout of a wiki.
+    worktreePath: Schema.optional(TrimmedNonEmptyString),
     // Defaults to settled_only; fire-and-forget wakes require always.
     completionWake: Schema.optional(Schema.Literals(["always", "settled_only"])),
     createdAt: Schema.optional(Schema.DateTimeUtc),

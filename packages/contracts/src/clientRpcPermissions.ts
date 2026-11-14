@@ -12,7 +12,7 @@ import {
   AuthTerminalOperateScope,
   type AuthEnvironmentScope,
 } from "./auth.ts";
-import { languageServerSendWrites } from "./languageServers.ts";
+import { languageServerLogsFull, languageServerSendWrites } from "./languageServers.ts";
 import { ORCHESTRATION_V2_WS_METHODS } from "./orchestrationV2.ts";
 import { WS_METHODS } from "./rpc.ts";
 
@@ -79,10 +79,14 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.codeIndexRebuild]: AuthEnvironmentMaintainScope,
   [WS_METHODS.codeIndexPrune]: AuthEnvironmentMaintainScope,
   [WS_METHODS.codeIndexClear]: AuthEnvironmentMaintainScope,
-  // Astrolabe: language servers are processes the environment runs and downloads.
+  // Astrolabe: language servers are processes the environment runs and downloads, and trust says
+  // which it may; a trace records file contents.
   [WS_METHODS.languageServersRestart]: AuthEnvironmentMaintainScope,
   [WS_METHODS.languageServersStop]: AuthEnvironmentMaintainScope,
-  [WS_METHODS.languageServersConfirmDownload]: AuthEnvironmentMaintainScope,
+  [WS_METHODS.languageServersTrustProject]: AuthEnvironmentMaintainScope,
+  [WS_METHODS.languageServersRevokeProjectTrust]: AuthEnvironmentMaintainScope,
+  [WS_METHODS.languageServersSetTrace]: AuthEnvironmentMaintainScope,
+  [WS_METHODS.languageServersUpdateSettings]: AuthEnvironmentMaintainScope,
   // Astrolabe: undoing a rename writes the files it changed.
   [WS_METHODS.languageServersUndoEdit]: AuthFilesystemWriteScope,
   [WS_METHODS.sourceControlPublishRepository]: AuthSourceControlWriteScope,
@@ -152,6 +156,10 @@ export function clientRpcRequiredScopes(
   // Astrolabe: a request carrying unconfirmed edits lands them on the file's document.
   if (method === WS_METHODS.languageServersSend && languageServerSendWrites(input)) {
     return [AuthFilesystemWriteScope];
+  }
+  // Astrolabe: a server's arguments and trace can carry tokens; its output is a plain read.
+  if (method === WS_METHODS.languageServersLogs && languageServerLogsFull(input)) {
+    return [AuthEnvironmentMaintainScope];
   }
   return Object.hasOwn(CLIENT_GUARDED_RPC_SCOPES, method)
     ? [CLIENT_GUARDED_RPC_SCOPES[method as ClientGuardedRpcTag]]

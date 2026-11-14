@@ -1,7 +1,7 @@
 /** The files of a tar archive as npm packs them (ustar, with pax and GNU long names). */
 
 export interface TarFile {
-  /** Relative, with npm's leading `package/` folder removed. */
+  /** Relative, without the folder every entry shares, such as npm's `package/`. */
   readonly path: string;
   readonly mode: number;
   readonly data: Uint8Array;
@@ -30,7 +30,7 @@ const paxPath = (data: Uint8Array): string | null => {
 export class TarError extends Error {}
 
 /** A path inside the package; anything absolute or climbing out is refused. */
-const safePath = (raw: string) => {
+const safeParts = (raw: string) => {
   const parts = raw
     .replaceAll("\\", "/")
     .split("/")
@@ -38,12 +38,11 @@ const safePath = (raw: string) => {
   if (parts.some((part) => part === "..") || raw.startsWith("/")) {
     throw new TarError("An archive entry points outside its package.");
   }
-  // npm packs every file under one top folder, usually `package/`.
-  return parts.slice(1).join("/");
+  return parts;
 };
 
 export const readTar = (archive: Uint8Array): Array<TarFile> => {
-  const files: Array<TarFile> = [];
+  const entries: Array<{ parts: Array<string>; mode: number; data: Uint8Array }> = [];
   let offset = 0;
   let longName: string | null = null;
   while (offset + BLOCK <= archive.length) {
@@ -67,9 +66,17 @@ export const readTar = (archive: Uint8Array): Array<TarFile> => {
     const path = longName ?? (prefix ? `${prefix}/${name}` : name);
     longName = null;
     if (type !== "0" && type !== "\0") continue;
-    const relative = safePath(path);
-    if (relative === "") continue;
-    files.push({ path: relative, mode: octal(header, 100, 8), data: data.slice() });
+    const parts = safeParts(path);
+    if (parts.length === 0) continue;
+    entries.push({ parts, mode: octal(header, 100, 8), data: data.slice() });
   }
-  return files;
+  // npm packs every file under one top folder, usually `package/`; other archives may not.
+  const wrapped =
+    new Set(entries.map(({ parts }) => parts[0])).size === 1 &&
+    entries.every(({ parts }) => parts.length > 1);
+  return entries.map(({ parts, mode, data }) => ({
+    path: parts.slice(wrapped ? 1 : 0).join("/"),
+    mode,
+    data,
+  }));
 };

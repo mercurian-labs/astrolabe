@@ -75,7 +75,9 @@ describe("CanvasFrame", () => {
       { router: false }, // The frame reads no route.
     );
     const key = canvasViewsKey(threadRef);
-    await userEvent.click(screen.getByRole("button", { name: `Open ${view.title} in a tab` }));
+    await userEvent.click(
+      screen.getByRole("button", { name: `Open ${view.title} in a linked tab` }),
+    );
     expect(open).toHaveBeenCalledExactlyOnceWith(threadRef, "canvas");
     expect(useThreadCanvasStore.getState().shownByThread[key]).toBe("item-1");
     expect(useThreadCanvasStore.getState().editingByThread[key]).toBeUndefined();
@@ -179,7 +181,9 @@ describe("CanvasFrame", () => {
       },
     );
     await expect.element(guest.getByText("Client")).toBeVisible();
-    expect(guest.getByRole("button", { name: `Open ${view.title} in a tab` }).query()).toBeNull();
+    expect(
+      guest.getByRole("button", { name: `Open ${view.title} in a linked tab` }).query(),
+    ).toBeNull();
   });
 });
 

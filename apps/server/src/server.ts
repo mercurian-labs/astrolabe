@@ -535,6 +535,14 @@ const layerDocuments = Documents.layer.pipe(
 const layerLanguageServers = LanguageServers.layer.pipe(
   Layer.provide(layerDocuments),
   Layer.provide(layerKnownWorkspaces),
+  // The same layer as orchestration's, so there is still one wiki service per server.
+  Layer.provide(
+    WikiService.layer.pipe(
+      Layer.provide(GitVcsDriver.layer),
+      Layer.provide(RuntimeLayer.layerProjectService),
+      Layer.provide(WorkspacePaths.layer),
+    ),
+  ),
 );
 
 const layerWorkspace = Layer.mergeAll(

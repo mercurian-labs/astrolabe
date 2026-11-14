@@ -6,8 +6,6 @@ import {
   type ScopedProjectRef,
 } from "@t3tools/contracts";
 import type { EnvironmentServerConfig } from "@t3tools/client-runtime/connection";
-import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
-import { resolveUsualAgentInstanceIds, usualAgentKey } from "./sidebar/agentRowSummary";
 import { ThreadContextDragGhost } from "./chat/ThreadContextDragGhost";
 import {
   dropThreadContext,
@@ -207,6 +205,7 @@ import {
   type SidebarListItem,
   type SidebarSection,
   resolveSidebarRowThreadId,
+  sidebarRowProjectName,
 } from "./Sidebar.logic";
 import {
   createSidebarCollisionDetection,
@@ -444,8 +443,6 @@ function useSidebarThreads(input: {
   readonly threads: readonly EnvironmentThreadShell[];
   readonly delegatedUnderParent: ReadonlySet<string>;
   readonly routeRowThreadKey: string | null;
-  /** Astrolabe: for each project's default agent (agentRowSummary.ts). */
-  readonly projectByKey: ReadonlyMap<string, EnvironmentProject>;
   // Set in boring mode: the project groups to fold active threads into, in order.
   readonly folderGroups: readonly SidebarProjectSnapshot[] | null;
   // Keeps folders with no active threads, so a project the user filtered to or pinned can start one.
@@ -615,12 +612,6 @@ function useSidebarThreads(input: {
       ...snoozedThreads,
       ...settledThreads,
     ],
-    // Astrolabe: a row names its agent only when it is not its project's usual one.
-    usualAgentInstanceIds: resolveUsualAgentInstanceIds(
-      [pinnedThreads, activeThreads, workingThreads, snoozedThreads, settledThreads],
-      serverConfigs,
-      input.projectByKey,
-    ),
     settledVisibleCount,
     settledCount,
     olderSettledShelf,
@@ -881,7 +872,8 @@ function useSidebarLookups() {
   const projectDisplayNameByKey = new Map(
     projectGroups.flatMap((group) =>
       group.memberProjects.map(
-        (project) => [`${project.environmentId}:${project.id}`, group.displayName] as const,
+        (project) =>
+          [`${project.environmentId}:${project.id}`, sidebarRowProjectName(group)] as const,
       ),
     ),
   );
@@ -1302,7 +1294,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     settledThreads,
     snoozeNow,
     searchableThreads,
-    usualAgentInstanceIds,
     settledVisibleCount,
     settledCount,
     olderSettledShelf,
@@ -1337,7 +1328,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     serverConfigs,
     connectedEnvironmentIds,
     optimisticDrop,
-    projectByKey,
     threads,
     delegatedUnderParent,
     routeRowThreadKey,
@@ -3427,9 +3417,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                             providerEntryByInstanceId={
                               providerEntriesByEnvironment.get(thread.environmentId) ??
                               EMPTY_PROVIDER_ENTRIES
-                            }
-                            usualAgentInstanceId={
-                              usualAgentInstanceIds.get(usualAgentKey(thread)) ?? null
                             }
                             timestampFormat={timestampFormat}
                             onThreadClick={handleThreadClick}

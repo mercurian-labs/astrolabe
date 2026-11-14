@@ -36,10 +36,11 @@ actions at its right end.
   unticking one keeps the rest, and ticking every project or unticking the last is All
   projects again. The filter is kept in localStorage `astrolabe:threads-filter:v1` as
   `{projects, statuses}`, `projects` being project group keys (a repository identity such as
-  `github.com/owner/name`), not names; it is removed when empty, and an older stored `kinds` is
+  `github.com/owner/name`, or `<env>:<folder path>` for a project without a remote), not names; it is removed when empty, and an older stored `kinds` is
   ignored on read but stays in storage until the next pick. The trigger and the pills show only
   with at least one project; with none the list reads "No projects yet" with
-  `button "Add project"`. An empty list reads "No threads match these filters".
+  `button "Add project"`. An empty list reads "No threads match these filters", or "No threads
+  yet" with no filter (`Sidebar.tsx`).
 - **Pills** (`[aria-label='Thread filters']`, a plain div, so a CSS locator not a role one; under the title row): **Needs you** is a
   one-tap toggle (`aria-pressed`, a dashed outline while off) shown while it is on or any
   visible thread needs you; one pill names the picked projects (up to three icons, the names,
@@ -60,12 +61,15 @@ actions at its right end.
 - **New thread** creates a draft directly only with one project or on Shift+click;
   with several projects it opens the Search palette (`dialog "Search"`) on its Projects
   list, the "New thread in…" picker. It is disabled with no projects. Each project row in
-  the filter's popup has a gear named only by its title, `[title="Project settings for <name>"]`
-  (it is `aria-hidden` with `tabIndex=-1`); right-clicking the row also opens project settings.
+  the filter's popup has a pin button, `[title="Pin <name> (⇧⌘P)"]` (`Unpin <name>` once pinned;
+  `ProjectPinButton.tsx`), beside a gear named only by its title,
+  `[title="Project settings for <name>"]`. Both are `aria-hidden` with `tabIndex=-1`;
+  right-clicking the row also opens project settings.
   That is Settings › Projects, where a project is pinned with its "Pin project" switch and
   archived or brought back with its Archive / Unarchive button.
 - **Rail mark**: the small monogram on a bordered rounded tile (`[data-app-rail-mark]`) is the rail's first item, above Agents, on web and desktop alike. The cap above the rail (`[data-app-rail-cap]`) is an empty, aria-hidden cell. The sidebar toggle is a separate fixed element drawn over it (`[data-app-rail-toggle]`, centred, x ≈ 6), not a child of the cap: locate it by `[data-app-rail-toggle]` or `role=button[name='Toggle main sidebar']`, never scoped under the cap. In the macOS desktop app (not fullscreen), whose window buttons take that corner, the toggle sits just after them (`--rail-toggle-left`, 90px, outside the cap's 44px) and the header row's content starts after the toggle.
-- **Icon rail** (`nav[aria-label='Sections']`, desktop only): the sections on top
+- **Icon rail** (`nav[aria-label='Sections']`, at wide widths on web and desktop; absent in a
+  narrow window, 700px for one): the sections on top
   (Agents, Wikis, Projects, Changes when the server supports pull requests),
   the current one marked with a bar and `aria-current="page"`; the desktop app's update control
   (`Check for updates`, a rail list row), then Usage and Settings, sit at the foot. Where cloud sign-in is
@@ -103,25 +107,18 @@ actions at its right end.
   none. Collapsed, the main title bar holds no sidebar actions: not Back/Forward, Search or
   the filter. Settings and Usage have no tabs: their headers
   (Settings / page, Usage / environment / provider) sit inside their modals.
-- **Thread rows** (`[data-testid=sidebar-row-card]`): one line with the project picture, the
-  title, the terminal and machine glyphs, and the age or status; a smaller second line only when
-  the thread has something particular, its parts joined by `·`: `Draft`
-  (`sidebar-draft-indicator-<id>`); the branch without its `<repository>/` prefix, hidden on the
-  default branch (main or master, or what the row's git status reports), after the worktree glyph
-  (`thread-worktree-<id>`) when the thread has its own worktree; the pull request as
-  `PR #130 open` (still the badge link, with its tooltip); and the agent's name when it is not
-  its project's usual one (the default the project's new threads start with, its own or its
-  environment's, else the most common among the environment's listed threads). In a repository
-  whose default branch is not main or master, a row on it shows the branch until its git status
-  arrives, then drops to one line. `components/sidebar/agentRowSummary.ts` decides the second
-  line; `AgentRowDetails.tsx` and `SidebarCard.tsx`'s `SidebarAgentRowItem`/
-  `SidebarAgentRowContent` draw it. Pinned rows sit under a resting **Pinned** heading
-  (`[data-testid=sidebar-pinned-header]`, 24px tall, holding a `role=heading`) with no pin glyph, and an
-  **Active** one (`sidebar-pinned-divider`) closes them while active rows follow. With nothing
-  pinned both items still exist but are empty and 0px tall; the heading shows only once a row
-  is pinned. Hovering a pinned
+- **Thread rows** (`[data-testid=sidebar-row-card]`): upstream's three lines with the first two
+  swapped. The title leads, with the age or status beside it (hover swaps it for Snooze, Settle
+  and Unpin); then the project picture and name, a repository-named project without its owner;
+  then upstream's branch line (worktree glyph, branch, terminal, pull request, machine and agent
+  icons), which a row with none of those drops, moving the icons up a line. A row's context
+  menu has **Pin thread**. Pinned rows sit under a resting **Pinned** heading
+  (`[data-testid=sidebar-pinned-header]`, 24px tall, holding a `role=heading` `aria-level=3`
+  "Pinned") with no pin glyph, shown only with pinned rows. An **Active** divider
+  (`sidebar-pinned-divider`) closes them, shown only with both pinned and active rows. Otherwise
+  both still exist but are empty and 0px tall. Hovering a pinned
   row offers `button "Unpin thread"` beside Snooze and Settle. Draft-session rows
-  (`sidebar-draft-row`) take the same two lines (the preview, then Draft) and stay above the
+  (`sidebar-draft-row`) take the same order (pen and preview, then the project) and stay above the
   Pinned heading, outside the sortable rows the drag projection measures. Snoozed and settled
   rows stay slim (`sidebar-row-slim`, with their pin glyph), and mobile rows are upstream's.
 - **No folder mode**: upstream's boring sidebar (project folders, `SidebarProjectFolderHeader`,
@@ -166,7 +163,7 @@ the first search result, take the `getBoundingClientRect` centre (nonzero height
 `document.elementFromPoint(cx, cy).closest(...)` returns that element. The borders are visual-only:
 read `getComputedStyle` widths on the header row (a bottom border) and `[data-app-rail-cap]` (none: the border stops above the rail). Colours: `[data-sidebar-chrome-header]` and `[data-app-rail]` share a `backgroundColor`; `[data-slot=sidebar-inner]` matches `main[data-slot=sidebar-inset]` (light and dark, Mercurian and another theme), and a hovered and the current row still show a fill. The edge: `getComputedStyle(document.querySelector('[data-app-sidebar]'), '::after').top` is `0px`. Check the pill is not clipped at the default sidebar width,
 and again after dragging `Resize Sidebar` narrower. Thread rows: a `sidebar-row-card`'s
-`getBoundingClientRect().height` is 26 with one line and 42 with two (its `li` adds 2).
+`getBoundingClientRect().height` is 78 with a branch line and 58 without (its `li` adds 4).
 
 ## Gotchas
 
@@ -175,6 +172,8 @@ and again after dragging `Resize Sidebar` narrower. Thread rows: a `sidebar-row-
 - Scope locators: `navigation "Agents"` (the sidebar), the rail's `button "Agents"`
   and `heading "Agents"` share the name, and so do Projects', Wikis' and Changes'. A diff
   tab's header breadcrumb also renders `nav[aria-label="Changes"]`. Scope to
-  `nav[aria-label="Sections"]` for the rail and to the sidebar for a section's lists.
+  `nav[aria-label="Sections"]` for the rail and to the sidebar for a section's lists. The
+  sidebar is `div[role=navigation][aria-label=Agents]` (or the section's name), so
+  `role=navigation[name='Agents']` finds it and CSS `nav[aria-label=…]` doesn't.
 - Upstream reworks `Sidebar.tsx` often. After a sync, check that all three
   actions still exist with these names.

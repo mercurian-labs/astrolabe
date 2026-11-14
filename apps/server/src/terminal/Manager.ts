@@ -287,6 +287,9 @@ interface TerminalSessionState {
   pid: number | null;
   history: BoundedTerminalHistory;
   pendingHistoryControlSequence: string;
+  /** Whether what's reading the terminal asked for pastes bracketed, and the end of its output. */
+  bracketedPaste: boolean;
+  pasteModeTail: string;
   pendingProcessEvents: Array<PendingProcessEvent | undefined>;
   pendingProcessEventIndex: number;
   processEventDrainRunning: boolean;
@@ -508,12 +511,53 @@ function enqueueProcessEvent(
   return true;
 }
 
+const PASTE_MODE = new RegExp(String.raw`\u001b\[\?(?:\d+;)*2004(?:;\d+)*([hl])`, "g");
+const PASTE_MODE_LENGTH = 32;
+
+/** Follows a shell's bracketed paste mode, which it sets at each prompt, across output chunks. */
+function trackPasteMode(session: TerminalSessionState, data: string) {
+  const text = session.pasteModeTail + data;
+  const last = [...text.matchAll(PASTE_MODE)].at(-1);
+  if (last) session.bracketedPaste = last[1] === "h";
+  session.pasteModeTail = text.slice(-PASTE_MODE_LENGTH);
+}
+
+/**
+ * `text` as a line editor should get it. A shell that asked for it inserts a bracketed paste
+ * literally; bash before 5.1, PowerShell and cmd read those markers as keys, so they never see one.
+ */
+function pastedText(text: string, bracketed: boolean) {
+  const plain = text.replace(/\p{Cc}/gu, "");
+  return bracketed ? `\u001b[200~${plain}\u001b[201~` : plain;
+}
+
 function defaultShellResolver(platform: NodeJS.Platform, env: NodeJS.ProcessEnv): string {
   if (platform === "win32") {
     return "pwsh.exe";
   }
   return env.SHELL ?? "bash";
 }
+
+/**
+ * How the shell `resolveShellCandidates` starts reads a line, without starting it. Windows comes
+ * down to cmd only if neither PowerShell can start.
+ */
+export const terminalShellFamily = Effect.fn("terminal.shellFamily")(function* (
+  platform: NodeJS.Platform,
+  env: NodeJS.ProcessEnv,
+) {
+  if (platform !== "win32") {
+    const shell = defaultShellResolver(platform, env);
+    return shell.slice(shell.lastIndexOf("/") + 1) === "fish"
+      ? ("fish" as const)
+      : ("posix" as const);
+  }
+  const fileSystem = yield* FileSystem.FileSystem;
+  const powerShell = yield* fileSystem
+    .exists(windowsPowerShellPath(env))
+    .pipe(Effect.orElseSucceed(() => false));
+  return powerShell ? ("powershell" as const) : ("cmd" as const);
+});
 
 function normalizeShellCommand(
   value: string | undefined,
@@ -2223,6 +2267,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
             nextEvent.data,
           );
           session.pendingHistoryControlSequence = sanitized.pendingControlSequence;
+          trackPasteMode(session, nextEvent.data);
           if (sanitized.visibleText.length > 0) {
             session.history.append(sanitized.visibleText);
           }
@@ -2854,6 +2899,8 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         pid: null,
         history,
         pendingHistoryControlSequence: "",
+        bracketedPaste: false,
+        pasteModeTail: "",
         pendingProcessEvents: [],
         pendingProcessEventIndex: 0,
         processEventDrainRunning: false,
@@ -3325,7 +3372,10 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     }
     session.inputCount += 1;
     yield* Effect.try({
-      try: () => process.write(input.data),
+      try: () =>
+        process.write(
+          input.paste === true ? pastedText(input.data, session.bracketedPaste) : input.data,
+        ),
       catch: (cause) =>
         new TerminalWriteError({
           threadId: input.threadId,

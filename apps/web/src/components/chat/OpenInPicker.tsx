@@ -27,6 +27,7 @@ import {
   MenuItem,
   MenuItemLabel,
   MenuPopup,
+  MenuSeparator,
   MenuShortcut,
   MenuSub,
   MenuSubTrigger,
@@ -214,6 +215,7 @@ export const OpenInPicker = memo(function OpenInPicker({
   enableShortcut = true,
   displayMode = "toolbar",
   revealFileManager = false,
+  builtinOpen = null,
 }: {
   environmentId: EnvironmentId;
   keybindings: ResolvedKeybindingsConfig;
@@ -225,6 +227,8 @@ export const OpenInPicker = memo(function OpenInPicker({
   enableShortcut?: boolean;
   displayMode?: "toolbar" | "panel";
   revealFileManager?: boolean;
+  /** Astrolabe: our editor, as the toolbar's primary action; editors then open from the menu. */
+  builtinOpen?: { label: string; Icon: Icon; open: () => void } | null;
 }) {
   const isPanel = displayMode === "panel";
   const ActionGroup = isPanel ? "div" : Group;
@@ -284,7 +288,8 @@ export const OpenInPicker = memo(function OpenInPicker({
   const backgroundThread = use(BackgroundThreadContext);
   const options = resolveOpenInOptions(navigator.platform, effectiveEditors);
   const primaryOption = options.find(({ value }) => value === preferredEditor) ?? null;
-  const primaryLabel = isPanel ? `Open in ${primaryOption?.label ?? "editor"}` : "Open";
+  const primary = builtinOpen ? { ...builtinOpen, kind: "brand" as const } : primaryOption;
+  const primaryLabel = isPanel || builtinOpen ? `Open in ${primary?.label ?? "editor"}` : "Open";
 
   const editorItems = (
     <>
@@ -305,7 +310,7 @@ export const OpenInPicker = memo(function OpenInPicker({
               disabled={!openInCwd || !canOpenEditor}
               key={value}
               onClick={() => {
-                if (presentation === "menu") {
+                if (presentation === "menu" || builtinOpen) {
                   void openInEditor(value);
                 } else {
                   setPreferredEditor(value);
@@ -314,7 +319,7 @@ export const OpenInPicker = memo(function OpenInPicker({
             >
               <Icon aria-hidden="true" className={getOpenInIconClass(kind)} />
               <MenuItemLabel>{label}</MenuItemLabel>
-              {value === preferredEditor && openFavoriteEditorShortcutLabel && (
+              {value === preferredEditor && !builtinOpen && openFavoriteEditorShortcutLabel && (
                 <MenuShortcut>{openFavoriteEditorShortcutLabel}</MenuShortcut>
               )}
             </MenuItem>
@@ -365,14 +370,15 @@ export const OpenInPicker = memo(function OpenInPicker({
         : {})}
     >
       <ThreadDetailsControl
-        aria-label={compact ? "Open file in preferred editor" : primaryLabel}
+        aria-label={compact && !builtinOpen ? "Open file in preferred editor" : primaryLabel}
         size={isPanel ? "sm" : "xs"}
         variant={isPanel ? "ghost" : "outline"}
         part="primary"
         panel={isPanel}
-        disabled={!preferredEditor || !openInCwd || !canOpenEditor}
+        disabled={!builtinOpen && (!preferredEditor || !openInCwd || !canOpenEditor)}
         {...(enableShortcut && !backgroundThread ? { [OPEN_FAVORITE_EDITOR_ATTRIBUTE]: "" } : {})}
         onClick={() => {
+          if (builtinOpen) return builtinOpen.open();
           if (!preferredEditor) return;
           const label = editorLabelForPlatform(preferredEditor, navigator.platform);
           void openInEditor(preferredEditor).then((opened) => {
@@ -380,12 +386,12 @@ export const OpenInPicker = memo(function OpenInPicker({
           });
         }}
       >
-        {primaryOption?.Icon ? (
-          <primaryOption.Icon
+        {primary?.Icon ? (
+          <primary.Icon
             aria-hidden="true"
             className={cn(
               isPanel ? THREAD_DETAILS_PANEL_ICON_CLASS : "size-3.5",
-              getOpenInIconClass(primaryOption.kind),
+              getOpenInIconClass(primary.kind),
             )}
           />
         ) : isPanel ? (
@@ -433,6 +439,18 @@ export const OpenInPicker = memo(function OpenInPicker({
           {...(isPanel ? { anchor: panelAnchorRef } : {})}
           className={isPanel ? "w-(--anchor-width)" : undefined}
         >
+          {builtinOpen ? (
+            <>
+              <MenuItem onClick={builtinOpen.open}>
+                <builtinOpen.Icon aria-hidden="true" className={getOpenInIconClass("brand")} />
+                <MenuItemLabel>{builtinOpen.label}</MenuItemLabel>
+                {openFavoriteEditorShortcutLabel && (
+                  <MenuShortcut>{openFavoriteEditorShortcutLabel}</MenuShortcut>
+                )}
+              </MenuItem>
+              <MenuSeparator />
+            </>
+          ) : null}
           {editorItems}
         </MenuPopup>
       </Menu>

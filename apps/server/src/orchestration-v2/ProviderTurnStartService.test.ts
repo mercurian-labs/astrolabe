@@ -1008,7 +1008,7 @@ function makeLocalCommandHarness(input: {
         input.wikiNote === undefined
           ? Layer.empty
           : Layer.mock(WikiService.WikiService)({
-              agentNote: (_projectId, linkedSince) =>
+              agentNote: ({ linkedSince }) =>
                 Effect.succeed(
                   linkedSince === undefined
                     ? (input.wikiNote ?? null)

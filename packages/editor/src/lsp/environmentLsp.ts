@@ -7,7 +7,7 @@ import {
   StateField,
   type Text,
 } from "@codemirror/state";
-import type { EditorView } from "@codemirror/view";
+import type { EditorView, ViewUpdate } from "@codemirror/view";
 import {
   LSPClient,
   LSPPlugin,
@@ -109,7 +109,11 @@ export class EnvironmentWorkspace extends Workspace {
 interface Held {
   readonly version: number;
   readonly message: {
-    params: { uri: string; version?: number; diagnostics: Array<{ range: Range }> };
+    params: {
+      uri: string;
+      version?: number;
+      diagnostics: Array<{ range: Range; message: unknown; source?: unknown }>;
+    };
   };
 }
 
@@ -128,12 +132,32 @@ const positionOf = (doc: Text, offset: number) => {
   return { line: line.number - 1, character: offset - line.from };
 };
 
+/** lsp-client keeps only a diagnostic's message, so its server's name goes in there to survive. */
+const labelled = <T extends { readonly message: unknown; readonly source?: unknown }>(item: T) =>
+  typeof item.message === "string" && typeof item.source === "string"
+    ? { ...item, message: `${item.message} (${item.source})` }
+    : item;
+
 /** Marks an editor whose file has a language server, for menus that run its features. */
 const languageServed = Facet.define<boolean>();
 
 /** Whether `state`'s editor talks to a language server (the commands that ask it can run). */
 export function hasLanguageServer(state: EditorState): boolean {
   return state.facet(languageServed).length > 0;
+}
+
+/** What may have changed behind an editor's answers: the servers, or one kind of answer. */
+export type ServerRefresh = "servers" | "inlayHints" | "codeLens" | "semanticTokens";
+
+const serverRefresh = StateEffect.define<ServerRefresh>();
+
+/** Whether `update` says to ask again for answers of `kind`. */
+export function askAgain(update: ViewUpdate, kind: Exclude<ServerRefresh, "servers">): boolean {
+  return update.transactions.some((transaction) =>
+    transaction.effects.some(
+      (effect) => effect.is(serverRefresh) && (effect.value === kind || effect.value === "servers"),
+    ),
+  );
 }
 
 /** A diagnostic as the server sent it (code actions need its `code`), where it is in the text. */
@@ -195,11 +219,28 @@ export function environmentLsp(options: {
   const { document, channel } = options;
   const handlers = new Set<(message: string) => void>();
   let workspace: EnvironmentWorkspace | null = null;
+  const refresh = (kind: ServerRefresh) => {
+    for (const file of workspace?.files ?? []) {
+      file.view.dispatch({ effects: serverRefresh.of(kind) });
+    }
+  };
   const client = new LSPClient({
     rootUri: options.rootUri,
     timeout: options.timeout ?? REQUEST_TIMEOUT,
     workspace: (owner) => (workspace = new EnvironmentWorkspace(owner, document)),
     extensions: [serverDiagnostics()],
+    notificationHandlers: {
+      // Companion servers join after `initialize`, and leave: this is what `client` can do now.
+      "astrolabe/capabilities": (target, capabilities) => {
+        target.serverCapabilities = capabilities as typeof target.serverCapabilities;
+        refresh("servers");
+        return true;
+      },
+      "astrolabe/refresh": (_target, kind) => {
+        refresh(kind as ServerRefresh);
+        return true;
+      },
+    },
   });
   const transport: Transport = {
     send(message) {
@@ -210,7 +251,7 @@ export function environmentLsp(options: {
       };
       // An item handed back to resolve names no file: it is this editor's one.
       const uri =
-        parsed.method === "completionItem/resolve"
+        parsed.method === "completionItem/resolve" || parsed.method === "codeLens/resolve"
           ? workspace?.files[0]?.uri
           : parsed.params?.textDocument?.uri;
       const file =
@@ -255,7 +296,15 @@ export function environmentLsp(options: {
       // lsp-client reads positions against its synced text and drops other versions: make both now.
       client.sync();
       entry.message.params.version = file.version;
-      deliver(JSON.stringify(entry.message));
+      deliver(
+        JSON.stringify({
+          ...entry.message,
+          params: {
+            ...entry.message.params,
+            diagnostics: entry.message.params.diagnostics.map(labelled),
+          },
+        }),
+      );
     }
   };
   const stopFollowing = document.onVersion(release);
@@ -277,6 +326,10 @@ export function environmentLsp(options: {
       if (attached) return;
       attached = true;
       client.connect(transport);
+      void client.initializing.then(
+        () => refresh("servers"),
+        () => undefined,
+      );
     },
     reset: () => {
       held.clear();

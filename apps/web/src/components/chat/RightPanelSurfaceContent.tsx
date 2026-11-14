@@ -180,6 +180,7 @@ export function RightPanelSurfaceContent(props: {
         />
       );
     }
+    // Astrolabe: nothing opens this list now (the change group replaces it); restored tabs still show.
     case "pull-requests":
       return <ThreadPullRequestsPanel threadRef={threadRef} />;
     case "graph":

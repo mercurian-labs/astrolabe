@@ -57,12 +57,16 @@ same commands, and all three kinds of trigger (Shortcut, Menu keys, Alias) live 
   `n`/`p`/`t`/`a`/`r` next/previous/show/all/restore change, `b` compare with HEAD or since this
   turn, `o` go to symbol, `.`/`,` next/previous problem, `m`/`h`/`i` completions, hover,
   signature help, `g` Go to code (`d` definition, `c` declaration, `t` type definition, `i`
-  implementation, `r` references), `e` rename, `z` undo rename, `=` format, `q` code actions,
+  implementation, `r` references, `h`/`H` incoming/outgoing calls, `s` symbol in project), `L`
+  Language server (`r` restart, `s` stop, `t` trust project, `c` check servers, `l` logs, `p`
+  Python interpreter, `h` inlay hints, `d` inline diagnostics), `R` Run (`r` at cursor, `l` last),
+  `e` rename, `z` undo rename, `=` format, `q` code actions,
   `v` Show problems, `x`/`k`/`}`/`{` results-tab moves, then editing (`c` comment, `d` duplicate,
   `j` join, `s` sort, `u`/`l` case, `w` wrap, `[`/`]` fold all). Rows with nothing to act on
-  are faint with their own reason ("No editor to find in", "No changes here", "No turn changed
-  this file", "No language server here", "No results here", "No project in front"; `v` needs a
-  Projects tab focused). `terminal.toggle` is faint (here and in the palette) unless a chat tab is
+  are faint and show their own reason in place of their label ("No editor to find in", "No
+  changes here", "No turn changed this file", "No language server here", "Nothing to run at the
+  cursor", "Nothing run yet", "No file to outline", "No problems shown here", "No rename to
+  undo", "No results here", "No project in front"; `v` needs a Projects tab focused). `terminal.toggle` is faint (here and in the palette) unless a chat tab is
   focused.
 - **Search** (Cmd+/, the menu's `/`, Cmd+K again; the palette's plain mode, dialog
   name `Search`): empty, it lists
@@ -122,13 +126,15 @@ same commands, and all three kinds of trigger (Shortcut, Menu keys, Alias) live 
   form fixed to that command and kind; adding beside defaults writes them too. A
   removed default shows struck through in its cell; the row's `⋯` (`aria-label=
   "Actions for …"`) lists **Remove `x`**, **Reset `x` to default**, and **Restore
-  default `x`** per binding. Narrow (under 44rem), the columns stack as labelled
-  lines. **Add keybinding** asks for the command, the kind, then records.
-- **Migrations** (once each, recorded in `$home/userdata/keybindings-migrations`):
-  an untouched `mod+k → commandPalette.toggle` becomes `whichKey.open`, an
-  untouched `mod+shift+k → pullRequest.copyNumber` gains `!editorFocus`, and an
-  untouched `mod+p → filePicker.toggle` (`!terminalFocus`) becomes
-  `commandLine.open`.
+  default `x`** per binding. Narrow (the table's container under 44rem, `@min-[44rem]/keybindings`
+  in `KeybindingsTable.tsx`, not the window), the columns stack as labelled lines. **Add keybinding** asks for the command, the kind, then records.
+- **Migrations** (once each, recorded in `$home/userdata/keybindings-migrations`): for
+  example, an untouched `mod+k → commandPalette.toggle` becomes `whichKey.open`, an untouched
+  `mod+shift+k → pullRequest.copyNumber` gains `!editorFocus`, an untouched
+  `mod+p → filePicker.toggle` (`!terminalFocus`) becomes `commandLine.open`, `mod+shift+o →
+  chat.new` gains `!outlineFocus`, and bindings such as `mod+d diff.toggle` gain
+  `!codeEditorFocus`. The full list is `MOVED_DEFAULT_KEYBINDINGS` in
+  `apps/server/src/keybindings.ts`.
 
 ## How to get to it (user POV)
 
@@ -208,7 +214,7 @@ and copy the backup back when done. The server picks changes up live.
    Save → the file holds both
    `menu w w` and `menu g x` → hover the Alias cell, `+`, type `wk`, Save → the file
    holds `:wk` → filter Aliases → only commands with aliases, one column → restore
-   the file. Narrow the window under 44rem → each row stacks Shortcut / Menu keys /
+   the file. Narrow the window until the table is under 44rem → each row stacks Shortcut / Menu keys /
    Alias lines.
 
 **Proof:** the menu and palette reads at each step, the menu's paint read in flow 1,

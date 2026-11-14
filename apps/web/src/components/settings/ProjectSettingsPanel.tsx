@@ -49,6 +49,7 @@ import {
   ProjectFaviconPickerDialog,
 } from "./ProjectFaviconPickerDialog";
 import { CodeIndexProjectSettings } from "./CodeIndexSettings";
+import { LanguageServerProjectSettings } from "./LanguageServerSettings";
 import { ProjectActionsSettings } from "./ProjectActionsSettings";
 import { ProjectWikiLinks } from "../wiki/WikiLinks";
 import { ProjectDefaultsSettings } from "./ProjectDefaultsSettings";
@@ -658,6 +659,7 @@ function ProjectDetail({
         <ProjectWikiLinks checkouts={group.memberProjects} />
         <ProjectDefaultsSettings category="project" />
         <CodeIndexProjectSettings members={group.memberProjects} />
+        <LanguageServerProjectSettings members={group.memberProjects} />
         <ProjectActionsSettings />
         {checkoutChoices}
         <SettingsSection title="Danger">

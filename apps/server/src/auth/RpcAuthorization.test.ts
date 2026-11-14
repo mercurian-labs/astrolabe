@@ -95,9 +95,15 @@ describe("RPC authorization scopes", () => {
   it("lets file readers use language servers, file writers land edits, and maintainers manage them", () => {
     for (const method of [
       WS_METHODS.languageServersSubscribe,
+      WS_METHODS.languageServersCheck,
+      WS_METHODS.languageServersProjectSymbols,
       WS_METHODS.languageServersSession,
       WS_METHODS.languageServersSend,
       WS_METHODS.languageServersProblems,
+      WS_METHODS.languageServersLogs,
+      WS_METHODS.languageServersRoutes,
+      WS_METHODS.languageServersToolchains,
+      WS_METHODS.languageServersRunContext,
     ]) {
       expect(requiredScopeForRpcMethod(method)).toBe(AuthFilesystemReadScope);
     }
@@ -116,24 +122,38 @@ describe("RPC authorization scopes", () => {
         document: { ...document, unconfirmed: [[3, [0, "x"]]] },
       }),
     ).toEqual([AuthFilesystemWriteScope]);
-    // A rename's answer is applied to the files it names.
-    expect(
-      clientRpcRequiredScopes(WS_METHODS.languageServersSend, {
-        ...send,
-        message: JSON.stringify({ id: 4, method: "textDocument/rename", params: {} }),
-      }),
-    ).toEqual([AuthFilesystemWriteScope]);
+    // A rename's answer is applied to the files it names, and a lens's command edits as it likes.
+    for (const method of ["textDocument/rename", "astrolabe/runLensCommand"]) {
+      expect(
+        clientRpcRequiredScopes(WS_METHODS.languageServersSend, {
+          ...send,
+          message: JSON.stringify({ id: 4, method, params: {} }),
+        }),
+      ).toEqual([AuthFilesystemWriteScope]);
+    }
     expect(requiredScopeForRpcMethod(WS_METHODS.languageServersUndoEdit)).toBe(
       AuthFilesystemWriteScope,
     );
     for (const method of [
       WS_METHODS.languageServersRestart,
       WS_METHODS.languageServersStop,
-      WS_METHODS.languageServersConfirmDownload,
+      WS_METHODS.languageServersTrustProject,
+      WS_METHODS.languageServersRevokeProjectTrust,
+      WS_METHODS.languageServersSetTrace,
+      WS_METHODS.languageServersUpdateSettings,
     ]) {
       expect(requiredScopeForRpcMethod(method)).toBe(AuthEnvironmentMaintainScope);
       expect(clientRpcRequiredScopes(method, undefined)).toEqual([AuthEnvironmentMaintainScope]);
     }
+    // Settings' values can be tokens, though `check` beside them is a plain read.
+    expect(requiredScopeForRpcMethod(WS_METHODS.languageServersSettings)).toBe(
+      AuthEnvironmentMaintainScope,
+    );
+    const logs = { cwd: "/repo", server: "typescript" };
+    expect(clientRpcRequiredScopes(WS_METHODS.languageServersLogs, logs)).toEqual([]);
+    expect(
+      clientRpcRequiredScopes(WS_METHODS.languageServersLogs, { ...logs, full: true }),
+    ).toEqual([AuthEnvironmentMaintainScope]);
   });
 
   it("rejects unknown RPC method names", () => {

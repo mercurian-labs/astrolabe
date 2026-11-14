@@ -1,6 +1,8 @@
 import {
   WS_METHODS,
   type EnvironmentId,
+  type LanguageServerLogItem,
+  type LanguageServerLogsInput,
   type LanguageServerProblemsItem,
   type LanguageServerSendInput,
   type LanguageServerSessionItem,
@@ -12,13 +14,17 @@ import type { Atom, AtomRegistry } from "effect/reactivity";
 
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import { subscribeDynamic } from "../rpc/client.ts";
-import { createEnvironmentRpcCommand, followStreamInEnvironment } from "./runtime.ts";
+import {
+  createEnvironmentRpcCommand,
+  createEnvironmentRpcQueryAtomFamily,
+  createEnvironmentRpcSubscriptionAtomFamily,
+  followStreamInEnvironment,
+} from "./runtime.ts";
 
 /**
- * Astrolabe: language servers in an environment. An editor opens its own LSP session to the
- * gateway: `session` streams the server's status and messages while it is mounted, and `send`
- * carries the editor's messages, in order. Restarting, stopping and the download consent are
- * permission-guarded.
+ * Astrolabe: language servers in an environment. Each editor opens its own LSP session to the
+ * gateway: `session` streams its status and messages, and `send` carries the editor's, in order.
+ * `statuses` is every server, `check` what each would run, `routes` which serve which files.
  */
 export function createLanguageServerEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
@@ -41,10 +47,73 @@ export function createLanguageServerEnvironmentAtoms<R, E>(
     label: "environment-data:language-servers:undo-edit",
     tag: WS_METHODS.languageServersUndoEdit,
   });
-  const confirmDownload = createEnvironmentRpcCommand(runtime, {
-    label: "environment-data:language-servers:confirm-download",
-    tag: WS_METHODS.languageServersConfirmDownload,
+  const trustProject = createEnvironmentRpcCommand(runtime, {
+    label: "environment-data:language-servers:trust-project",
+    tag: WS_METHODS.languageServersTrustProject,
   });
+  const revokeProjectTrust = createEnvironmentRpcCommand(runtime, {
+    label: "environment-data:language-servers:revoke-project-trust",
+    tag: WS_METHODS.languageServersRevokeProjectTrust,
+  });
+  const updateSettings = createEnvironmentRpcCommand(runtime, {
+    label: "environment-data:language-servers:update-settings",
+    tag: WS_METHODS.languageServersUpdateSettings,
+  });
+  const setTrace = createEnvironmentRpcCommand(runtime, {
+    label: "environment-data:language-servers:set-trace",
+    tag: WS_METHODS.languageServersSetTrace,
+  });
+  const checkQuery = createEnvironmentRpcQueryAtomFamily(runtime, {
+    label: "environment-data:language-servers:check",
+    tag: WS_METHODS.languageServersCheck,
+    // Trust can change from a file's header: settings read it fresh each time they open.
+    idleTtlMs: 0,
+  });
+  const check = (environmentId: EnvironmentId, cwd: string) =>
+    checkQuery({ environmentId, input: { cwd } });
+  const projectSymbols = createEnvironmentRpcQueryAtomFamily(runtime, {
+    label: "environment-data:language-servers:project-symbols",
+    tag: WS_METHODS.languageServersProjectSymbols,
+    // A picker's query per keystroke: none of them is worth keeping.
+    idleTtlMs: 0,
+  });
+  const settings = createEnvironmentRpcQueryAtomFamily(runtime, {
+    label: "environment-data:language-servers:settings",
+    tag: WS_METHODS.languageServersSettings,
+    // Values that can be tokens stay no longer than the form that shows them.
+    idleTtlMs: 0,
+  });
+  const toolchains = createEnvironmentRpcQueryAtomFamily(runtime, {
+    label: "environment-data:language-servers:toolchains",
+    tag: WS_METHODS.languageServersToolchains,
+    // Folders come and go, and it's read only to choose from.
+    idleTtlMs: 0,
+  });
+  const runContext = createEnvironmentRpcQueryAtomFamily(runtime, {
+    label: "environment-data:language-servers:run-context",
+    tag: WS_METHODS.languageServersRunContext,
+    // Trust and manifests change from elsewhere: a file reads it afresh when it opens.
+    idleTtlMs: 0,
+  });
+  /** The same read, for the moment something is about to run. */
+  const readRunContext = createEnvironmentRpcCommand(runtime, {
+    label: "environment-data:language-servers:read-run-context",
+    tag: WS_METHODS.languageServersRunContext,
+  });
+  const routesSubscription = createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+    label: "environment-data:language-servers:routes",
+    tag: WS_METHODS.languageServersRoutes,
+  });
+  /** What serves each kind of file in a checkout, which only its environment knows. */
+  const routes = (environmentId: EnvironmentId, cwd: string) =>
+    routesSubscription({ environmentId, input: { cwd } });
+  const statusesSubscription = createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+    label: "environment-data:language-servers:statuses",
+    tag: WS_METHODS.languageServersSubscribe,
+  });
+  /** Every server the environment has, for what serves one file together. */
+  const statuses = (environmentId: EnvironmentId) =>
+    statusesSubscription({ environmentId, input: {} });
 
   /**
    * A fresh atom per editor. Each subscription, a reconnect's included, is a new session with an
@@ -86,6 +155,22 @@ export function createLanguageServerEnvironmentAtoms<R, E>(
       ),
     );
 
+  /** A server's logs while mounted: each item as it arrives, again after a reconnect. */
+  const logs = (
+    environmentId: EnvironmentId,
+    target: LanguageServerLogsInput,
+    onItem: (item: LanguageServerLogItem) => void,
+  ) =>
+    runtime.atom(
+      followStreamInEnvironment(
+        environmentId,
+        subscribeDynamic(WS_METHODS.languageServersLogs, () => Effect.succeed(target)),
+      ).pipe(
+        Stream.runForEach((item) => Effect.sync(() => onItem(item))),
+        Effect.ignore,
+      ),
+    );
+
   /** An editor's messages to its session, sent in order. */
   const sender =
     (registry: AtomRegistry.AtomRegistry, environmentId: EnvironmentId) =>
@@ -93,5 +178,26 @@ export function createLanguageServerEnvironmentAtoms<R, E>(
       void send.run(registry, { environmentId, input });
     };
 
-  return { send, sender, restart, stop, confirmDownload, undoEdit, session, problems };
+  return {
+    send,
+    sender,
+    restart,
+    stop,
+    trustProject,
+    revokeProjectTrust,
+    updateSettings,
+    setTrace,
+    undoEdit,
+    session,
+    routes,
+    settings,
+    toolchains,
+    runContext,
+    readRunContext,
+    statuses,
+    problems,
+    logs,
+    check,
+    projectSymbols,
+  };
 }

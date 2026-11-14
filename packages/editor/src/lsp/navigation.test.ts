@@ -8,6 +8,8 @@ import {
   findReferences,
   goToDefinition,
   type NavigationLocation,
+  showIncomingCalls,
+  showOutgoingCalls,
 } from "./navigation.ts";
 import { setup, URI } from "./testing.ts";
 
@@ -44,13 +46,18 @@ async function open(
   extra: { vim?: boolean; hold?: boolean } = {},
 ) {
   const opened: NavigationLocation[] = [];
+  const nothing: string[] = [];
   const picked: Array<{
     title: string;
     locations: readonly NavigationLocation[];
     kind: string;
   }> = [];
   const editor = setup(TEXT, {
-    capabilities: { definitionProvider: true, referencesProvider: true },
+    capabilities: {
+      definitionProvider: true,
+      referencesProvider: true,
+      callHierarchyProvider: true,
+    },
     answer: (method) => (extra.hold ? undefined : (answers[method] ?? null)),
     extensions: [
       // As a code file's editing allows.
@@ -62,17 +69,22 @@ async function open(
           typeDefinition: [],
           implementation: [],
           references: [],
+          incomingCalls: [],
+          outgoingCalls: [],
         },
         host: {
           open: (location) => opened.push(location),
           pick: (_view, title, locations, kind) => picked.push({ title, locations, kind }),
+          nothing: (title) => nothing.push(title),
+          jumping: () => undefined,
+          projectSymbols: () => undefined,
         },
       }),
       extra.vim ? vimMode(noHistory) : [],
     ],
   });
   await editor.initialize();
-  return { ...editor, opened, picked };
+  return { ...editor, opened, picked, nothing };
 }
 
 const selected = (view: EditorView) =>
@@ -99,6 +111,34 @@ describe("environmentNavigation", () => {
       );
       await vi.waitFor(() => expect(editor.view.state.selection.main.from).toBe(17));
       expect(selected(editor.view)).toEqual(["makePoint"]);
+    } finally {
+      editor.view.destroy();
+      editor.lsp.destroy();
+    }
+  });
+
+  it("lists a symbol's calls under a heading, even one, and says when it has none", async () => {
+    const editor = await open({
+      "textDocument/prepareCallHierarchy": [{ name: "makePoint", data: { kept: true } }],
+      "callHierarchy/incomingCalls": [locationOf(TEXT, "makePoint", 1)],
+      "callHierarchy/outgoingCalls": [],
+    });
+    try {
+      editor.view.dispatch({ selection: { anchor: TEXT.indexOf("makePoint") } });
+      showIncomingCalls(editor.view);
+      await vi.waitFor(() => expect(editor.picked).toHaveLength(1));
+      expect(editor.picked[0]).toMatchObject({
+        title: "Incoming calls of makePoint",
+        kind: "incoming",
+      });
+      expect(editor.picked[0]!.locations.map((place) => place.line)).toEqual([2]);
+      const asked = editor.sent.find(
+        (entry) => entry.message.method === "callHierarchy/incomingCalls",
+      );
+      expect(asked?.message.params.item.data).toEqual({ kept: true });
+
+      showOutgoingCalls(editor.view);
+      await vi.waitFor(() => expect(editor.nothing).toEqual(["Outgoing calls of makePoint"]));
     } finally {
       editor.view.destroy();
       editor.lsp.destroy();

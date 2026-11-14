@@ -7,6 +7,8 @@ import {
   type CodeChangesInput,
   type CodeCheckout,
   type CodeFindInput,
+  type CodeSymbols,
+  type CodeSymbolsInput,
   type CodeFindResult,
   type CodeIndexProjectInput,
   type CodeIndexSettings,
@@ -110,6 +112,7 @@ export class CodeIndex extends Context.Service<
     ) => Effect.Effect<CodeLocalGraph, CodeIndexError>;
     readonly outline: (input: CodeOutlineInput) => Effect.Effect<CodeOutline, CodeIndexError>;
     readonly find: (input: CodeFindInput) => Effect.Effect<CodeFindResult, CodeIndexError>;
+    readonly symbols: (input: CodeSymbolsInput) => Effect.Effect<CodeSymbols, CodeIndexError>;
     readonly changes: (input: CodeChangesInput) => Effect.Effect<CodeChanges, CodeIndexError>;
     readonly map: (input: CodeMapInput) => Effect.Effect<CodeMap, CodeIndexError>;
     /** Which of `ids` (files, folders, `module:` folders, `path#Qualified.name`) the checkout lacks. */
@@ -118,6 +121,9 @@ export class CodeIndex extends Context.Service<
     ) => Effect.Effect<{ readonly unknown: ReadonlyArray<string> }, CodeIndexError>;
   }
 >()("t3/codeIndex/CodeIndex") {}
+
+/** Rows a search by part of a name reads; past this, it should be typing more. */
+const DEFINERS_MATCHED = 5000;
 
 const notBuilt = Effect.fn("CodeIndex.placeholder")(function* () {
   return yield* new CodeIndexError({
@@ -139,6 +145,7 @@ export const layerPlaceholder = Layer.succeed(
     localGraph: notBuilt,
     outline: notBuilt,
     find: notBuilt,
+    symbols: notBuilt,
     changes: notBuilt,
     map: notBuilt,
     checkNodes: notBuilt,
@@ -1172,6 +1179,24 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
         return out;
       }),
       definers: (names) => byName("defines", names),
+      definersLike: Effect.fn("CodeIndex.definersLike")(function* (text) {
+        const pattern = `%${text.replace(/[\\%_]/g, "\\$&")}%`;
+        const rows = yield* read(
+          sql<{ readonly name: string; readonly id: number }>`
+            SELECT names.name AS name, defines.version_id AS id
+            FROM defines JOIN names ON names.id = defines.name_id
+            WHERE names.name LIKE ${pattern} ESCAPE '\\'
+            LIMIT ${DEFINERS_MATCHED}
+          `,
+        );
+        const out = new Map<string, Array<string>>();
+        for (const row of rows) {
+          const version = inView(row.id);
+          if (version === null) continue;
+          out.set(row.name, [...(out.get(row.name) ?? []), version.path]);
+        }
+        return out;
+      }),
       users: (name) => byName("uses", [name]).pipe(Effect.map((found) => found.get(name) ?? [])),
       askers: Effect.fn("CodeIndex.snapshotAskers")(function* (keys) {
         const out = new Set<string>();
@@ -1327,6 +1352,13 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
     const repo = yield* ready(input);
     return yield* Queries.find(yield* checkoutSnapshot(repo, input.cwd), input.name, input.path);
   });
+
+  const symbols: CodeIndex["Service"]["symbols"] = Effect.fn("CodeIndex.symbols")(
+    function* (input) {
+      const repo = yield* ready(input);
+      return yield* Queries.symbols(yield* checkoutSnapshot(repo, input.cwd), input.query);
+    },
+  );
 
   const changesBetween: CodeIndex["Service"]["changes"] = Effect.fn("CodeIndex.changes")(
     function* (input) {
@@ -1552,6 +1584,7 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
     localGraph,
     outline,
     find,
+    symbols,
     changes: changesBetween,
     map,
     checkNodes,

@@ -6,6 +6,7 @@ import type {
   PreviewAnnotationPayload,
   ThreadContextRecord,
   CanvasContextRecord,
+  ChangeGroupContextRecord,
   WikiContextRecord,
   WikiNoteContextRecord,
 } from "@t3tools/contracts";
@@ -43,6 +44,7 @@ import { EnvironmentContextChip } from "./EnvironmentContextChip";
 import { ThreadContextChip } from "./ThreadContextChip";
 import { WikiNoteContextChip } from "./WikiNoteContextChip";
 import { CanvasContextChip } from "./chat/CanvasContextChip";
+import { ChangeGroupContextChip } from "./chat/ChangeGroupContextChip";
 import { useLinkedEnvironments } from "~/state/peerLinks";
 import {
   createContextPresentationRegistry,
@@ -73,6 +75,7 @@ export type ComposerDraftContextRecord =
   | { kind: "thread"; record: ThreadContextRecord }
   | { kind: "wiki-note"; record: WikiNoteContextRecord }
   | { kind: "canvas"; record: CanvasContextRecord }
+  | { kind: "change-group"; record: ChangeGroupContextRecord }
   | { kind: "environment"; record: EnvironmentContextRecord };
 
 export interface ComposerContextActions {
@@ -157,7 +160,11 @@ export function composerContextRecordsFromDraft(input: {
   for (const record of input.wikiContexts ?? []) {
     records.set(
       record.contextId,
-      record.kind === "canvas" ? { kind: "canvas", record } : { kind: "wiki-note", record },
+      record.kind === "canvas"
+        ? { kind: "canvas", record }
+        : record.kind === "change-group"
+          ? { kind: "change-group", record }
+          : { kind: "wiki-note", record },
     );
   }
   for (const record of input.environmentContexts ?? []) {
@@ -421,6 +428,7 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
     "thread",
     "wiki-note",
     "canvas",
+    "change-group",
     "environment",
   ],
   handlers: [
@@ -534,6 +542,16 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
       render: (entry, context) =>
         entry.kind === "canvas" ? (
           <ComposerCanvasContextChip record={entry.record} />
+        ) : (
+          <UnresolvedContextChip label={context.label} />
+        ),
+    },
+    {
+      kind: "change-group",
+      canRender: (entry) => entry.kind === "change-group",
+      render: (entry, context) =>
+        entry.kind === "change-group" ? (
+          <ChangeGroupContextChip record={entry.record} />
         ) : (
           <UnresolvedContextChip label={context.label} />
         ),

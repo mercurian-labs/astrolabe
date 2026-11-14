@@ -327,7 +327,7 @@ type TurnTerminal =
 type Rule = Permission.Rule;
 type RulesPolicy = Pick<
   ProviderAdapter.ProviderAdapterV2RuntimePolicy,
-  "runtimeMode" | "interactionMode"
+  "runtimeMode" | "interactionMode" | "writableRoots"
 >;
 type NativeForm = EventOf<"form.created">["data"]["form"];
 
@@ -386,6 +386,11 @@ const sessionRules = (
         rule("external_directory", "ask"),
       ]),
   ...grants,
+  ...(policy.writableRoots ?? []).map((root): Rule => ({
+    action: "external_directory",
+    resource: `${root.replace(/\/$/, "")}/*`,
+    effect: "allow",
+  })),
   // Plan edits are re-allowed only for plan paths; free-tier sessions refuse denied shell/read.
   ...(policy.interactionMode === "plan" ? [rule("edit", "deny")] : []),
   ...paths,
