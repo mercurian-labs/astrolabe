@@ -158,18 +158,15 @@ describe("a hand-drawn look", () => {
   });
 
   it("draws a stroke's line through its points", () => {
-    const scribble = stroke({
-      x: 10,
-      points: [0, 0, 20, 5, 40, 0, 60, 10],
-      ...styled({ sloppiness: 1 }),
-    });
-    const d = canvasSketchLine(scribble, "M10 0L70 10");
+    const scribble = (x: number) =>
+      stroke({ x, points: [0, 0, 20, 5, 40, 0, 60, 10], ...styled({ sloppiness: 1 }) });
+    const d = canvasSketchLine(scribble(10), "M10 0L70 10");
     const [x, y] = (d ?? "")
       .split(/[ ,MC]+/)
       .filter(Boolean)
       .slice(-2)
       .map(Number);
     expect(Math.hypot(x! - 70, y! - 10)).toBeLessThan(3);
-    expect(canvasSketchLine({ ...scribble, x: 11 }, "M11 0L71 10")).not.toBe(d);
+    expect(canvasSketchLine(scribble(11), "M11 0L71 10")).not.toBe(d);
   });
 });
