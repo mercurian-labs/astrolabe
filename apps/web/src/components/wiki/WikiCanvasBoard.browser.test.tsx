@@ -185,15 +185,40 @@ describe("cards", () => {
 
   it("selects on a first click, and only then is a card's content live", async () => {
     const opened = vi.fn();
-    await using _screen = await render(<Frame data={data} host={{ onOpenUrl: opened }} />, {
-      router: false,
+    const canvas = new CanvasDocument({
+      document: { nodes: data.nodes, edges: [] },
+      revision: "r0",
     });
+    await using _screen = await render(
+      <div style={{ width: 1000, height: 700 }}>
+        <CanvasBoard
+          data={canvas.getState().data}
+          mode="free"
+          label="Board"
+          document={canvas}
+          host={{ onOpenUrl: opened }}
+          // Clear of the style panel that selecting opens at the top left.
+          camera={{ x: 400, y: 200, zoom: 1 }}
+        />
+      </div>,
+      { router: false },
+    );
     await vi.waitFor(() => expect(card("a")).not.toBeNull());
     const link = card("a").querySelector("a")!;
     await userEvent.click(link, { force: true });
     expect(opened).not.toHaveBeenCalled();
     expect(card("a").hasAttribute("data-selected")).toBe(true);
-    await userEvent.click(link);
+    await userEvent.click(card("a").querySelector("a")!);
+    expect(opened).toHaveBeenCalledWith("https://example.test");
+  });
+
+  it("opens a card's link on the first click on a board that only reads", async () => {
+    const opened = vi.fn();
+    await using _screen = await render(<Frame data={data} host={{ onOpenUrl: opened }} />, {
+      router: false,
+    });
+    await vi.waitFor(() => expect(card("a")).not.toBeNull());
+    await userEvent.click(card("a").querySelector("a")!);
     expect(opened).toHaveBeenCalledWith("https://example.test");
   });
 
