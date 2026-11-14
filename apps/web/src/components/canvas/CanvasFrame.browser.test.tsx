@@ -1,4 +1,4 @@
-import { placeCanvas } from "@mercurian/wiki/canvas";
+import { canvasData, canvasDocument, placeCanvas } from "@mercurian/wiki/canvas";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { EnvironmentId, ThreadId, TurnItemId } from "@t3tools/contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
@@ -60,51 +60,103 @@ describe("CanvasFrame", () => {
     await expect.element(screen.getByText("Server")).toBeVisible();
   });
 
-  it("opens the canvas in the thread's right panel", async () => {
+  it("opens the canvas in the thread's right panel, unlocked from its Edit", async () => {
     using open = vi
       .spyOn(useRightPanelStore.getState(), "open")
       .mockImplementation(() => undefined);
+    const board = canvasDocument(view.data);
+    const recorded = {
+      ...view,
+      data: canvasData(board),
+      recorded: { document: board, revision: "1" },
+    };
     await using screen = await render(
-      <CanvasFrame id="item-1" view={view} threadRef={threadRef} source={source} />,
+      <CanvasFrame id="item-1" view={recorded} threadRef={threadRef} source={source} />,
       { router: false }, // The frame reads no route.
     );
+    const key = canvasViewsKey(threadRef);
     await userEvent.click(
       screen.getByRole("button", { name: `Open ${view.title} in a linked tab` }),
     );
     expect(open).toHaveBeenCalledExactlyOnceWith(threadRef, "canvas");
-    expect(useThreadCanvasStore.getState().shownByThread[canvasViewsKey(threadRef)]).toBe("item-1");
+    expect(useThreadCanvasStore.getState().shownByThread[key]).toBe("item-1");
+    expect(useThreadCanvasStore.getState().editingByThread[key]).toBeUndefined();
+
+    // The chat card stays read-only: its Edit unlocks the board in the tab instead.
+    await userEvent.click(screen.getByRole("button", { name: "Canvas menu" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Edit board" }));
+    expect(open).toHaveBeenCalledTimes(2);
+    expect(useThreadCanvasStore.getState().editingByThread[key]).toBe("item-1");
+    await userEvent.click(screen.getByRole("button", { name: "Canvas menu" }));
+    await expect.element(screen.getByRole("menuitem", { name: "Edit board" })).toBeVisible();
+    await userEvent.keyboard("{Escape}");
+
+    // E does the same from the board.
+    useThreadCanvasStore.getState().setEditing(key, null);
+    await userEvent.keyboard("e");
+    expect(useThreadCanvasStore.getState().editingByThread[key]).toBe("item-1");
+    useThreadCanvasStore.getState().setEditing(key, null);
   });
 
-  it("puts a board and its comment in the composer, or sends it from there", async () => {
+  it("asks about the whole board, or about the step on screen", async () => {
     const addCanvas = vi.fn(() => true);
+    const walked = {
+      title: "A walk",
+      data: placeCanvas({
+        cards: [
+          { id: "a", text: "First card" },
+          { id: "b", text: "Second card" },
+        ],
+        stories: [
+          {
+            title: "Start to end",
+            steps: [
+              { note: "It starts here.", cards: ["a"] },
+              { label: "Then", note: "It ends here.", cards: ["b"] },
+            ],
+          },
+        ],
+      }),
+    };
     await using screen = await render(
       <ComposerHandleContext value={{ current: { addCanvas } as unknown as ChatComposerHandle }}>
-        <CanvasFrame id="item-1" view={view} threadRef={threadRef} source={source} />
+        <CanvasFrame id="item-1" view={walked} threadRef={threadRef} source={source} />
       </ComposerHandleContext>,
       { router: false }, // The frame reads no route.
     );
-    const keep = screen.getByRole("button", { name: `Keep ${view.title}` });
-    await userEvent.click(keep);
-    const comment = screen.getByRole("textbox", { name: "Comment on this canvas" });
-    await userEvent.fill(comment, "Save it");
-    await userEvent.keyboard("{Enter}");
-    expect(addCanvas).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({
-        kind: "canvas",
-        threadId: source.threadId,
-        itemId: source.itemId,
-        comment: "Save it",
-      }),
-      { send: false },
-    );
-    await expect.element(comment).not.toBeInTheDocument();
-
-    await userEvent.click(keep);
-    await userEvent.keyboard("{Meta>}{Enter}{/Meta}");
+    const menu = screen.getByRole("button", { name: "Canvas menu" });
+    await userEvent.click(menu);
+    await userEvent.click(screen.getByRole("menuitem", { name: "Ask about this canvas" }));
     expect(addCanvas).toHaveBeenLastCalledWith(
-      expect.not.objectContaining({ comment: expect.anything() }),
-      { send: true },
+      expect.not.objectContaining({ step: expect.anything() }),
     );
+
+    // P presents from the board, whose arrow keys then step the story.
+    await userEvent.keyboard("p");
+    await expect.element(screen.getByText("1 / 2")).toBeVisible();
+    await userEvent.keyboard("{ArrowRight}");
+    await expect.element(screen.getByText("2 / 2")).toBeVisible();
+    await userEvent.click(menu);
+    await userEvent.click(screen.getByRole("menuitem", { name: "Ask about step 2" }));
+    expect(addCanvas).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        itemId: source.itemId,
+        step: "Start to end, step 2 of 2, Then: It ends here.",
+      }),
+    );
+
+    // A step's frame opens its details: asking from there asks about that step, not the walk's.
+    await userEvent.click(screen.getByRole("button", { name: "Stop presenting" }));
+    await userEvent.click(screen.getByRole("button", { name: "Step 1" }));
+    await expect.element(screen.getByText("It starts here.").last()).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Ask about this step" }));
+    expect(addCanvas).toHaveBeenLastCalledWith(
+      expect.objectContaining({ step: "Start to end, step 1 of 2: It starts here." }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Step 2: Then" }));
+    await userEvent.click(screen.getByRole("button", { name: "Walk from here" }));
+    await userEvent.click(menu);
+    await expect.element(screen.getByRole("menuitem", { name: "Ask about step 2" })).toBeVisible();
   });
 
   it("opens a code card's file at its line, and a guest page leaves the card inert", async () => {

@@ -1,14 +1,18 @@
 /**
- * A three-way merge for canvases, by card and arrow id. Git's line merge can call neighbouring
+ * A three-way merge for canvases, by card, arrow and drawing id. Git's line merge can call neighbouring
  * cards a conflict, and can merge cleanly into an arrow pointing at a deleted card; this does
  * neither. `theirs` is the change being merged: where a look changed on both sides, it wins.
  * Whatever neither side removed survives, understood or not, in the serializer's bytes.
  */
 import {
   canvasArrowName,
+  canvasLookKeys,
+  canvasLookRaw,
   canvasCardName,
+  canvasDrawingName,
   CANVAS_ARROW_LOOKS,
   CANVAS_CARD_LOOKS,
+  CANVAS_DRAWING_LOOKS,
   parseCanvas,
   sameJson,
   serializeCanvas,
@@ -27,7 +31,7 @@ export interface CanvasMergeNote {
     | "edited-against-deleted"
     | "same-text"
     | "same-value";
-  /** The card or arrow it's about, when it's about one. */
+  /** The card, arrow or drawing it's about, when it's about one. */
   readonly id?: string | undefined;
   readonly message: string;
 }
@@ -124,9 +128,14 @@ function mergeValue(
 }
 
 /** A card or arrow both sides hold. A look moves as one: never half of each side's position. */
-function mergeItem(id: string, sides: Sides<Raw>, kind: Kind, said: Said): Raw {
+function mergeItem(id: string, files: Sides<Raw>, kind: Kind, said: Said): Raw {
+  if (sameJson(files.ours, files.theirs)) return files.ours;
+  const sides = {
+    base: canvasLookKeys(files.base),
+    ours: canvasLookKeys(files.ours),
+    theirs: canvasLookKeys(files.theirs),
+  };
   const { base, ours, theirs } = sides;
-  if (sameJson(ours, theirs)) return ours;
   const chosen = new Map<string, unknown>();
   const clashed: string[] = [];
   for (const look of kind.looks) {
@@ -147,12 +156,14 @@ function mergeItem(id: string, sides: Sides<Raw>, kind: Kind, said: Said): Raw {
     const value = chosen.has(key) ? chosen.get(key) : mergeValue(key, id, sides, kind, said);
     if (value !== undefined) merged[key] = value;
   }
-  return merged;
+  return canvasLookRaw(merged);
 }
 
 /** Whether a side's edit of what the other deleted leaves anything that matters. */
-function mergeDeleted(id: string, was: unknown, kept: unknown, kind: Kind, said: Said) {
-  if (!isRecord(was) || !isRecord(kept) || sameJson(was, kept)) return;
+function mergeDeleted(id: string, wasRaw: unknown, keptRaw: unknown, kind: Kind, said: Said) {
+  if (!isRecord(wasRaw) || !isRecord(keptRaw) || sameJson(wasRaw, keptRaw)) return;
+  const was = canvasLookKeys(wasRaw);
+  const kept = canvasLookKeys(keptRaw);
   const looks = new Set(kind.looks.flatMap((look) => look.keys));
   const onlyLooks = allKeys(was, kept).every(
     (key) => looks.has(key) || sameJson(was[key], kept[key]),
@@ -332,19 +343,35 @@ export function canvasMerge(base: string, ours: string, theirs: string): CanvasM
     if (!isRecord(raw)) return undefined;
     return lost(raw.fromNode) ? raw.fromNode : lost(raw.toNode) ? raw.toNode : undefined;
   };
+  const anchor = (end: unknown) => (isRecord(end) ? end.node : undefined);
+  const lostAnchor = (raw: unknown) => {
+    if (!isRecord(raw) || raw.type !== "arrow") return undefined;
+    const [from, to] = [anchor(raw.from), anchor(raw.to)];
+    return lost(from) ? from : lost(to) ? to : undefined;
+  };
+
+  /** Each entry either side holds, without the arrows whose card the merge deleted. */
+  const mergeAnchored = (
+    entries: Sides<ReadonlyArray<Item>>,
+    kind: Kind,
+    lostCard: (raw: unknown) => unknown,
+  ) => {
+    const merged = mergeEntries(entries, kind, (raw) => lostCard(raw) !== undefined, said);
+    for (const [key, raw] of merged) {
+      const end = lostCard(raw);
+      if (end === undefined || !isRecord(raw)) continue;
+      merged.delete(key);
+      said.resolved.push({
+        kind: "arrow-dropped",
+        id: key,
+        message: `${kind.name(raw)} is dropped, because its card “${cardName(end)}” is deleted.`,
+      });
+    }
+    return merged;
+  };
 
   const arrows = items("edges");
-  const mergedArrows = mergeEntries(arrows, arrowKind, (raw) => lostEnd(raw) !== undefined, said);
-  for (const [key, raw] of mergedArrows) {
-    const end = lostEnd(raw);
-    if (end === undefined || !isRecord(raw)) continue;
-    mergedArrows.delete(key);
-    said.resolved.push({
-      kind: "arrow-dropped",
-      id: key,
-      message: `${arrowKind.name(raw)} is dropped, because its card “${cardName(end)}” is deleted.`,
-    });
-  }
+  const mergedArrows = mergeAnchored(arrows, arrowKind, lostEnd);
 
   if (said.conflicts.length > 0) return { status: "conflict", conflicts: said.conflicts };
 
@@ -353,13 +380,60 @@ export function canvasMerge(base: string, ours: string, theirs: string): CanvasM
     return keys.map((entry) => merged.get(entry));
   };
   const fileKind: Kind = { looks: [], name: () => "The file" };
+  // An empty list stays only where both sides kept the key, or where one just added it.
+  const keepList = (
+    key: string,
+    entries: ReadonlyArray<unknown>,
+    { base, ours, theirs }: Sides<Raw>,
+  ) => entries.length > 0 || (key in ours && key in theirs) || !(key in base);
+
+  /** Drawings merge one by one, and the rest of `astrolabe`, such as stories, key by key. */
+  const mergeAstrolabe = (held: Sides<Raw>) => {
+    const merged: Record<string, unknown> = {};
+    for (const key of allKeys(held.ours, held.theirs)) {
+      const lists = [held.base, held.ours, held.theirs].every(
+        (side) => side[key] === undefined || Array.isArray(side[key]),
+      );
+      if (key !== "drawings" || !lists) {
+        const value = mergeValue(key, undefined, held, fileKind, said);
+        if (value !== undefined) merged[key] = value;
+        continue;
+      }
+      const drawings: Sides<ReadonlyArray<Item>> = {
+        base: itemsOf(held.base.drawings),
+        ours: itemsOf(held.ours.drawings),
+        theirs: itemsOf(held.theirs.drawings),
+      };
+      const mergedDrawings = mergeAnchored(drawings, drawingKind, lostAnchor);
+      const entries = orderOf(drawings, mergedDrawings).keys.map((entry) =>
+        mergedDrawings.get(entry),
+      );
+      if (keepList(key, entries, held)) merged[key] = entries;
+    }
+    return merged;
+  };
+  const drawingKind: Kind = {
+    looks: CANVAS_DRAWING_LOOKS,
+    name: (raw) =>
+      raw.type === "stroke" ? "A drawing" : `The drawn arrow “${canvasDrawingName(raw, cardName)}”`,
+  };
+  const astrolabeOf = (document: Raw) => (isRecord(document.astrolabe) ? document.astrolabe : {});
+  const astrolabes = [was, mine, other].every(
+    (document) => document.astrolabe === undefined || isRecord(document.astrolabe),
+  );
+
   const document: Record<string, unknown> = {};
   for (const key of allKeys(mine, other)) {
     if (key === "nodes" || key === "edges") {
       const entries = list(key, key === "nodes" ? mergedCards : mergedArrows);
-      // An empty list stays only where both sides kept the key, or where one just added it.
-      if (entries.length > 0 || (key in mine && key in other) || !(key in was)) {
-        document[key] = entries;
+      if (keepList(key, entries, sides)) document[key] = entries;
+      continue;
+    }
+    if (key === "astrolabe" && astrolabes) {
+      const held = { base: astrolabeOf(was), ours: astrolabeOf(mine), theirs: astrolabeOf(other) };
+      const merged = mergeAstrolabe(held);
+      if (Object.keys(merged).length > 0 || (key in mine && key in other)) {
+        document[key] = merged;
       }
       continue;
     }

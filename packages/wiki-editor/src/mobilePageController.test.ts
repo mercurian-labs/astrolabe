@@ -383,7 +383,7 @@ describe("the wiki editor protocol", () => {
       await expect(answer).resolves.toEqual({ kind: "files", files: ["A.md"] });
     });
 
-    it("hands Jump to group to the board on screen", () => {
+    it("hands Jump to section to the board on screen", () => {
       const { page: editor } = page();
       const focusCard = vi.fn();
       const selectCard = vi.fn();

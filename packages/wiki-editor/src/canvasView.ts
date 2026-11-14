@@ -1,10 +1,23 @@
 import type { CanvasBounds } from "@mercurian/wiki/canvas";
 
 import { cameraWindow, fitCamera, zoomAt, ZOOM_STEP, type CanvasCamera } from "./canvasGeometry";
+import { canvasLineScale } from "./canvasPaint";
+
+/**
+ * The floor's share in steps of about 9%: past it, a zoom restyles every line on the board, so
+ * that happens a few times over a long zoom out and never while panning or above the floor.
+ */
+const lineStep = (zoom: number) => {
+  const scale = canvasLineScale(zoom);
+  return scale === 1 ? 1 : 2 ** (Math.round(Math.log2(scale) * 8) / 8);
+};
 
 const WHEEL_ZOOM_SPEED = 0.01;
+const GLIDE_MS = 320;
 
 /** Told where the camera ended up, each time it draws. */
+export type CanvasInset = { readonly top: number; readonly bottom: number };
+
 export type CanvasPaint = (camera: CanvasCamera, width: number, height: number) => void;
 
 /**
@@ -16,10 +29,15 @@ export class CanvasView {
   #world: HTMLElement | null = null;
   #bounds: CanvasBounds = { x: 0, y: 0, width: 0, height: 0 };
   #padding = 0;
+  /** Screen pixels at the frame's top and foot that its controls cover. */
+  #inset: CanvasInset = { top: 0, bottom: 0 };
+  #glide: ReturnType<typeof setTimeout> | undefined;
   #camera: CanvasCamera = { x: 0, y: 0, zoom: 1 };
   /** Until the reader moves it, the board keeps fitting as its frame resizes. */
   #fitted = true;
   #frame: number | null = null;
+  /** The zoom and line step the world was last styled for: a pan restyles nothing. */
+  #styled: { zoom: number; line: number } | null = null;
   #onPaint: CanvasPaint | undefined;
   readonly #pointers = new Map<number, { readonly x: number; readonly y: number }>();
 
@@ -36,6 +54,7 @@ export class CanvasView {
     this.#bounds = bounds;
     this.#padding = padding;
     this.#onPaint = onPaint;
+    this.#styled = null;
     this.fit();
     const observer = new ResizeObserver(() => {
       if (this.#fitted) this.fit();
@@ -45,6 +64,7 @@ export class CanvasView {
     return () => {
       observer.disconnect();
       if (this.#frame !== null) cancelAnimationFrame(this.#frame);
+      clearTimeout(this.#glide);
       this.#frame = null;
       this.#board = null;
       this.#world = null;
@@ -97,22 +117,43 @@ export class CanvasView {
     else this.#paint();
   }
 
-  fit() {
-    if (this.#board === null) return;
-    this.#camera = fitCamera(
-      this.#bounds,
-      this.#board.clientWidth,
-      this.#board.clientHeight,
+  /** Keeps what fits clear of the controls laid over the frame's top and foot. */
+  setInset(inset: CanvasInset, refit = true) {
+    if (inset.top === this.#inset.top && inset.bottom === this.#inset.bottom) return;
+    this.#inset = inset;
+    if (refit && this.#fitted) this.fit();
+  }
+
+  #fitIn(rect: CanvasBounds, board: HTMLElement): CanvasCamera {
+    const { top, bottom } = this.#inset;
+    const camera = fitCamera(
+      rect,
+      board.clientWidth,
+      Math.max(0, board.clientHeight - top - bottom),
       this.#padding,
     );
+    return { ...camera, y: camera.y + top };
+  }
+
+  /** `glide` eases the camera there, as a story moves from step to step. */
+  fit(glide = false) {
+    const board = this.#board;
+    const world = this.#world;
+    if (board === null) return;
+    this.#camera = this.#fitIn(this.#bounds, board);
     this.#fitted = true;
+    if (glide && world !== null && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      world.dataset.gliding = "";
+      clearTimeout(this.#glide);
+      this.#glide = setTimeout(() => delete world.dataset.gliding, GLIDE_MS);
+    }
     this.#paint();
   }
 
   /** Shows `rect` whole, never closer than actual size. */
   focus(rect: CanvasBounds) {
     if (this.#board === null) return;
-    this.#move(fitCamera(rect, this.#board.clientWidth, this.#board.clientHeight, this.#padding));
+    this.#move(this.#fitIn(rect, this.#board));
   }
 
   /** `rect` in the middle of the frame at actual size, as Follow connection lands. */
@@ -226,8 +267,16 @@ export class CanvasView {
     if (this.#world === null) return;
     const { x, y, zoom } = this.#camera;
     this.#world.style.transform = `translate(${x}px, ${y}px) scale(${zoom})`;
-    // Labels, borders and arrows thin out slower than the board, so they stay readable.
-    this.#world.style.setProperty("--cv-ui", String(1 / Math.sqrt(zoom)));
+    if (this.#styled?.zoom !== zoom) {
+      // Labels, handles and outlines thin out slower than the board, so they stay readable.
+      this.#world.style.setProperty("--cv-ui", String(1 / Math.sqrt(zoom)));
+      // A frame's corners and number are the reader's marks over the board: one size at any zoom.
+      this.#world.style.setProperty("--cv-screen", String(1 / zoom));
+      // What the board draws keeps its widths in board units, down to the floor.
+      const line = lineStep(zoom);
+      if (this.#styled?.line !== line) this.#world.style.setProperty("--cv-line", String(line));
+      this.#styled = { zoom, line };
+    }
     if (this.#board !== null) {
       this.#onPaint?.(this.#camera, this.#board.clientWidth, this.#board.clientHeight);
     }

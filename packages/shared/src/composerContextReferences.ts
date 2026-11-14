@@ -105,18 +105,42 @@ export function canvasContextRecord(board: {
   readonly itemId: TurnItemId;
   readonly title: string;
   readonly comment?: string | undefined;
+  /** A step of one of the board's stories, both from 0. */
+  readonly walkStep?:
+    | {
+        readonly story: number;
+        readonly storyTitle: string;
+        readonly index: number;
+        readonly count: number;
+        readonly label?: string | undefined;
+        readonly note: string;
+      }
+    | undefined;
 }): CanvasContextRecord {
-  const label = sanitizeComposerContextLabel(board.title, "canvas");
+  const title = sanitizeComposerContextLabel(board.title, "canvas");
   const comment = board.comment?.trim();
+  const step = board.walkStep;
+  const number = step === undefined ? undefined : step.index + 1;
   return {
     version: 1,
     kind: "canvas",
-    contextId: toKindScopedComposerContextId("canvas", `${board.threadId}/${board.itemId}`),
-    label,
+    contextId: toKindScopedComposerContextId(
+      "canvas",
+      `${board.threadId}/${board.itemId}${step === undefined ? "" : `#story-${step.story + 1}-step-${step.index + 1}`}`,
+    ),
+    label:
+      number === undefined
+        ? title
+        : sanitizeComposerContextLabel(`${board.title} · step ${number}`, "canvas"),
     threadId: board.threadId,
     itemId: board.itemId,
-    title: label,
+    title,
     ...(comment ? { comment } : {}),
+    ...(step === undefined
+      ? {}
+      : {
+          step: `${step.storyTitle}, step ${number} of ${step.count}${step.label === undefined ? "" : `, ${step.label}`}: ${step.note}`,
+        }),
   };
 }
 
@@ -416,7 +440,8 @@ function formatComposerContextProviderPayload(record: KnownComposerContextRecord
         `threadId: ${record.threadId}`,
         `itemId: ${record.itemId}`,
         ...(record.comment === undefined ? [] : [`comment: ${record.comment}`]),
-        "The user means this board, drawn in that thread by astrolabe_canvas_show. The comment is theirs. To save it into a wiki, call astrolabe_canvas_keep with these ids; never redraw it by hand.",
+        ...(record.step === undefined ? [] : [`step: ${record.step}`]),
+        "The user means this board, drawn in that thread by astrolabe_canvas_show, and that step of one of its stories when one is named. The comment is theirs. To save it into a wiki, call astrolabe_canvas_keep with these ids; never redraw it by hand.",
       ].join("\n");
     case "change-group":
       return [

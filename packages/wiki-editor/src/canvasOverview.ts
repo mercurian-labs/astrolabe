@@ -1,15 +1,8 @@
 import type { CanvasGroupNode, CanvasMarks, CanvasNode } from "@mercurian/wiki/canvas";
 
 import { canvasColor, type CanvasCamera, type CanvasEdgeShape } from "./canvasGeometry";
-
-const PRESETS: Readonly<Record<string, string>> = {
-  "1": "#e5484d",
-  "2": "#f76b15",
-  "3": "#d6a100",
-  "4": "#30a46c",
-  "5": "#00a2c7",
-  "6": "#8e4ec6",
-};
+import type { CanvasInkShape } from "./canvasInk";
+import { CANVAS_PRESET_COLORS as PRESETS, canvasLineScale, canvasPaint } from "./canvasPaint";
 
 /** A canvas can't read the theme's tokens: what a review marks, at this distance. */
 const MARKS: Readonly<Record<string, string>> = {
@@ -19,21 +12,38 @@ const MARKS: Readonly<Record<string, string>> = {
   restyled: "#00a2c7",
 };
 
+/** One of what stacks above the sections, as a board draws it. */
+export type CanvasBoardLayer =
+  | { readonly kind: "card"; readonly node: Exclude<CanvasNode, CanvasGroupNode> }
+  | { readonly kind: "arrow"; readonly shape: CanvasEdgeShape }
+  | { readonly kind: "drawing"; readonly shape: CanvasInkShape };
+
 interface OverviewItems {
   readonly groups: ReadonlyArray<CanvasGroupNode>;
-  readonly cards: ReadonlyArray<CanvasNode>;
-  readonly shapes: ReadonlyArray<CanvasEdgeShape>;
+  /** Bottom first. */
+  readonly layers: ReadonlyArray<CanvasBoardLayer>;
 }
 
-const paths = new WeakMap<CanvasEdgeShape, Path2D>();
+const paths = new WeakMap<object, Path2D>();
 
-function pathOf(shape: CanvasEdgeShape) {
+function pathOf(shape: object, d: string) {
   let path = paths.get(shape);
   if (path === undefined) {
-    path = new Path2D(shape.path);
+    path = new Path2D(d);
     paths.set(shape, path);
   }
   return path;
+}
+
+const heads = new WeakMap<CanvasInkShape, ReadonlyArray<Path2D>>();
+
+function headsOf(shape: CanvasInkShape) {
+  let paths = heads.get(shape);
+  if (paths === undefined) {
+    paths = shape.heads.map((d) => new Path2D(d));
+    heads.set(shape, paths);
+  }
+  return paths;
 }
 
 const tintOf = (color: string | undefined, base: string) => {
@@ -92,17 +102,34 @@ export function drawCanvasOverview(
   const base = getComputedStyle(canvas).color;
   context.globalAlpha = 0.12;
   fillRects(context, items.groups, base);
-  context.globalAlpha = 0.3;
-  context.strokeStyle = base;
-  context.lineWidth = 1 / camera.zoom;
-  for (const shape of items.shapes) context.stroke(pathOf(shape));
-  context.globalAlpha = 0.55;
-  fillRects(context, items.cards, base);
-  context.globalAlpha = 1;
-  for (const { id, x, y, width, height } of items.cards) {
-    const tint = MARKS[marks.cards[id] ?? ""];
-    if (tint === undefined) continue;
-    context.fillStyle = tint;
-    context.fillRect(x, y, width, height);
+  const lines = canvasLineScale(camera.zoom);
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  // One pass in the order the board stacks them, so what covers what is the same at any zoom.
+  for (const layer of items.layers) {
+    if (layer.kind === "card") {
+      const { id, x, y, width, height, color } = layer.node;
+      const mark = MARKS[marks.cards[id] ?? ""];
+      context.globalAlpha = mark === undefined ? 0.55 : 1;
+      context.fillStyle = mark ?? tintOf(color, base);
+      context.fillRect(x, y, width, height);
+    } else if (layer.kind === "arrow") {
+      const { shape } = layer;
+      context.globalAlpha = 0.3;
+      context.strokeStyle = base;
+      context.lineWidth = canvasPaint(shape.edge).width * lines;
+      context.stroke(pathOf(shape, shape.path));
+    } else {
+      const { shape } = layer;
+      const { ink, path } = shape;
+      const tint = MARKS[marks.drawings?.[ink.id] ?? ""] ?? tintOf(ink.color, base);
+      context.globalAlpha = 1;
+      context.strokeStyle = tint;
+      context.fillStyle = tint;
+      context.lineWidth = canvasPaint(ink).width * lines;
+      context.stroke(pathOf(shape, path));
+      for (const head of headsOf(shape)) context.fill(head);
+    }
   }
+  context.globalAlpha = 1;
 }

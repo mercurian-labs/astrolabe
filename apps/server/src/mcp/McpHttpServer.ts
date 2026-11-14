@@ -1159,7 +1159,9 @@ export const layerPullRequestsToolkit = toolkitRegistration(
 export const layerWikiToolkit = toolkitRegistration(WikiToolkit, WikiHandlers.layer);
 const layerChangeGroupToolkit = toolkitRegistration(ChangeGroupToolkit, ChangeGroupHandlers.layer);
 export const layerCodeToolkit = toolkitRegistration(CodeToolkit, CodeHandlers.layer);
-export const layerCanvasToolkit = toolkitRegistration(CanvasToolkit, CanvasHandlers.layer);
+const layerCanvasToolkit = toolkitRegistration(CanvasToolkit, CanvasHandlers.layer).pipe(
+  Layer.provide(OrchestratorMcpService.layer),
+);
 
 const layerDeviceStandardToolkitRegistration = toolkitRegistration(
   DeviceStandardToolkit,

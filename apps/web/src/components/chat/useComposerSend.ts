@@ -145,6 +145,7 @@ import type { useQueuedRunEdit } from "./useQueuedRunEdit";
 import type { useTimelineFollow } from "./useTimelineFollow";
 import type { useUsageLimitsPanel } from "./useUsageLimitsPanel";
 import type { useWorktreeSetup } from "./useWorktreeSetup";
+import { omittedEditedBoards } from "../canvas/editedBoards";
 
 const ENVIRONMENT_UNAVAILABLE_SEND_TOAST_TRAIL_SIZE = 3;
 
@@ -763,6 +764,9 @@ export function useComposerSend(input: ComposerSendInput) {
           threadContexts: composerThreadContexts,
           wikiContexts: composerWikiContexts,
           environmentContexts: composerEnvironmentContexts,
+          omitEditedBoards: omittedEditedBoards(
+            scopeThreadRef(activeThread.environmentId, activeThread.id),
+          ),
         }),
         interactionMode: followUp.interactionMode,
       });
@@ -903,6 +907,9 @@ export function useComposerSend(input: ComposerSendInput) {
     // Records bind attachments by the id each side knows: the local id for the optimistic
     // row, the upload id (or local id on the data-URL path) on the wire; the server
     // rebinds them to the persisted id.
+    const omittedEditedBoardsForSend = omittedEditedBoards(
+      scopeThreadRef(environmentId, threadIdForSend),
+    );
     const buildOutgoingMessageContext = (attachmentIds: ReadonlyArray<string>) =>
       buildMessageContext({
         terminalContexts: composerTerminalContextsSnapshot,
@@ -911,6 +918,7 @@ export function useComposerSend(input: ComposerSendInput) {
         threadContexts: composerThreadContextsSnapshot,
         wikiContexts: composerWikiNotesSnapshot,
         environmentContexts: composerEnvironmentContextsSnapshot,
+        omitEditedBoards: omittedEditedBoardsForSend,
         attachments: composerAttachmentsSnapshot.map((attachment, index) => ({
           attachment,
           attachmentId: attachmentIds[index] ?? attachment.id,

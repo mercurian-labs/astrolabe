@@ -7,7 +7,12 @@ import {
   canvasChangeSections,
   canvasChangeSummary,
   canvasData,
+  canvasDocument,
   canvasDrawingProblems,
+  canvasInkBounds,
+  canvasInkEnd,
+  canvasLayoutKind,
+  canvasSteps,
   diffCanvas,
   parseCanvas,
   placeCanvas,
@@ -15,6 +20,7 @@ import {
   reviewCanvasFiles,
   serializeCanvas,
   type CanvasBounds,
+  type CanvasData,
   type CanvasDrawing,
 } from "./canvas.ts";
 import { canvasLinks, canvasOutline, canvasSourceOutline, renameInCanvas } from "./canvasIndex.ts";
@@ -57,10 +63,75 @@ describe("diffCanvas", () => {
     ["a key it can't read", { note: true }, "text", []],
     ["text moved and recoloured", { text: "Uno", x: 1, color: "2" }, "text", ["restyled", "moved"]],
     ["a recoloured move", { x: 1, color: "2" }, "restyled", ["moved"]],
+    ["a new style", { astrolabe: { style: { width: 4 } } }, "restyled", []],
+    ["a new shape", { astrolabe: { shape: "ellipse" } }, "text", []],
   ])("reads %s", (_, change, mark, also) => {
     expect(marks({ nodes: [card] }, { nodes: [{ ...card, ...change }] })).toEqual([
       ["a", "card", mark, also],
     ]);
+  });
+
+  it.each([
+    ["new pressure as what it says", { pressure: [0.9, 0.2] }, "text"],
+    ["a hand-drawn look as its style", { astrolabe: { style: { sloppiness: 2 } } }, "restyled"],
+    ["route as its style", { astrolabe: { style: { route: "elbow" } } }, "restyled"],
+    [
+      "bends as moved",
+      { type: "arrow", from: { x: 0, y: 0 }, to: { x: 9, y: 9 }, bends: [4, 1] },
+      "moved",
+    ],
+    [
+      "heads as restyled",
+      { type: "arrow", from: { x: 0, y: 0 }, to: { x: 9, y: 9 }, toEnd: "none" },
+      "restyled",
+    ],
+  ])("reads a drawing's %s", (_, change, mark) => {
+    const stroke = {
+      id: "s",
+      type: "stroke",
+      x: 0,
+      y: 0,
+      points: [0, 0, 9, 9],
+      pressure: [0.5, 0.5],
+    };
+    const drawn = (ink: object) => ({ nodes: [], astrolabe: { drawings: [ink] } });
+    const before =
+      "from" in change ? { id: "s", type: "arrow", from: change.from, to: change.to } : stroke;
+    expect(marks(drawn(before), drawn({ ...before, ...change }))).toEqual([
+      ["s", "drawing", mark, []],
+    ]);
+  });
+
+  it("says a first order, which keys everything, once as order rather than as each card's change", () => {
+    const before = {
+      nodes: [card, other],
+      edges: [{ ...arrow }],
+      astrolabe: { drawings: [{ id: "s", type: "stroke", x: 0, y: 0, points: [0, 0] }] },
+    };
+    const keyed = (thing: object, z: string) => ({ ...thing, astrolabe: { z } });
+    const after = {
+      nodes: [keyed(other, "a1"), keyed(card, "a3")],
+      edges: [keyed(arrow, "a0")],
+      astrolabe: {
+        drawings: [keyed({ id: "s", type: "stroke", x: 0, y: 0, points: [0, 0] }, "a2")],
+      },
+    };
+    const diff = diffCanvas(before, after);
+    expect(diff).toMatchObject({ changes: [], order: true, rest: false });
+    expect(canvasChangeSummary(diff.changes, diff.order)).toBe("Order changed");
+    // Keys that keep the order as it showed say nothing.
+    const same = {
+      ...after,
+      nodes: [keyed(card, "a1"), keyed(other, "a3")],
+      astrolabe: {
+        drawings: [keyed({ id: "s", type: "stroke", x: 0, y: 0, points: [0, 0] }, "a4")],
+      },
+    };
+    expect(diffCanvas(before, same)).toMatchObject({ changes: [], order: false });
+    const moved = { ...after, nodes: [{ ...keyed(other, "a1"), x: 9 }, keyed(card, "a3")] };
+    expect(canvasChangeSummary(diffCanvas(before, moved).changes, true)).toBe(
+      "1 moved, order changed",
+    );
   });
 
   it("matches by id, ignoring key order, and sees what's added and removed", () => {
@@ -78,6 +149,7 @@ describe("diffCanvas", () => {
     ["a new colour", { color: "3" }, "restyled"],
     ["new ends", { toEnd: "none" }, "restyled"],
     ["new sides", { fromSide: "top" }, "moved"],
+    ["a new style", { astrolabe: { style: { dash: "dotted" } } }, "restyled"],
   ])("reads an arrow with %s", (_, change, mark) => {
     expect(marks({ edges: [arrow] }, { edges: [{ ...arrow, ...change }] })).toEqual([
       ["e", "arrow", mark, []],
@@ -128,27 +200,52 @@ describe("reviewCanvas", () => {
   const card = { id: "a", type: "text", text: "One", x: 0, y: 0, width: 250, height: 60 };
   const gone = { ...card, id: "gone", text: "Gone" };
   const kept = { ...card, id: "kept", x: 300 };
+  const stroke = (id: string, x = 0) => ({ id, type: "stroke", x, y: 0, points: [0, 0, 9, 9] });
+  const story = { title: "Tour", steps: [{ note: "Start", cards: ["a"] }] };
   const before = {
     nodes: [card, gone, kept],
     edges: [
       { id: "ag", fromNode: "a", toNode: "gone" },
       { id: "ak", fromNode: "a", toNode: "kept" },
     ],
+    astrolabe: {
+      stories: [story],
+      drawings: [
+        stroke("still"),
+        stroke("rubbed"),
+        { id: "pointer", type: "arrow", from: { node: "gone", side: "top" }, to: { x: 0, y: 0 } },
+      ],
+    },
   };
   const after = {
     nodes: [{ ...card, text: "Uno" }, kept, { ...card, id: "new" }],
     edges: [{ id: "ak", fromNode: "a", toNode: "kept", color: "1" }],
+    astrolabe: { stories: [story], drawings: [stroke("still", 40), stroke("scribble")] },
   };
 
   it("draws the new version with what it removed beneath, marked", () => {
     const review = reviewCanvas(before, after);
     expect(review.data.nodes.map((node) => node.id)).toEqual(["gone", "a", "kept", "new"]);
     expect(review.data.edges.map((edge) => edge.id)).toEqual(["ak", "ag"]);
+    expect(review.data.drawings?.map((ink) => ink.id)).toEqual([
+      "still",
+      "scribble",
+      "rubbed",
+      "pointer",
+    ]);
     expect(review.marks).toEqual({
       cards: { a: "text", new: "added", gone: "removed" },
       arrows: { ak: "restyled", ag: "removed" },
+      drawings: { still: "moved", scribble: "added", rubbed: "removed", pointer: "removed" },
     });
+    expect(review.changes.filter((change) => change.item === "drawing")).toMatchObject([
+      { id: "still", name: "Drawing" },
+      { id: "scribble" },
+      { id: "rubbed" },
+      { id: "pointer", name: "Gone → a point" },
+    ]);
     expect(review.changes.every((change) => change.drawn)).toBe(true);
+    expect(review.rest).toBe(false);
   });
 
   it("says when a change can't be found on the board", () => {
@@ -163,8 +260,8 @@ describe("reviewCanvas", () => {
       if ("invalid" in result) throw new Error(result.invalid);
       return canvasChangeSummary(result.changes);
     };
-    expect(review(null, JSON.stringify(before))).toBe("5 added");
-    expect(review(JSON.stringify(before), null)).toBe("5 removed");
+    expect(review(null, JSON.stringify(before))).toBe("8 added");
+    expect(review(JSON.stringify(before), null)).toBe("8 removed");
   });
 
   it("says which version it can't read", () => {
@@ -187,6 +284,22 @@ describe("reviewCanvas", () => {
 });
 
 describe("parseCanvas", () => {
+  it("leaves out a drawn arrow on a node the board doesn't have, which the file keeps", () => {
+    const parsed = parseCanvas(
+      JSON.stringify({
+        nodes: [{ id: "here", type: "text", text: "Here" }],
+        astrolabe: {
+          drawings: [
+            { id: "lost", type: "arrow", from: { node: "gone", side: "top" }, to: { x: 0, y: 0 } },
+            { id: "kept", type: "arrow", from: { node: "here", side: "top" }, to: { x: 0, y: 0 } },
+          ],
+        },
+      }),
+    );
+    if (!parsed.ok) throw new Error(parsed.error);
+    expect(parsed.data.drawings?.map((ink) => ink.id)).toEqual(["kept"]);
+  });
+
   it("keeps what doesn't draw in the document, and writes it back", () => {
     const parsed = parseCanvas(fixture("survive-input.canvas"));
     if (!parsed.ok) throw new Error(parsed.error);
@@ -201,6 +314,20 @@ describe("parseCanvas", () => {
     expect(Object.keys(rewritten)).toEqual(["extra", "nodes", "edges", "zzz"]);
   });
 
+  it("is saved back by Obsidian with a card's and an arrow's nested objects, where order keys live", () => {
+    // Obsidian opened survive-input, moved a card and saved: it keeps the objects nested in a
+    // link card and an edge, though it drops a card type it doesn't know and the edge to it.
+    const was = JSON.parse(fixture("survive-input.canvas"));
+    const now = JSON.parse(fixture("survive-after-move-edit.canvas"));
+    const find = (list: ReadonlyArray<Record<string, unknown>>, id: string) =>
+      list.find((each) => each.id === id);
+    expect(find(now.nodes, "link")).toMatchObject({
+      astrolabe: find(was.nodes, "link")!.astrolabe,
+    });
+    expect(find(now.edges, "e1")).toMatchObject({ meta: { a: 1 }, style: "dashed" });
+    expect(Object.keys(now)).toEqual(["extra", "nodes", "edges", "zzz"]);
+  });
+
   it.each([
     ["empty text", "", 0],
     ["whitespace", " \n", 0],
@@ -211,6 +338,121 @@ describe("parseCanvas", () => {
   ])("opens %s", (_name, source, count) => {
     const parsed = parseCanvas(source);
     expect(parsed.ok && parsed.data.nodes.length).toBe(count);
+  });
+
+  it("reads a style beside a shape, leaving what it can't use for the file to keep", () => {
+    const style = {
+      fill: "none",
+      width: 4,
+      dash: "dotted",
+      corners: "round",
+      opacity: 0.5,
+      sloppiness: 2,
+      route: "elbow",
+    };
+    const card = {
+      id: "a",
+      type: "text",
+      text: "t",
+      astrolabe: { shape: "diamond", style: { ...style, glow: 2, width: -1 } },
+    };
+    const stroke = { id: "s", type: "stroke", x: 0, y: 0, points: [0, 0], astrolabe: { style } };
+    const group = {
+      id: "g",
+      type: "group",
+      astrolabe: { style: { dash: "wavy", sloppiness: 3, route: "wiggly" } },
+    };
+    const document = {
+      nodes: [card, group],
+      edges: [{ id: "e", fromNode: "a", toNode: "g", astrolabe: { style: { opacity: 2 } } }],
+      astrolabe: { drawings: [stroke] },
+    };
+    const data = canvasData(document);
+    const { width: _bad, ...kept } = style;
+    expect(data.nodes[0]).toMatchObject({ astrolabe: { shape: "diamond", style: kept } });
+    expect(data.nodes[1]).not.toHaveProperty("astrolabe");
+    expect(data.edges[0]).not.toHaveProperty("astrolabe");
+    expect(data.drawings?.[0]).toMatchObject({ astrolabe: { style } });
+    expect(JSON.parse(serializeCanvas(document))).toEqual(document);
+  });
+
+  it("reads a stroke's pressure only when it has one for each point, each 0 to 1", () => {
+    const stroke = (id: string, pressure: unknown) => ({
+      id,
+      type: "stroke",
+      x: 0,
+      y: 0,
+      points: [0, 0, 4, 4, 8, 8],
+      pressure,
+    });
+    const document = {
+      nodes: [],
+      astrolabe: {
+        drawings: [
+          stroke("pen", [0.2, 0.5, 1]),
+          stroke("short", [0.2, 0.5]),
+          stroke("over", [0.2, 0.5, 1.5]),
+          stroke("text", "hard"),
+        ],
+      },
+    };
+    const drawings = canvasData(document).drawings ?? [];
+    expect(drawings.map((ink) => (ink.type === "stroke" ? ink.pressure : null))).toEqual([
+      [0.2, 0.5, 1],
+      undefined,
+      undefined,
+      undefined,
+    ]);
+    expect(JSON.parse(serializeCanvas(document))).toEqual(document);
+  });
+
+  it("reads a drawn arrow's heads, bends and ends anywhere on a card, as an older one if they don't hold", () => {
+    const arrow = (id: string, keys: Record<string, unknown>) => ({
+      id,
+      type: "arrow",
+      from: { node: "a", side: "right" },
+      to: { x: 300, y: 40 },
+      ...keys,
+    });
+    const document = {
+      nodes: [{ id: "a", type: "text", text: "A", x: 0, y: 0, width: 200, height: 100 }],
+      astrolabe: {
+        drawings: [
+          arrow("line", { fromEnd: "arrow", toEnd: "none", bends: [100, 200, 150, 220] }),
+          arrow("anywhere", { from: { node: "a", side: "bottom", at: [0.25, 1] } }),
+          arrow("odd", {
+            fromEnd: "dot",
+            bends: [1, 2, 3],
+            from: { node: "a", side: "top", at: [2, 0] },
+          }),
+          arrow("old", {}),
+        ],
+      },
+    };
+    const [line, anywhere, odd, old] = canvasData(document).drawings ?? [];
+    expect(line).toMatchObject({ fromEnd: "arrow", toEnd: "none", bends: [100, 200, 150, 220] });
+    expect(anywhere).toMatchObject({ from: { node: "a", side: "bottom", at: [0.25, 1] } });
+    expect(odd).toEqual(arrow("odd", { from: { node: "a", side: "top" } }));
+    expect(old).toEqual(arrow("old", {}));
+    expect(canvasInkBounds(line!, new Map([["a", document.nodes[0]!]]))).toEqual({
+      x: 100,
+      y: 40,
+      width: 200,
+      height: 180,
+    });
+    expect(JSON.parse(serializeCanvas(document))).toEqual(document);
+  });
+
+  it("puts an end anywhere on a card where it follows the card, moved or resized", () => {
+    const end = { node: "a", side: "bottom", at: [0.25, 1] } as const;
+    const card = { x: 0, y: 0, width: 200, height: 100 };
+    expect(canvasInkEnd(end, new Map([["a", card]]))).toEqual({ x: 50, y: 100 });
+    const moved = { x: 40, y: -20, width: 400, height: 50 };
+    expect(canvasInkEnd(end, new Map([["a", moved]]))).toEqual({ x: 140, y: 30 });
+    expect(canvasInkEnd({ node: "a", side: "bottom" }, new Map([["a", moved]]))).toEqual({
+      x: 240,
+      y: 30,
+    });
   });
 
   it("refuses only text that isn't JSON", () => {
@@ -330,16 +572,50 @@ describe("canvasOutline", () => {
         width: 50,
         height: 50,
       },
-      { id: "c", type: "text", text: "half out", x: 480, y: 0, width: 50, height: 50 },
+      {
+        id: "c",
+        type: "text",
+        text: "half out",
+        x: 480,
+        y: 0,
+        width: 50,
+        height: 50,
+        astrolabe: { shape: "ellipse" },
+      },
     ],
-    edges: [{ id: "e", fromNode: "a", toNode: "b", label: "uses", fromEnd: "arrow" }],
+    edges: [
+      {
+        id: "e",
+        fromNode: "a",
+        toNode: "b",
+        label: "uses",
+        fromEnd: "arrow",
+        astrolabe: { style: { route: "elbow" } },
+      },
+    ],
+    astrolabe: {
+      drawings: [
+        { id: "s", type: "stroke", x: 0, y: 0, points: [0, 0, 10, 10] },
+        { id: "f", type: "arrow", from: { x: 0, y: 0 }, to: { node: "a", side: "top" } },
+      ],
+      stories: [
+        {
+          title: "Tour",
+          steps: [
+            { note: "Start inside.", group: "inner" },
+            { label: "Then", note: "Out to the note.", cards: ["a", "b"] },
+          ],
+        },
+      ],
+    },
   });
 
-  it("files cards under the smallest group wholly holding them, with no coordinates", () => {
+  it("files cards under the smallest group wholly holding them, with no coordinates, then its stories", () => {
     expect(canvasOutline("Board.canvas", data)).toBe(
       [
         "Board.canvas: 3 cards, 2 groups, 1 arrow.",
-        "[c] half out",
+        "2 hand drawings, not listed.",
+        "[c] (ellipse) half out",
         "",
         "Group [outer] Outer",
         "[b] File: Note.md#Top",
@@ -349,9 +625,59 @@ describe("canvasOutline", () => {
         "  second",
         "",
         "Arrows",
-        "[a] <-> [b]: uses",
+        "[a] <-> [b] (elbow): uses",
+        "",
+        "Story: Tour",
+        "1. [inner] Start inside.",
+        "2. [a] [b] Then. Out to the note.",
       ].join("\n"),
     );
+  });
+
+  it("says which card is on top where cards overlap, and the drawings each is over or under", () => {
+    const box = (id: string, x: number, z?: string) => ({
+      id,
+      type: "text",
+      text: id,
+      x,
+      y: 0,
+      width: 100,
+      height: 100,
+      ...(z === undefined ? {} : { astrolabe: { z } }),
+    });
+    const outline = canvasOutline(
+      "Board.canvas",
+      canvasData({
+        nodes: [box("under", 0, "a2"), box("over", 50, "a3"), box("alone", 500, "a1")],
+        edges: [],
+        astrolabe: {
+          drawings: [
+            {
+              id: "s",
+              type: "stroke",
+              x: 60,
+              y: 10,
+              points: [0, 0, 10, 10],
+              astrolabe: { z: "a4" },
+            },
+            {
+              id: "t",
+              type: "stroke",
+              x: 510,
+              y: 10,
+              points: [0, 0, 10, 10],
+              astrolabe: { z: "a0" },
+            },
+          ],
+        },
+      }),
+    );
+    expect(outline.split("\n").slice(-4)).toEqual([
+      "Overlapping",
+      "[alone] over a drawing",
+      "[under] under a drawing",
+      "[over] over [under], under a drawing",
+    ]);
   });
 
   it("says what's wrong with a file that isn't JSON, and shows it", () => {
@@ -502,8 +828,8 @@ describe("placeCanvas", () => {
         { id: "b", text: "B" },
       ],
       arrows: [
-        { from: "a", to: "b", ends: "both", label: "calls", color: "cyan" },
-        { from: "b", to: "a", ends: "none" },
+        { from: "a", to: "b", ends: "both", label: "calls", color: "cyan", route: "elbow" },
+        { from: "b", to: "a", ends: "none", route: "curved" },
       ],
     });
     expect(nodes[0]?.color).toBe("1");
@@ -512,8 +838,15 @@ describe("placeCanvas", () => {
         expect(Number.isInteger(value)).toBe(true);
       }
     }
-    expect(edges[0]).toMatchObject({ fromEnd: "arrow", label: "calls", color: "5" });
+    expect(edges[0]).toMatchObject({
+      fromEnd: "arrow",
+      label: "calls",
+      color: "5",
+      astrolabe: { style: { route: "elbow" } },
+    });
     expect(edges[1]).toMatchObject({ toEnd: "none" });
+    // Curved is what an arrow is with nothing said.
+    expect(edges[1]).not.toHaveProperty("astrolabe");
   });
 
   it("keeps a code card's path and lines, and leaves its link for saving", () => {
@@ -537,6 +870,331 @@ describe("placeCanvas", () => {
       arrows: [{ from: "a", to: "missing" }],
     });
     expect(edges).toEqual([]);
+  });
+
+  describe("stories", () => {
+    const step = (name: string, ...ids: string[]) => ({ note: `Step ${name}`, cards: ids });
+    const story = (...steps: ReturnType<typeof step>[]) => ({ title: "Story", steps });
+    const lit = (drawing: CanvasDrawing, at = 0) =>
+      canvasSteps(placeCanvas(drawing), at).map((each) => [each.note, [...each.cards].sort()]);
+    const positions = (data: CanvasData) =>
+      data.nodes.map(({ id, x, y, width, height }) => ({ id, x, y, width, height }));
+
+    it("walks a story's steps in the order they were written", () => {
+      expect(
+        lit({
+          cards: cards("a", "b", "c"),
+          stories: [story(step("two", "c"), step("one", "a", "b"))],
+        }),
+      ).toEqual([
+        ["Step two", ["c"]],
+        ["Step one", ["a", "b"]],
+      ]);
+    });
+
+    it("frames a card shared by neighbours in both steps, and docks one from far back", () => {
+      // `s` is shared by neighbours; `a` comes back three steps later.
+      const shared: CanvasDrawing = {
+        cards: cards("a", "b", "c", "d", "e", "f", "s"),
+        stories: [
+          story(
+            step("1", "a", "s"),
+            step("2", "s", "b"),
+            step("3", "c", "d"),
+            step("4", "e", "a"),
+            step("5", "f"),
+          ),
+        ],
+      };
+      const board = placeCanvas(shared);
+      const walked = canvasSteps(board);
+      const s = board.nodes.find((node) => node.id === "s");
+      if (s === undefined) throw new Error("s isn't on the board");
+      expect(walked.map((each) => contains(each.frame, s))).toEqual([
+        true,
+        true,
+        false,
+        false,
+        false,
+      ]);
+      expect(walked[0]?.docked.size).toBe(0);
+      expect(walked[1]?.docked.size).toBe(0);
+
+      // During step 4, `a` stands beside its frame rather than three steps away.
+      const fourth = walked[3];
+      const docked = fourth?.docked.get("a");
+      if (fourth === undefined || docked === undefined) throw new Error("a isn't docked");
+      expect(docked.from).toBe(0);
+      expect(overlap(docked, fourth.frame)).toBe(false);
+      expect(contains(fourth.bounds, docked)).toBe(true);
+      const whole = canvasBounds(board);
+      expect(fourth.bounds.width * fourth.bounds.height).toBeLessThan(whole.width * whole.height);
+
+      // A board being edited leaves `a` where it is, so the camera goes there for it.
+      const a = board.nodes.find((node) => node.id === "a");
+      if (a === undefined) throw new Error("a isn't on the board");
+      expect(contains(fourth.inPlace, a)).toBe(true);
+      expect(contains(fourth.inPlace, fourth.frame)).toBe(true);
+      expect(walked[0]?.inPlace).toEqual(walked[0]?.bounds);
+    });
+
+    it("lets later stories, and stories on a map, walk the board without moving a card", () => {
+      const first = story(step("1", "a", "b"), step("2", "c"));
+      const second = { title: "Backwards", steps: [step("x", "c"), step("y", "a")] };
+      const walk: CanvasDrawing = { cards: cards("a", "b", "c"), stories: [first] };
+      const both = placeCanvas({ ...walk, stories: [first, second] });
+      expect(positions(both)).toEqual(positions(placeCanvas(walk)));
+      expect(both.stories?.map((each) => each.title)).toEqual(["Story", "Backwards"]);
+      expect(lit({ ...walk, stories: [first, second] }, 1)).toEqual([
+        ["Step x", ["c"]],
+        ["Step y", ["a"]],
+      ]);
+
+      const map: CanvasDrawing = {
+        cards: [{ id: "a", text: "A", group: "g" }, ...cards("b", "c")],
+        groups: [{ id: "g", label: "G" }],
+        arrows: [{ from: "a", to: "b" }],
+      };
+      expect(
+        positions(placeCanvas({ ...map, layout: { kind: "map" }, stories: [second] })),
+      ).toEqual(positions(placeCanvas(map)));
+    });
+
+    it("lays a story told across groups out in lanes, each step a named column no card has to leave", () => {
+      const drawing: CanvasDrawing = {
+        cards: [
+          { id: "form", text: "Form", group: "browser" },
+          { id: "cookie", text: "Cookie", group: "browser" },
+          { id: "login", text: "POST /login", group: "server" },
+          { id: "check", text: "Check the hash", group: "server" },
+          { id: "users", text: "Users table", group: "store" },
+          { id: "sessions", text: "Sessions", group: "store" },
+        ],
+        groups: [
+          { id: "browser", label: "Browser" },
+          { id: "server", label: "API" },
+          { id: "store", label: "Storage" },
+        ],
+        arrows: [
+          { from: "form", to: "login" },
+          { from: "login", to: "users" },
+          { from: "check", to: "sessions" },
+          { from: "sessions", to: "cookie" },
+        ],
+        stories: [
+          story(
+            step("submit", "form", "login"),
+            step("find", "login", "users"),
+            step("check", "check", "users"),
+            step("session", "check", "sessions", "cookie"),
+          ),
+        ],
+      };
+      const board = placeCanvas(drawing);
+      const at = new Map(board.nodes.map((node) => [node.id, node]));
+      // Each lane is a band, top to bottom in order, holding its own cards.
+      const lanes = ["browser", "server", "store"].map((id) => at.get(id)!);
+      expect(lanes.map((lane) => lane.y)).toEqual(
+        lanes.map((lane) => lane.y).sort((a, b) => a - b),
+      );
+      for (const card of drawing.cards)
+        expect(contains(at.get(card.group!)!, at.get(card.id)!)).toBe(true);
+      // Cards share the column of the first step that shows them.
+      expect(at.get("form")!.x).toBe(at.get("login")!.x);
+      expect(at.get("sessions")!.x).toBe(at.get("cookie")!.x);
+      expect(at.get("users")!.x).toBeGreaterThan(at.get("login")!.x);
+      expect(canvasSteps(board).map((each) => each.docked.size)).toEqual([0, 0, 0, 0]);
+      // Each step is named above the column of the cards it brings, clear of every lane.
+      const headings = canvasSteps(board).map((each) => each.heading);
+      expect(headings.map((each) => each?.x)).toEqual(
+        ["form", "users", "check", "sessions"].map((id) => at.get(id)!.x),
+      );
+      const firstLane = Math.min(...lanes.map((lane) => lane.y));
+      for (const heading of headings) expect(heading!.y + heading!.height).toBeLessThan(firstLane);
+      expect(canvasBounds(board).y).toBe(Math.min(...headings.map((each) => each!.y)));
+      expect(canvasData(canvasDocument(board))).toEqual(board);
+      const cards = board.nodes.filter((node) => node.type !== "group");
+      for (const a of cards) {
+        for (const b of cards)
+          if (a.id !== b.id) expect(overlap(a, b), `${a.id} and ${b.id}`).toBe(false);
+      }
+    });
+
+    it("says where a card it brings in comes from: an earlier step, or its group on the map", () => {
+      const card = (id: string, x: number) => ({
+        id,
+        type: "text",
+        text: id,
+        x,
+        y: 0,
+        width: 100,
+        height: 60,
+      });
+      const data = canvasData({
+        nodes: [
+          { id: "g", type: "group", label: "Store", x: 1960, y: -40, width: 400, height: 140 },
+          card("a", 0),
+          card("b", 1000),
+          card("c", 2000),
+        ],
+        astrolabe: {
+          stories: [
+            {
+              title: "S",
+              steps: [
+                { note: "1", cards: ["a"] },
+                { note: "2", cards: ["b", "a", "c"] },
+              ],
+            },
+          ],
+        },
+      });
+      const second = canvasSteps(data)[1];
+      expect(
+        [...(second?.docked ?? new Map())].map(([id, each]) => [id, each.from, each.group]),
+      ).toEqual([
+        ["a", 0, undefined],
+        ["c", undefined, "Store"],
+      ]);
+    });
+
+    it("makes a step that names a group, or shows exactly its cards, that group", () => {
+      const card = (id: string, x: number, y = 40) => ({
+        id,
+        type: "text",
+        text: id,
+        x,
+        y,
+        width: 100,
+        height: 60,
+      });
+      const data = canvasData({
+        nodes: [
+          { id: "g", type: "group", label: "Server", x: 0, y: 0, width: 400, height: 140 },
+          { id: "h", type: "group", x: 0, y: 0, width: 1000, height: 400 },
+          card("a", 20),
+          card("b", 200),
+          card("c", 600),
+        ],
+        astrolabe: {
+          stories: [
+            {
+              title: "S",
+              steps: [
+                { note: "named", group: "g" },
+                { note: "its cards", cards: ["b", "a"] },
+                { note: "some of them", cards: ["a"] },
+                { label: "Own", note: "relabelled", group: "g" },
+                { note: "gone", group: "missing" },
+              ],
+            },
+          ],
+        },
+      });
+      const steps = canvasSteps(data);
+      expect(steps.map((each) => [each.note, each.groups, each.label])).toEqual([
+        ["named", ["g"], "Server"],
+        ["its cards", ["g"], "Server"],
+        ["some of them", [], undefined],
+        ["relabelled", ["g"], "Own"],
+      ]);
+      expect(steps[0]?.frame).toEqual({ x: 0, y: 0, width: 400, height: 140 });
+      expect(steps[0]?.bounds).toEqual(steps[0]?.frame);
+      expect([...(steps[0]?.cards ?? [])].sort()).toEqual(["a", "b"]);
+      expect(steps[0]?.docked.size).toBe(0);
+    });
+
+    it("lays a story told group by group out in the order it walks them, each step its group", () => {
+      const drawing: CanvasDrawing = {
+        cards: [
+          { id: "pay", text: "Charge the card", group: "payments" },
+          { id: "cart", text: "Cart", group: "store" },
+          { id: "price", text: "Price it", group: "orders" },
+        ],
+        groups: [
+          { id: "payments", label: "Payments" },
+          { id: "orders", label: "Orders API" },
+          { id: "store", label: "Storefront" },
+        ],
+        stories: [
+          {
+            title: "Buying",
+            steps: [
+              { note: "Shop", group: "store" },
+              { note: "Order", group: "orders" },
+              { note: "Pay", group: "payments" },
+            ],
+          },
+        ],
+      };
+      expect(canvasLayoutKind(drawing)).toBe("flow");
+      const board = placeCanvas(drawing);
+      expect(board.nodes.filter((node) => node.type === "group").map((node) => node.id)).toEqual([
+        "store",
+        "orders",
+        "payments",
+      ]);
+      expect(canvasSteps(board).map((each) => [each.groups, each.label, [...each.cards]])).toEqual([
+        [["store"], "Storefront", ["cart"]],
+        [["orders"], "Orders API", ["price"]],
+        [["payments"], "Payments", ["pay"]],
+      ]);
+    });
+
+    it("keeps every card clear of the others", () => {
+      const { nodes } = placeCanvas({
+        cards: cards("a", "b", "c", "d", "e"),
+        stories: [story(step("1", "a", "b"), step("2", "b", "c"), step("3", "d"), step("4", "a"))],
+        arrows: [{ from: "a", to: "b" }],
+      });
+      for (const a of nodes) {
+        for (const b of nodes) {
+          if (a.id !== b.id) expect(overlap(a, b), `${a.id} and ${b.id}`).toBe(false);
+        }
+      }
+    });
+
+    it("writes a board as a document that reads back the same", () => {
+      const board = placeCanvas({
+        cards: [
+          { id: "a", text: "A", group: "g" },
+          { id: "b", path: "src/b.ts", line: 3, endLine: 9, text: "B" },
+          { id: "c", url: "https://example.com" },
+        ],
+        groups: [{ id: "g", label: "G" }],
+        arrows: [{ from: "a", to: "b", label: "calls", ends: "both" }],
+        stories: [story(step("1", "a", "b"), step("2", "c"))],
+      });
+      expect(canvasData(canvasDocument(board))).toEqual(board);
+    });
+
+    it("reads a file's stories from its top level, leaving out steps with no card or group", () => {
+      const data = canvasData({
+        nodes: [{ id: "a", type: "text", text: "A", x: 0, y: 0, width: 100, height: 60 }],
+        astrolabe: {
+          stories: [
+            {
+              title: "Tour",
+              steps: [
+                { label: "Start", note: "Here", cards: ["a"] },
+                { note: "Nothing", cards: [] },
+                { note: "A group", group: "g" },
+              ],
+            },
+            { title: "Empty", steps: [] },
+          ],
+        },
+      });
+      expect(data.stories).toEqual([
+        {
+          title: "Tour",
+          steps: [
+            { label: "Start", note: "Here", cards: ["a"] },
+            { note: "A group", cards: [], group: "g" },
+          ],
+        },
+      ]);
+    });
   });
 
   it("runs a long chain down the board, since across a chat column it would be a thin ribbon", () => {
@@ -572,6 +1230,35 @@ describe("canvasDrawingProblems", () => {
     ["an empty card", { cards: [{ id: "a" }] }, "needs text, url or path"],
     ["a link that is also code", { cards: [{ id: "a", url: "x", path: "y" }] }, "only be one"],
     ["an unknown group", { cards: [{ id: "a", text: "A", group: "g" }] }, "isn't in `groups`"],
+    [
+      "a step naming an unknown card",
+      { cards: cards("a"), stories: [{ title: "S", steps: [{ note: "N", cards: ["b"] }] }] },
+      "isn't here",
+    ],
+    [
+      "a step with no card",
+      { cards: cards("a"), stories: [{ title: "S", steps: [{ note: "N", cards: [] }] }] },
+      "needs cards or a group",
+    ],
+    [
+      "a step naming an unknown group",
+      { cards: cards("a"), stories: [{ title: "S", steps: [{ note: "N", group: "g" }] }] },
+      "isn't in `groups`",
+    ],
+    [
+      "a step with a group and cards",
+      {
+        cards: [{ id: "a", text: "A", group: "g" }],
+        groups: [{ id: "g" }],
+        stories: [{ title: "S", steps: [{ note: "N", group: "g", cards: ["a"] }] }],
+      },
+      "give one",
+    ],
+    [
+      "a story with no step",
+      { cards: cards("a"), stories: [{ title: "S", steps: [] }] },
+      "needs a step",
+    ],
     ["an absolute path", { cards: [{ id: "a", path: "/etc/passwd" }] }, "relative"],
     ["a Windows path", { cards: [{ id: "a", path: "C:\\x" }] }, "relative"],
     ["a path out of the repository", { cards: [{ id: "a", path: "src/../../x" }] }, "relative"],

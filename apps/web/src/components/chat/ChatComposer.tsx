@@ -215,6 +215,7 @@ import {
   ComposerRestingImagePreviews,
 } from "./ComposerAttachmentStrip";
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
+import { ComposerEditedBoards } from "./ComposerEditedBoards";
 import { ComposerFooterPrimaryActions } from "./ComposerFooterControls";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
 import { ComposerPlanFollowUpBanner } from "./ComposerPlanFollowUpBanner";
@@ -3511,6 +3512,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               {composerAttachmentMediaRow}
 
               {composerAttachmentFileList}
+
+              {/* A draft's reserved thread isn't the server's yet: subscribing would mark it deleted. */}
+              {routeKind === "server" &&
+              !isComposerCollapsedMobile &&
+              pendingUserInputs.length === 0 ? (
+                <ComposerEditedBoards threadRef={routeThreadRef} />
+              ) : null}
 
               <div className="relative">
                 {previewFile ? (

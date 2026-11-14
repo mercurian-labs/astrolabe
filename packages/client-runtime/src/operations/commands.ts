@@ -7,6 +7,7 @@ import {
   ORCHESTRATION_V2_WS_METHODS,
   OrchestrationV2CheckpointUnavailableError,
   WS_METHODS,
+  type CanvasHandEdit,
   type ChatAttachment,
   MessageId,
   type ModelSelection,
@@ -25,6 +26,7 @@ import {
   type RuntimeRequestId,
   type ThreadId,
   type ThreadEnvMode,
+  type TurnItemId,
   type UploadChatAttachment,
   type GuestMessageId,
 } from "@t3tools/contracts";
@@ -205,6 +207,12 @@ export interface RespondToThreadUserInputInput extends ThreadCommandInput {
 
 export interface DismissThreadUserInputInput extends ThreadCommandInput {
   readonly requestId: RuntimeRequestId;
+}
+
+/** Astrolabe: a person's edits to a board an agent drew in the thread. */
+export interface EditThreadCanvasInput extends ThreadCommandInput {
+  readonly turnItemId: TurnItemId;
+  readonly edits: ReadonlyArray<CanvasHandEdit>;
 }
 
 export interface RevertThreadCheckpointInput extends ThreadCommandInput {
@@ -914,6 +922,18 @@ export const dismissThreadUserInput = Effect.fn("EnvironmentCommands.dismissThre
     });
   },
 );
+
+export const editThreadCanvas = Effect.fn("EnvironmentCommands.editThreadCanvas")(function* (
+  input: EditThreadCanvasInput,
+) {
+  return yield* dispatch({
+    type: "canvas.edit",
+    commandId: yield* allocateCommandId(input),
+    threadId: input.threadId,
+    turnItemId: input.turnItemId,
+    edits: input.edits,
+  });
+});
 
 export const revertThreadCheckpoint = Effect.fn("EnvironmentCommands.revertThreadCheckpoint")(
   function* (input: RevertThreadCheckpointInput) {

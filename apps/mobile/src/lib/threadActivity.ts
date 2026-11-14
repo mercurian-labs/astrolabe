@@ -65,7 +65,7 @@ import { claudeResumeCompactionAge } from "@t3tools/shared/claudeCompaction";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
 import { truncate } from "@t3tools/shared/String";
 import type { HtmlRenderReference } from "@t3tools/shared/htmlRender";
-import { canvasViewFromToolItem, type CanvasView } from "@t3tools/client-runtime/canvasViews";
+import { canvasViewFromItem, type CanvasView } from "@t3tools/client-runtime/canvasViews";
 import type { McpAppReference } from "@t3tools/shared/mcpApp";
 import {
   compactDynamicToolOutput,
@@ -583,6 +583,8 @@ function itemIcon(item: OrchestrationV2TurnItem): ThreadFeedActivity["icon"] {
       return "lock";
     case "link_request":
       return "globe";
+    case "canvas":
+      return "zap";
   }
 }
 
@@ -644,6 +646,8 @@ function itemSummary(
       return item.label;
     case "link_request":
       return `Link ${item.label ?? item.url ?? "an environment"}`;
+    case "canvas":
+      return item.title ?? "Canvas";
     case "dynamic_tool": {
       const classified = classifyToolActivity({
         itemType: "dynamic_tool_call",
@@ -704,6 +708,8 @@ function itemPreview(item: OrchestrationV2TurnItem): string | null {
     case "secret_request":
     case "link_request":
       return item.reason || null;
+    case "canvas":
+      return null;
     case "subagent":
       return item.result ?? item.progress ?? item.prompt;
     case "dynamic_tool":
@@ -2130,7 +2136,9 @@ export function buildThreadFeed(
       entryRows.push(index);
       continue;
     }
-    const canvas = item.type === "dynamic_tool" ? canvasViewFromToolItem(item) : undefined;
+    const canvas = canvasViewFromItem(item);
+    // The call that drew a recorded board shows nothing: its canvas item draws it.
+    if (canvas === null) continue;
     if (canvas) {
       const entry: RawThreadFeedEntry = {
         type: "canvas",

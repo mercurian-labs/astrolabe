@@ -1,20 +1,32 @@
-import type { CanvasBounds, CanvasData, CanvasNode } from "@mercurian/wiki/canvas";
+import {
+  canvasBounds,
+  canvasLayerOf,
+  canvasStack,
+  type CanvasBounds,
+  type CanvasData,
+  type CanvasNode,
+} from "@mercurian/wiki/canvas";
 
-import { boundsOfRects } from "./canvasArrange";
-import { canvasColor, canvasEdgeShapes, canvasFileKind, cardFileName } from "./canvasGeometry";
+import {
+  canvasEdgeShapes,
+  canvasFileKind,
+  cardFileName,
+  type CanvasEdgeShape,
+} from "./canvasGeometry";
+import { canvasInkShapes, type CanvasInkShape } from "./canvasInk";
+import {
+  canvasLineScale,
+  canvasOutline,
+  canvasPaint,
+  canvasSketchBox,
+  canvasSketchLine,
+  type CanvasPaint,
+  type CanvasPaintFill,
+} from "./canvasPaint";
 
 const PADDING = 40;
 /** Browsers stop drawing past this on a side. */
 const MAX_SIDE = 16_384;
-
-const PRESET_TINTS: Readonly<Record<string, string>> = {
-  "1": "#e5484d",
-  "2": "#f76b15",
-  "3": "#d6a100",
-  "4": "#30a46c",
-  "5": "#00a2c7",
-  "6": "#8e4ec6",
-};
 
 export interface CanvasExportOptions {
   readonly area: "full" | "viewport";
@@ -39,7 +51,7 @@ export function canvasExportArea(
   options: Pick<CanvasExportOptions, "area">,
 ): CanvasBounds {
   if (options.area === "viewport") return viewport;
-  const { x, y, width, height } = boundsOfRects(data.nodes);
+  const { x, y, width, height } = canvasBounds(data);
   return {
     x: x - PADDING,
     y: y - PADDING,
@@ -79,9 +91,45 @@ export function canvasPlainLines(text: string): ReadonlyArray<{
   });
 }
 
-function roundedRect(context: CanvasRenderingContext2D, rect: CanvasBounds, radius: number) {
-  context.beginPath();
-  context.roundRect(rect.x, rect.y, rect.width, rect.height, radius);
+function roundedRect(rect: CanvasBounds, radius: number) {
+  const path = new Path2D();
+  path.roundRect(rect.x, rect.y, rect.width, rect.height, radius);
+  return path;
+}
+
+/** A hand-drawn outline, which `canvasSketchBox` draws from the box's top left. */
+function sketched(d: string | undefined, at: CanvasBounds) {
+  if (d === undefined) return undefined;
+  const path = new Path2D();
+  path.addPath(new Path2D(d), new DOMMatrix().translate(at.x, at.y));
+  return path;
+}
+
+/**
+ * A card's or section's outline as its paint has it: the line it strokes, what it fills, and the
+ * box its text goes in.
+ */
+function outline(node: CanvasNode, paint: CanvasPaint) {
+  const sketch = canvasSketchBox(node, paint);
+  const shape = canvasOutline(node, paint);
+  const clean = shape.kind === "box" ? roundedRect(shape, shape.radius) : new Path2D(shape.d);
+  const line = sketched(sketch?.line, node) ?? clean;
+  const fill = sketch === undefined ? clean : sketched(sketch.fill, node);
+  if (shape.kind === "box") return { line, fill, inside: node };
+  const { x, y, width, height } = node;
+  // Where its text goes: the box inside the shape.
+  const inset = node.type === "text" && node.astrolabe?.shape === "ellipse" ? 0.146 : 0.25;
+  return {
+    line,
+    fill,
+    inside: {
+      ...node,
+      x: x + width * inset,
+      y: y + height * inset,
+      width: width * (1 - inset * 2),
+      height: height * (1 - inset * 2),
+    },
+  };
 }
 
 function wrapped(context: CanvasRenderingContext2D, text: string, width: number) {
@@ -134,10 +182,39 @@ function drawText(
   context.restore();
 }
 
-const tintOf = (color: string | undefined) => {
-  const { preset, hex } = canvasColor(color);
-  return hex ?? (preset === undefined ? undefined : PRESET_TINTS[preset]);
-};
+function paintFill(
+  context: CanvasRenderingContext2D,
+  path: Path2D,
+  fill: CanvasPaintFill,
+  colors: CanvasExportColors,
+) {
+  if (fill.kind === "none") return;
+  if (fill.kind === "surface" || fill.over === "surface") {
+    context.fillStyle = colors.background;
+    context.fill(path);
+  }
+  if (fill.kind === "tint") {
+    const alpha = context.globalAlpha;
+    context.globalAlpha = alpha * fill.amount;
+    context.fillStyle = fill.color ?? colors.muted;
+    context.fill(path);
+    context.globalAlpha = alpha;
+  }
+}
+
+/** A line as its paint has it, at `lines` times its width to keep to the zoom's floor. */
+function strokeStyle(
+  context: CanvasRenderingContext2D,
+  paint: CanvasPaint,
+  color: string,
+  lines: number,
+) {
+  context.strokeStyle = color;
+  context.lineWidth = paint.width * lines;
+  context.lineCap = paint.cap;
+  context.lineJoin = "round";
+  context.setLineDash(paint.dashArray?.map((length) => length * lines) ?? []);
+}
 
 export const cardCaption = (node: CanvasNode): string =>
   node.type === "file"
@@ -171,43 +248,42 @@ export function drawCanvasExport(
   context.fillStyle = colors.background;
   context.fillRect(area.x, area.y, area.width, area.height);
 
-  const area2 = (node: CanvasNode) => node.width * node.height;
-  const groups = data.nodes
-    .filter((node) => node.type === "group")
-    .sort((a, b) => area2(b) - area2(a));
-  for (const group of groups) {
-    if (group.type !== "group") continue;
-    const tint = tintOf(group.color) ?? colors.muted;
-    roundedRect(context, group, 8);
-    context.globalAlpha = 0.08;
-    context.fillStyle = tint;
-    context.fill();
-    context.globalAlpha = 1;
+  const { sections, content } = canvasStack(data);
+  const lines = canvasLineScale(scale);
+  for (const group of sections) {
+    const paint = canvasPaint(group);
+    context.globalAlpha = paint.opacity;
+    const tint = paint.stroke ?? colors.muted;
+    const path = roundedRect(group, paint.radius);
+    const { line, fill } = outline(group, paint);
+    if (fill !== undefined) paintFill(context, fill, paint.fill, colors);
     const background = group.background === undefined ? undefined : images.get(group.background);
     if (background !== undefined) {
       context.save();
-      context.clip();
-      context.globalAlpha = 0.8;
+      context.clip(path);
+      context.globalAlpha = paint.opacity * 0.8;
       context.drawImage(background, group.x, group.y, group.width, group.height);
       context.restore();
     }
-    context.strokeStyle = tint;
-    context.lineWidth = 1;
-    roundedRect(context, group, 8);
-    context.stroke();
+    strokeStyle(context, paint, tint, lines);
+    context.stroke(line);
+    context.setLineDash([]);
     if (group.label !== undefined && !options.privacy) {
       context.fillStyle = colors.muted;
       context.font = "600 16px sans-serif";
       context.fillText(group.label, group.x, group.y - 6);
     }
+    context.globalAlpha = 1;
   }
 
-  context.lineWidth = 1.5;
-  for (const shape of canvasEdgeShapes(data)) {
-    const tint = tintOf(shape.edge.color) ?? colors.line;
-    context.strokeStyle = tint;
+  const drawEdge = (shape: CanvasEdgeShape) => {
+    const paint = canvasPaint(shape.edge);
+    const tint = paint.stroke ?? colors.line;
+    context.globalAlpha = paint.opacity;
+    strokeStyle(context, paint, tint, lines);
     context.fillStyle = tint;
-    context.stroke(new Path2D(shape.path));
+    context.stroke(new Path2D(canvasSketchLine(shape.edge, shape.path) ?? shape.path));
+    context.setLineDash([]);
     for (const head of shape.heads) {
       const tip = new Path2D(head);
       context.fill(tip);
@@ -219,34 +295,26 @@ export function drawCanvasExport(
       context.fillText(shape.edge.label, shape.labelAt.x, shape.labelAt.y);
       context.textAlign = "start";
     }
-  }
-
-  for (const node of data.nodes) {
-    if (node.type === "group") continue;
-    const tint = tintOf(node.color);
-    roundedRect(context, node, 8);
-    context.fillStyle = colors.background;
-    context.fill();
-    if (tint !== undefined) {
-      context.globalAlpha = 0.1;
-      context.fillStyle = tint;
-      context.fill();
-      context.globalAlpha = 1;
-    }
-    context.strokeStyle = tint ?? colors.border;
-    context.lineWidth = 1;
-    context.stroke();
+    context.globalAlpha = 1;
+  };
+  const drawCard = (node: CanvasNode) => {
+    const paint = canvasPaint(node);
+    context.globalAlpha = paint.opacity;
+    const { line, fill, inside } = outline(node, paint);
+    if (fill !== undefined) paintFill(context, fill, paint.fill, colors);
+    strokeStyle(context, paint, paint.stroke ?? colors.border, lines);
+    context.stroke(line);
+    context.setLineDash([]);
     const image = node.type === "file" ? images.get(node.file) : undefined;
     if (image !== undefined) {
       context.save();
-      roundedRect(context, node, 8);
-      context.clip();
+      context.clip(roundedRect(node, paint.radius));
       context.drawImage(image, node.x, node.y, node.width, node.height);
       context.restore();
     } else if (options.privacy) {
-      drawBars(context, node, colors.muted);
+      drawBars(context, inside, colors.muted);
     } else if (node.type === "text") {
-      drawText(context, node, node.text, colors);
+      drawText(context, inside, node.text, colors);
     } else {
       context.fillStyle = colors.foreground;
       context.font = "600 14px sans-serif";
@@ -256,7 +324,43 @@ export function drawCanvasExport(
         context.fillText(line, node.x + 12, node.y + 24 + row * 20);
       }
     }
+    context.globalAlpha = 1;
+  };
+  const drawInk = (shape: CanvasInkShape) => {
+    const { ink } = shape;
+    const paint = canvasPaint(ink);
+    const tint = paint.stroke ?? (ink.type === "stroke" ? colors.foreground : colors.line);
+    context.globalAlpha = paint.opacity;
+    strokeStyle(context, paint, tint, lines);
+    context.fillStyle = tint;
+    if (shape.fill === undefined) {
+      context.stroke(new Path2D(canvasSketchLine(ink, shape.path) ?? shape.path));
+    } else {
+      context.fill(new Path2D(shape.fill));
+    }
+    context.setLineDash([]);
+    for (const head of shape.heads) context.fill(new Path2D(head));
+    if (ink.type === "arrow" && ink.label !== undefined && !options.privacy) {
+      context.font = "12px sans-serif";
+      context.fillStyle = colors.muted;
+      context.textAlign = "center";
+      context.fillText(ink.label, shape.labelAt.x, shape.labelAt.y);
+      context.textAlign = "start";
+    }
+    context.globalAlpha = 1;
+  };
+  // Kinds may share an id, so each is found among its own; all draw in the board's one order.
+  const edges = new Map(canvasEdgeShapes(data).map((shape) => [shape.edge.id, shape]));
+  const inks = new Map(canvasInkShapes(data).map((shape) => [shape.ink.id, shape]));
+  for (const layer of content) {
+    const { id } = canvasLayerOf(layer);
+    const edge = layer.kind === "arrow" ? edges.get(id) : undefined;
+    const ink = layer.kind === "drawing" ? inks.get(id) : undefined;
+    if (layer.kind === "card") drawCard(layer.node);
+    else if (edge !== undefined) drawEdge(edge);
+    else if (ink !== undefined) drawInk(ink);
   }
+  context.lineCap = "butt";
 
   if (options.showLogo) {
     context.fillStyle = colors.muted;

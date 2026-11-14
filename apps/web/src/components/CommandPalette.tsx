@@ -1400,14 +1400,14 @@ function OpenCommandPaletteDialog(props: {
     actionItems.push({
       kind: "submenu",
       value: "action:canvas-jump-to-group",
-      searchTerms: ["canvas", "jump to group", "go to group"],
-      title: "Canvas: Jump to group",
+      searchTerms: ["canvas", "jump to section", "go to section", "group"],
+      title: "Canvas: Jump to section",
       icon: <WaypointsIcon className={ITEM_ICON_CLASS} />,
       addonIcon: <WaypointsIcon className={ADDON_ICON_CLASS} />,
       groups: [
         {
           value: "canvas-groups",
-          label: "Groups",
+          label: "Sections",
           items: canvasBoard.groups.map((group) => ({
             kind: "action",
             value: `canvas-group:${group.id}`,
@@ -1440,9 +1440,13 @@ function OpenCommandPaletteDialog(props: {
       canvasAction("add-note", "Add note from wiki", ["note", "file"]);
       canvasAction("add-media", "Add media from wiki", ["image", "media"]);
       canvasAction("add-web-page", "Add web page", ["link", "url"]);
-      canvasAction("create-group", "Create group", ["group"]);
+      canvasAction("create-group", "Create section", ["section", "group"]);
       canvasAction("convert-to-file", "Convert to file", ["convert", "note"]);
       canvasAction("select-all", "Select all", ["select"]);
+      canvasAction("bring-forward", "Bring forward", ["order", "layer", "raise"]);
+      canvasAction("send-backward", "Send backward", ["order", "layer", "lower"]);
+      canvasAction("bring-to-front", "Bring to front", ["order", "layer", "top"]);
+      canvasAction("send-to-back", "Send to back", ["order", "layer", "bottom"]);
       canvasAction("undo", "Undo", []);
       canvasAction("redo", "Redo", []);
     }

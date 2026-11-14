@@ -32,7 +32,7 @@ export const boardMenu = ({
       ]
     : []),
   { label: "Add web page", run: () => void commands.addWebPage(at) },
-  { label: "Create group", run: () => commands.createGroup(at) },
+  { label: "Create section", run: () => commands.createGroup(at) },
   "separator",
   { label: "Paste", run: () => void commands.pasteFromMenu(at) },
   "separator",
@@ -192,7 +192,7 @@ export const selectionMenu = (
   at: CanvasPoint,
 ): ReadonlyArray<CanvasMenuEntry> => [
   zoomTo(commands),
-  { label: "Create group", run: () => commands.createGroup(at) },
+  { label: "Create section", run: () => commands.createGroup(at) },
   { label: "Align", items: arrangementEntries((kind) => commands.arrange(kind)) },
   "separator",
   ...clipboard(commands, at),

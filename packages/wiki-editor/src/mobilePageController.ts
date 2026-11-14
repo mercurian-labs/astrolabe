@@ -418,7 +418,7 @@ export function createWikiEditorPage(post: (event: WikiEditorEvent) => void) {
     getFile: (path: string): WikiEditorEmbeddedFile | undefined => files.get(path),
     reportCamera,
     askApp,
-    /** The board shown, for what the app drives from outside it, such as Jump to group. */
+    /** The board shown, for what the app drives from outside it, such as Jump to section. */
     setBoard(handle: CanvasBoardHandle | null) {
       board = handle;
     },

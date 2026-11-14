@@ -170,7 +170,7 @@ export default function WikiCanvasReview({
         </div>
         <div className="flex max-h-72 min-h-0 w-full shrink-0 flex-col overflow-y-auto border-t border-border @2xl:max-h-none @2xl:w-64 @2xl:border-t-0 @2xl:border-l">
           <p className="px-3 py-2 text-xs text-muted-foreground">
-            {canvasChangeSummary(review.changes)}
+            {canvasChangeSummary(review.changes, review.order)}
           </p>
           <ChangeRows changes={changed} active={active} onPick={pick} />
           {moved.length > 0 ? (
@@ -186,7 +186,7 @@ export default function WikiCanvasReview({
           ) : null}
           {review.rest ? (
             <p className="px-3 py-2 text-xs text-muted-foreground">
-              Data outside the cards and arrows changed too: see the JSON.
+              Data outside the cards, arrows and drawings changed too: see the JSON.
             </p>
           ) : null}
         </div>

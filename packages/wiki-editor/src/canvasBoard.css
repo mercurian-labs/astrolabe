@@ -1,10 +1,13 @@
 /*
  * A JSON Canvas board, for the web app and the phone's page alike: only tokens both define.
- * No transitions: everything here is moved by the camera, frame by frame. The one animation
- * plays once and ends, so nothing repaints at rest.
+ * No transitions: everything here is moved by the camera, frame by frame. The exceptions play
+ * once and end, so nothing repaints at rest: a highlight, and a walk's move to its next step.
  */
 .cv-board {
   --cv-tint: var(--muted-foreground);
+  /* What the zoom chip at the foot's corner takes, and the gap beside it. */
+  --cv-zoom-room: 116px;
+  --cv-chip-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
   --cv-line: color-mix(in srgb, var(--foreground) 45%, transparent);
   position: relative;
   width: 100%;
@@ -15,6 +18,8 @@
   line-height: 22px;
   color: var(--foreground);
   contain: strict;
+  /* A host's overlay fits itself to the board, not the window. */
+  container-type: size;
 }
 .cv-board[data-mode="free"] {
   cursor: grab;
@@ -78,16 +83,20 @@
 [data-color="6"] {
   --cv-tint: #8e4ec6;
 }
+/* A line's width is the board's, from its paint's --cv-w, held to the zoom's floor by --cv-line. */
+.cv-card,
+.cv-group,
+.cv-edge,
+.cv-ink {
+  --cv-stroke: calc(var(--cv-w, 1) * var(--cv-line, 1) * 1px);
+}
 .cv-card {
   background: var(--background);
-  border: calc(1px * var(--cv-ui, 1)) solid var(--border);
+  border: var(--cv-stroke) solid var(--border);
 }
 .cv-card[data-selected],
 .cv-group[data-selected] {
   outline: calc(2px * var(--cv-ui, 1)) solid var(--ring, var(--primary));
-}
-.cv-card[data-selected] {
-  z-index: 1;
 }
 .cv-card-content {
   width: 100%;
@@ -180,6 +189,10 @@
 .cv-board[data-mode="free"] .cv-card-content:not([data-live]) > * {
   pointer-events: none;
 }
+/* A board that only reads has nothing to select a card for: its links open on the first click. */
+.cv-board[data-mode="free"]:not([data-editable]) .cv-card-content :is(a, button) {
+  pointer-events: auto;
+}
 /* Above the grips around a selected card, which would otherwise take every press on the name. */
 .cv-card-label {
   position: absolute;
@@ -202,6 +215,107 @@
 .cv-card[style*="--cv-tint"] {
   background: color-mix(in srgb, var(--cv-tint) 10%, var(--background));
   border-color: color-mix(in srgb, var(--cv-tint) 55%, var(--border));
+}
+/* A fill its style sets, over the board's background for a card and over nothing for a section. */
+.cv-card[data-fill] {
+  background: color-mix(in srgb, var(--cv-fill) var(--cv-fill-amount), var(--background));
+}
+.cv-group[data-fill] {
+  background: color-mix(in srgb, var(--cv-fill) var(--cv-fill-amount), transparent);
+}
+.cv-card[data-fill="none"],
+.cv-group[data-fill="none"] {
+  background: none;
+}
+/* A dashed or dotted box draws its line as an outline over its edge, as the image export does. */
+.cv-card[data-dash],
+.cv-group[data-dash] {
+  border-color: transparent;
+}
+.cv-box-line {
+  position: absolute;
+  top: calc(var(--cv-stroke) * -1);
+  left: calc(var(--cv-stroke) * -1);
+  width: calc(100% + var(--cv-stroke) * 2);
+  height: calc(100% + var(--cv-stroke) * 2);
+  overflow: visible;
+  pointer-events: none;
+  fill: none;
+  stroke: var(--border);
+  stroke-width: var(--cv-stroke);
+}
+.cv-group .cv-box-line {
+  stroke: color-mix(in srgb, var(--cv-tint) 40%, transparent);
+}
+.cv-card:is([data-color], [style*="--cv-tint"]) .cv-box-line {
+  stroke: color-mix(in srgb, var(--cv-tint) 55%, var(--border));
+}
+.cv-group[data-color] .cv-box-line,
+.cv-group[style*="--cv-tint"] .cv-box-line {
+  stroke: var(--cv-tint);
+}
+:is(.cv-box-line, .cv-shape, .cv-rough) [data-dash] {
+  stroke-dasharray: calc(var(--cv-dash-on) * var(--cv-line, 1) * 1px)
+    calc(var(--cv-dash-off) * var(--cv-line, 1) * 1px);
+}
+:is(.cv-box-line, .cv-shape, .cv-rough) [data-dash="dotted"] {
+  stroke-linecap: round;
+}
+.cv-card[data-mark] .cv-box-line,
+.cv-group[data-mark] .cv-box-line {
+  stroke: var(--cv-mark);
+}
+/* A hand-drawn card or section draws its outline and fill beneath its content, not its box's. */
+.cv-card[data-rough],
+.cv-group[data-rough] {
+  background: none;
+  border-color: transparent;
+}
+.cv-rough {
+  position: absolute;
+  top: calc(var(--cv-stroke) * -1);
+  left: calc(var(--cv-stroke) * -1);
+  width: calc(100% + var(--cv-stroke) * 2);
+  height: calc(100% + var(--cv-stroke) * 2);
+  overflow: visible;
+  pointer-events: none;
+}
+.cv-card[data-rough]:not([data-shape]) .cv-card-content {
+  position: relative;
+}
+.cv-rough-fill {
+  fill: var(--background);
+}
+.cv-rough-line {
+  fill: none;
+  stroke: var(--border);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: var(--cv-stroke);
+}
+.cv-card:is([data-color], [style*="--cv-tint"]) .cv-rough-fill {
+  fill: color-mix(in srgb, var(--cv-tint) 10%, var(--background));
+}
+.cv-card:is([data-color], [style*="--cv-tint"]) .cv-rough-line {
+  stroke: color-mix(in srgb, var(--cv-tint) 55%, var(--border));
+}
+.cv-card[data-fill] .cv-rough-fill {
+  fill: color-mix(in srgb, var(--cv-fill) var(--cv-fill-amount), var(--background));
+}
+.cv-group .cv-rough-fill {
+  fill: color-mix(in srgb, var(--cv-tint) 6%, transparent);
+}
+.cv-group .cv-rough-line {
+  stroke: color-mix(in srgb, var(--cv-tint) 40%, transparent);
+}
+.cv-group:is([data-color], [style*="--cv-tint"]) .cv-rough-line {
+  stroke: var(--cv-tint);
+}
+.cv-group[data-fill] .cv-rough-fill {
+  fill: color-mix(in srgb, var(--cv-fill) var(--cv-fill-amount), transparent);
+}
+:is(.cv-card, .cv-group)[data-mark] .cv-rough-line {
+  stroke: var(--cv-mark);
 }
 .cv-card-body {
   box-sizing: border-box;
@@ -443,7 +557,7 @@ span.cv-wikilink {
 
 .cv-group {
   background: color-mix(in srgb, var(--cv-tint) 6%, transparent);
-  border: calc(1px * var(--cv-ui, 1)) solid color-mix(in srgb, var(--cv-tint) 40%, transparent);
+  border: var(--cv-stroke) solid color-mix(in srgb, var(--cv-tint) 40%, transparent);
 }
 .cv-group-background {
   position: absolute;
@@ -485,6 +599,19 @@ span.cv-wikilink {
   padding: 0;
   font-size: 13px;
 }
+/* A group that is a story's step leads its label with the step's number. */
+.cv-group-label[data-steps] {
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--cv-screen, 1));
+  overflow: visible;
+}
+.cv-group-name {
+  min-width: 0;
+  margin-inline-start: calc(2px * var(--cv-screen, 1));
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .cv-edges {
   position: absolute;
@@ -503,13 +630,22 @@ span.cv-wikilink {
 .cv-edge-line {
   fill: none;
   stroke: currentcolor;
-  stroke-width: calc(1.5px * var(--cv-ui, 1));
+  stroke-width: var(--cv-stroke);
+}
+.cv-edge[data-dash] .cv-edge-line,
+.cv-ink[data-dash] .cv-ink-line {
+  stroke-dasharray: calc(var(--cv-dash-on) * var(--cv-line, 1) * 1px)
+    calc(var(--cv-dash-off) * var(--cv-line, 1) * 1px);
+}
+.cv-edge[data-dash="dotted"] .cv-edge-line,
+.cv-ink[data-dash="dotted"] .cv-ink-line {
+  stroke-linecap: round;
 }
 .cv-edge-head {
   fill: currentcolor;
 }
 .cv-edge[data-selected] .cv-edge-line {
-  stroke-width: calc(3px * var(--cv-ui, 1));
+  stroke-width: calc(var(--cv-stroke) + 1.5px * var(--cv-ui, 1));
 }
 .cv-edge[data-mark] {
   color: var(--cv-mark);
@@ -535,6 +671,147 @@ span.cv-wikilink {
   font-size: calc(12px * var(--cv-ui, 1));
 }
 
+/* A shaped card: its outline drawn to its box, its text inside the shape. */
+.cv-card[data-shape] {
+  background: none;
+  border-color: transparent;
+}
+.cv-shape {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  fill: var(--background);
+  stroke: var(--border);
+  stroke-width: var(--cv-stroke);
+}
+.cv-card[data-shape]:is([data-color], [style*="--cv-tint"]) .cv-shape {
+  fill: color-mix(in srgb, var(--cv-tint) 10%, var(--background));
+  stroke: color-mix(in srgb, var(--cv-tint) 55%, var(--border));
+}
+.cv-card[data-shape][data-fill] .cv-shape {
+  fill: color-mix(in srgb, var(--cv-fill) var(--cv-fill-amount), var(--background));
+}
+.cv-card[data-shape][data-fill="none"] .cv-shape {
+  fill: none;
+}
+.cv-card[data-shape][data-mark] .cv-shape {
+  stroke: var(--cv-mark);
+}
+.cv-card[data-shape] .cv-card-content {
+  position: absolute;
+  inset: 14.6%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  width: auto;
+  height: auto;
+}
+.cv-card[data-shape="diamond"] .cv-card-content {
+  inset: 25%;
+}
+.cv-card[data-shape] .cv-card-body {
+  min-height: 0;
+  padding: 0;
+  text-align: center;
+}
+
+/*
+ * Arrows and drawings each have an svg of their own, so they stack among the cards in the one
+ * order the file keeps: the page's order is the stacking order, with no z-index of their own.
+ */
+.cv-layer {
+  position: absolute;
+  overflow: visible;
+  pointer-events: none;
+}
+/* Strokes and drawn arrows. Only their lines take a press, and only while editing. */
+.cv-ink {
+  color: var(--foreground);
+}
+.cv-ink[data-kind="arrow"] {
+  color: var(--cv-line);
+}
+.cv-ink[data-color],
+.cv-ink[style*="--cv-tint"] {
+  color: var(--cv-tint);
+}
+.cv-ink-line {
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: var(--cv-stroke);
+}
+/* Ink drawn with pressure is its outline, filled: the line beneath it only takes a press. */
+.cv-ink-fill {
+  fill: currentcolor;
+}
+.cv-ink-draft {
+  fill: var(--foreground);
+}
+.cv-ink[data-kind="arrow"]:not([data-dash="dotted"]) .cv-ink-line {
+  stroke-linecap: butt;
+}
+.cv-ink-head {
+  fill: currentcolor;
+}
+.cv-ink[data-mark] {
+  color: var(--cv-mark);
+}
+.cv-ink[data-mark="removed"] .cv-ink-line {
+  stroke-dasharray: calc(6px * var(--cv-ui, 1));
+}
+.cv-ink-hit {
+  fill: none;
+  pointer-events: none;
+  stroke: transparent;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: calc(12px * var(--cv-ui, 1));
+}
+.cv-board[data-editable] .cv-ink-hit {
+  cursor: pointer;
+  pointer-events: stroke;
+}
+.cv-board[data-editable] .cv-ink-fill {
+  cursor: pointer;
+  pointer-events: fill;
+}
+.cv-ink[data-selected] .cv-ink-hit {
+  stroke: color-mix(in srgb, var(--ring, var(--primary)) 35%, transparent);
+  stroke-width: calc(8px * var(--cv-ui, 1));
+}
+@media (pointer: coarse) {
+  .cv-ink-hit {
+    stroke-width: calc(24px * var(--cv-ui, 1));
+  }
+}
+/* The Shape tool's choice, beneath its button. */
+.cv-shape-picker {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  pointer-events: auto;
+  background: var(--popover, var(--background));
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--cv-chip-shadow);
+  transform: translateX(-50%);
+}
+.cv-tools .cv-shape-picker button {
+  padding: 0 6px;
+}
+.cv-tools .cv-shape-picker button[aria-checked="true"] {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+}
+
 .cv-minimap {
   display: block;
   width: 100%;
@@ -557,25 +834,84 @@ span.cv-wikilink {
   fill: var(--muted-foreground);
 }
 
-.cv-controls {
+/* The board's menu and zoom float as chips, like a host's story pill. */
+.cv-menu-button,
+.cv-zoom {
   position: absolute;
+  display: flex;
+  align-items: center;
+  padding: 3px;
+  background: var(--popover, var(--background));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--cv-chip-shadow);
+}
+.cv-menu-button {
   top: calc(12px + env(safe-area-inset-top, 0px));
   right: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
 }
-.cv-controls button {
-  min-width: 32px;
-  height: 32px;
-  padding: 0 4px;
-  font: inherit;
-  font-size: 12px;
-  color: var(--foreground);
+.cv-zoom {
+  right: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+}
+.cv-menu-button button,
+.cv-zoom button {
+  display: grid;
+  place-items: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: 15px;
   cursor: pointer;
-  background: var(--background);
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+}
+.cv-menu-button button:hover,
+.cv-menu-button button[aria-expanded="true"],
+.cv-zoom button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+}
+.cv-menu-button svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-width: 1.5;
+}
+.cv-zoom .cv-zoom-level {
+  min-width: 44px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.cv-zoom-separator {
+  align-self: stretch;
+  width: 1px;
+  margin: 4px 4px;
+  background: var(--border);
+}
+.cv-zoom button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+.cv-board[data-touch] :is(.cv-menu-button, .cv-zoom) button {
+  min-width: 36px;
+  height: 36px;
+}
+.cv-board[data-touch] {
+  --cv-zoom-room: 136px;
+}
+/* Inline in a page, the zoom waits at the top left until the board is pointed at. */
+.cv-board[data-zoom-hover] .cv-zoom {
+  top: 12px;
+  right: auto;
+  bottom: auto;
+  left: 12px;
+  visibility: hidden;
+}
+.cv-board[data-zoom-hover]:is(:hover, :focus-within) .cv-zoom {
+  visibility: visible;
 }
 
 /* Editing. Nothing here animates: what moves does so under the pointer. */
@@ -610,7 +946,30 @@ span.cv-wikilink {
   display: none;
 }
 .cv-card[data-editing] {
+  z-index: 1;
+}
+/* The only card selected: its outline, handles and dots above whatever stacks over it. */
+.cv-selection-frame {
+  position: absolute;
   z-index: 2;
+  box-sizing: border-box;
+  pointer-events: none;
+  outline: calc(2px * var(--cv-ui, 1)) solid var(--ring, var(--primary));
+}
+.cv-selection-frame > * {
+  pointer-events: auto;
+}
+/* Round several things, or a drawing: dashed, with its corners shown, since nothing else is. */
+.cv-selection-frame[data-selection-box] {
+  outline-style: dashed;
+  outline-width: calc(1px * var(--cv-ui, 1));
+}
+.cv-selection-frame[data-selection-box]
+  > .cv-handle:is([data-handle="nw"], [data-handle="ne"], [data-handle="se"], [data-handle="sw"]) {
+  box-sizing: border-box;
+  background: var(--background);
+  border: calc(1.5px * var(--cv-ui, 1)) solid var(--ring, var(--primary));
+  border-radius: calc(2px * var(--cv-ui, 1));
 }
 .cv-card-editor {
   box-sizing: border-box;
@@ -727,7 +1086,8 @@ textarea.cv-label-editor {
   border-radius: 50%;
 }
 .cv-card:hover > .cv-dot,
-[data-selected] > .cv-dot {
+[data-selected] > .cv-dot,
+.cv-selection-frame > .cv-dot {
   display: block;
 }
 .cv-moving .cv-dot,
@@ -750,8 +1110,33 @@ textarea.cv-label-editor {
   top: calc(50% - var(--cv-dot) / 2);
   right: calc(var(--cv-dot) * -0.5);
 }
+/* A drawn arrow's points being edited: its points, and the middles a new one pulls out of. */
+.cv-point,
+.cv-point-mid {
+  r: calc(5px * var(--cv-ui, 1));
+  fill: var(--background);
+  stroke: var(--primary);
+  stroke-width: calc(1.5px * var(--cv-ui, 1));
+  pointer-events: all;
+  touch-action: none;
+  cursor: move;
+}
+.cv-point[data-picked] {
+  fill: var(--primary);
+}
+.cv-point-mid {
+  r: calc(3.5px * var(--cv-ui, 1));
+  stroke-opacity: 0.6;
+  cursor: copy;
+}
 /* A fingertip needs more than a pointer does; the card itself doesn't grow. */
 @media (pointer: coarse) {
+  .cv-point {
+    r: calc(10px * var(--cv-ui, 1));
+  }
+  .cv-point-mid {
+    r: calc(8px * var(--cv-ui, 1));
+  }
   .cv-handle {
     --cv-grip: calc(22px * var(--cv-ui, 1));
   }
@@ -785,11 +1170,66 @@ textarea.cv-label-editor {
   stroke-width: calc(2px * var(--cv-ui, 1));
   stroke-dasharray: calc(6px * var(--cv-ui, 1));
 }
+/* The Lasso's loop, and the Eraser's trail behind the pointer. */
+.cv-lasso {
+  fill: color-mix(in srgb, var(--ring, var(--primary)) 8%, transparent);
+  stroke: var(--ring, var(--primary));
+  stroke-width: calc(1.5px * var(--cv-ui, 1));
+  stroke-dasharray: calc(4px * var(--cv-ui, 1));
+  stroke-linejoin: round;
+}
+.cv-eraser-trail {
+  fill: none;
+  stroke: color-mix(in srgb, var(--foreground) 25%, transparent);
+  stroke-width: calc(6px * var(--cv-ui, 1));
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* What the Eraser has touched, until it lifts. */
+.cv-ink[data-erasing],
+[data-drawing-label][data-erasing] {
+  opacity: 0.2;
+}
 .cv-marquee {
   position: absolute;
   pointer-events: none;
   background: color-mix(in srgb, var(--ring, var(--primary)) 12%, transparent);
   border: 1px solid var(--ring, var(--primary));
+}
+.cv-marquee[data-draw] {
+  background: color-mix(in srgb, var(--popover, var(--background)) 70%, transparent);
+  border-radius: 8px;
+}
+.cv-marquee[data-draw="section"] {
+  background: color-mix(in srgb, var(--foreground) 4%, transparent);
+  border-style: dashed;
+}
+/* The cursor says what a drag will do. */
+.cv-board[data-tool="hand"],
+.cv-board[data-tool="hand"] .cv-world * {
+  cursor: grab;
+}
+.cv-board:is(
+  [data-tool="card"],
+  [data-tool="section"],
+  [data-tool="arrow"],
+  [data-tool="pen"],
+  [data-tool="eraser"],
+  [data-tool="lasso"],
+  [data-tool="shape"]
+),
+.cv-board:is(
+    [data-tool="card"],
+    [data-tool="section"],
+    [data-tool="arrow"],
+    [data-tool="pen"],
+    [data-tool="eraser"],
+    [data-tool="lasso"],
+    [data-tool="shape"]
+  )
+  .cv-world
+  * {
+  cursor: crosshair;
 }
 .cv-hint {
   position: absolute;
@@ -830,11 +1270,12 @@ textarea.cv-label-editor {
   border: 1px solid var(--border);
   border-radius: 6px;
 }
-.cv-moving .cv-toolbar {
+.cv-moving .cv-toolbar,
+.cv-board:has(.cv-overlay > [data-overlay-row]:focus-within) .cv-toolbar {
   visibility: hidden;
 }
 .cv-toolbar > button,
-.cv-bar button,
+.cv-tools button,
 .cv-toolbar-list button {
   min-height: 28px;
   padding: 0 8px;
@@ -845,8 +1286,8 @@ textarea.cv-label-editor {
 }
 .cv-toolbar > button:hover,
 .cv-toolbar > button[aria-pressed="true"],
-.cv-bar button:hover,
-.cv-bar button[aria-pressed="true"],
+.cv-tools button:hover,
+.cv-tools button[aria-pressed="true"],
 .cv-toolbar-list button:hover,
 .cv-menu button:hover,
 .cv-menu button:focus-visible,
@@ -867,56 +1308,409 @@ textarea.cv-label-editor {
 .cv-toolbar-list button[aria-checked="true"]::before {
   content: "✓ ";
 }
-.cv-colors {
+/* The style panel, at the board's top left, in the app's menu look; it scrolls above the foot. */
+.cv-style {
+  position: absolute;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  left: 12px;
   display: flex;
-  flex-basis: 100%;
-  gap: 4px;
-  align-items: center;
-  padding: 4px;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+  max-height: calc(100% - 88px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  pointer-events: none;
 }
-.cv-colors > button {
-  min-height: 24px;
-  padding: 0 6px;
+.cv-style > * {
+  pointer-events: auto;
+}
+.cv-style-toggle {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  cursor: pointer;
+  background: var(--popover, var(--background));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--cv-chip-shadow);
+}
+.cv-board[data-touch] .cv-style-toggle {
+  width: 44px;
+  height: 44px;
+}
+.cv-style-toggle:hover,
+.cv-style-toggle[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--foreground) 8%, var(--popover, var(--background)));
+}
+.cv-style-toggle svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.4;
+}
+.cv-style-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-sizing: border-box;
+  /* Nine swatches and their gaps, inside its padding and border. */
+  width: 226px;
+  min-height: 0;
+  padding: 10px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--popover, var(--background));
+  border: 1px solid
+    color-mix(in srgb, var(--contrast-foreground, var(--foreground)) 10%, transparent);
+  border-radius: var(--radius, 8px);
+  box-shadow: 0 16px 40px -18px rgb(0 0 0 / 55%);
+}
+:is(.dark, .dark *) .cv-style-panel {
+  box-shadow: 0 18px 44px -18px rgb(0 0 0 / 80%);
+}
+.cv-style-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.cv-style-label {
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--muted-foreground);
+}
+.cv-style-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  align-items: center;
+}
+.cv-style-swatch,
+.cv-style-custom {
+  box-sizing: border-box;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  background: var(--cv-tint);
+  border: 1px solid color-mix(in srgb, var(--foreground) 14%, transparent);
+  border-radius: 5px;
+}
+.cv-style-swatch[data-soft] {
+  background: color-mix(in srgb, var(--cv-tint) 22%, var(--background));
+  border-color: color-mix(in srgb, var(--cv-tint) 45%, transparent);
+}
+.cv-style-swatch[data-swatch="default"] {
+  background: var(--background);
+  box-shadow:
+    inset 0 0 0 3px var(--background),
+    inset 0 0 0 20px var(--muted-foreground);
+}
+.cv-style-row[aria-label="Background"] .cv-style-swatch[data-swatch="default"] {
+  box-shadow: none;
+}
+.cv-style-swatch[data-swatch="none"] {
+  background:
+    linear-gradient(
+      to top right,
+      transparent calc(50% - 0.75px),
+      var(--destructive, #e5484d) calc(50% - 0.75px) calc(50% + 0.75px),
+      transparent calc(50% + 0.75px)
+    ),
+    var(--background);
+}
+.cv-style-custom {
+  background: conic-gradient(#e5484d, #d6a100, #30a46c, #00a2c7, #8e4ec6, #e5484d);
+}
+.cv-style-custom::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+.cv-style-custom::-webkit-color-swatch {
+  border: 0;
+  border-radius: 4px;
+}
+.cv-style-custom:not([data-pressed])::-webkit-color-swatch {
+  opacity: 0;
+}
+.cv-style-custom::-moz-color-swatch {
+  border: 0;
+  border-radius: 4px;
+}
+.cv-style-swatch[aria-pressed="true"],
+.cv-style-custom[data-pressed] {
+  outline: 2px solid var(--ring, var(--primary));
+  outline-offset: 1px;
+}
+.cv-style-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 26px;
+  padding: 0;
   cursor: pointer;
   background: none;
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  border: 0;
+  border-radius: calc(var(--radius, 8px) - 2px);
 }
-.cv-colors .cv-swatch {
-  width: 24px;
-  padding: 0;
-  background: var(--cv-tint);
+.cv-style-icon:hover {
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
 }
-.cv-colors > button[aria-pressed="true"] {
-  outline: 2px solid var(--ring, var(--primary));
+.cv-style-icon[aria-pressed="true"] {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
 }
-.cv-colors input[type="color"] {
-  width: 28px;
-  height: 24px;
-  padding: 0;
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: 4px;
+.cv-style-icon svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
 }
-.cv-bar {
+.cv-style-gap {
+  width: 8px;
+}
+.cv-style-row[aria-label="Opacity"] .cv-style-options {
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+.cv-style-range {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  accent-color: var(--primary);
+}
+.cv-style-value {
+  width: 34px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+  text-align: right;
+}
+/* Presenting moves the camera for the reader. */
+.cv-board[data-walking] .cv-zoom {
+  display: none;
+}
+.cv-board:fullscreen {
+  background: var(--background);
+}
+/* A host's controls float over the board's foot; only they take the pointer. */
+.cv-overlay {
   position: absolute;
+  right: 12px;
   bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-  left: 50%;
+  left: 12px;
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-end;
+  justify-content: center;
+  pointer-events: none;
+}
+/* A host's row of its own, above the controls: only what's in it takes the pointer. */
+.cv-overlay > [data-overlay-row] {
+  display: flex;
+  flex-basis: 100%;
+  min-width: 0;
+  justify-content: center;
+  pointer-events: none;
+}
+[data-overlay-row] > * {
+  max-width: 100%;
+  pointer-events: auto;
+}
+/*
+ * Centred between the zoom chip and its mirror; on a narrow board, above it. An editable board
+ * has no chip: its zoom is in the tool bar.
+ */
+.cv-board:not([data-zoom-hover], [data-walking], [data-editable]) .cv-overlay {
+  right: calc(12px + var(--cv-zoom-room));
+  left: calc(12px + var(--cv-zoom-room));
+}
+@container (max-width: 540px) {
+  .cv-board:not([data-zoom-hover], [data-walking], [data-editable]) .cv-overlay {
+    right: 12px;
+    bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+    left: 12px;
+  }
+}
+@container (max-width: 680px) {
+  .cv-board[data-touch]:not([data-zoom-hover], [data-walking], [data-editable]) .cv-overlay {
+    right: 12px;
+    bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+    left: 12px;
+  }
+}
+.cv-overlay > * {
+  pointer-events: auto;
+}
+/*
+ * An editable board's tools, in one line at its top, centred between the style button and the
+ * menu button and as tall as they are. What doesn't fit is measured into the More menu.
+ */
+.cv-topbar {
+  position: absolute;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  right: 56px;
+  left: 56px;
+  z-index: 10;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.cv-board[data-touch] .cv-topbar {
+  right: 64px;
+  left: 64px;
+}
+.cv-tools {
+  display: flex;
+  flex: none;
+  flex-wrap: nowrap;
   gap: 2px;
-  padding: 2px;
+  align-items: center;
+  padding: 3px;
+  pointer-events: auto;
+  touch-action: none;
+  background: var(--popover, var(--background));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--cv-chip-shadow);
+}
+.cv-tools-unit {
+  position: relative;
+  display: flex;
+  flex: none;
+  gap: 2px;
+  align-items: center;
+}
+/* The copy the bar is measured from: laid out at its own width, never seen. */
+.cv-tools-measure {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: max-content;
+  pointer-events: none;
+  visibility: hidden;
+}
+.cv-tools-measure .cv-tools {
+  box-shadow: none;
+}
+.cv-tools button {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+  align-items: center;
+  height: 28px;
+  padding: 0 8px;
+  white-space: nowrap;
+  cursor: pointer;
+  border-radius: 8px;
+}
+.cv-tools button[data-tool] {
+  padding: 0 5px 0 6px;
+}
+.cv-tools button[data-drag-in] {
+  cursor: grab;
+}
+.cv-tools button[aria-pressed="true"],
+.cv-tools button[aria-pressed="true"]:hover,
+.cv-tools button[data-more][data-active],
+.cv-tools button[data-more][data-active]:hover {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+}
+.cv-tools button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+.cv-tools button:disabled:hover {
+  background: none;
+}
+.cv-tools button[data-done] {
+  font-weight: 500;
+  border: 1px solid var(--border);
+}
+.cv-tools svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.75;
+}
+.cv-tools:not([data-keys]) kbd {
+  display: none;
+}
+.cv-tools:not([data-keys]) button[data-tool] {
+  padding: 0 6px;
+}
+.cv-tools kbd {
+  align-self: flex-end;
+  margin-bottom: 5px;
+  font: inherit;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--muted-foreground);
+}
+.cv-tools-separator {
+  flex: none;
+  align-self: stretch;
+  width: 1px;
+  margin: 5px 3px;
+  background: var(--border);
+}
+.cv-board[data-touch] .cv-tools button {
+  height: 36px;
+}
+.cv-board[data-touch] .cv-tools kbd {
+  display: none;
+}
+.cv-tools button[data-step],
+.cv-tools button[data-more],
+.cv-tools button:has(> svg:only-child) {
+  padding: 0 6px;
+}
+.cv-tools button[data-zoom-level] {
+  justify-content: center;
+  min-width: 44px;
+  padding: 0 4px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+/* The board's tooltip, in the app's look; placed by script, so it shows only once it's placed. */
+.cv-tip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 30;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  max-width: 320px;
+  padding: 4px 8px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--popover-foreground, var(--foreground));
+  white-space: nowrap;
+  pointer-events: none;
+  visibility: hidden;
   background: var(--popover, var(--background));
   border: 1px solid var(--border);
   border-radius: 6px;
-  transform: translateX(-50%);
-  touch-action: none;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05);
 }
-.cv-bar button {
-  cursor: grab;
-}
-.cv-controls button:disabled {
-  cursor: default;
-  opacity: 0.4;
+.cv-tip kbd {
+  font: inherit;
+  color: var(--muted-foreground);
 }
 .cv-menu {
   position: absolute;
@@ -928,8 +1722,14 @@ textarea.cv-label-editor {
   padding: 4px;
   overflow: auto;
   background: var(--popover, var(--background));
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: 1px solid
+    color-mix(in srgb, var(--contrast-foreground, var(--foreground)) 10%, transparent);
+  /* The app's menus: `rounded-lg` popups of `rounded-sm` items, and their shadow. */
+  border-radius: var(--radius, 8px);
+  box-shadow: 0 16px 40px -18px rgb(0 0 0 / 55%);
+}
+:is(.dark, .dark *) .cv-menu {
+  box-shadow: 0 18px 44px -18px rgb(0 0 0 / 80%);
 }
 .cv-menu button {
   display: flex;
@@ -942,10 +1742,60 @@ textarea.cv-label-editor {
   outline: none;
   background: none;
   border: 0;
-  border-radius: 4px;
+  border-radius: calc(var(--radius, 8px) - 4px);
+}
+.cv-menu button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+.cv-menu button:disabled:hover {
+  background: none;
+}
+/* A row with an icon has no tick column: the one that's on takes the tool's pressed look. */
+.cv-menu button:has(> .cv-menu-icon) {
+  padding-left: 8px;
+}
+.cv-menu button[aria-checked="true"]:has(> .cv-menu-icon) {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+}
+.cv-tools button[data-more][aria-expanded="true"]:not([data-active]) {
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+}
+.cv-menu-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  margin-right: 4px;
+}
+.cv-menu-icon svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.75;
+}
+.cv-menu-detail {
+  margin-left: 8px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
 }
 .cv-menu button[data-destructive] {
   color: var(--destructive, #e5484d);
+}
+.cv-menu-hint {
+  margin-left: auto;
+  padding-left: 16px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.cv-board[data-touch] .cv-menu button {
+  min-height: 36px;
 }
 .cv-menu-check {
   flex: none;
@@ -1060,4 +1910,133 @@ textarea.cv-label-editor {
   background: var(--popover, var(--background));
   border: 1px solid var(--border);
   border-radius: 6px;
+}
+
+/* A walk: the step's sections, cards and arrows stay; the rest of the board steps back. */
+.cv-board[data-mode="fit"][data-walkable] .cv-world {
+  transition: transform 320ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.cv-board[data-walkable] :is(.cv-card, .cv-group, .cv-edge, .cv-edge-label, .cv-ink) {
+  transition: opacity 200ms ease;
+}
+/* The rest stays in sight, so a step is always seen in its place. */
+.cv-board[data-walking] :is(.cv-card, .cv-edge, .cv-edge-label, .cv-ink)[data-lit="false"] {
+  opacity: 0.15;
+}
+.cv-board[data-walking] .cv-group[data-lit="false"] {
+  opacity: 0.35;
+}
+/* Only a board being edited picks what's dimmed, to make it a step. */
+.cv-board[data-walking]:not([data-editable])
+  :is(.cv-card, .cv-group, .cv-edge, .cv-edge-label, .cv-ink)[data-lit="false"] {
+  pointer-events: none;
+}
+.cv-board[data-walking] .cv-card[data-lit="true"] {
+  z-index: 1;
+}
+.cv-world[data-gliding] {
+  transition: transform 320ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+/* A card a step brings back from elsewhere, shown beside the frame with where it's from. */
+.cv-card[data-from] {
+  border-style: dashed;
+}
+.cv-card[data-from]::before {
+  content: attr(data-from);
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  padding-bottom: 2px;
+  font-size: calc(12px * var(--cv-ui, 1));
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cv-board[data-walkable] :is(.cv-world, .cv-card, .cv-group, .cv-edge, .cv-edge-label) {
+    transition: none;
+  }
+}
+/* A step's number, on what the step points at: a section's label, a card's corner, a lane's name. */
+.cv-frame-chip {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: calc(20px * var(--cv-screen, 1));
+  height: calc(20px * var(--cv-screen, 1));
+  padding: 0 calc(5px * var(--cv-screen, 1));
+  border: calc(1px * var(--cv-screen, 1)) solid
+    color-mix(in srgb, var(--muted-foreground) 60%, transparent);
+  border-radius: 999px;
+  background: var(--background);
+  color: var(--foreground);
+  font: inherit;
+  font-size: calc(11px * var(--cv-screen, 1));
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: auto;
+}
+button.cv-frame-chip {
+  cursor: pointer;
+}
+button.cv-frame-chip:focus-visible {
+  outline: calc(2px * var(--cv-screen, 1)) solid var(--ring, var(--primary));
+  outline-offset: calc(2px * var(--cv-screen, 1));
+}
+.cv-frame-chip[data-current] {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-foreground, var(--background));
+}
+/* A card's numbers straddle its top-left corner, where a section's would sit on its label. */
+.cv-card-steps {
+  position: absolute;
+  z-index: 5;
+  top: 0;
+  left: 0;
+  display: flex;
+  gap: calc(3px * var(--cv-screen, 1));
+  transform: translate(calc(-8px * var(--cv-screen, 1)), -50%);
+}
+/* What a step points at, walked or peeked at, is ringed: the step draws nothing of its own. */
+.cv-board:is([data-walking], [data-peeking]) .cv-card[data-focus] {
+  outline: calc(2px * var(--cv-screen, 1)) solid var(--primary);
+  outline-offset: calc(3px * var(--cv-screen, 1));
+}
+.cv-board:is([data-walking], [data-peeking]) .cv-group[data-lit="true"] {
+  outline: calc(2px * var(--cv-screen, 1)) solid var(--primary);
+}
+.cv-board:is([data-walking], [data-peeking]) .cv-group[data-lit="true"] .cv-box-line {
+  stroke: var(--primary);
+}
+.cv-step-heading {
+  position: absolute;
+  display: flex;
+  align-items: flex-end;
+  gap: calc(6px * var(--cv-screen, 1));
+  font-size: calc(16px * var(--cv-ui, 1));
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.cv-step-heading-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cv-step-heading[data-lit="true"] {
+  color: var(--foreground);
+}
+.cv-board:is([data-walking], [data-peeking]) .cv-step-heading[data-lit="false"] {
+  opacity: 0.4;
+}
+/* Hovering a step's number: what it covers stays, the rest steps back without leaving. */
+.cv-board[data-peeking] :is(.cv-card, .cv-edge, .cv-edge-label, .cv-ink)[data-lit="false"] {
+  opacity: 0.25;
+}
+.cv-board[data-peeking] .cv-group[data-lit="false"] {
+  opacity: 0.4;
 }

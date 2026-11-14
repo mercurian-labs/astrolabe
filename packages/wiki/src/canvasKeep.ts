@@ -111,5 +111,18 @@ export function keptCanvasSource(
       ...look,
     };
   });
-  return serializeCanvas({ nodes, edges });
+  const stories = (data.stories ?? []).map((story) => ({
+    ...story,
+    steps: story.steps.map((step) => ({
+      ...step,
+      cards: step.cards.map((id) => ids.get(id) ?? id),
+      ...(step.group === undefined ? {} : { group: ids.get(step.group) ?? step.group }),
+      ...(step.groups === undefined ? {} : { groups: step.groups.map((id) => ids.get(id) ?? id) }),
+    })),
+  }));
+  return serializeCanvas({
+    nodes,
+    edges,
+    ...(stories.length === 0 ? {} : { astrolabe: { stories } }),
+  });
 }

@@ -27,7 +27,7 @@ import type { HtmlRenderReference } from "@t3tools/shared/htmlRender";
 import { turnItemDetailRevision } from "@t3tools/client-runtime/work-log/item-detail";
 import type { McpAppReference } from "@t3tools/shared/mcpApp";
 import { htmlRenderFromToolItem, mcpAppFromToolItem } from "@t3tools/shared/toolOutput";
-import { canvasViewFromToolItem, type CanvasView } from "@t3tools/client-runtime/canvasViews";
+import { canvasViewFromItem, type CanvasView } from "@t3tools/client-runtime/canvasViews";
 import {
   contextCompactionLabel,
   workEntryIndicatesToolFailure,
@@ -721,7 +721,9 @@ export function deriveTimelineEntriesFromVisibleTurnItems(
       continue;
     }
 
-    const canvas = item.type === "dynamic_tool" ? canvasViewFromToolItem(item) : undefined;
+    const canvas = canvasViewFromItem(item);
+    // The call that drew a recorded board shows nothing: its canvas item draws it.
+    if (canvas === null) continue;
     if (canvas !== undefined) {
       entries.push({
         id: item.id,

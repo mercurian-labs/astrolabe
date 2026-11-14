@@ -6750,6 +6750,15 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
             messageId: MessageId.make(`${threadId}:message:${index}`),
             text,
             attachments: [],
+            ...(index === 2
+              ? {
+                  context: {
+                    version: 1 as const,
+                    records: [],
+                    omitEditedBoards: [TurnItemId.make("left-out-board")],
+                  },
+                }
+              : {}),
             modelSelection,
             dispatchMode: { type: index === 0 ? "start_immediately" : "queue_after_active" },
           });
@@ -6790,6 +6799,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
           threadId,
           runId: second.id,
           text: "Edited second message",
+          context: { version: 1, records: [] },
         });
         yield* orchestrator.dispatch({
           type: "queued-run.reorder",
@@ -6813,6 +6823,12 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         assert.equal(
           resumed.messages.find((row) => row.id === second.userMessageId)?.text,
           "Edited second message",
+        );
+        assert.deepEqual(
+          resumed.messages.find((row) => row.id === second.userMessageId)?.context
+            ?.omitEditedBoards,
+          [TurnItemId.make("left-out-board")],
+          "an edit keeps the boards the message leaves out",
         );
         assert.equal(resumed.runs.length, 3, "resume retries must not duplicate messages or runs");
       }),
