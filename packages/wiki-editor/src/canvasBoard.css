@@ -1447,6 +1447,9 @@ textarea.cv-label-editor {
   stroke-linejoin: round;
   stroke-width: 1.5;
 }
+.cv-style-gap {
+  width: 8px;
+}
 .cv-style-row[aria-label="Opacity"] .cv-style-options {
   flex-wrap: nowrap;
   gap: 8px;

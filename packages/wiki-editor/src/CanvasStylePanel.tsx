@@ -4,6 +4,7 @@ import { tipProps } from "./CanvasChrome";
 import {
   CANVAS_DEFAULT_PEN,
   MIXED,
+  type CanvasHead,
   type CanvasPen,
   type CanvasPenPart,
   type CanvasPenShown,
@@ -235,6 +236,57 @@ const CORNERS = [
   ["round", "Round edges", <path key="l" d="M5 15V10a5 5 0 0 1 5-5h5" />],
 ] as const;
 
+const ROUTES = [
+  ["straight", "Sharp", <path key="l" d="M4 16L16 4M11 4h5v5" />],
+  ["curved", "Curved", <path key="l" d="M4 16C4 8 9 4 16 4M11 4h5v5" />],
+  ["elbow", "Elbow", <path key="l" d="M4 16V10h12V4M13 7l3-3 3 3" />],
+] as const;
+
+const START_HEADS = [
+  ["none", "No start arrowhead", <path key="l" d="M4 10h12" />],
+  ["arrow", "Start arrowhead", <path key="l" d="M4 10h12M8 6l-4 4 4 4" />],
+] as const;
+
+const END_HEADS = [
+  ["none", "No end arrowhead", <path key="l" d="M4 10h12" />],
+  ["arrow", "End arrowhead", <path key="l" d="M4 10h12M12 6l4 4-4 4" />],
+] as const;
+
+/** Each end's head, start first: neither at both is a line. */
+function Arrowheads({
+  start,
+  end,
+  onPick,
+}: {
+  readonly start: unknown;
+  readonly end: unknown;
+  readonly onPick: (patch: Partial<CanvasPen>) => void;
+}) {
+  const choices = (
+    heads: typeof START_HEADS | typeof END_HEADS,
+    value: unknown,
+    pick: (head: CanvasHead) => void,
+  ) =>
+    heads.map(([head, label, icon]) => (
+      <Choice
+        key={label}
+        label={label}
+        className="cv-style-icon"
+        pressed={value === head}
+        onPick={() => pick(head)}
+      >
+        <Icon>{icon}</Icon>
+      </Choice>
+    ));
+  return (
+    <Row name="Arrowheads">
+      {choices(START_HEADS, start, (startHead) => onPick({ startHead }))}
+      <span className="cv-style-gap" aria-hidden="true" />
+      {choices(END_HEADS, end, (endHead) => onPick({ endHead }))}
+    </Row>
+  );
+}
+
 function Opacity({
   value,
   onPick,
@@ -401,6 +453,17 @@ export function CanvasStylePanel({
               options={SLOPPINESS}
               onPick={(sloppiness) => onChange({ sloppiness })}
             />
+          ) : null}
+          {has("route") ? (
+            <OptionRow
+              name="Arrow type"
+              value={value("route")}
+              options={ROUTES}
+              onPick={(route) => onChange({ route })}
+            />
+          ) : null}
+          {has("startHead") || has("endHead") ? (
+            <Arrowheads start={value("startHead")} end={value("endHead")} onPick={onChange} />
           ) : null}
           {has("opacity") ? (
             <Opacity value={value("opacity")} onPick={(opacity) => onChange({ opacity })} />

@@ -9,6 +9,7 @@ import type {
   CanvasEdge,
   CanvasInk,
   CanvasNode,
+  CanvasRoute,
   CanvasSloppiness,
 } from "@mercurian/wiki/canvas";
 
@@ -33,7 +34,13 @@ export interface CanvasPen {
   readonly corners: CanvasCorners | null;
   readonly opacity: number | null;
   readonly sloppiness: CanvasSloppiness | null;
+  /** Arrows only, as the next three. */
+  readonly route: CanvasRoute | null;
+  readonly startHead: CanvasHead | null;
+  readonly endHead: CanvasHead | null;
 }
+
+export type CanvasHead = "none" | "arrow";
 
 export type CanvasPenPart = keyof CanvasPen;
 
@@ -45,6 +52,9 @@ export const CANVAS_DEFAULT_PEN: CanvasPen = {
   corners: null,
   opacity: null,
   sloppiness: null,
+  route: null,
+  startHead: null,
+  endHead: null,
 };
 
 /** A part the selection doesn't agree on. */
@@ -57,13 +67,20 @@ export type CanvasPenShown = {
 
 type Item = CanvasNode | CanvasEdge | CanvasInk;
 
-/** Whether a part means anything for a kind: lines have no fill, only boxes have corners. */
+const ARROW_PARTS: ReadonlySet<CanvasPenPart> = new Set(["route", "startHead", "endHead"]);
+
+/**
+ * Whether a part means anything for a kind: lines have no fill, only boxes have corners, and only
+ * arrows have a route and heads.
+ */
 export const canvasPenApplies = (kind: CanvasPaintKind, part: CanvasPenPart): boolean =>
   part === "fill"
     ? kind !== "arrow" && kind !== "stroke"
     : part === "corners"
       ? kind === "card" || kind === "section"
-      : true;
+      : ARROW_PARTS.has(part)
+        ? kind === "arrow"
+        : true;
 
 /** A stroke drawn with pressure is hand-drawn already, so sloppiness isn't one of its parts. */
 const penAppliesTo = (item: Item, part: CanvasPenPart) =>
@@ -83,6 +100,9 @@ function penOf(item: Item): Required<{ readonly [Part in CanvasPenPart]: unknown
     corners: style?.corners ?? "round",
     opacity: paint.opacity,
     sloppiness: paint.sloppiness,
+    route: style?.route ?? "curved",
+    startHead: ("fromEnd" in item ? item.fromEnd : undefined) ?? "none",
+    endHead: ("toEnd" in item ? item.toEnd : undefined) ?? "arrow",
   };
 }
 
@@ -94,6 +114,9 @@ const PARTS: ReadonlyArray<CanvasPenPart> = [
   "corners",
   "opacity",
   "sloppiness",
+  "route",
+  "startHead",
+  "endHead",
 ];
 
 /** A selection as the panel shows it: only the parts something in it has. */
@@ -122,12 +145,18 @@ export function canvasPenOfTool(kind: CanvasPaintKind, pen: CanvasPen): CanvasPe
   if (canvasPenApplies(kind, "corners")) shown.corners = pen.corners ?? "round";
   // The Pen draws with pressure.
   if (kind !== "stroke") shown.sloppiness = pen.sloppiness ?? 0;
+  if (kind === "arrow") {
+    shown.route = pen.route ?? "curved";
+    shown.startHead = pen.startHead ?? "none";
+    shown.endHead = pen.endHead ?? "arrow";
+  }
   return shown as CanvasPenShown;
 }
 
 /**
- * The keys that set `patch` on an item of `kind` the file holds as `raw`: its colour at the top,
- * the rest in its style, and a part at its default cleared rather than written.
+ * The keys that set `patch` on an item of `kind` the file holds as `raw`: its colour and an
+ * arrow's heads at the top, as JSON Canvas has them, the rest in its style, and a part at its
+ * default cleared rather than written.
  */
 export function canvasPenKeys(
   kind: CanvasPaintKind,
@@ -148,8 +177,18 @@ export function canvasPenKeys(
   if (patch.sloppiness !== undefined && !(kind === "stroke" && Array.isArray(raw.pressure))) {
     style.sloppiness = patch.sloppiness === 0 ? null : patch.sloppiness;
   }
+  const arrow = kind === "arrow";
+  if (patch.route !== undefined && arrow) {
+    style.route = patch.route === "curved" ? null : patch.route;
+  }
   return {
     ...(patch.color === undefined ? {} : { color: patch.color }),
+    ...(patch.startHead === undefined || !arrow
+      ? {}
+      : { fromEnd: patch.startHead === "none" ? null : patch.startHead }),
+    ...(patch.endHead === undefined || !arrow
+      ? {}
+      : { toEnd: patch.endHead === "arrow" ? null : patch.endHead }),
     ...(Object.keys(style).length === 0 ? {} : canvasStyleKeys(raw, style)),
   };
 }

@@ -24,6 +24,14 @@ describe("the style panel's reading", () => {
       dash: "solid",
       opacity: 1,
       sloppiness: 0,
+      route: "curved",
+      startHead: "none",
+      endHead: "arrow",
+    });
+    expect(canvasPenOfItems([card])).not.toHaveProperty("route");
+    expect(canvasPenOfTool("arrow", { ...CANVAS_DEFAULT_PEN, route: "elbow" })).toMatchObject({
+      route: "elbow",
+      endHead: "arrow",
     });
     // Ink drawn with pressure has no sloppiness, and the Pen draws it.
     expect(canvasPenOfItems([ink])).not.toHaveProperty("sloppiness");
@@ -64,5 +72,21 @@ describe("the style panel's reading", () => {
       canvasPenKeys("card", { astrolabe: { style: { sloppiness: 2 } } }, { sloppiness: 0 }),
     ).toEqual({ astrolabe: null });
     expect(canvasPenKeys("stroke", { pressure: [0.5] }, { sloppiness: 2 })).toEqual({});
+    // An arrow's heads are JSON Canvas's own keys, and a line has none.
+    expect(
+      canvasPenKeys("arrow", {}, { route: "elbow", startHead: "arrow", endHead: "none" }),
+    ).toEqual({
+      fromEnd: "arrow",
+      toEnd: "none",
+      astrolabe: { style: { route: "elbow" } },
+    });
+    expect(
+      canvasPenKeys(
+        "arrow",
+        { toEnd: "none", astrolabe: { style: { route: "elbow" } } },
+        { route: "curved", startHead: "none", endHead: "arrow" },
+      ),
+    ).toEqual({ fromEnd: null, toEnd: null, astrolabe: null });
+    expect(canvasPenKeys("card", {}, { route: "elbow", endHead: "none" })).toEqual({});
   });
 });
