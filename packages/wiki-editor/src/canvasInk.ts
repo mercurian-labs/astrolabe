@@ -12,7 +12,7 @@ import {
 } from "@mercurian/wiki/canvas";
 import { getStroke } from "perfect-freehand";
 
-import { containsFully, type CanvasPoint } from "./canvasArrange";
+import { containsFully, nearestSide, type CanvasPoint } from "./canvasArrange";
 import { canvasPaint } from "./canvasPaint";
 import {
   canvasArrowLine,
@@ -411,4 +411,55 @@ export function inkArrowEndAt(
   const toTo = Math.hypot(point.x - to.x, point.y - to.y);
   if (Math.min(toFrom, toTo) > reach) return null;
   return toFrom < toTo ? "from" : "to";
+}
+
+const share = (value: number) => Math.round(Math.min(1, Math.max(0, value)) * 1000) / 1000;
+
+/**
+ * Where an arrow's end dropped at `point` holds on `card`. Within `reach` of its outline, it's
+ * that point on the outline, kept as a share of the card's box so it follows the card, unless it's
+ * within `snap` of a side's middle. Further in, it's the nearest side's middle, as it always was.
+ */
+export function canvasEndOnCard(
+  card: CanvasNode,
+  point: CanvasPoint,
+  reach: number,
+  snap: number,
+): Extract<CanvasInkEnd, { readonly node: string }> {
+  const side = nearestSide(card, point);
+  const right = card.x + card.width;
+  const bottom = card.y + card.height;
+  const inside = point.x >= card.x && point.x <= right && point.y >= card.y && point.y <= bottom;
+  const away = Math.min(
+    Math.abs(point.x - card.x),
+    Math.abs(point.x - right),
+    Math.abs(point.y - card.y),
+    Math.abs(point.y - bottom),
+  );
+  if (inside && away > reach) return { node: card.id, side };
+  const across = side === "top" || side === "bottom";
+  const along = across
+    ? Math.min(right, Math.max(card.x, point.x))
+    : Math.min(bottom, Math.max(card.y, point.y));
+  const middle = across ? card.x + card.width / 2 : card.y + card.height / 2;
+  if (Math.abs(along - middle) <= snap) return { node: card.id, side };
+  const fx = across ? (along - card.x) / card.width : side === "left" ? 0 : 1;
+  const fy = across ? (side === "top" ? 0 : 1) : (along - card.y) / card.height;
+  return { node: card.id, side, at: [share(fx), share(fy)] };
+}
+
+/** Whether a drawn arrow is what an edge holds: both ends on side middles of two nodes, no bends. */
+export function canvasInkIsEdge(
+  from: CanvasInkEnd,
+  to: CanvasInkEnd,
+  bends: ReadonlyArray<number> | undefined,
+): boolean {
+  return (
+    "node" in from &&
+    "node" in to &&
+    from.node !== to.node &&
+    from.at === undefined &&
+    to.at === undefined &&
+    (bends === undefined || bends.length === 0)
+  );
 }

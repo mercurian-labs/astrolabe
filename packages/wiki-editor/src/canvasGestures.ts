@@ -34,6 +34,8 @@ import {
 } from "./canvasGeometry";
 import {
   canvasInkShape,
+  canvasEndOnCard,
+  canvasInkIsEdge,
   canvasInkTouches,
   canvasInkPath,
   canvasSimplified,
@@ -94,6 +96,9 @@ export type CanvasTool =
 
 /** A press this near an arrow's end, on screen, takes that end. */
 const END_REACH = 10;
+/** An end dropped this near a card's outline, on screen, holds there; nearer a middle, there. */
+const EDGE_REACH = 16;
+const MIDDLE_SNAP = 10;
 /** How near the eraser's path a line's edge must come, on screen: a finger is wider. */
 const ERASER_REACH = 5;
 const ERASER_REACH_TOUCH = 10;
@@ -1196,8 +1201,9 @@ export class CanvasGestures {
         const { element, ink, end } = session;
         if (element === null) return;
         const rects = new Map(host.data().nodes.map((node) => [node.id, node]));
-        const next = { ...ink, [end]: point };
-        const drawn = canvasInkShape(next, rects);
+        const target = this.#cardAt(point);
+        const next = { ...ink, [end]: target === undefined ? point : this.#endOn(target, point) };
+        const drawn = canvasInkShape(next, rects, () => host.data().nodes);
         if (drawn !== undefined) this.#setInk(element, drawn);
         return;
       }
@@ -1403,9 +1409,7 @@ export class CanvasGestures {
         host.toolDone();
         const point = host.view.toWorld(press.x, press.y);
         const target = this.#cardAt(point);
-        const to: CanvasInkEnd =
-          target === undefined ? point : { node: target.id, side: nearestSide(target, point) };
-        this.#putInkArrow(session.from, to);
+        this.#putInkArrow(session.from, target === undefined ? point : this.#endOn(target, point));
         return;
       }
       case "ink-end":
@@ -1496,17 +1500,25 @@ export class CanvasGestures {
     ]);
   }
 
-  /** A drawn arrow, unless both its ends are on cards: then it's a card's arrow, as the file has. */
+  /** An arrow's end dropped on a card: on its outline where it's near, else a side's middle. */
+  #endOn(card: CanvasNode, point: CanvasPoint) {
+    const zoom = this.#host.view.camera.zoom;
+    return canvasEndOnCard(card, point, EDGE_REACH / zoom, MIDDLE_SNAP / zoom);
+  }
+
+  /**
+   * A drawn arrow, unless both its ends are on side middles of cards: then it's a card's arrow, as
+   * the file has.
+   */
   #putInkArrow(from: CanvasInkEnd, to: CanvasInkEnd) {
     const host = this.#host;
     const document = host.document();
     if (document === null) return;
-    if ("node" in from && "node" in to) {
-      if (from.node !== to.node) {
-        document.commit([
-          { op: "put-arrow", edge: host.styled("arrow", arrowBetween(document.mint(), from, to)) },
-        ]);
-      }
+    if ("node" in from && "node" in to && from.node === to.node) return;
+    if (canvasInkIsEdge(from, to, undefined) && "node" in from && "node" in to) {
+      document.commit([
+        { op: "put-arrow", edge: host.styled("arrow", arrowBetween(document.mint(), from, to)) },
+      ]);
       return;
     }
     // A line too short to see was meant as a click.
@@ -1537,9 +1549,9 @@ export class CanvasGestures {
     const placed: CanvasInkEnd =
       target === undefined
         ? { x: Math.round(point.x), y: Math.round(point.y) }
-        : { node: target.id, side: nearestSide(target, point) };
-    if ("node" in placed && "node" in other && placed.node !== other.node) {
-      const [from, to] = end === "from" ? [placed, other] : [other, placed];
+        : this.#endOn(target, point);
+    const [from, to] = end === "from" ? [placed, other] : [other, placed];
+    if (canvasInkIsEdge(from, to, ink.bends) && "node" in from && "node" in to) {
       const id = document.mint();
       document.commit([
         { op: "remove-drawing", drawing: ink.id },
@@ -1547,6 +1559,8 @@ export class CanvasGestures {
           op: "put-arrow",
           edge: {
             ...arrowBetween(id, from, to),
+            ...(ink.fromEnd === undefined ? {} : { fromEnd: ink.fromEnd }),
+            ...(ink.toEnd === undefined ? {} : { toEnd: ink.toEnd }),
             ...(ink.color === undefined ? {} : { color: ink.color }),
             ...(ink.label === undefined ? {} : { label: ink.label }),
             ...(ink.astrolabe === undefined ? {} : { astrolabe: ink.astrolabe }),
@@ -1556,7 +1570,7 @@ export class CanvasGestures {
       host.select({ cards: new Set(), arrow: id });
       return;
     }
-    if ("node" in placed && "node" in other) return;
+    if ("node" in placed && "node" in other && placed.node === other.node) return;
     document.commit([{ op: "set-drawing", drawing: ink.id, keys: { [end]: placed } }]);
   }
 

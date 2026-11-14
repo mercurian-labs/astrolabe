@@ -2,11 +2,14 @@ import { CANVAS_MAX_STROKE_POINTS, type CanvasInk } from "@mercurian/wiki/canvas
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  canvasEndOnCard,
+  canvasInkIsEdge,
   canvasInkShape,
   canvasSimulatedPressure,
   canvasStroke,
   canvasStrokePath,
   inkMovedWith,
+  movedInk,
 } from "./canvasInk";
 
 describe("a pen stroke", () => {
@@ -108,5 +111,57 @@ describe("a section's drawings", () => {
     );
     expect([...carried]).toEqual(["in", "to-card"]);
     expect(inkMovedWith([section], [stroke("in", 10)], new Set(["c"])).size).toBe(0);
+  });
+});
+
+describe("a drawn arrow's end on a card", () => {
+  const card = { id: "c", type: "text", text: "", x: 0, y: 0, width: 200, height: 100 } as const;
+
+  it("holds where it's dropped on the outline, as a share of the box, and snaps to a middle", () => {
+    expect(canvasEndOnCard(card, { x: 50, y: 104 }, 16, 10)).toEqual({
+      node: "c",
+      side: "bottom",
+      at: [0.25, 1],
+    });
+    expect(canvasEndOnCard(card, { x: -6, y: 80 }, 16, 10)).toEqual({
+      node: "c",
+      side: "left",
+      at: [0, 0.8],
+    });
+    expect(canvasEndOnCard(card, { x: 106, y: -3 }, 16, 10)).toEqual({ node: "c", side: "top" });
+    // Deep inside, it's the nearest side's middle, as before.
+    expect(canvasEndOnCard(card, { x: 160, y: 50 }, 16, 10)).toEqual({ node: "c", side: "right" });
+  });
+
+  it("is an edge only on two cards' middles, without bends", () => {
+    const a = { node: "a", side: "right" } as const;
+    const b = { node: "b", side: "left" } as const;
+    expect(canvasInkIsEdge(a, b, undefined)).toBe(true);
+    expect(canvasInkIsEdge(a, { ...b, at: [0, 0.2] }, undefined)).toBe(false);
+    expect(canvasInkIsEdge(a, b, [10, 10])).toBe(false);
+    expect(canvasInkIsEdge(a, { node: "a", side: "top" }, undefined)).toBe(false);
+    expect(canvasInkIsEdge(a, { x: 0, y: 0 }, undefined)).toBe(false);
+  });
+});
+
+describe("a drawn arrow's bends", () => {
+  const arrow: CanvasInk = {
+    id: "a",
+    type: "arrow",
+    from: { x: 0, y: 0 },
+    to: { node: "c", side: "left", at: [0, 0.2] },
+    bends: [50, 50, 80, 20],
+  };
+
+  it("move with it, and draw as its line goes through them", () => {
+    expect(movedInk(arrow, 10, -5)).toEqual({ from: { x: 10, y: -5 }, bends: [60, 45, 90, 15] });
+    const rects = new Map([["c", { x: 200, y: 0, width: 100, height: 100 }]]);
+    const shape = canvasInkShape({ ...arrow, astrolabe: { style: { route: "straight" } } }, rects)!;
+    expect(shape.path).toBe("M0 0L50 50L80 20L200 20");
+    expect(shape.heads).toHaveLength(1);
+    expect(
+      canvasInkShape({ ...arrow, fromEnd: "arrow", toEnd: "none" }, rects)!.heads,
+    ).toHaveLength(1);
+    expect(canvasInkShape({ ...arrow, toEnd: "none" }, rects)!.heads).toEqual([]);
   });
 });
