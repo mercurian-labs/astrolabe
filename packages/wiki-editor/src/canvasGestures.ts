@@ -96,6 +96,11 @@ const END_REACH = 10;
 /** How near the eraser's path a line's edge must come, on screen: a finger is wider. */
 const ERASER_REACH = 5;
 const ERASER_REACH_TOUCH = 10;
+/**
+ * Past this many points in the strokes a scale holds, each frame stretches them rather than
+ * drawing them again: their lines thicken with them until the scale lands.
+ */
+const SCALE_REDRAW_POINTS = 20_000;
 /** The eraser's trail behind the pointer, in points. */
 const ERASER_TRAIL = 12;
 
@@ -276,6 +281,7 @@ type Session =
       inks: ReadonlyArray<InkElement>;
       followers: Followers;
       frame: HTMLElement | null;
+      readonly stretch: boolean;
       /** What the gesture redraws, as it was: put back unless the document changes it. */
       restore: () => void;
       scale: CanvasScale | null;
@@ -626,8 +632,11 @@ export class CanvasGestures {
     const scaled = drawings.filter((ink) => inkIds.has(ink.id) || carried.has(ink.id));
     const scaledIds = new Set(scaled.map((ink) => ink.id));
     const moving = nodes.filter((node) => moved.has(node.id));
+    let points = 0;
+    for (const ink of scaled) points += ink.type === "stroke" ? ink.points.length / 2 : 0;
     return {
       kind: "scale",
+      stretch: points > SCALE_REDRAW_POINTS,
       handle,
       box,
       nodes: moving,
@@ -1103,7 +1112,13 @@ export class CanvasGestures {
         }
         const rectOf = (id: string) => boxes.get(id) ?? session.rects.get(id);
         const rects = { get: rectOf };
+        const { anchor, sx, sy } = scale;
+        const stretched = `matrix(${sx} 0 0 ${sy} ${anchor.x * (1 - sx)} ${anchor.y * (1 - sy)})`;
         for (const each of session.inks) {
+          if (session.stretch && each.shape.ink.type === "stroke") {
+            each.group.setAttribute("transform", stretched);
+            continue;
+          }
           const next = {
             ...each.shape.ink,
             ...canvasScaledInk(each.shape.ink, scale),
@@ -1112,7 +1127,6 @@ export class CanvasGestures {
           if (drawn !== undefined) this.#setInk(each, drawn);
         }
         this.#drawArrows(session.followers, rectOf);
-        const { anchor, sx, sy } = scale;
         const { box } = session;
         this.#setBox(session.frame, {
           x: anchor.x + (box.x - anchor.x) * sx,
@@ -1701,6 +1715,7 @@ function snapshot(
   const paths = items.flatMap(({ group }) =>
     [...group.querySelectorAll("path")].map((path) => [path, path.getAttribute("d")] as const),
   );
+  const transforms = items.map(({ group }) => [group, group.getAttribute("transform")] as const);
   const labels = items.flatMap(({ label }) =>
     label === null ? [] : [[label, label.style.left, label.style.top] as const],
   );
@@ -1708,6 +1723,10 @@ function snapshot(
     for (const [path, d] of paths) {
       if (d === null) path.removeAttribute("d");
       else path.setAttribute("d", d);
+    }
+    for (const [group, transform] of transforms) {
+      if (transform === null) group.removeAttribute("transform");
+      else group.setAttribute("transform", transform);
     }
     for (const [label, left, top] of labels) {
       label.style.left = left;
