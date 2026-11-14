@@ -171,7 +171,11 @@ export function canvasOutline(file: string, data: CanvasData): string {
     const both = edge.fromEnd === "arrow" && edge.toEnd !== "none";
     const none = edge.fromEnd !== "arrow" && edge.toEnd === "none";
     const label = edge.label === undefined ? "" : `: ${edge.label}`;
-    lines.push(`[${edge.fromNode}] ${both ? "<->" : none ? "--" : "->"} [${edge.toNode}]${label}`);
+    const route = edge.astrolabe?.style?.route;
+    const routed = route === undefined || route === "curved" ? "" : ` (${route})`;
+    lines.push(
+      `[${edge.fromNode}] ${both ? "<->" : none ? "--" : "->"} [${edge.toNode}]${routed}${label}`,
+    );
   }
   const overlaps = overlapLines(data);
   if (overlaps.length > 0) lines.push("", "Overlapping", ...overlaps);

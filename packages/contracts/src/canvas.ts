@@ -27,6 +27,10 @@ export type CanvasShowColor = typeof CanvasShowColor.Type;
 // Schema.NonEmptyString: TrimmedNonEmptyString's descriptions never reach the advertised schema.
 const CardReference = Schema.NonEmptyString;
 
+const ArrowRoute = Schema.Literals(["straight", "elbow"]).annotate({
+  description: "Default curved. elbow: right angles, around cards.",
+});
+
 export const CanvasShowCard = Schema.Struct({
   id: CardReference.annotate({ description: "Unique among this call's cards and groups." }),
   text: Schema.optional(
@@ -56,6 +60,7 @@ export const CanvasShowArrow = Schema.Struct({
       description: "Where it has arrowheads. Default end.",
     }),
   ),
+  route: Schema.optional(ArrowRoute),
   color: Schema.optional(CanvasShowColor),
 });
 export type CanvasShowArrow = typeof CanvasShowArrow.Type;
@@ -170,6 +175,7 @@ const CanvasAgentEdits = [
         description: "Where it has arrowheads. Default end.",
       }),
     ),
+    route: Schema.optional(ArrowRoute),
     color,
   }),
   Schema.Struct({ op: Schema.Literal("disconnect"), from: end, to: end }),
@@ -223,9 +229,12 @@ const point = { x: Schema.Finite, y: Schema.Finite };
 /** A drawing's keys are whatever the file holds, unknown kinds included; a stroke's are capped. */
 const DrawingKeys = JsonKeys.check(
   Schema.makeFilter(
-    ({ points, pressure }) =>
+    ({ points, pressure, bends }) =>
       (points === undefined ||
         (Array.isArray(points) && points.length <= CANVAS_MAX_STROKE_POINTS * 2)) &&
+      (bends === undefined ||
+        bends === null ||
+        (Array.isArray(bends) && bends.length <= CANVAS_MAX_STROKE_POINTS * 2)) &&
       (pressure === undefined ||
         (Array.isArray(pressure) && pressure.length <= CANVAS_MAX_STROKE_POINTS)),
     { expected: `a stroke of at most ${CANVAS_MAX_STROKE_POINTS} points` },

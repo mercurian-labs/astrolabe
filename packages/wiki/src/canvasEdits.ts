@@ -20,6 +20,7 @@ import {
   type CanvasEdge,
   type CanvasGroupNode,
   type CanvasNode,
+  type CanvasRoute,
   type CanvasSide,
   type CanvasStyle,
 } from "./canvas.ts";
@@ -72,6 +73,7 @@ type CanvasStructureEdit =
       readonly to: string;
       readonly label?: string | undefined;
       readonly ends?: "end" | "both" | "none" | undefined;
+      readonly route?: CanvasRoute | undefined;
       readonly color?: CanvasEditColor | undefined;
     }
   | { readonly op: "disconnect"; readonly from: string; readonly to: string }
@@ -248,6 +250,10 @@ function withKey(raw: Raw, key: string, value: unknown): Raw {
 }
 
 const presetOf = (color: CanvasEditColor) => CANVAS_PRESETS[color] ?? color;
+
+/** An agent's route, in the style a board reads; curved is what an arrow has without one. */
+const routed = (route: CanvasRoute | undefined) =>
+  route === undefined || route === "curved" ? {} : { astrolabe: { style: { route } } };
 
 const given = (list: unknown): unknown[] => (Array.isArray(list) ? [...list] : []);
 
@@ -1002,6 +1008,7 @@ function replay(file: string, source: string, edits: ReadonlyArray<CanvasEdit>, 
             ...(edit.ends === "none" ? { toEnd: "none" } : {}),
             ...(edit.color === undefined ? {} : { color: presetOf(edit.color) }),
             ...(edit.label === undefined ? {} : { label: edit.label }),
+            ...routed(edit.route),
           }),
         );
         return;

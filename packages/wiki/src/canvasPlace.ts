@@ -7,6 +7,7 @@ import type {
   CanvasData,
   CanvasEdge,
   CanvasNode,
+  CanvasRoute,
   CanvasSide,
   CanvasStory,
 } from "./canvas.ts";
@@ -36,6 +37,7 @@ export interface CanvasDrawing {
         readonly to: string;
         readonly label?: string | undefined;
         readonly ends?: "end" | "both" | "none" | undefined;
+        readonly route?: CanvasRoute | undefined;
         readonly color?: string | undefined;
       }>
     | undefined;
@@ -700,6 +702,9 @@ function edgesAt(
         ...(arrow.ends === "none" ? { toEnd: "none" as const } : {}),
         ...(arrow.label === undefined ? {} : { label: arrow.label }),
         ...presetColor(arrow.color),
+        ...(arrow.route === undefined || arrow.route === "curved"
+          ? {}
+          : { astrolabe: { style: { route: arrow.route } } }),
       },
     ];
   });

@@ -583,7 +583,16 @@ describe("canvasOutline", () => {
         astrolabe: { shape: "ellipse" },
       },
     ],
-    edges: [{ id: "e", fromNode: "a", toNode: "b", label: "uses", fromEnd: "arrow" }],
+    edges: [
+      {
+        id: "e",
+        fromNode: "a",
+        toNode: "b",
+        label: "uses",
+        fromEnd: "arrow",
+        astrolabe: { style: { route: "elbow" } },
+      },
+    ],
     astrolabe: {
       drawings: [
         { id: "s", type: "stroke", x: 0, y: 0, points: [0, 0, 10, 10] },
@@ -616,7 +625,7 @@ describe("canvasOutline", () => {
         "  second",
         "",
         "Arrows",
-        "[a] <-> [b]: uses",
+        "[a] <-> [b] (elbow): uses",
         "",
         "Story: Tour",
         "1. [inner] Start inside.",
@@ -819,8 +828,8 @@ describe("placeCanvas", () => {
         { id: "b", text: "B" },
       ],
       arrows: [
-        { from: "a", to: "b", ends: "both", label: "calls", color: "cyan" },
-        { from: "b", to: "a", ends: "none" },
+        { from: "a", to: "b", ends: "both", label: "calls", color: "cyan", route: "elbow" },
+        { from: "b", to: "a", ends: "none", route: "curved" },
       ],
     });
     expect(nodes[0]?.color).toBe("1");
@@ -829,8 +838,15 @@ describe("placeCanvas", () => {
         expect(Number.isInteger(value)).toBe(true);
       }
     }
-    expect(edges[0]).toMatchObject({ fromEnd: "arrow", label: "calls", color: "5" });
+    expect(edges[0]).toMatchObject({
+      fromEnd: "arrow",
+      label: "calls",
+      color: "5",
+      astrolabe: { style: { route: "elbow" } },
+    });
     expect(edges[1]).toMatchObject({ toEnd: "none" });
+    // Curved is what an arrow is with nothing said.
+    expect(edges[1]).not.toHaveProperty("astrolabe");
   });
 
   it("keeps a code card's path and lines, and leaves its link for saving", () => {

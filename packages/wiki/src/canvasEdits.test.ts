@@ -86,6 +86,8 @@ describe("applyCanvasEdits", () => {
       { op: "add", ref: "a", text: "First" },
       { op: "add", ref: "b", url: "https://example.com" },
       { op: "connect", from: "a", to: "b", label: "goes to" },
+      { op: "connect", from: "b", to: "a", route: "elbow" },
+      { op: "connect", from: "a", to: "b", route: "curved" },
     ]);
     expect(Object.keys(cards)).toEqual(["a", "b"]);
     expect(cards.a).toMatch(/^[0-9a-f]{16}$/);
@@ -99,6 +101,11 @@ describe("applyCanvasEdits", () => {
       toSide: "left",
       label: "goes to",
     });
+    expect(data.edges.map((edge) => edge.astrolabe?.style?.route)).toEqual([
+      undefined,
+      "elbow",
+      undefined,
+    ]);
     expect(data.nodes[1]).toMatchObject({ width: 400, height: 400 });
     expect(data.nodes[0]).toMatchObject({ width: 250, height: 60 });
   });
