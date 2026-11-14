@@ -1306,7 +1306,7 @@ const InkNode = memo(function InkNode({
   readonly mark: CanvasMark | undefined;
   readonly lit: boolean | undefined;
 }) {
-  const { ink, path, fill, head } = shape;
+  const { ink, path, fill, heads } = shape;
   const { props } = paintProps(ink);
   return (
     <LayerSvg bounds={shape.bounds}>
@@ -1326,7 +1326,9 @@ const InkNode = memo(function InkNode({
         ) : (
           <path className="cv-ink-fill" d={fill} />
         )}
-        {head === undefined ? null : <path className="cv-ink-head" d={head} />}
+        {heads.map((head) => (
+          <path key={head} className="cv-ink-head" d={head} />
+        ))}
       </g>
     </LayerSvg>
   );
@@ -1387,7 +1389,7 @@ function layoutOf(data: CanvasData, previous: Layout | null): Layout {
     const before = inksBefore.get(shape.ink.id);
     return before !== undefined &&
       before.path === shape.path &&
-      before.head === shape.head &&
+      before.heads.join() === shape.heads.join() &&
       sameFields(before.ink, shape.ink)
       ? before
       : shape;

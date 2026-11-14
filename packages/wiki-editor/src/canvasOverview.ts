@@ -35,15 +35,15 @@ function pathOf(shape: object, d: string) {
   return path;
 }
 
-const heads = new WeakMap<CanvasInkShape, Path2D>();
+const heads = new WeakMap<CanvasInkShape, ReadonlyArray<Path2D>>();
 
-function headOf(shape: CanvasInkShape, d: string) {
-  let path = heads.get(shape);
-  if (path === undefined) {
-    path = new Path2D(d);
-    heads.set(shape, path);
+function headsOf(shape: CanvasInkShape) {
+  let paths = heads.get(shape);
+  if (paths === undefined) {
+    paths = shape.heads.map((d) => new Path2D(d));
+    heads.set(shape, paths);
   }
-  return path;
+  return paths;
 }
 
 const tintOf = (color: string | undefined, base: string) => {
@@ -121,14 +121,14 @@ export function drawCanvasOverview(
       context.stroke(pathOf(shape, shape.path));
     } else {
       const { shape } = layer;
-      const { ink, path, head } = shape;
+      const { ink, path } = shape;
       const tint = MARKS[marks.drawings?.[ink.id] ?? ""] ?? tintOf(ink.color, base);
       context.globalAlpha = 1;
       context.strokeStyle = tint;
       context.fillStyle = tint;
       context.lineWidth = canvasPaint(ink).width * lines;
       context.stroke(pathOf(shape, path));
-      if (head !== undefined) context.fill(headOf(shape, head));
+      for (const head of headsOf(shape)) context.fill(head);
     }
   }
   context.globalAlpha = 1;

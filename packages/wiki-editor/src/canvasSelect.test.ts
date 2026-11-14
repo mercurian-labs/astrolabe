@@ -179,24 +179,24 @@ describe("the eraser", () => {
 
   it("touches a line within reach of its edge, and not one it passes by", () => {
     const line = shape(stroke("s", 0, 0, [0, 0, 100, 0], { astrolabe: { style: { width: 4 } } }));
-    expect(canvasEraserTouches(line, { x: 50, y: -20 }, { x: 50, y: 20 }, 2, rects)).toBe(true);
+    expect(canvasEraserTouches(line, { x: 50, y: -20 }, { x: 50, y: 20 }, 2)).toBe(true);
     // Half its width plus the reach: 2 + 2.
-    expect(canvasEraserTouches(line, { x: 0, y: 3.9 }, { x: 100, y: 3.9 }, 2, rects)).toBe(true);
-    expect(canvasEraserTouches(line, { x: 0, y: 4.1 }, { x: 100, y: 4.1 }, 2, rects)).toBe(false);
-    expect(canvasEraserTouches(line, { x: 0, y: 500 }, { x: 0, y: 500 }, 2, rects)).toBe(false);
+    expect(canvasEraserTouches(line, { x: 0, y: 3.9 }, { x: 100, y: 3.9 }, 2)).toBe(true);
+    expect(canvasEraserTouches(line, { x: 0, y: 4.1 }, { x: 100, y: 4.1 }, 2)).toBe(false);
+    expect(canvasEraserTouches(line, { x: 0, y: 500 }, { x: 0, y: 500 }, 2)).toBe(false);
   });
 
   it("follows a pressure stroke's outline, and a hand-drawn one's wander", () => {
     const style = { astrolabe: { style: { width: 4 } } };
     const pressed = shape(stroke("p", 0, 0, [0, 0, 100, 0], { ...style, pressure: [1, 1] }));
     // At full pressure perfect-freehand's radius is 4 × 1.75 × 0.8 = 5.6.
-    expect(canvasEraserTouches(pressed, { x: 0, y: 7 }, { x: 100, y: 7 }, 2, rects)).toBe(true);
+    expect(canvasEraserTouches(pressed, { x: 0, y: 7 }, { x: 100, y: 7 }, 2)).toBe(true);
     const light = shape(stroke("l", 0, 0, [0, 0, 100, 0], { ...style, pressure: [0, 0] }));
-    expect(canvasEraserTouches(light, { x: 0, y: 4 }, { x: 100, y: 4 }, 2, rects)).toBe(false);
+    expect(canvasEraserTouches(light, { x: 0, y: 4 }, { x: 100, y: 4 }, 2)).toBe(false);
     const rough = shape(
       stroke("r", 0, 0, [0, 0, 100, 0], { astrolabe: { style: { width: 4, sloppiness: 2 } } }),
     );
-    expect(canvasEraserTouches(rough, { x: 0, y: 7 }, { x: 100, y: 7 }, 2, rects)).toBe(true);
+    expect(canvasEraserTouches(rough, { x: 0, y: 7 }, { x: 100, y: 7 }, 2)).toBe(true);
   });
 
   it("touches a drawn arrow along its curve, ends on a card or not", () => {
@@ -205,9 +205,7 @@ describe("the eraser", () => {
       { id: "r", type: "arrow", from: { node: "a", side: "right" }, to: { x: 400, y: 50 } },
       nodes,
     )!;
-    expect(canvasEraserTouches(arrow, { x: 250, y: 0 }, { x: 250, y: 100 }, 2, nodes)).toBe(true);
-    expect(canvasEraserTouches(arrow, { x: 250, y: 100 }, { x: 300, y: 100 }, 2, nodes)).toBe(
-      false,
-    );
+    expect(canvasEraserTouches(arrow, { x: 250, y: 0 }, { x: 250, y: 100 }, 2)).toBe(true);
+    expect(canvasEraserTouches(arrow, { x: 250, y: 100 }, { x: 300, y: 100 }, 2)).toBe(false);
   });
 });

@@ -306,7 +306,12 @@ export function placeClip(
       return [{ ...ink, id: mint(), x: numberOr(ink.x, 0) + dx, y: numberOr(ink.y, 0) + dy }];
     }
     const [from, to] = [placedEnd(ink.from), placedEnd(ink.to)];
-    return from === undefined || to === undefined ? [] : [{ ...ink, id: mint(), from, to }];
+    const bends = Array.isArray(ink.bends)
+      ? { bends: ink.bends.map((value, at) => numberOr(value, 0) + (at % 2 === 0 ? dx : dy)) }
+      : {};
+    return from === undefined || to === undefined
+      ? []
+      : [{ ...ink, id: mint(), from, to, ...bends }];
   });
   return {
     edits: [

@@ -339,7 +339,7 @@ export function drawCanvasExport(
       context.fill(new Path2D(shape.fill));
     }
     context.setLineDash([]);
-    if (shape.head !== undefined) context.fill(new Path2D(shape.head));
+    for (const head of shape.heads) context.fill(new Path2D(head));
     if (ink.type === "arrow" && ink.label !== undefined && !options.privacy) {
       context.font = "12px sans-serif";
       context.fillStyle = colors.muted;

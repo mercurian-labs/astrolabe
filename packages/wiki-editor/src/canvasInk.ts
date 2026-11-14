@@ -9,12 +9,17 @@ import {
   type CanvasInkEnd,
   type CanvasInkStroke,
   type CanvasNode,
-  type CanvasSide,
 } from "@mercurian/wiki/canvas";
 import { getStroke } from "perfect-freehand";
 
 import { containsFully, type CanvasPoint } from "./canvasArrange";
 import { canvasPaint } from "./canvasPaint";
+import {
+  canvasArrowLine,
+  type CanvasLine,
+  type CanvasLineEnd,
+  type CanvasRouteBox,
+} from "./canvasRoute";
 
 /** What the board draws for a drawing, worked out once per change to it. */
 export interface CanvasInkShape {
@@ -23,10 +28,12 @@ export interface CanvasInkShape {
   readonly path: string;
   /** A stroke with pressure: its outline, filled in place of the line. */
   readonly fill?: string;
-  /** An arrow's head, at its `to` end. */
-  readonly head?: string;
+  /** An arrow's heads, the `to` end's first. */
+  readonly heads: ReadonlyArray<string>;
   readonly labelAt: CanvasPoint;
   readonly bounds: CanvasBounds;
+  /** Points along its line, close enough to pick it by. */
+  readonly along: ReadonlyArray<CanvasPoint>;
 }
 
 type Rects = Pick<ReadonlyMap<string, CanvasBounds>, "get">;
@@ -37,13 +44,6 @@ const HEAD_LENGTH = 12;
 const HEAD_WIDTH = 5;
 /** Room for a line's width and a head around what a drawing's points reach. */
 const MARGIN = HEAD_LENGTH;
-
-const NORMAL: Readonly<Record<CanvasSide, CanvasPoint>> = {
-  top: { x: 0, y: -1 },
-  right: { x: 1, y: 0 },
-  bottom: { x: 0, y: 1 },
-  left: { x: -1, y: 0 },
-};
 
 /** A point a pen went through, with its pressure as a third axis so a change of it is kept. */
 interface Inked extends CanvasPoint {
@@ -230,7 +230,8 @@ export function canvasStrokePath(x: number, y: number, flat: ReadonlyArray<numbe
   return `${path}L${round(last.x)} ${round(last.y)}`;
 }
 
-function arrowHead(tip: CanvasPoint, back: CanvasPoint) {
+/** An arrowhead with its tip at `tip`, pointing away from `back`. */
+export function canvasArrowHead(tip: CanvasPoint, back: CanvasPoint) {
   const length = Math.hypot(back.x - tip.x, back.y - tip.y);
   if (length === 0) return undefined;
   const normal = { x: (back.x - tip.x) / length, y: (back.y - tip.y) / length };
@@ -240,35 +241,39 @@ function arrowHead(tip: CanvasPoint, back: CanvasPoint) {
   return `M${tip.x} ${tip.y}L${baseX + across.x} ${baseY + across.y}L${baseX - across.x} ${baseY - across.y}Z`;
 }
 
-const cubicAt = (a: CanvasPoint, b: CanvasPoint, c: CanvasPoint, d: CanvasPoint, t: number) => {
-  const u = 1 - t;
-  const at = (axis: "x" | "y") =>
-    u * u * u * a[axis] + 3 * u * u * t * b[axis] + 3 * u * t * t * c[axis] + t * t * t * d[axis];
-  return { x: at("x"), y: at("y") };
-};
+/** A drawn arrow's end as its line leaves it: a node's side and box, or a free point. */
+function lineEnd(end: CanvasInkEnd, at: CanvasPoint, rects: Rects, head: boolean): CanvasLineEnd {
+  if (!("node" in end)) return { x: at.x, y: at.y, head };
+  const box = rects.get(end.node);
+  return { x: at.x, y: at.y, head, side: end.side, ...(box === undefined ? {} : { box }) };
+}
 
-/** Where an arrow's end leaves from: a node's side bends the line square to it, a point doesn't. */
-const controlOf = (end: CanvasInkEnd, at: CanvasPoint, reach: number) =>
-  "node" in end
-    ? { x: at.x + NORMAL[end.side].x * reach, y: at.y + NORMAL[end.side].y * reach }
-    : at;
+/** The bends a drawn arrow goes through, as points. */
+export const canvasInkBends = (ink: CanvasInkArrow): CanvasPoint[] => pointsOf(ink.bends ?? []);
 
-/** An arrow between two points, either of which may leave a node's side. */
-export function canvasInkArrowPath(
+/** Whether a drawn arrow has a head at each end: none at `from` and one at `to`, left out. */
+export const canvasInkHeads = (ink: Pick<CanvasInkArrow, "fromEnd" | "toEnd">) =>
+  [(ink.fromEnd ?? "none") === "arrow", (ink.toEnd ?? "arrow") === "arrow"] as const;
+
+/** An arrow between two points, either of which may be on a node, through its bends. */
+export function canvasInkArrowLine(
+  ink: CanvasInkArrow,
   from: CanvasPoint,
   to: CanvasPoint,
-  ends: { readonly from: CanvasInkEnd; readonly to: CanvasInkEnd },
-) {
-  const reach = Math.min(160, Math.max(40, Math.hypot(to.x - from.x, to.y - from.y) / 2));
-  const control1 = controlOf(ends.from, from, reach);
-  const control2 = controlOf(ends.to, to, reach);
-  const back = control2 !== to ? control2 : control1 !== from ? control1 : from;
-  return {
-    path: `M${from.x} ${from.y}C${control1.x} ${control1.y} ${control2.x} ${control2.y} ${to.x} ${to.y}`,
-    head: arrowHead(to, back),
-    controls: [control1, control2] as const,
-    labelAt: cubicAt(from, control1, control2, to, 0.5),
-  };
+  rects: Rects,
+  boxes: () => Iterable<CanvasRouteBox> = () => [],
+): CanvasLine {
+  const [fromHead, toHead] = canvasInkHeads(ink);
+  const skip = [ink.from, ink.to].flatMap((end) => ("node" in end ? [end.node] : []));
+  return canvasArrowLine(
+    `drawing:${ink.id}`,
+    ink.astrolabe?.style?.route,
+    lineEnd(ink.from, from, rects, fromHead),
+    lineEnd(ink.to, to, rects, toHead),
+    canvasInkBends(ink),
+    boxes,
+    skip,
+  );
 }
 
 const boundsOf = (points: ReadonlyArray<CanvasPoint>): CanvasBounds => {
@@ -290,8 +295,15 @@ const boundsOf = (points: ReadonlyArray<CanvasPoint>): CanvasBounds => {
   };
 };
 
-/** What a drawing draws as; none for an arrow whose node is gone. */
-export function canvasInkShape(ink: CanvasInk, rects: Rects): CanvasInkShape | undefined {
+/**
+ * What a drawing draws as; none for an arrow whose node is gone. `boxes`, the board's cards, are
+ * what an elbow steps round.
+ */
+export function canvasInkShape(
+  ink: CanvasInk,
+  rects: Rects,
+  boxes?: () => Iterable<CanvasRouteBox>,
+): CanvasInkShape | undefined {
   if (ink.type === "stroke") {
     const points = pointsOf(ink.points).map((point) => ({
       x: point.x + ink.x,
@@ -302,48 +314,45 @@ export function canvasInkShape(ink: CanvasInk, rects: Rects): CanvasInkShape | u
       ink,
       path: canvasStrokePath(ink.x, ink.y, ink.points),
       ...(pressure === undefined ? {} : { fill: inkPathOf({ ...ink, pressure }) }),
+      heads: [],
       labelAt: points[0] ?? { x: ink.x, y: ink.y },
       bounds: boundsOf(points),
+      along: points,
     };
   }
   const from = canvasInkEnd(ink.from, rects);
   const to = canvasInkEnd(ink.to, rects);
   if (from === undefined || to === undefined) return undefined;
-  const arrow = canvasInkArrowPath(from, to, ink);
+  const line = canvasInkArrowLine(ink, from, to, rects, boxes);
   return {
     ink,
-    path: arrow.path,
-    ...(arrow.head === undefined ? {} : { head: arrow.head }),
-    labelAt: arrow.labelAt,
-    bounds: boundsOf([from, to, ...arrow.controls]),
+    path: line.path,
+    heads: line.tips.flatMap(({ tip, back }) => canvasArrowHead(tip, back) ?? []),
+    labelAt: line.labelAt,
+    bounds: boundsOf([...line.along, ...line.reach]),
+    along: line.along,
   };
 }
 
 export function canvasInkShapes(data: CanvasData): CanvasInkShape[] {
   if (data.drawings === undefined) return [];
   const rects = new Map(data.nodes.map((node) => [node.id, node]));
-  return data.drawings.flatMap((ink) => canvasInkShape(ink, rects) ?? []);
+  const boxes = () => data.nodes;
+  return data.drawings.flatMap((ink) => canvasInkShape(ink, rects, boxes) ?? []);
 }
 
-/** Whether a marquee takes a drawing: a stroke's point, or a point along an arrow, inside it. */
-export function canvasInkTouches(shape: CanvasInkShape, area: CanvasBounds, rects: Rects) {
-  const inside = ({ x, y }: CanvasPoint) =>
-    x >= area.x && x <= area.x + area.width && y >= area.y && y <= area.y + area.height;
-  const { ink } = shape;
-  if (ink.type === "stroke") {
-    return pointsOf(ink.points).some((point) => inside({ x: point.x + ink.x, y: point.y + ink.y }));
-  }
-  const from = canvasInkEnd(ink.from, rects);
-  const to = canvasInkEnd(ink.to, rects);
-  if (from === undefined || to === undefined) return false;
-  const [control1, control2] = canvasInkArrowPath(from, to, ink).controls;
-  for (let step = 0; step <= 16; step++) {
-    if (inside(cubicAt(from, control1, control2, to, step / 16))) return true;
-  }
-  return false;
+/** Whether a marquee takes a drawing: a point along its line inside it. */
+export function canvasInkTouches(shape: CanvasInkShape, area: CanvasBounds) {
+  return shape.along.some(
+    ({ x, y }) =>
+      x >= area.x && x <= area.x + area.width && y >= area.y && y <= area.y + area.height,
+  );
 }
 
-/** A drawing moved by a drag: a stroke's origin, an arrow's free ends. Ends on nodes stay. */
+/**
+ * A drawing moved by a drag: a stroke's origin, an arrow's free ends and its bends. Ends on
+ * nodes stay.
+ */
 export function movedInk(
   ink: CanvasInk,
   dx: number,
@@ -354,6 +363,9 @@ export function movedInk(
   return {
     ...("node" in ink.from ? {} : { from: shifted(ink.from) }),
     ...("node" in ink.to ? {} : { to: shifted(ink.to) }),
+    ...(ink.bends === undefined
+      ? {}
+      : { bends: ink.bends.map((value, at) => value + (at % 2 === 0 ? dx : dy)) }),
   };
 }
 
@@ -375,7 +387,7 @@ export function inkMovedWith(
     const parts =
       ink.type === "stroke"
         ? [canvasInkBounds(ink, NO_RECTS)]
-        : [ink.from, ink.to].flatMap((end) =>
+        : [ink.from, ink.to, ...canvasInkBends(ink)].flatMap((end) =>
             "node" in end ? [] : [{ x: end.x, y: end.y, width: 0, height: 0 }],
           );
     const inside = (part: CanvasBounds | undefined) =>

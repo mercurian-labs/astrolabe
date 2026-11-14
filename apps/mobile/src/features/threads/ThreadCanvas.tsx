@@ -254,7 +254,7 @@ export function ThreadCanvas(props: {
           }
           const shape = inks.get(id);
           if (shape === undefined) return null;
-          const { ink, path, fill, head } = shape;
+          const { ink, path, fill, heads } = shape;
           const paint = canvasPaint(ink);
           const color = paint.stroke ?? (ink.type === "stroke" ? foreground : subtle);
           return (
@@ -268,7 +268,9 @@ export function ThreadCanvas(props: {
               ) : (
                 <Path d={fill} fill={color} />
               )}
-              {head === undefined ? null : <Path d={head} fill={color} />}
+              {heads.map((head) => (
+                <Path key={head} d={head} fill={color} />
+              ))}
             </G>
           );
         })}

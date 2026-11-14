@@ -54,6 +54,7 @@ import {
   canvasSelectionBounds,
   type CanvasScale,
 } from "./canvasSelect";
+import type { CanvasRouteBox } from "./canvasRoute";
 import type { CanvasView } from "./canvasView";
 
 /** Between 3 and 5 pixels in Obsidian. */
@@ -663,7 +664,7 @@ export class CanvasGestures {
     for (const shape of host.inks()) {
       const { id } = shape.ink;
       if (session.marked.has(id) !== unmark) continue;
-      if (!canvasEraserTouches(shape, from, to, session.reach, session.rects)) continue;
+      if (!canvasEraserTouches(shape, from, to, session.reach)) continue;
       if (unmark) session.marked.delete(id);
       else session.marked.add(id);
       const selector = `g[data-drawing-id="${CSS.escape(id)}"], [data-drawing-label="${CSS.escape(id)}"]`;
@@ -847,12 +848,25 @@ export class CanvasGestures {
     return { arrows, inks };
   }
 
+  /** The board's cards where a gesture has them, for an elbow to step round: read once a frame. */
+  #boxesAt(rectOf: (id: string) => CanvasBounds | undefined) {
+    let boxes: CanvasRouteBox[] | undefined;
+    return () =>
+      (boxes ??= this.#host.data().nodes.map((node) => {
+        const rect = rectOf(node.id);
+        return rect === undefined || rect === node
+          ? node
+          : { ...rect, id: node.id, type: node.type };
+      }));
+  }
+
   /** Drawings redrawn where a gesture has them: `moved` are dragged by `delta`, the rest follow. */
   #drawInks(
     items: ReadonlyArray<InkElement>,
     rectOf: (id: string) => CanvasBounds | undefined,
     delta: CanvasPoint,
     moved: boolean,
+    boxes = this.#boxesAt(rectOf),
   ) {
     const rects = { get: rectOf };
     for (const { shape, group, label } of items) {
@@ -865,21 +879,23 @@ export class CanvasGestures {
         continue;
       }
       const next = moved ? ({ ...ink, ...movedInk(ink, delta.x, delta.y) } as CanvasInk) : ink;
-      const drawn = canvasInkShape(next, rects);
+      const drawn = canvasInkShape(next, rects, boxes);
       if (drawn !== undefined) this.#setInk({ shape, group, label }, drawn);
     }
   }
 
   #setInk(
     { group, label }: InkElement,
-    drawn: Pick<CanvasInkShape, "path" | "head" | "labelAt" | "fill">,
+    drawn: Pick<CanvasInkShape, "path" | "heads" | "labelAt" | "fill">,
   ) {
     for (const line of group.querySelectorAll(".cv-ink-line, .cv-ink-hit")) {
       line.setAttribute("d", drawn.path);
     }
     if (drawn.fill !== undefined)
       group.querySelector(".cv-ink-fill")?.setAttribute("d", drawn.fill);
-    group.querySelector(".cv-ink-head")?.setAttribute("d", drawn.head ?? "");
+    group.querySelectorAll(".cv-ink-head").forEach((tip, position) => {
+      tip.setAttribute("d", drawn.heads[position] ?? "");
+    });
     if (label !== null) {
       label.style.left = `${drawn.labelAt.x}px`;
       label.style.top = `${drawn.labelAt.y}px`;
@@ -887,12 +903,13 @@ export class CanvasGestures {
   }
 
   #drawArrows(followers: Followers, rectOf: (id: string) => CanvasBounds | undefined) {
-    this.#drawInks(followers.inks, rectOf, NO_DELTA, false);
+    const boxes = this.#boxesAt(rectOf);
+    this.#drawInks(followers.inks, rectOf, NO_DELTA, false, boxes);
     for (const { shape, group, label } of followers.arrows) {
       const from = rectOf(shape.edge.fromNode);
       const to = rectOf(shape.edge.toNode);
       if (from === undefined || to === undefined) continue;
-      const next = canvasEdgeShape(shape.edge, from, to);
+      const next = canvasEdgeShape(shape.edge, from, to, boxes);
       for (const line of group.querySelectorAll(".cv-edge-line, .cv-edge-hit")) {
         line.setAttribute("d", next.path);
       }
@@ -1422,10 +1439,9 @@ export class CanvasGestures {
         };
         const { nodes } = host.data();
         const touched = nodes.filter((node) => overlaps(node, area)).map((node) => node.id);
-        const rects = new Map(nodes.map((node) => [node.id, node]));
         const inked = host
           .inks()
-          .filter((shape) => overlaps(shape.bounds, area) && canvasInkTouches(shape, area, rects))
+          .filter((shape) => overlaps(shape.bounds, area) && canvasInkTouches(shape, area))
           .map((shape) => shape.ink.id);
         const before = host.selection();
         const drawings = [...(session.additive ? selectedDrawings(before) : []), ...inked];

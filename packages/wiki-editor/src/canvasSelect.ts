@@ -1,7 +1,6 @@
 import type { CanvasHandEdit } from "@mercurian/wiki/canvas-edits";
 import {
   canvasInkBounds,
-  canvasInkEnd,
   type CanvasBounds,
   type CanvasInk,
   type CanvasInkEnd,
@@ -14,7 +13,7 @@ import {
   type CanvasHandle,
   type CanvasPoint,
 } from "./canvasArrange";
-import { canvasInkArrowPath, type CanvasInkShape } from "./canvasInk";
+import type { CanvasInkShape } from "./canvasInk";
 import { canvasPaint } from "./canvasPaint";
 
 type Rects = Pick<ReadonlyMap<string, CanvasBounds>, "get">;
@@ -119,7 +118,7 @@ const tenth = (value: number) => Math.round(value * 10) / 10;
 
 /**
  * A drawing's changed keys once scaled: a stroke's origin and points, its pressure as it was; an
- * arrow's free ends. An end on a card stays there and goes where the card goes.
+ * arrow's free ends and bends. An end on a card stays there and goes where the card goes.
  */
 export function canvasScaledInk(
   ink: CanvasInk,
@@ -141,9 +140,15 @@ export function canvasScaledInk(
     const { x, y } = scaled(each, scale);
     return { x: Math.round(x), y: Math.round(y) };
   };
+  const bends = ink.bends?.flatMap((x, at, all) => {
+    if (at % 2 === 1) return [];
+    const point = scaled({ x, y: all[at + 1]! }, scale);
+    return [Math.round(point.x), Math.round(point.y)];
+  });
   return {
     ...("node" in ink.from ? {} : { from: end(ink.from) }),
     ...("node" in ink.to ? {} : { to: end(ink.to) }),
+    ...(bends === undefined ? {} : { bends }),
   };
 }
 
@@ -228,35 +233,6 @@ function boxInside(box: CanvasBounds, loop: ReadonlyArray<CanvasPoint>) {
   return true;
 }
 
-/** Where a drawing's line goes, in board points: a stroke's points, an arrow's curve sampled. */
-function lineOf(ink: CanvasInk, rects: Rects): CanvasPoint[] {
-  if (ink.type === "stroke") {
-    const points: CanvasPoint[] = [];
-    for (let at = 0; at + 1 < ink.points.length; at += 2) {
-      points.push({ x: ink.x + ink.points[at]!, y: ink.y + ink.points[at + 1]! });
-    }
-    return points;
-  }
-  const from = canvasInkEnd(ink.from, rects);
-  const to = canvasInkEnd(ink.to, rects);
-  if (from === undefined || to === undefined) return [];
-  const [c1, c2] = canvasInkArrowPath(from, to, ink).controls;
-  const points: CanvasPoint[] = [];
-  for (let step = 0; step <= ARROW_STEPS; step++) {
-    const t = step / ARROW_STEPS;
-    const u = 1 - t;
-    const at = (axis: "x" | "y") =>
-      u * u * u * from[axis] +
-      3 * u * u * t * c1[axis] +
-      3 * u * t * t * c2[axis] +
-      t * t * t * to[axis];
-    points.push({ x: at("x"), y: at("y") });
-  }
-  return points;
-}
-
-const ARROW_STEPS = 24;
-
 export interface CanvasLassoPick {
   readonly cards: ReadonlyArray<string>;
   readonly drawings: ReadonlyArray<string>;
@@ -276,13 +252,12 @@ export function canvasLassoPick(
   if (loop.length < 3) return { cards: [], drawings: [] };
   const area = boundsOfRects(loop.map(({ x, y }) => ({ x, y, width: 0, height: 0 })));
   const cards = nodes.filter((node) => within(area, node) && boxInside(node, loop));
-  const drawings = inks.filter(({ ink }) => {
+  const drawings = inks.filter(({ ink, along }) => {
     const box = canvasInkBounds(ink, rects);
     if (box === undefined || !within(area, box)) return false;
     // A box wholly inside holds every point in it; only a box the loop cuts needs each point.
     if (boxInside(box, loop)) return true;
-    const line = lineOf(ink, rects);
-    return line.length > 0 && line.every((point) => insideLoop(point, loop));
+    return along.length > 0 && along.every((point) => insideLoop(point, loop));
   });
   return {
     cards: cards.map((node) => node.id),
@@ -317,9 +292,8 @@ export function canvasEraserTouches(
   a: CanvasPoint,
   b: CanvasPoint,
   reach: number,
-  rects: Rects,
 ): boolean {
-  const { bounds, ink } = shape;
+  const { bounds, ink, along: line } = shape;
   const paint = canvasPaint(ink);
   const pressure = ink.type === "stroke" ? ink.pressure : undefined;
   const widest =
@@ -334,7 +308,6 @@ export function canvasEraserTouches(
   ) {
     return false;
   }
-  const line = lineOf(ink, rects);
   const edge = (at: number) =>
     (pressure === undefined
       ? paint.width / 2

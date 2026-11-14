@@ -1,5 +1,7 @@
 import type { CanvasBounds, CanvasData, CanvasEdge, CanvasSide } from "@mercurian/wiki/canvas";
 
+import { canvasArrowLine, type CanvasRouteBox } from "./canvasRoute";
+
 /** What the board's view is looking at: screen = world * zoom + offset. */
 export interface CanvasCamera {
   readonly x: number;
@@ -136,17 +138,51 @@ const cubicAt = (a: Point, b: Point, c: Point, d: Point, t: number): Point => {
   return { x: at("x"), y: at("y") };
 };
 
-/** An edge's curve between two boxes, leaving each square to its side. */
+/** An arrowhead with its tip at `tip`, pointing away from `back`. */
+function headFrom(tip: Point, back: Point): string {
+  const length = Math.hypot(back.x - tip.x, back.y - tip.y);
+  return length === 0
+    ? head(tip, { x: 0, y: 0 })
+    : head(tip, { x: (back.x - tip.x) / length, y: (back.y - tip.y) / length });
+}
+
+const NO_BOXES = () => [];
+
+/**
+ * An edge's line between two boxes, leaving each square to its side: a curve, unless its style
+ * routes it straight or as an elbow round `boxes`, the board's other cards. Each end stays on its
+ * side's middle, where other apps draw it too.
+ */
 export function canvasEdgeShape(
   edge: CanvasEdge,
   from: CanvasBounds,
   to: CanvasBounds,
+  boxes: () => Iterable<CanvasRouteBox> = NO_BOXES,
 ): CanvasEdgeShape {
   const [facingFrom, facingTo] = facingSides(from, to);
   const fromSide = edge.fromSide ?? facingFrom;
   const toSide = edge.toSide ?? facingTo;
   const start = sideMiddle(from, fromSide);
   const end = sideMiddle(to, toSide);
+  const route = edge.astrolabe?.style?.route;
+  if (route === "straight" || route === "elbow") {
+    const line = canvasArrowLine(
+      `edge:${edge.id}`,
+      route,
+      { ...start, box: from, side: fromSide, head: (edge.fromEnd ?? "none") === "arrow" },
+      { ...end, box: to, side: toSide, head: (edge.toEnd ?? "arrow") === "arrow" },
+      [],
+      boxes,
+      [edge.fromNode, edge.toNode],
+    );
+    return {
+      edge,
+      path: line.path,
+      heads: line.tips.map(({ tip, back }) => headFrom(tip, back)),
+      labelAt: line.labelAt,
+      bounds: boundsOf([...line.along, ...line.reach]),
+    };
+  }
   const startNormal = NORMAL[fromSide];
   const endNormal = NORMAL[toSide];
   const [control1, control2] = curveControls(start, startNormal, end, endNormal);
@@ -184,10 +220,11 @@ export function canvasDraftPath(from: CanvasBounds, side: CanvasSide, to: Point)
 /** Each edge's curve. Edges to missing cards are skipped. */
 export function canvasEdgeShapes(data: CanvasData): CanvasEdgeShape[] {
   const nodes = new Map(data.nodes.map((node) => [node.id, node]));
+  const boxes = () => data.nodes;
   return data.edges.flatMap((edge) => {
     const from = nodes.get(edge.fromNode);
     const to = nodes.get(edge.toNode);
-    return from === undefined || to === undefined ? [] : [canvasEdgeShape(edge, from, to)];
+    return from === undefined || to === undefined ? [] : [canvasEdgeShape(edge, from, to, boxes)];
   });
 }
 
