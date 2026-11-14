@@ -69,6 +69,24 @@ describe("diffCanvas", () => {
     ]);
   });
 
+  it.each([
+    ["new pressure as what it says", { pressure: [0.9, 0.2] }, "text"],
+    ["a hand-drawn look as its style", { astrolabe: { style: { sloppiness: 2 } } }, "restyled"],
+  ])("reads a stroke's %s", (_, change, mark) => {
+    const stroke = {
+      id: "s",
+      type: "stroke",
+      x: 0,
+      y: 0,
+      points: [0, 0, 9, 9],
+      pressure: [0.5, 0.5],
+    };
+    const drawn = (ink: object) => ({ nodes: [], astrolabe: { drawings: [ink] } });
+    expect(marks(drawn(stroke), drawn({ ...stroke, ...change }))).toEqual([
+      ["s", "drawing", mark, []],
+    ]);
+  });
+
   it("says a first order, which keys everything, once as order rather than as each card's change", () => {
     const before = {
       nodes: [card, other],
@@ -308,16 +326,24 @@ describe("parseCanvas", () => {
   });
 
   it("reads a style beside a shape, leaving what it can't use for the file to keep", () => {
-    const style = { fill: "none", width: 4, dash: "dotted", corners: "round", opacity: 0.5 };
+    const style = {
+      fill: "none",
+      width: 4,
+      dash: "dotted",
+      corners: "round",
+      opacity: 0.5,
+      sloppiness: 2,
+    };
     const card = {
       id: "a",
       type: "text",
       text: "t",
-      astrolabe: { shape: "diamond", style: { ...style, sloppiness: 2, width: -1 } },
+      astrolabe: { shape: "diamond", style: { ...style, glow: 2, width: -1 } },
     };
     const stroke = { id: "s", type: "stroke", x: 0, y: 0, points: [0, 0], astrolabe: { style } };
+    const group = { id: "g", type: "group", astrolabe: { style: { dash: "wavy", sloppiness: 3 } } };
     const document = {
-      nodes: [card, { id: "g", type: "group", astrolabe: { style: { dash: "wavy" } } }],
+      nodes: [card, group],
       edges: [{ id: "e", fromNode: "a", toNode: "g", astrolabe: { style: { opacity: 2 } } }],
       astrolabe: { drawings: [stroke] },
     };
@@ -327,6 +353,36 @@ describe("parseCanvas", () => {
     expect(data.nodes[1]).not.toHaveProperty("astrolabe");
     expect(data.edges[0]).not.toHaveProperty("astrolabe");
     expect(data.drawings?.[0]).toMatchObject({ astrolabe: { style } });
+    expect(JSON.parse(serializeCanvas(document))).toEqual(document);
+  });
+
+  it("reads a stroke's pressure only when it has one for each point, each 0 to 1", () => {
+    const stroke = (id: string, pressure: unknown) => ({
+      id,
+      type: "stroke",
+      x: 0,
+      y: 0,
+      points: [0, 0, 4, 4, 8, 8],
+      pressure,
+    });
+    const document = {
+      nodes: [],
+      astrolabe: {
+        drawings: [
+          stroke("pen", [0.2, 0.5, 1]),
+          stroke("short", [0.2, 0.5]),
+          stroke("over", [0.2, 0.5, 1.5]),
+          stroke("text", "hard"),
+        ],
+      },
+    };
+    const drawings = canvasData(document).drawings ?? [];
+    expect(drawings.map((ink) => (ink.type === "stroke" ? ink.pressure : null))).toEqual([
+      [0.2, 0.5, 1],
+      undefined,
+      undefined,
+      undefined,
+    ]);
     expect(JSON.parse(serializeCanvas(document))).toEqual(document);
   });
 

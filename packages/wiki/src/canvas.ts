@@ -31,6 +31,8 @@ export type CanvasShape = "ellipse" | "diamond";
 
 export type CanvasDash = "solid" | "dashed" | "dotted";
 export type CanvasCorners = "round" | "sharp";
+/** How hand-drawn a line looks: 0 is clean, as a line with none is; 1 and 2 are rougher. */
+export type CanvasSloppiness = 0 | 1 | 2;
 
 /**
  * How a card, section, arrow or drawing is drawn beyond its `color`, which stays the stroke's so
@@ -46,6 +48,7 @@ export interface CanvasStyle {
   readonly corners?: CanvasCorners;
   /** 0 to 1. */
   readonly opacity?: number;
+  readonly sloppiness?: CanvasSloppiness;
 }
 
 /** Wider than this reads as a fill, not a line. */
@@ -152,6 +155,8 @@ export interface CanvasInkStroke extends Styled {
   readonly x: number;
   readonly y: number;
   readonly points: ReadonlyArray<number>;
+  /** 0 to 1, one for each point. A stroke with it is ink, drawn wider where pressed harder. */
+  readonly pressure?: ReadonlyArray<number>;
   readonly color?: string;
 }
 
@@ -532,13 +537,14 @@ function canvasStories(astrolabe: unknown): ReadonlyArray<CanvasStory> {
 /** A style as drawn: what it holds that this version can't use is left for the file to keep. */
 export function canvasStyle(astrolabe: unknown): CanvasStyle | undefined {
   if (!isRecord(astrolabe) || !isRecord(astrolabe.style)) return undefined;
-  const { fill, width, dash, corners, opacity } = astrolabe.style;
+  const { fill, width, dash, corners, opacity, sloppiness } = astrolabe.style;
   const style: CanvasStyle = {
     ...(typeof fill === "string" && fill !== "" ? { fill } : {}),
     ...(finite(width) && width > 0 && width <= CANVAS_MAX_STYLE_WIDTH ? { width } : {}),
     ...(dash === "solid" || dash === "dashed" || dash === "dotted" ? { dash } : {}),
     ...(corners === "round" || corners === "sharp" ? { corners } : {}),
     ...(finite(opacity) && opacity >= 0 && opacity <= 1 ? { opacity } : {}),
+    ...(sloppiness === 0 || sloppiness === 1 || sloppiness === 2 ? { sloppiness } : {}),
   };
   return Object.keys(style).length === 0 ? undefined : style;
 }
@@ -581,12 +587,19 @@ function canvasInk(raw: Record<string, unknown>, id: string): CanvasInk | undefi
     const { points } = raw;
     if (!finite(raw.x) || !finite(raw.y) || !Array.isArray(points)) return undefined;
     if (points.length < 2 || points.length % 2 !== 0 || !points.every(finite)) return undefined;
+    const { pressure } = raw;
+    // Pressure that doesn't fit its points draws as a stroke without any.
+    const pressed =
+      Array.isArray(pressure) &&
+      pressure.length === points.length / 2 &&
+      pressure.every((each) => finite(each) && each >= 0 && each <= 1);
     return {
       id,
       type: "stroke",
       x: raw.x,
       y: raw.y,
       points: points as number[],
+      ...(pressed ? { pressure: pressure as number[] } : {}),
       ...colored,
       ...styled(raw),
     };

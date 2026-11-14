@@ -293,7 +293,9 @@ describe("canvasMerge", () => {
     const start = drawn([stroke("s"), free("fc", "c")], { stories: [story] });
     const { document, resolved } = merged(
       start,
-      drawn([stroke("s", { x: 40 }), free("fc", "c"), stroke("mine")], { stories: [story] }),
+      drawn([stroke("s", { x: 40 }), free("fc", "c"), stroke("mine", { pressure: [0.3, 0.7] })], {
+        stories: [story],
+      }),
       drawn([stroke("s", { color: "2" }), free("fc", "c"), stroke("yours")], {
         stories: [{ ...story, title: "Walk" }],
       }),
@@ -305,6 +307,7 @@ describe("canvasMerge", () => {
       "mine",
     ]);
     expect(document.astrolabe.drawings[0]).toMatchObject({ x: 40, color: "2" });
+    expect(document.astrolabe.drawings[3]).toMatchObject({ id: "mine", pressure: [0.3, 0.7] });
     expect(document.astrolabe.stories[0].title).toBe("Walk");
     expect(resolved).toEqual([]);
 
@@ -314,6 +317,16 @@ describe("canvasMerge", () => {
       drawn([stroke("s", { points: [0, 0, 9, 9] }), free("fc", "c")]),
     );
     expect(clash).toMatchObject({
+      status: "conflict",
+      conflicts: [{ kind: "same-value", id: "s" }],
+    });
+    // Pressure is part of what a stroke says, as its points are.
+    const pressed = canvasMerge(
+      start,
+      drawn([stroke("s", { pressure: [0.1, 0.2] }), free("fc", "c")]),
+      drawn([stroke("s", { pressure: [0.9, 0.8] }), free("fc", "c")]),
+    );
+    expect(pressed).toMatchObject({
       status: "conflict",
       conflicts: [{ kind: "same-value", id: "s" }],
     });

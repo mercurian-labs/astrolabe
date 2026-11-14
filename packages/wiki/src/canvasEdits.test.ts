@@ -565,7 +565,7 @@ describe("a person's edits", () => {
     ],
     astrolabe: {
       drawings: [
-        { id: "s1", type: "stroke", x: 10, y: 10, points: [0, 0, 5, 5], pressure: [1] },
+        { id: "s1", type: "stroke", x: 10, y: 10, points: [0, 0, 5, 5], pressure: [1, 0.25] },
         { id: "comet", type: "comet", tail: 3 },
         { id: "f1", type: "arrow", from: { x: 0, y: 400 }, to: { node: "a", side: "bottom" } },
       ],
@@ -597,7 +597,27 @@ describe("a person's edits", () => {
       "a new drawing",
       [{ op: "put-drawing", drawing: { id: "s2", type: "stroke", x: 0, y: 0, points: [0, 0] } }],
     ],
+    [
+      "new ink, with its pressure",
+      [
+        {
+          op: "put-drawing",
+          drawing: {
+            id: "s2",
+            type: "stroke",
+            x: 0,
+            y: 0,
+            points: [0, 0, 3, 3],
+            pressure: [0.4, 0.8],
+          },
+        },
+      ],
+    ],
     ["a drawing moved", [{ op: "set-drawing", drawing: "s1", keys: { x: 40, y: 50 } }]],
+    [
+      "ink's pressure redrawn",
+      [{ op: "set-drawing", drawing: "s1", keys: { pressure: [0.5, 0.5] } }],
+    ],
     [
       "an arrow's end re-ended and coloured",
       [{ op: "set-drawing", drawing: "f1", keys: { to: { x: 9, y: 9 }, color: "2" } }],
@@ -608,6 +628,13 @@ describe("a person's edits", () => {
       [
         { op: "set-card", card: "a", keys: canvasStyleKeys({}, { width: 4, fill: "none" }) },
         { op: "set-drawing", drawing: "s1", keys: canvasStyleKeys({}, { width: 4 }) },
+      ],
+    ],
+    [
+      "a hand-drawn look on a card and an arrow",
+      [
+        { op: "set-card", card: "a", keys: canvasStyleKeys({}, { sloppiness: 2 }) },
+        { op: "set-arrow", arrow: "e1", keys: canvasStyleKeys({}, { sloppiness: 1 }) },
       ],
     ],
     [

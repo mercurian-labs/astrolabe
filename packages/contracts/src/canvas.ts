@@ -223,9 +223,11 @@ const point = { x: Schema.Finite, y: Schema.Finite };
 /** A drawing's keys are whatever the file holds, unknown kinds included; a stroke's are capped. */
 const DrawingKeys = JsonKeys.check(
   Schema.makeFilter(
-    ({ points }) =>
-      points === undefined ||
-      (Array.isArray(points) && points.length <= CANVAS_MAX_STROKE_POINTS * 2),
+    ({ points, pressure }) =>
+      (points === undefined ||
+        (Array.isArray(points) && points.length <= CANVAS_MAX_STROKE_POINTS * 2)) &&
+      (pressure === undefined ||
+        (Array.isArray(pressure) && pressure.length <= CANVAS_MAX_STROKE_POINTS)),
     { expected: `a stroke of at most ${CANVAS_MAX_STROKE_POINTS} points` },
   ),
 );
