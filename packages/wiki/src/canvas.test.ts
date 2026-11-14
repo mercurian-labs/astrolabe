@@ -286,7 +286,7 @@ describe("parseCanvas", () => {
     // link card and an edge, though it drops a card type it doesn't know and the edge to it.
     const was = JSON.parse(fixture("survive-input.canvas"));
     const now = JSON.parse(fixture("survive-after-move-edit.canvas"));
-    const find = (list: ReadonlyArray<{ id: string }>, id: string) =>
+    const find = (list: ReadonlyArray<Record<string, unknown>>, id: string) =>
       list.find((each) => each.id === id);
     expect(find(now.nodes, "link")).toMatchObject({
       astrolabe: find(was.nodes, "link")!.astrolabe,

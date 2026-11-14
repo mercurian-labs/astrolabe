@@ -383,13 +383,13 @@ describe("an agent's order", () => {
     expect(order.slice(0, 3)).toEqual(["e", "c", "a"]);
     expect(order.slice(3, 5)).toEqual([cards.n, "b"]);
     // What it added came keyed, so the order moved only `b`, not the whole board again.
-    const keys = (from: string) => {
+    const keys = (from: string | null) => {
       const { nodes, edges } = read(from).data;
       return [...nodes, ...edges].flatMap((each) =>
         each.id === "b" || each.id === cards.n ? [] : [[each.id, each.astrolabe?.z]],
       );
     };
-    expect(keys(source).slice(0, 4)).toEqual(keys(keyed!));
+    expect(keys(source).slice(0, 4)).toEqual(keys(keyed));
   });
 
   it.each<[string, CanvasEdit, string]>([
