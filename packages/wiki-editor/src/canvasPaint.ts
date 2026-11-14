@@ -319,6 +319,7 @@ export function canvasSketchLine(item: CanvasEdge | CanvasInk, path: string): st
     for (let at = 0; at + 1 < item.points.length; at += 2) {
       points.push([item.x + item.points[at]!, item.y + item.points[at + 1]!]);
     }
-    return drawn(generator.curve(points, options));
+    // One pass: a freehand line is hand-drawn already, and two of them double its cost to paint.
+    return drawn(generator.curve(points, { ...options, disableMultiStroke: true }));
   }).line;
 }
