@@ -214,17 +214,62 @@ function tipsOf(points: ReadonlyArray<Point>, from: CanvasLineEnd, to: CanvasLin
   ];
 }
 
+/** A board's cards by the square of the board each touches, made once for each list of them. */
+const CELL = 512;
+const indexes = new WeakMap<ReadonlyArray<CanvasRouteBox>, Map<number, CanvasRouteBox[]>>();
+const cellKey = (column: number, row: number) => column * 65_536 + row;
+
+function boxesIn(
+  boxes: ReadonlyArray<CanvasRouteBox>,
+  left: number,
+  top: number,
+  right: number,
+  bottom: number,
+): Set<CanvasRouteBox> {
+  let index = indexes.get(boxes);
+  if (index === undefined) {
+    index = new Map();
+    for (const box of boxes) {
+      if (box.type === "group") continue;
+      for (
+        let column = Math.floor(box.x / CELL);
+        column <= Math.floor((box.x + box.width) / CELL);
+        column++
+      ) {
+        for (
+          let row = Math.floor(box.y / CELL);
+          row <= Math.floor((box.y + box.height) / CELL);
+          row++
+        ) {
+          const key = cellKey(column, row);
+          const cell = index.get(key);
+          if (cell === undefined) index.set(key, [box]);
+          else cell.push(box);
+        }
+      }
+    }
+    indexes.set(boxes, index);
+  }
+  const found = new Set<CanvasRouteBox>();
+  for (let column = Math.floor(left / CELL); column <= Math.floor(right / CELL); column++) {
+    for (let row = Math.floor(top / CELL); row <= Math.floor(bottom / CELL); row++) {
+      for (const box of index.get(cellKey(column, row)) ?? []) found.add(box);
+    }
+  }
+  return found;
+}
+
 /** Within this of the box its ends make, a card may be in an elbow's way. */
 const ROUTE_MARGIN = 80;
 /** The nearest this many: past them, a route's grid grows faster than it helps. */
-const MOST_OBSTACLES = 12;
+const MOST_OBSTACLES = 8;
 
 /**
  * The cards an elbow between `from` and `to` steps round: what's near the box its ends make, other
  * than the cards they're on. Sections hold cards rather than stand in the way.
  */
 export function canvasRouteObstacles(
-  boxes: Iterable<CanvasRouteBox>,
+  boxes: ReadonlyArray<CanvasRouteBox>,
   from: CanvasLineEnd,
   to: CanvasLineEnd,
   skip: ReadonlyArray<string>,
@@ -239,8 +284,8 @@ export function canvasRouteObstacles(
   const bottom = Math.max(...ends.map((box) => box.y + box.height)) + ROUTE_MARGIN;
   const near: Array<{ readonly box: CanvasBounds; readonly distance: number }> = [];
   const middle = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
-  for (const box of boxes) {
-    if (box.type === "group" || skip.includes(box.id)) continue;
+  for (const box of boxesIn(boxes, left, top, right, bottom)) {
+    if (skip.includes(box.id)) continue;
     if (
       box.x >= right ||
       box.x + box.width <= left ||
@@ -281,7 +326,7 @@ export function canvasArrowLine(
   from: CanvasLineEnd,
   to: CanvasLineEnd,
   bends: ReadonlyArray<Point>,
-  boxes: () => Iterable<CanvasRouteBox>,
+  boxes: () => ReadonlyArray<CanvasRouteBox>,
   skip: ReadonlyArray<string>,
 ): CanvasLine {
   if (route !== "elbow") return canvasLine(route, from, to, bends);

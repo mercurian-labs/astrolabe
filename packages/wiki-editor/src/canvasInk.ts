@@ -263,7 +263,7 @@ export function canvasInkArrowLine(
   from: CanvasPoint,
   to: CanvasPoint,
   rects: Rects,
-  boxes: () => Iterable<CanvasRouteBox> = () => [],
+  boxes: () => ReadonlyArray<CanvasRouteBox> = () => [],
 ): CanvasLine {
   const [fromHead, toHead] = canvasInkHeads(ink);
   const skip = [ink.from, ink.to].flatMap((end) => ("node" in end ? [end.node] : []));
@@ -304,7 +304,7 @@ const boundsOf = (points: ReadonlyArray<CanvasPoint>): CanvasBounds => {
 export function canvasInkShape(
   ink: CanvasInk,
   rects: Rects,
-  boxes?: () => Iterable<CanvasRouteBox>,
+  boxes?: () => ReadonlyArray<CanvasRouteBox>,
 ): CanvasInkShape | undefined {
   if (ink.type === "stroke") {
     const points = pointsOf(ink.points).map((point) => ({

@@ -157,7 +157,7 @@ export function canvasEdgeShape(
   edge: CanvasEdge,
   from: CanvasBounds,
   to: CanvasBounds,
-  boxes: () => Iterable<CanvasRouteBox> = NO_BOXES,
+  boxes: () => ReadonlyArray<CanvasRouteBox> = NO_BOXES,
 ): CanvasEdgeShape {
   const [facingFrom, facingTo] = facingSides(from, to);
   const fromSide = edge.fromSide ?? facingFrom;
