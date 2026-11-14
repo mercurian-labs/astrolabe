@@ -111,7 +111,9 @@ describe("a board of 5,000 cards", () => {
     expect(mountedEdges()).toBe(0);
     expect(frames).not.toHaveBeenCalled();
 
-    await userEvent.click(document.querySelector("[aria-label='Reset zoom']")!);
+    board().dispatchEvent(
+      new KeyboardEvent("keydown", { key: ")", code: "Digit0", shiftKey: true, bubbles: true }),
+    );
     await vi.waitFor(() =>
       expect(document.querySelectorAll(".cv-card-body").length).toBeGreaterThan(0),
     );
@@ -131,7 +133,7 @@ describe("a board of 5,000 cards", () => {
 
     const painted = world().style.transform;
     frames.mockClear();
-    await expect.element(document.querySelector<HTMLElement>(".cv-controls")).toBeVisible();
+    await expect.element(document.querySelector<HTMLElement>(".cv-zoom")).toBeVisible();
     expect(world().style.transform).toBe(painted);
     expect(frames).not.toHaveBeenCalled();
   });
@@ -183,15 +185,40 @@ describe("cards", () => {
 
   it("selects on a first click, and only then is a card's content live", async () => {
     const opened = vi.fn();
-    await using _screen = await render(<Frame data={data} host={{ onOpenUrl: opened }} />, {
-      router: false,
+    const canvas = new CanvasDocument({
+      document: { nodes: data.nodes, edges: [] },
+      revision: "r0",
     });
+    await using _screen = await render(
+      <div style={{ width: 1000, height: 700 }}>
+        <CanvasBoard
+          data={canvas.getState().data}
+          mode="free"
+          label="Board"
+          document={canvas}
+          host={{ onOpenUrl: opened }}
+          // Clear of the style panel that selecting opens at the top left.
+          camera={{ x: 400, y: 200, zoom: 1 }}
+        />
+      </div>,
+      { router: false },
+    );
     await vi.waitFor(() => expect(card("a")).not.toBeNull());
     const link = card("a").querySelector("a")!;
     await userEvent.click(link, { force: true });
     expect(opened).not.toHaveBeenCalled();
     expect(card("a").hasAttribute("data-selected")).toBe(true);
-    await userEvent.click(link);
+    await userEvent.click(card("a").querySelector("a")!);
+    expect(opened).toHaveBeenCalledWith("https://example.test");
+  });
+
+  it("opens a card's link on the first click on a board that only reads", async () => {
+    const opened = vi.fn();
+    await using _screen = await render(<Frame data={data} host={{ onOpenUrl: opened }} />, {
+      router: false,
+    });
+    await vi.waitFor(() => expect(card("a")).not.toBeNull());
+    await userEvent.click(card("a").querySelector("a")!);
     expect(opened).toHaveBeenCalledWith("https://example.test");
   });
 
@@ -419,12 +446,16 @@ describe("editing a board", () => {
     canvas,
     readOnly = false,
     host,
+    boardRef,
+    width = 1000,
   }: {
     readonly canvas: CanvasDocument;
     readonly readOnly?: boolean;
     readonly host?: CanvasBoardHost;
+    readonly boardRef?: Parameters<typeof CanvasBoard>[0]["ref"];
+    readonly width?: number;
   }) => (
-    <div style={{ width: 1000, height: 700 }}>
+    <div style={{ width, height: 700 }}>
       <CanvasBoard
         data={canvas.getState().data}
         mode="free"
@@ -433,6 +464,7 @@ describe("editing a board", () => {
         readOnly={readOnly}
         camera={{ x: 0, y: 0, zoom: 1 }}
         {...(host === undefined ? {} : { host })}
+        {...(boardRef === undefined ? {} : { ref: boardRef })}
       />
     </div>
   );
@@ -479,7 +511,7 @@ describe("editing a board", () => {
   /** Marked on each test, since a pointer that isn't real has nothing to capture. */
   const setup = () => vi.spyOn(Element.prototype, "setPointerCapture").mockReturnValue();
 
-  it("moves a card on the grid, to the top of the file, and undoes it", async () => {
+  it("moves a card on the grid, leaving it where it stacks, and undoes it", async () => {
     using _capture = setup();
     const canvas = newCanvas([text("a", 0, 0), text("b", 500, 400)]);
     await using _screen = await render(<Editing canvas={canvas} />, { router: false });
@@ -488,7 +520,7 @@ describe("editing a board", () => {
     await vi.waitFor(() => expect(nodeIn(canvas, "a")).toMatchObject({ x: 80, y: 80 }));
     expect(element("a").style.left).toBe("80px");
     expect(element("a").style.transform).toBe("");
-    expect(canvas.getState().data.nodes.map((node) => node.id)).toEqual(["b", "a"]);
+    expect(canvas.getState().data.nodes.map((node) => node.id)).toEqual(["a", "b"]);
     await userEvent.click(document.querySelector("[aria-label='Undo']")!);
     await vi.waitFor(() => expect(nodeIn(canvas, "a")).toMatchObject({ x: 0, y: 0 }));
     expect(canvas.getState().data.nodes.map((node) => node.id)).toEqual(["a", "b"]);
@@ -617,14 +649,15 @@ describe("editing a board", () => {
     await using _screen = await render(<Editing canvas={canvas} />, { router: false });
     await vi.waitFor(() => expect(element("a")).not.toBeNull());
     click(element("a"), { x: 150, y: 150 });
+    const handleOf = () => document.querySelector("[data-frame-for='a'] [data-handle='se']");
     const handle = await vi.waitFor(() => {
-      const found = element("a").querySelector("[data-handle='se']");
+      const found = handleOf();
       expect(found).not.toBeNull();
       return found!;
     });
     drag(handle, { x: 304, y: 204 }, { x: 320, y: 220 }, { x: 353, y: 247 });
     await vi.waitFor(() => expect(nodeIn(canvas, "a")).toMatchObject({ width: 240, height: 140 }));
-    const again = element("a").querySelector("[data-handle='se']")!;
+    const again = handleOf()!;
     drag(again, { x: 344, y: 244 }, { x: 300, y: 200 }, { x: 0, y: 0 });
     await vi.waitFor(() => expect(nodeIn(canvas, "a")).toMatchObject({ width: 50, height: 50 }));
   });
@@ -647,12 +680,291 @@ describe("editing a board", () => {
     expect(canvas.getState().data.edges).toHaveLength(1);
   });
 
+  it("draws a card with the Card tool, and joins two cards with the Arrow tool", async () => {
+    using _capture = setup();
+    const canvas = newCanvas([text("a", 0, 0), text("b", 500, 0)]);
+    await using screen = await render(<Editing canvas={canvas} />, { router: false });
+    await vi.waitFor(() => expect(element("a")).not.toBeNull());
+    const select = screen.getByLabelText("Select (V)");
+    await userEvent.click(screen.getByLabelText("Card (C)"));
+    drag(board(), { x: 100, y: 300 }, { x: 150, y: 330 }, { x: 400, y: 420 });
+    await vi.waitFor(() =>
+      expect(canvas.getState().data.nodes[2]).toMatchObject({
+        type: "text",
+        x: 100,
+        y: 300,
+        width: 300,
+        height: 120,
+      }),
+    );
+    await vi.waitFor(() => expect(document.querySelector(".cv-plain-editor")).not.toBeNull());
+    await expect.element(select).toHaveAttribute("aria-pressed", "true");
+    await userEvent.keyboard("{Escape}");
+    await vi.waitFor(() => expect(document.activeElement).toBe(board()));
+
+    await userEvent.keyboard("a");
+    await expect
+      .element(screen.getByLabelText("Arrow (A)"))
+      .toHaveAttribute("aria-pressed", "true");
+    drag(element("a"), { x: 100, y: 50 }, { x: 200, y: 60 }, { x: 600, y: 50 });
+    await vi.waitFor(() => expect(canvas.getState().data.edges).toHaveLength(1));
+    expect(canvas.getState().data.edges[0]).toMatchObject({
+      fromNode: "a",
+      fromSide: "right",
+      toNode: "b",
+      toSide: "left",
+    });
+    await expect.element(select).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("draws with the Pen and draws an arrow from empty board, then removes the stroke", async () => {
+    using _capture = setup();
+    const canvas = newCanvas([text("a", 0, 0)]);
+    await using screen = await render(<Editing canvas={canvas} />, { router: false });
+    await vi.waitFor(() => expect(element("a")).not.toBeNull());
+    const drawings = () => canvas.getState().data.drawings ?? [];
+    const pen = screen.getByLabelText("Pen (D)");
+    await userEvent.click(pen);
+    drag(board(), { x: 300, y: 300 }, { x: 320, y: 310 }, { x: 360, y: 330 }, { x: 400, y: 300 });
+    await vi.waitFor(() => expect(drawings()).toHaveLength(1));
+    const [stroke] = drawings();
+    expect(stroke).toMatchObject({ type: "stroke", x: 300, y: 300 });
+    // The Pen stays in hand for the next stroke.
+    await expect.element(pen).toHaveAttribute("aria-pressed", "true");
+
+    await userEvent.keyboard("a");
+    drag(board(), { x: 300, y: 500 }, { x: 250, y: 400 }, { x: 100, y: 60 });
+    await vi.waitFor(() => expect(drawings()).toHaveLength(2));
+    expect(drawings()[1]).toMatchObject({
+      type: "arrow",
+      from: { x: 300, y: 500 },
+      to: { node: "a", side: "bottom" },
+    });
+    await expect
+      .element(screen.getByLabelText("Select (V)"))
+      .toHaveAttribute("aria-pressed", "true");
+
+    const line = document.querySelector(`[data-drawing-id="${stroke!.id}"] .cv-ink-hit`)!;
+    click(line, { x: 320, y: 310 });
+    await vi.waitFor(() => expect(line.parentElement?.hasAttribute("data-selected")).toBe(true));
+    await userEvent.keyboard("{Backspace}");
+    await vi.waitFor(() => expect(drawings().map((ink) => ink.type)).toEqual(["arrow"]));
+  });
+
+  it("edits a drawn line's points: a double-click, a middle pulled to bend it, and the bend taken out", async () => {
+    using _capture = setup();
+    const line = {
+      id: "l",
+      type: "arrow",
+      from: { x: 300, y: 300 },
+      to: { x: 500, y: 300 },
+      astrolabe: { style: { route: "straight" } },
+    };
+    const canvas = new CanvasDocument({
+      document: { nodes: [text("a", 0, 0)], edges: [], astrolabe: { drawings: [line] } },
+      revision: "r0",
+    });
+    await using _screen = await render(<Editing canvas={canvas} />, { router: false });
+    const drawn = () => canvas.getState().data.drawings?.[0];
+    const hit = () => document.querySelector(`[data-drawing-id="l"] .cv-ink-hit`)!;
+    await vi.waitFor(() => expect(hit()).not.toBeNull());
+    click(hit(), { x: 350, y: 300 });
+    click(hit(), { x: 350, y: 300 });
+    const middle = () => document.querySelector("[data-point-mid='0']");
+    await vi.waitFor(() => expect(middle()).not.toBeNull());
+    drag(middle()!, { x: 400, y: 300 }, { x: 400, y: 290 }, { x: 400, y: 200 });
+    await vi.waitFor(() => expect(drawn()).toMatchObject({ bends: [400, 200] }));
+    expect(hit().getAttribute("d")).toBe("M300 300L400 200L500 300");
+
+    click(document.querySelector("[data-point-handle='1']")!, { x: 400, y: 200 });
+    await vi.waitFor(() =>
+      expect(document.querySelector("[data-point-handle='1']")).toHaveAttribute("data-picked"),
+    );
+    // A pointer that isn't real doesn't focus what it presses.
+    board().focus();
+    await userEvent.keyboard("{Backspace}");
+    await vi.waitFor(() => expect(drawn()).not.toHaveProperty("bends"));
+    // The line stays, and Enter leaves its points.
+    await userEvent.keyboard("{Enter}");
+    await vi.waitFor(() => expect(middle()).toBeNull());
+    expect(drawn()).toMatchObject({ id: "l" });
+  });
+
+  it("scales a card and a stroke together from the selection's box, as one undo", async () => {
+    using _capture = setup();
+    const stroke = { id: "s", type: "stroke", x: 300, y: 0, points: [0, 0, 100, 100] };
+    const canvas = new CanvasDocument({
+      document: { nodes: [text("a", 0, 0)], edges: [], astrolabe: { drawings: [stroke] } },
+      revision: "r0",
+    });
+    await using _screen = await render(<Editing canvas={canvas} />, { router: false });
+    await vi.waitFor(() => expect(element("a")).not.toBeNull());
+    drag(board(), { x: 450, y: 150 }, { x: 440, y: 140 }, { x: 10, y: 10 });
+    const corner = await vi.waitFor(() => {
+      const found = document.querySelector("[data-selection-box] [data-handle='se']");
+      expect(found).not.toBeNull();
+      return found!;
+    });
+    drag(corner, { x: 404, y: 104 }, { x: 420, y: 110 }, { x: 804, y: 204 });
+    await vi.waitFor(() =>
+      expect(nodeIn(canvas, "a")).toMatchObject({ x: 0, y: 0, width: 400, height: 200 }),
+    );
+    expect(canvas.getState().data.drawings?.[0]).toMatchObject({
+      x: 600,
+      y: 0,
+      points: [0, 0, 200, 200],
+    });
+    await userEvent.click(document.querySelector("[aria-label='Undo']")!);
+    await vi.waitFor(() => expect(nodeIn(canvas, "a")).toMatchObject({ width: 200, height: 100 }));
+    expect(canvas.getState().data.drawings?.[0]).toMatchObject(stroke);
+  });
+
+  it("selects what a lasso's loop encloses, and erases drawings it passes over, Alt sparing", async () => {
+    using _capture = setup();
+    const line = (id: string, y: number) => ({
+      id,
+      type: "stroke",
+      x: 100,
+      y,
+      points: [0, 0, 100, 0],
+    });
+    const canvas = new CanvasDocument({
+      document: {
+        nodes: [text("a", 50, 50), text("b", 400, 50)],
+        edges: [],
+        astrolabe: { drawings: [line("s1", 300), line("s2", 400)] },
+      },
+      revision: "r0",
+    });
+    await using screen = await render(<Editing canvas={canvas} />, { router: false });
+    await vi.waitFor(() => expect(element("a")).not.toBeNull());
+    const ink = (id: string) => document.querySelector(`g[data-drawing-id="${id}"]`)!;
+    const drawings = () => (canvas.getState().data.drawings ?? []).map((each) => each.id);
+
+    await userEvent.click(screen.getByLabelText("Lasso (L)"));
+    drag(
+      board(),
+      { x: 20, y: 20 },
+      { x: 300, y: 20 },
+      { x: 300, y: 350 },
+      { x: 20, y: 350 },
+      { x: 22, y: 24 },
+    );
+    await vi.waitFor(() => expect(element("a").hasAttribute("data-selected")).toBe(true));
+    expect(ink("s1").hasAttribute("data-selected")).toBe(true);
+    expect(element("b").hasAttribute("data-selected")).toBe(false);
+    expect(ink("s2").hasAttribute("data-selected")).toBe(false);
+
+    await userEvent.click(screen.getByLabelText("Eraser (X)"));
+    // From on a card, which it leaves alone, across both lines, then back over the second with Alt.
+    fire("pointerdown", element("a"), { x: 150, y: 100 });
+    fire("pointermove", board(), { x: 150, y: 320 });
+    fire("pointermove", board(), { x: 150, y: 420 });
+    expect(ink("s1").hasAttribute("data-erasing")).toBe(true);
+    expect(ink("s2").hasAttribute("data-erasing")).toBe(true);
+    fire("pointermove", board(), { x: 150, y: 380, altKey: true });
+    expect(ink("s2").hasAttribute("data-erasing")).toBe(false);
+    fire("pointerup", board(), { x: 150, y: 380, altKey: true });
+    await vi.waitFor(() => expect(drawings()).toEqual(["s2"]));
+    expect(canvas.getState().data.nodes.map((node) => node.id)).toEqual(["a", "b"]);
+    await userEvent.click(document.querySelector("[aria-label='Undo']")!);
+    await vi.waitFor(() => expect(drawings()).toEqual(["s1", "s2"]));
+  });
+
+  it("keeps the Pen in More on a narrow board, and draws with it from there", async () => {
+    using _capture = setup();
+    const canvas = newCanvas([text("a", 0, 0)]);
+    await using screen = await render(<Editing canvas={canvas} width={280} />, { router: false });
+    await vi.waitFor(() => expect(element("a")).not.toBeNull());
+    const bar = document.querySelector(".cv-tools[role='toolbar']")!;
+    expect(bar.querySelector("[data-tool='pen']")).toBeNull();
+    expect(bar.querySelector("[data-tool='select']")).not.toBeNull();
+    const more = screen.getByRole("button", { name: "More tools" });
+    await userEvent.click(more);
+    await userEvent.click(screen.getByRole("menuitemcheckbox", { name: "Pen" }));
+    expect(board().dataset.tool).toBe("pen");
+    // The tool in hand has left the bar, so More says so.
+    await expect.element(more).toHaveAttribute("data-active");
+    drag(board(), { x: 60, y: 300 }, { x: 80, y: 310 }, { x: 120, y: 330 }, { x: 160, y: 300 });
+    await vi.waitFor(() => expect(canvas.getState().data.drawings).toHaveLength(1));
+    expect(canvas.getState().data.drawings?.[0]).toMatchObject({ type: "stroke" });
+  });
+
+  it("styles a card and a stroke together from the panel, one undo a change", async () => {
+    using _capture = setup();
+    const stroke = { id: "s", type: "stroke", x: 600, y: 300, points: [0, 0, 80, 40] };
+    const canvas = new CanvasDocument({
+      document: { nodes: [text("a", 300, 200)], edges: [], astrolabe: { drawings: [stroke] } },
+      revision: "r0",
+    });
+    await using screen = await render(<Editing canvas={canvas} />, { router: false });
+    await vi.waitFor(() => expect(element("a")).not.toBeNull());
+    const styles = () => [
+      nodeIn(canvas, "a")?.astrolabe?.style,
+      canvas.getState().data.drawings?.[0]?.astrolabe?.style,
+    ];
+    click(element("a"), { x: 350, y: 250 });
+    const line = document.querySelector('[data-drawing-id="s"] .cv-ink-hit')!;
+    click(line, { x: 640, y: 320, shiftKey: true });
+    await vi.waitFor(() => expect(line.parentElement?.hasAttribute("data-selected")).toBe(true));
+
+    await userEvent.click(screen.getByLabelText("Bold"));
+    await vi.waitFor(() => expect(styles()).toEqual([{ width: 4 }, { width: 5 }]));
+    await expect.element(screen.getByLabelText("Bold")).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(screen.getByLabelText("Green background"));
+    await vi.waitFor(() => expect(styles()).toEqual([{ width: 4, fill: "4" }, { width: 5 }]));
+    expect(element("a").style.getPropertyValue("--cv-w")).toBe("4");
+
+    await userEvent.click(screen.getByLabelText("Undo"));
+    await vi.waitFor(() => expect(styles()).toEqual([{ width: 4 }, { width: 5 }]));
+    await userEvent.click(screen.getByLabelText("Undo"));
+    await vi.waitFor(() => expect(styles()).toEqual([undefined, undefined]));
+  });
+
+  it("stacks what it draws in the file's order, and reorders it from the keys and the Layers row", async () => {
+    using _capture = setup();
+    // The stroke shares the card's id: kinds are told apart, never mixed up.
+    const stroke = { id: "a", type: "stroke", x: 0, y: 0, points: [0, 0, 300, 150] };
+    const canvas = new CanvasDocument({
+      document: {
+        nodes: [text("a", 0, 0), text("b", 100, 50)],
+        edges: [],
+        astrolabe: { drawings: [stroke] },
+      },
+      revision: "r0",
+    });
+    await using screen = await render(<Editing canvas={canvas} />, { router: false });
+    await vi.waitFor(() => expect(element("a")).not.toBeNull());
+    const stack = () =>
+      [...document.querySelector(".cv-world")!.children].flatMap((child) => {
+        if (child.classList.contains("cv-card"))
+          return [`card:${child.getAttribute("data-card-id")}`];
+        const drawn = child.querySelector("[data-drawing-id]")?.getAttribute("data-drawing-id");
+        return drawn === null || drawn === undefined ? [] : [`drawing:${drawn}`];
+      });
+    expect(stack()).toEqual(["card:a", "card:b", "drawing:a"]);
+    click(element("a"), { x: 20, y: 20 });
+    board().focus();
+    await userEvent.keyboard("{Control>}]{/Control}");
+    await vi.waitFor(() => expect(stack()).toEqual(["card:b", "card:a", "drawing:a"]));
+    await userEvent.keyboard("{Control>}{Shift>}]{/Shift}{/Control}");
+    await vi.waitFor(() => expect(stack()).toEqual(["card:b", "drawing:a", "card:a"]));
+    expect(canvas.getState().data.nodes.map((node) => node.id)).toEqual(["b", "a"]);
+    await userEvent.click(screen.getByLabelText("Send to back"));
+    await vi.waitFor(() => expect(stack()).toEqual(["card:a", "card:b", "drawing:a"]));
+    await userEvent.click(screen.getByLabelText("Undo"));
+    await vi.waitFor(() => expect(stack()).toEqual(["card:b", "drawing:a", "card:a"]));
+  });
+
   it("finds room for a card added without a point", async () => {
     using _capture = setup();
     const canvas = newCanvas([text("a", -1000, -1000, { width: 2000, height: 2000 })]);
-    await using screen = await render(<Editing canvas={canvas} />, { router: false });
+    const handle = createRef<CanvasBoardHandle>();
+    await using _screen = await render(<Editing canvas={canvas} boardRef={handle} />, {
+      router: false,
+    });
     await vi.waitFor(() => expect(element("a")).not.toBeNull());
-    await userEvent.click(screen.getByLabelText("Drag to add a card"));
+    handle.current?.run("add-card");
     await vi.waitFor(() => expect(canvas.getState().data.nodes).toHaveLength(2));
     const [first, added] = canvas.getState().data.nodes;
     expect(overlaps(first!, added!)).toBe(false);
@@ -734,11 +1046,11 @@ describe("editing a board", () => {
     await vi.waitFor(() => expect(element("a")).not.toBeNull());
     board().focus();
     await userEvent.keyboard("{Control>}a{/Control}");
-    await userEvent.click(document.querySelector("[aria-label='Create group']")!);
+    await userEvent.click(document.querySelector("[aria-label='Create section']")!);
     await vi.waitFor(() =>
       expect(canvas.getState().data.nodes[2]).toMatchObject({
         type: "group",
-        label: "Untitled group",
+        label: "Untitled section",
         x: 80,
         y: 80,
         width: 540,
@@ -773,14 +1085,12 @@ describe("editing a board", () => {
     await using screen = await render(<Editing canvas={canvas} />, { router: false });
     await vi.waitFor(() => expect(element("a")).not.toBeNull());
     click(element("a"), { x: 50, y: 50 });
-    await vi.waitFor(() =>
-      expect(buttons()).toEqual(["Remove", "Set color", "Zoom to selection", "Edit"]),
-    );
+    await vi.waitFor(() => expect(buttons()).toEqual(["Remove", "Zoom to selection", "Edit"]));
     click(element("f"), { x: 450, y: 50 });
-    await vi.waitFor(() => expect(buttons()).toEqual(["Remove", "Set color", "Zoom to selection"]));
+    await vi.waitFor(() => expect(buttons()).toEqual(["Remove", "Zoom to selection"]));
     await screen.rerender(<Editing canvas={canvas} readOnly />);
     await vi.waitFor(() => expect(buttons()).toEqual(["Zoom to selection"]));
-    expect(document.querySelector(".cv-bar")).toBeNull();
+    expect(document.querySelector(".cv-tools")).toBeNull();
     drag(element("a"), { x: 50, y: 50 }, { x: 150, y: 150 });
     expect(nodeIn(canvas, "a")).toMatchObject({ x: 0, y: 0 });
   });

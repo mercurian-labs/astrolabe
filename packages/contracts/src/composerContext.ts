@@ -239,6 +239,8 @@ export const CanvasContextRecord = Schema.Struct({
   itemId: TurnItemId,
   title: ContextLabel,
   comment: Schema.optional(BoundedString(COMPOSER_CONTEXT_CANVAS_COMMENT_MAX_CHARS)),
+  /** One step of the board's walk, when the user asked about that step: its number, label and note. */
+  step: Schema.optional(BoundedString(COMPOSER_CONTEXT_CANVAS_COMMENT_MAX_CHARS)),
 });
 export type CanvasContextRecord = typeof CanvasContextRecord.Type;
 
@@ -339,6 +341,11 @@ export type GuestMessageAttribution = typeof GuestMessageAttribution.Type;
 export const OrchestrationMessageContext = Schema.Struct({
   version: Schema.Literal(1),
   guest: Schema.optional(GuestMessageAttribution),
+  /**
+   * Astrolabe: boards the user edited that the agent is not told about with this message. Absent
+   * means every board edited since the last prompt is told, as for clients that never send it.
+   */
+  omitEditedBoards: Schema.optional(Schema.Array(TurnItemId).check(Schema.isMaxLength(200))),
   records: Schema.Array(Schema.Unknown)
     .check(
       Schema.isMaxLength(COMPOSER_CONTEXT_MAX_RECORDS),

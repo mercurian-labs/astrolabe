@@ -53,6 +53,14 @@
       "types": "./src/canvasGeometry.ts",
       "default": "./src/canvasGeometry.ts"
     },
+    "./canvas-ink": {
+      "types": "./src/canvasInk.ts",
+      "default": "./src/canvasInk.ts"
+    },
+    "./canvas-paint": {
+      "types": "./src/canvasPaint.ts",
+      "default": "./src/canvasPaint.ts"
+    },
     "./canvas-minimap": {
       "types": "./src/CanvasMinimap.tsx",
       "default": "./src/CanvasMinimap.tsx"
@@ -75,7 +83,9 @@
     "dompurify": "^3.4.16",
     "katex": "^0.18.9",
     "pele": "^1.8.0",
+    "perfect-freehand": "^1.2.3",
     "react-dom": "19.2.6",
+    "roughjs": "^4.6.6",
     "y-protocols": "^1.0.7",
     "yjs": "13.6.33"
   },

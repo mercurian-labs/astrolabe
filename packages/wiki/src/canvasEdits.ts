@@ -3,12 +3,33 @@
  * board, never where. New cards find room through `canvasPlace`. Whatever an edit doesn't name
  * stays as the file has it, understood or not, in the serializer's bytes.
  */
-import { canvasEntries, parseCanvas, serializeCanvas, type CanvasSide } from "./canvas.ts";
+import {
+  canvasData,
+  canvasEntries,
+  canvasInkBounds,
+  canvasLayerOf,
+  canvasOrderKeyBetween,
+  canvasOrderKeyOf,
+  canvasOrderKeys,
+  canvasOrderKeysBetween,
+  canvasStack,
+  parseCanvas,
+  serializeCanvas,
+  type CanvasBounds,
+  type CanvasData,
+  type CanvasEdge,
+  type CanvasGroupNode,
+  type CanvasNode,
+  type CanvasRoute,
+  type CanvasSide,
+  type CanvasStyle,
+} from "./canvas.ts";
 import {
   canvasArrowSides,
   canvasCardSize,
   canvasPlace,
   CANVAS_PRESETS,
+  insideGroup,
   type CanvasNewCard,
   type CanvasNewGroup,
 } from "./canvasPlace.ts";
@@ -52,6 +73,7 @@ type CanvasStructureEdit =
       readonly to: string;
       readonly label?: string | undefined;
       readonly ends?: "end" | "both" | "none" | undefined;
+      readonly route?: CanvasRoute | undefined;
       readonly color?: CanvasEditColor | undefined;
     }
   | { readonly op: "disconnect"; readonly from: string; readonly to: string }
@@ -74,6 +96,14 @@ type CanvasStructureEdit =
       readonly op: "color";
       readonly card?: string | undefined;
       readonly color?: CanvasEditColor | undefined;
+    } & ArrowEnds)
+  /** Names a card, or an arrow by its ends, and one of where it goes. */
+  | ({
+      readonly op: "order";
+      readonly card?: string | undefined;
+      readonly layer?: "front" | "back" | undefined;
+      readonly above?: string | undefined;
+      readonly below?: string | undefined;
     } & ArrowEnds);
 
 /**
@@ -121,7 +151,21 @@ export type CanvasHandEdit =
       readonly edge: Readonly<Record<string, unknown>>;
       readonly at?: number | undefined;
     }
-  | { readonly op: "remove-arrow"; readonly arrow: string };
+  | { readonly op: "remove-arrow"; readonly arrow: string }
+  /** The board's stories, whole, as the file holds them; none removes them. */
+  | { readonly op: "set-stories"; readonly stories: ReadonlyArray<unknown> }
+  /** A whole drawing: new, or in place of the one with its id. `at` is its place in the list. */
+  | {
+      readonly op: "put-drawing";
+      readonly drawing: Readonly<Record<string, unknown>>;
+      readonly at?: number | undefined;
+    }
+  | {
+      readonly op: "set-drawing";
+      readonly drawing: string;
+      readonly keys: Readonly<Record<string, unknown>>;
+    }
+  | { readonly op: "remove-drawing"; readonly drawing: string };
 
 export type CanvasEdit = CanvasStructureEdit | CanvasHandEdit;
 
@@ -153,7 +197,14 @@ const HAND_OPS: ReadonlySet<string> = new Set([
   "set-arrow",
   "put-arrow",
   "remove-arrow",
+  "set-stories",
+  "put-drawing",
+  "set-drawing",
+  "remove-drawing",
 ]);
+
+/** Past this a board takes no new drawing: each is drawn as it is, with no simple form. */
+export const CANVAS_MAX_DRAWINGS = 2_000;
 
 const isHandEdit = (edit: CanvasEdit): edit is CanvasHandEdit => HAND_OPS.has(edit.op);
 
@@ -200,6 +251,10 @@ function withKey(raw: Raw, key: string, value: unknown): Raw {
 
 const presetOf = (color: CanvasEditColor) => CANVAS_PRESETS[color] ?? color;
 
+/** An agent's route, in the style a board reads; curved is what an arrow has without one. */
+const routed = (route: CanvasRoute | undefined) =>
+  route === undefined || route === "curved" ? {} : { astrolabe: { style: { route } } };
+
 const given = (list: unknown): unknown[] => (Array.isArray(list) ? [...list] : []);
 
 /** A list's entries by id, as drawn: the place each holds in the file. */
@@ -234,8 +289,35 @@ function insertedAt(
 
 const idOf = (raw: Readonly<Record<string, unknown>>) => (typeof raw.id === "string" ? raw.id : "");
 
+const anchoredTo = (raw: unknown, node: unknown) =>
+  isRecord(raw) &&
+  [raw.from, raw.to].some((end) => isRecord(end) && end.node !== undefined && end.node === node);
+
 const keyChanges = (raw: Raw, keys: Readonly<Record<string, unknown>>) =>
   Object.fromEntries(Object.keys(keys).map((key) => [key, raw[key] ?? null]));
+
+/** A change to a style: a value sets that part, null clears it back to the default. */
+export type CanvasStylePatch = {
+  readonly [Key in keyof CanvasStyle]?: CanvasStyle[Key] | null;
+};
+
+/**
+ * The `set-card`, `set-arrow` or `set-drawing` keys that put `patch` into what `raw` holds as its
+ * style: the rest of its `astrolabe` (a shape, a code card's code) and what this version doesn't
+ * know are kept, and an emptied style or `astrolabe` goes.
+ */
+export function canvasStyleKeys(
+  raw: Readonly<Record<string, unknown>>,
+  patch: CanvasStylePatch,
+): { readonly astrolabe: Raw | null } {
+  const astrolabe = isRecord(raw.astrolabe) ? raw.astrolabe : {};
+  const style = Object.entries(patch).reduce<Raw>(
+    (kept, [key, value]) => withKey(kept, key, value ?? null),
+    isRecord(astrolabe.style) ? astrolabe.style : {},
+  );
+  const next = withKey(astrolabe, "style", Object.keys(style).length === 0 ? null : style);
+  return { astrolabe: Object.keys(next).length === 0 ? null : next };
+}
 
 export interface CanvasHandOutcome {
   /** The document with the edits in. Whatever they didn't touch is the same object. */
@@ -286,6 +368,8 @@ export function applyCanvasHandEdits(
 
   const restored: Array<Extract<CanvasHandEdit, { op: "put-card" | "put-arrow" }>> = [];
   const others: CanvasHandEdit[] = [];
+  /** A card's or section's order key changed, so the file's list is put in that order. */
+  let reordered = false;
 
   const patch = (id: string, keys: Readonly<Record<string, unknown>>) => {
     const position = nodeAt.get(id);
@@ -296,6 +380,7 @@ export function applyCanvasHandEdits(
       (raw, [key, value]) => withKey(raw, key, value),
       before,
     );
+    if (canvasOrderKeyOf(before) !== canvasOrderKeyOf(nodes[position])) reordered = true;
   };
 
   const removeArrow = (position: number) => {
@@ -321,9 +406,154 @@ export function applyCanvasHandEdits(
     return end;
   };
 
+  let astrolabe = isRecord(document.astrolabe) ? document.astrolabe : undefined;
+  // Read only once an edit is about drawings, so a board without any writes none. Like cards,
+  // a removal leaves a hole, and places are counted again only when something is put back.
+  const ink: {
+    list: unknown[] | null;
+    holes: number;
+    at: Map<string, number> | null;
+    on: Map<unknown, number[]> | null;
+  } = { list: null, holes: 0, at: null, on: null };
+  const drawingList = () => (ink.list ??= given(astrolabe?.drawings));
+  const drawingCount = () => drawingList().length - ink.holes;
+  const drawingAt = (id: string) => {
+    const position = (ink.at ??= placesIn(drawingList(), "drawing")).get(id);
+    return position !== undefined && drawingList()[position] !== undefined ? position : undefined;
+  };
+  /** Files the drawing at `position` under the nodes its ends are on, once the index is built. */
+  const anchor = (index: Map<unknown, number[]>, position: number) => {
+    const raw = drawingList()[position];
+    if (!isRecord(raw)) return;
+    const ends = new Set([raw.from, raw.to].map((end) => (isRecord(end) ? end.node : undefined)));
+    for (const node of ends) {
+      if (node === undefined) continue;
+      const on = index.get(node);
+      if (on === undefined) index.set(node, [position]);
+      else on.push(position);
+    }
+  };
+  /** Each node's drawn arrows by place; a place may be stale, so it's checked as it's read. */
+  const anchoredOn = () => {
+    if (ink.on !== null) return ink.on;
+    const index = new Map<unknown, number[]>();
+    drawingList().forEach((_, position) => anchor(index, position));
+    return (ink.on = index);
+  };
+  const placed = (position: number) => {
+    if (ink.on !== null) anchor(ink.on, position);
+  };
+  const inkRestored: Array<Extract<CanvasHandEdit, { op: "put-drawing" }>> = [];
+  const removeDrawing = (position: number) => {
+    const list = drawingList();
+    const raw = list[position];
+    if (!isRecord(raw)) return;
+    inkRestored.push({ op: "put-drawing", drawing: raw, at: position });
+    list[position] = undefined;
+    ink.holes += 1;
+  };
+  const recount = () => {
+    ink.holes = 0;
+    ink.at = null;
+    ink.on = null;
+  };
+  const closeInkHoles = () => {
+    if (ink.list === null || ink.holes === 0) return;
+    ink.list = ink.list.filter((raw) => raw !== undefined);
+    recount();
+  };
+  /** Consecutive new drawings put back at their places, as one insert. */
+  const putInkRun = (start: number) => {
+    let end = start;
+    const items: Array<{ readonly at: number; readonly raw: Raw }> = [];
+    const taken = new Set<string>();
+    for (; end < edits.length; end++) {
+      const edit = edits[end];
+      if (edit?.op !== "put-drawing" || edit.at === undefined) break;
+      const id = idOf(edit.drawing);
+      if (drawingAt(id) !== undefined || taken.has(id)) break;
+      if (id === "" || drawingCount() + items.length >= CANVAS_MAX_DRAWINGS) continue;
+      taken.add(id);
+      items.push({ at: edit.at, raw: edit.drawing });
+      others.push({ op: "remove-drawing", drawing: id });
+    }
+    closeInkHoles();
+    ink.list = insertedAt(drawingList(), items);
+    recount();
+    return end;
+  };
+
+  // Something new goes on top, once the board keeps an order; a copy never takes its source's key.
+  let top: string | null | undefined;
+  const topKey = () =>
+    (top ??= highestKey([
+      ...nodes.filter((raw) => isRecord(raw) && raw.type !== "group"),
+      ...edges,
+      ...(ink.list ?? given(astrolabe?.drawings)),
+    ]));
+  const fresh = (raw: Raw, section: boolean): Raw => {
+    const below = section ? null : topKey();
+    if (below === null) return withoutOrderKey(raw);
+    const z = canvasOrderKeyBetween(below, null);
+    top = z;
+    return { ...raw, ...canvasOrderKeys(raw, z) };
+  };
+
   for (let index = 0; index < edits.length;) {
     const edit = edits[index] as CanvasHandEdit;
     switch (edit.op) {
+      case "put-drawing": {
+        const list = drawingList();
+        const id = idOf(edit.drawing);
+        const position = drawingAt(id);
+        if (position !== undefined) {
+          others.push({ op: "put-drawing", drawing: list[position] as Raw });
+          list[position] = edit.drawing;
+          placed(position);
+        } else if (edit.at !== undefined) {
+          index = putInkRun(index);
+          continue;
+        } else if (id !== "" && drawingCount() < CANVAS_MAX_DRAWINGS) {
+          others.push({ op: "remove-drawing", drawing: id });
+          ink.at?.set(id, list.length);
+          list.push(fresh(edit.drawing, false));
+          placed(list.length - 1);
+        }
+        break;
+      }
+      case "set-drawing": {
+        const position = drawingAt(edit.drawing);
+        if (position === undefined) break;
+        const list = drawingList();
+        const before = list[position] as Raw;
+        others.push({
+          op: "set-drawing",
+          drawing: edit.drawing,
+          keys: keyChanges(before, edit.keys),
+        });
+        list[position] = Object.entries(edit.keys).reduce(
+          (raw, [key, value]) => withKey(raw, key, value),
+          before,
+        );
+        placed(position);
+        break;
+      }
+      case "remove-drawing": {
+        const position = drawingAt(edit.drawing);
+        if (position === undefined) break;
+        removeDrawing(position);
+        break;
+      }
+      case "set-stories": {
+        others.push({ op: "set-stories", stories: given(astrolabe?.stories) });
+        const kept = withKey(
+          astrolabe ?? {},
+          "stories",
+          edit.stories.length === 0 ? null : edit.stories,
+        );
+        astrolabe = Object.keys(kept).length === 0 ? undefined : kept;
+        break;
+      }
       case "move":
         patch(edit.card, { x: edit.x, y: edit.y });
         break;
@@ -362,15 +592,17 @@ export function applyCanvasHandEdits(
         const id = idOf(edit.node);
         const position = nodeAt.get(id);
         if (position !== undefined) {
-          others.push({ op: "put-card", node: nodes[position] as Raw });
+          const before = nodes[position] as Raw;
+          others.push({ op: "put-card", node: before });
           nodes[position] = edit.node;
+          if (canvasOrderKeyOf(before) !== canvasOrderKeyOf(edit.node)) reordered = true;
         } else if (edit.at !== undefined) {
           index = putRun(index);
           continue;
         } else {
           others.push({ op: "remove-card", card: id });
           nodeAt.set(id, nodes.length);
-          nodes.push(edit.node);
+          nodes.push(fresh(edit.node, edit.node.type === "group"));
         }
         break;
       }
@@ -381,6 +613,12 @@ export function applyCanvasHandEdits(
         restored.push({ op: "put-card", node: raw, at: position });
         const stored = raw.id ?? edit.card;
         for (const arrow of arrowIndex().get(stored) ?? []) removeArrow(arrow);
+        // A drawn arrow on it goes too, as its arrows do.
+        if (astrolabe?.drawings !== undefined || ink.list !== null) {
+          for (const at of anchoredOn().get(stored) ?? []) {
+            if (anchoredTo(drawingList()[at], stored)) removeDrawing(at);
+          }
+        }
         nodes[position] = undefined;
         nodeAt.delete(edit.card);
         break;
@@ -407,7 +645,8 @@ export function applyCanvasHandEdits(
         others.push({ op: "remove-arrow", arrow: id });
         closeHoles();
         const place = Math.min(edit.at ?? edges.length, edges.length);
-        edges = [...edges.slice(0, place), edit.edge, ...edges.slice(place)];
+        const edge = edit.at === undefined ? fresh(edit.edge, false) : edit.edge;
+        edges = [...edges.slice(0, place), edge, ...edges.slice(place)];
         edgeAt = placesIn(edges, "edge");
         arrowsOn = null;
         break;
@@ -423,8 +662,71 @@ export function applyCanvasHandEdits(
     index += 1;
   }
   closeHoles();
+  closeInkHoles();
+  if (ink.list !== null) {
+    const kept = withKey(astrolabe ?? {}, "drawings", ink.list.length === 0 ? null : ink.list);
+    astrolabe = Object.keys(kept).length === 0 ? undefined : kept;
+  }
+  // Obsidian stacks by the list alone, so a new order puts the list in it too.
+  const sorted = reordered ? stackedNodes(nodes, edges, astrolabe?.drawings) : null;
+  const unsorted = sorted === null ? [] : [sorted.inverse];
+  if (sorted !== null) nodes = sorted.nodes;
   restored.sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
-  return { document: { ...document, nodes, edges }, inverse: [...restored, ...others.reverse()] };
+  const rest = withKey({ ...document, nodes, edges }, "astrolabe", astrolabe ?? null);
+  inkRestored.sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
+  return {
+    document: rest,
+    inverse: [...unsorted, ...restored, ...inkRestored, ...others.reverse()],
+  };
+}
+
+/** The highest order key among `raws`, or null when none has one. */
+function highestKey(raws: ReadonlyArray<unknown>): string | null {
+  let highest: string | null = null;
+  for (const raw of raws) {
+    const z = canvasOrderKeyOf(raw);
+    if (z !== undefined && (highest === null || z > highest)) highest = z;
+  }
+  return highest;
+}
+
+function withoutOrderKey(raw: Raw): Raw {
+  if (!isRecord(raw.astrolabe) || !("z" in raw.astrolabe)) return raw;
+  const astrolabe = withKey(raw.astrolabe, "z", null);
+  return withKey(raw, "astrolabe", Object.keys(astrolabe).length === 0 ? null : astrolabe);
+}
+
+/**
+ * `nodes` in the order the board stacks them, sections first, with the `reorder` that puts them
+ * back. Null when they're already in it, hold no order key, or have ids a list can't be put back by.
+ */
+function stackedNodes(
+  nodes: ReadonlyArray<unknown>,
+  edges: ReadonlyArray<unknown>,
+  drawings: unknown,
+): { readonly nodes: unknown[]; readonly inverse: CanvasHandEdit } | null {
+  if (!nodes.some((raw) => canvasOrderKeyOf(raw) !== undefined)) return null;
+  const ids = nodes.map((raw) => (isRecord(raw) && typeof raw.id === "string" ? raw.id : ""));
+  if (ids.includes("") || new Set(ids).size !== ids.length) return null;
+  const { sections, content } = canvasStack(canvasData({ nodes, edges, astrolabe: { drawings } }));
+  const rank = new Map<string, number>();
+  for (const node of sections) rank.set(node.id, rank.size);
+  for (const layer of content) if (layer.kind === "card") rank.set(layer.node.id, rank.size);
+  // What this version can't draw stays just after what it followed.
+  let last = -1;
+  const ranks = ids.map((id) => {
+    const known = rank.get(id);
+    if (known === undefined) return last + 0.5;
+    last = known;
+    return known;
+  });
+  const order = ids.map((_, at) => at).sort((a, b) => ranks[a]! - ranks[b]! || a - b);
+  if (order.every((from, at) => from === at)) return null;
+  const moved = order.flatMap((from, at) => (from === at ? [] : [from]));
+  return {
+    nodes: order.map((from) => nodes[from]),
+    inverse: { op: "reorder", cards: moved.map((from) => ids[from]!), at: moved },
+  };
 }
 
 function replay(file: string, source: string, edits: ReadonlyArray<CanvasEdit>, seed: string) {
@@ -511,6 +813,77 @@ function replay(file: string, source: string, edits: ReadonlyArray<CanvasEdit>, 
   const writeArrows = (found: ReadonlyArray<number>, key: string, value: unknown) => {
     for (const position of found) edges[position] = withKey(edges[position] as Raw, key, value);
   };
+  let drawings: unknown[] | null = null;
+  const drawingsNow = () =>
+    (drawings ??= given(isRecord(document.astrolabe) ? document.astrolabe.drawings : undefined));
+  let nodesReordered = false;
+  let drawingsKeyed = false;
+  // Once a board keeps an order, what an agent adds goes on top of it, as a person's does.
+  let top: string | null | undefined;
+  const ordered = (raw: Raw): Raw => {
+    top ??= highestKey([
+      ...nodes.filter((node) => isRecord(node) && node.type !== "group"),
+      ...edges,
+      ...drawingsNow(),
+    ]);
+    if (top === null) return raw;
+    top = canvasOrderKeyBetween(top, null);
+    return { ...raw, ...canvasOrderKeys(raw, top) };
+  };
+  const current = () =>
+    canvasData({
+      nodes: nodes.filter((node) => node !== undefined),
+      edges: edges.filter((edge) => edge !== undefined),
+      astrolabe: { drawings: drawingsNow() },
+    });
+  const order = (edit: Extract<CanvasStructureEdit, { op: "order" }>) => {
+    const places = [edit.layer, edit.above, edit.below].filter((place) => place !== undefined);
+    if (places.length !== 1) {
+      throw new CanvasEditError("An order says one of layer, above or below.");
+    }
+    const picked: CanvasLayerRef[] =
+      edit.card !== undefined
+        ? [{ kind: "card", id: linkable(edit.card) }]
+        : arrowsNamed(edit).flatMap((position) => {
+            const id = (edges[position] as Raw).id;
+            return typeof id === "string" ? [{ kind: "arrow" as const, id }] : [];
+          });
+    const beside = edit.above ?? edit.below;
+    const other = beside === undefined ? undefined : linkable(beside);
+    if (other !== undefined) {
+      const section = (id: string) => nodeOf(id).type === "group";
+      const name = edit.card ?? `${edit.from} -> ${edit.to}`;
+      if (picked.some((ref) => ref.kind === "card" && ref.id === other)) {
+        throw new CanvasEditError(`"${name}" can't go above or below itself.`);
+      }
+      if (picked.some((ref) => (ref.kind === "card" && section(ref.id)) !== section(other))) {
+        throw new CanvasEditError(
+          `"${name}" and "${beside}" can't stack on each other: groups are always beneath cards and arrows.`,
+        );
+      }
+    }
+    const ref = { kind: "card" as const, id: other ?? "" };
+    const move: CanvasOrderMove =
+      edit.layer ?? (edit.above !== undefined ? { above: ref } : { below: ref });
+    for (const change of canvasOrderChanges(current(), picked, move)) {
+      const keyed = (raw: unknown) => ({
+        ...(raw as Raw),
+        ...canvasOrderKeys(raw as Raw, change.z),
+      });
+      if (change.ref.kind === "card") {
+        writeNode(change.ref.id, keyed(nodeOf(change.ref.id)));
+        nodesReordered = true;
+      } else {
+        const list = change.ref.kind === "arrow" ? edges : drawingsNow();
+        const at = list.findIndex((raw) => isRecord(raw) && raw.id === change.ref.id);
+        if (at !== -1) list[at] = keyed(list[at]);
+        if (change.ref.kind === "drawing") drawingsKeyed = true;
+      }
+    }
+    top = undefined;
+  };
+  /** Removed nodes' ids as stored, for the drawn arrows that go with them. */
+  const removed = new Set<unknown>();
   const dropNode = (id: string) => {
     const position = nodeAt.get(id);
     if (position !== undefined) nodes[position] = undefined;
@@ -538,18 +911,20 @@ function replay(file: string, source: string, edits: ReadonlyArray<CanvasEdit>, 
         const size = canvasCardSize({ text });
         newCards.set(id, { id, ...size, in: edit.in, near: edit.near });
         nodeAt.set(id, nodes.length);
-        nodes.push({
-          id,
-          x: 0,
-          y: 0,
-          ...size,
-          ...(text !== undefined
-            ? { type: "text", text }
-            : url !== undefined
-              ? { type: "link", url }
-              : { type: "file", file: path, ...(subpath === undefined ? {} : { subpath }) }),
-          ...(edit.color === undefined ? {} : { color: presetOf(edit.color) }),
-        });
+        nodes.push(
+          ordered({
+            id,
+            x: 0,
+            y: 0,
+            ...size,
+            ...(text !== undefined
+              ? { type: "text", text }
+              : url !== undefined
+                ? { type: "link", url }
+                : { type: "file", file: path, ...(subpath === undefined ? {} : { subpath }) }),
+            ...(edit.color === undefined ? {} : { color: presetOf(edit.color) }),
+          }),
+        );
         return;
       }
       case "group": {
@@ -615,6 +990,7 @@ function replay(file: string, source: string, edits: ReadonlyArray<CanvasEdit>, 
             edges[position] = undefined;
           }
         });
+        removed.add(stored);
         dropNode(id);
         return;
       }
@@ -623,15 +999,18 @@ function replay(file: string, source: string, edits: ReadonlyArray<CanvasEdit>, 
         const to = linkable(edit.to);
         if (from === to) throw new CanvasEditError(`An arrow can't join "${edit.from}" to itself.`);
         newArrows.push({ at: edges.length, from, to });
-        edges.push({
-          id: mint(),
-          fromNode: from,
-          toNode: to,
-          ...(edit.ends === "both" ? { fromEnd: "arrow" } : {}),
-          ...(edit.ends === "none" ? { toEnd: "none" } : {}),
-          ...(edit.color === undefined ? {} : { color: presetOf(edit.color) }),
-          ...(edit.label === undefined ? {} : { label: edit.label }),
-        });
+        edges.push(
+          ordered({
+            id: mint(),
+            fromNode: from,
+            toNode: to,
+            ...(edit.ends === "both" ? { fromEnd: "arrow" } : {}),
+            ...(edit.ends === "none" ? { toEnd: "none" } : {}),
+            ...(edit.color === undefined ? {} : { color: presetOf(edit.color) }),
+            ...(edit.label === undefined ? {} : { label: edit.label }),
+            ...routed(edit.route),
+          }),
+        );
         return;
       }
       case "disconnect": {
@@ -662,6 +1041,9 @@ function replay(file: string, source: string, edits: ReadonlyArray<CanvasEdit>, 
         }
         return;
       }
+      case "order":
+        order(edit);
+        return;
     }
   };
   for (const edit of edits as ReadonlyArray<CanvasStructureEdit>) apply(edit);
@@ -716,11 +1098,28 @@ function replay(file: string, source: string, edits: ReadonlyArray<CanvasEdit>, 
     edges[at] = arrowWithSides(edge, fromSide, toSide);
   }
 
+  // A drawn arrow on a removed card goes with it, as a person's removal takes it.
+  let astrolabe = document.astrolabe;
+  if (isRecord(astrolabe) && (removed.size > 0 || drawingsKeyed)) {
+    const list = drawingsNow();
+    const goes = (raw: unknown) =>
+      isRecord(raw) && [raw.from, raw.to].some((end) => isRecord(end) && removed.has(end.node));
+    const kept = list.filter((raw) => !goes(raw));
+    if (kept.length < list.length || drawingsKeyed) {
+      const next = withKey(astrolabe, "drawings", kept.length === 0 ? null : kept);
+      astrolabe = Object.keys(next).length === 0 ? undefined : next;
+    }
+  }
+  const shown = nodes.filter((node) => node !== undefined);
+  const edgesShown = edges.filter((edge) => edge !== undefined);
+  const drawnNow = isRecord(astrolabe) ? astrolabe.drawings : undefined;
   return {
+    // The serializer leaves out a key whose value is undefined.
     source: serializeCanvas({
       ...document,
-      nodes: nodes.filter((node) => node !== undefined),
-      edges: edges.filter((edge) => edge !== undefined),
+      nodes: (nodesReordered ? stackedNodes(shown, edgesShown, drawnNow)?.nodes : null) ?? shown,
+      edges: edgesShown,
+      astrolabe,
     }),
     cards: Object.fromEntries([...refs].filter(([, id]) => nodeAt.has(id))),
     notes,
@@ -759,4 +1158,426 @@ export function applyCanvasEdits(
     throw new CanvasEditError(`No canvas ${file}: start one with \`create\` first.`);
   }
   return replay(file, source, edits, seed);
+}
+
+/** A change a person makes to a board's stories, by their places as `canvasData` reads them. */
+export type CanvasStoryChange =
+  /** `story` one past the last starts a new story, titled `title`. */
+  | {
+      readonly kind: "add-step";
+      readonly story: number;
+      readonly at: number;
+      readonly step: CanvasStepPick;
+      readonly title?: string;
+    }
+  | {
+      readonly kind: "edit-step";
+      readonly story: number;
+      readonly step: number;
+      readonly label?: string;
+      readonly note?: string;
+    }
+  | {
+      readonly kind: "move-step";
+      readonly story: number;
+      readonly step: number;
+      readonly to: number;
+    }
+  | { readonly kind: "remove-step"; readonly story: number; readonly step: number }
+  /** A new section, `around` the step's cards, which the step then is. */
+  | {
+      readonly kind: "make-section";
+      readonly story: number;
+      readonly step: number;
+      readonly around: CanvasBounds;
+    }
+  | { readonly kind: "rename-story"; readonly story: number; readonly title: string }
+  | { readonly kind: "remove-story"; readonly story: number };
+
+/**
+ * What a new step shows: a group, several (with their cards, for versions that read one), cards
+ * across groups, or a new section `around` cards that sit together, which it then is.
+ */
+export type CanvasStepPick =
+  | { readonly group: string }
+  | { readonly groups: ReadonlyArray<string>; readonly cards: ReadonlyArray<string> }
+  | { readonly cards: ReadonlyArray<string> }
+  | { readonly around: CanvasBounds };
+
+/** Room a section leaves round what it's made around, as the editor's Section does round a selection. */
+const SECTION_PADDING = 20;
+
+/** The box a section made around `rects` takes. */
+function sectionBox(rects: ReadonlyArray<CanvasBounds>): CanvasBounds {
+  const x = Math.min(...rects.map((rect) => rect.x));
+  const y = Math.min(...rects.map((rect) => rect.y));
+  const right = Math.max(...rects.map((rect) => rect.x + rect.width));
+  const bottom = Math.max(...rects.map((rect) => rect.y + rect.height));
+  return {
+    x: x - SECTION_PADDING,
+    y: y - SECTION_PADDING,
+    width: right - x + SECTION_PADDING * 2,
+    height: bottom - y + SECTION_PADDING * 2,
+  };
+}
+
+const overlapping = (a: CanvasBounds, b: CanvasBounds) =>
+  a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+
+/**
+ * Where a new section round `cards` goes, when two or more sit together: their box holds no other
+ * card and crosses no section's edge. Null when they don't.
+ */
+export function canvasSectionAround(
+  data: CanvasData,
+  cards: Iterable<string>,
+): CanvasBounds | null {
+  const ids = new Set(cards);
+  const picked = data.nodes.filter((node) => node.type !== "group" && ids.has(node.id));
+  if (picked.length < 2) return null;
+  const box = sectionBox(picked);
+  const crossed = data.nodes.some((node) =>
+    node.type === "group"
+      ? overlapping(node, box) && !insideGroup(node, box) && !insideGroup(box, node)
+      : !ids.has(node.id) && overlapping(node, box),
+  );
+  return crossed ? null : box;
+}
+
+/** The smallest group holding exactly `cards`, and nothing else. */
+function sectionOf(data: CanvasData, cards: ReadonlySet<string>): CanvasGroupNode | undefined {
+  const loose = data.nodes.filter((node) => node.type !== "group");
+  let found: CanvasGroupNode | undefined;
+  for (const group of data.nodes) {
+    if (group.type !== "group") continue;
+    const inside = loose.filter((node) => insideGroup(group, node));
+    if (inside.length !== cards.size || !inside.every((node) => cards.has(node.id))) continue;
+    if (found === undefined || group.width * group.height < found.width * found.height) {
+      found = group;
+    }
+  }
+  return found;
+}
+
+/**
+ * What a selection makes a step of. Sections alone are those sections. Otherwise its cards, a
+ * picked section bringing those inside it: the section they exactly fill, else a new section round
+ * them when they sit together, else the cards as they are. Nothing for a selection that shows none.
+ */
+export function canvasStepPick(data: CanvasData, picked: Iterable<string>): CanvasStepPick | null {
+  const ids = new Set(picked);
+  const nodes = data.nodes.filter((node) => ids.has(node.id));
+  const groups = nodes.filter((node): node is CanvasGroupNode => node.type === "group");
+  const inside = (node: CanvasNode) =>
+    node.type !== "group" && groups.some((group) => insideGroup(group, node));
+  const [only, ...more] = groups;
+  if (only !== undefined && groups.length === nodes.length) {
+    if (more.length === 0) return { group: only.id };
+    return {
+      groups: groups.map((group) => group.id),
+      cards: data.nodes.filter(inside).map((node) => node.id),
+    };
+  }
+  const cards = new Set(nodes.filter((node) => node.type !== "group").map((node) => node.id));
+  for (const node of data.nodes) if (inside(node)) cards.add(node.id);
+  if (cards.size === 0) return null;
+  const section = sectionOf(data, cards);
+  if (section !== undefined) return { group: section.id };
+  const around = canvasSectionAround(data, cards);
+  return around === null ? { cards: [...cards] } : { around };
+}
+
+/** The places in `list` of the entries `read` keeps, so places as drawn find their raw entry. */
+const shownPlaces = (list: ReadonlyArray<unknown>, read: (raw: unknown) => boolean) =>
+  list.flatMap((raw, place) => (read(raw) ? [place] : []));
+
+const isStory = (raw: unknown) =>
+  canvasData({ astrolabe: { stories: [raw] } }).stories !== undefined;
+const isStep = (raw: unknown) => isStory({ steps: [raw] });
+
+/**
+ * The edits that make `change` to the board `document` holds: a `set-stories`, after the section a
+ * change makes, with its id from `mint`. Whatever a story or step holds that this version doesn't
+ * read stays as the file has it.
+ */
+export function canvasStoryEdit(
+  document: unknown,
+  change: CanvasStoryChange,
+  mint?: () => string,
+): ReadonlyArray<CanvasHandEdit> {
+  const around = change.kind === "make-section" ? change.around : undefined;
+  const made = change.kind === "add-step" && "around" in change.step ? change.step.around : around;
+  if (made === undefined) return [storiesEdit(document, change, undefined)];
+  if (mint === undefined) throw new CanvasEditError("A new section needs an id.");
+  const id = mint();
+  const { x, y, width, height } = made;
+  return [
+    { op: "put-card", node: { id, type: "group", x, y, width, height } },
+    storiesEdit(document, change, id),
+  ];
+}
+
+function storiesEdit(
+  document: unknown,
+  change: CanvasStoryChange,
+  section: string | undefined,
+): CanvasHandEdit {
+  const astrolabe = isRecord(document) && isRecord(document.astrolabe) ? document.astrolabe : {};
+  const stories = given(astrolabe.stories);
+  const storyPlaces = shownPlaces(stories, isStory);
+  const set = (next: unknown[]) => ({ op: "set-stories", stories: next }) as const;
+  const storyAt = storyPlaces[change.story];
+  if (change.kind === "add-step" && storyAt === undefined) {
+    const title = change.title ?? `Story ${storyPlaces.length + 1}`;
+    return set([...stories, { title, steps: [newStep(change.step, section)] }]);
+  }
+  const story = storyAt === undefined ? undefined : stories[storyAt];
+  if (storyAt === undefined || !isRecord(story)) return set(stories);
+  const withStory = (next: Raw | null) =>
+    set(spliced(stories, storyAt, 1, ...(next === null ? [] : [next])));
+  const steps = given(story.steps);
+  const stepPlaces = shownPlaces(steps, isStep);
+  const withSteps = (next: unknown[]) =>
+    withStory(next.some(isStep) ? { ...story, steps: next } : null);
+  switch (change.kind) {
+    case "rename-story":
+      return withStory({ ...story, title: change.title });
+    case "remove-story":
+      return withStory(null);
+    case "add-step": {
+      const before = stepPlaces[change.at] ?? steps.length;
+      return withSteps(spliced(steps, before, 0, newStep(change.step, section)));
+    }
+  }
+  const stepAt = stepPlaces[change.step];
+  const step = stepAt === undefined ? undefined : steps[stepAt];
+  if (stepAt === undefined || !isRecord(step)) return set(stories);
+  switch (change.kind) {
+    case "edit-step": {
+      let next: Raw = step;
+      if (change.note !== undefined) next = withKey(next, "note", change.note);
+      if (change.label !== undefined) {
+        next = withKey(next, "label", change.label.trim() === "" ? null : change.label);
+      }
+      return withSteps(spliced(steps, stepAt, 1, next));
+    }
+    case "remove-step":
+      return withSteps(spliced(steps, stepAt, 1));
+    case "make-section": {
+      if (section === undefined) return set(stories);
+      const { cards: _cards, groups: _groups, ...kept } = step;
+      return withSteps(spliced(steps, stepAt, 1, { ...kept, group: section }));
+    }
+    case "move-step": {
+      const to = stepPlaces[Math.max(0, Math.min(change.to, stepPlaces.length - 1))] ?? stepAt;
+      return withSteps(spliced(spliced(steps, stepAt, 1), to, 0, step));
+    }
+  }
+}
+
+const spliced = (list: ReadonlyArray<unknown>, at: number, remove: number, ...add: unknown[]) => {
+  const next = [...list];
+  next.splice(at, remove, ...add);
+  return next;
+};
+
+const newStep = (pick: CanvasStepPick, section: string | undefined): Raw =>
+  "around" in pick
+    ? { note: "", group: section }
+    : "group" in pick
+      ? { note: "", group: pick.group }
+      : "groups" in pick
+        ? { note: "", groups: [...pick.groups], cards: [...pick.cards] }
+        : { note: "", cards: [...pick.cards] };
+
+/** What an order names: kinds may share an id. A section is a card here, as the file has it. */
+export interface CanvasLayerRef {
+  readonly kind: "card" | "arrow" | "drawing";
+  readonly id: string;
+}
+
+/** Where a pick goes. `above` and `below` name something in the same band. */
+export type CanvasOrderMove =
+  | "forward"
+  | "backward"
+  | "front"
+  | "back"
+  | { readonly above: CanvasLayerRef }
+  | { readonly below: CanvasLayerRef };
+
+/** A new key for one thing. */
+export interface CanvasOrderChange {
+  readonly ref: CanvasLayerRef;
+  readonly z: string;
+}
+
+const refKey = (ref: CanvasLayerRef) => `${ref.kind}:${ref.id}`;
+
+interface StackEntry {
+  readonly ref: CanvasLayerRef;
+  readonly z: string | undefined;
+  readonly bounds: CanvasBounds | undefined;
+}
+
+const touching = (a: CanvasBounds | undefined, b: CanvasBounds | undefined) =>
+  a !== undefined &&
+  b !== undefined &&
+  a.x <= b.x + b.width &&
+  b.x <= a.x + a.width &&
+  a.y <= b.y + b.height &&
+  b.y <= a.y + a.height;
+
+const middleOf = (node: CanvasBounds) => ({
+  x: node.x + node.width / 2,
+  y: node.y + node.height / 2,
+});
+
+/** Roughly what an arrow covers, between its cards' middles: enough to tell what it crosses. */
+function arrowBox(edge: CanvasEdge, nodes: ReadonlyMap<string, CanvasBounds>) {
+  const from = nodes.get(edge.fromNode);
+  const to = nodes.get(edge.toNode);
+  if (from === undefined || to === undefined) return undefined;
+  const [a, b] = [middleOf(from), middleOf(to)];
+  const x = Math.min(a.x, b.x);
+  const y = Math.min(a.y, b.y);
+  return { x, y, width: Math.abs(a.x - b.x), height: Math.abs(a.y - b.y) };
+}
+
+/** `band` with `picked` moved together as `move` says, the rest kept in order; null for no change. */
+function movedBand(
+  band: ReadonlyArray<StackEntry>,
+  picked: ReadonlySet<string>,
+  move: CanvasOrderMove,
+): { readonly next: ReadonlyArray<StackEntry>; readonly moved: ReadonlySet<StackEntry> } | null {
+  const mine = band.filter((entry) => picked.has(refKey(entry.ref)));
+  if (mine.length === 0) return null;
+  const place = new Map(band.map((entry, at) => [entry, at]));
+  const placeOf = (entry: StackEntry) => place.get(entry) ?? 0;
+  let moving = mine;
+  let target: StackEntry | undefined;
+  let above = true;
+  if (move === "forward" || move === "backward") {
+    // One step that shows: past the nearest thing it covers or is covered by, and no further.
+    above = move === "forward";
+    const passes = (entry: StackEntry, own: StackEntry) =>
+      (above ? placeOf(entry) > placeOf(own) : placeOf(entry) < placeOf(own)) &&
+      touching(entry.bounds, own.bounds);
+    const candidates = band.filter(
+      (entry) => !picked.has(refKey(entry.ref)) && mine.some((own) => passes(entry, own)),
+    );
+    target = above ? candidates[0] : candidates[candidates.length - 1];
+    if (target === undefined) return null;
+    const at = placeOf(target);
+    moving = mine.filter((own) => (above ? placeOf(own) < at : placeOf(own) > at));
+  } else if (typeof move === "object") {
+    const ref = "above" in move ? move.above : move.below;
+    above = "above" in move;
+    target = band.find((entry) => refKey(entry.ref) === refKey(ref));
+    if (target === undefined || picked.has(refKey(ref))) return null;
+  }
+  const going = new Set(moving);
+  const rest = band.filter((entry) => !going.has(entry));
+  const at =
+    target === undefined
+      ? move === "back"
+        ? 0
+        : rest.length
+      : rest.indexOf(target) + (above ? 1 : 0);
+  const next = [...rest.slice(0, at), ...moving, ...rest.slice(at)];
+  return next.every((entry, index) => entry === band[index]) ? null : { next, moved: going };
+}
+
+/** Keys for a band now in `next`: between the neighbours of what moved, or all of them anew. */
+function bandKeys(
+  band: ReadonlyArray<StackEntry>,
+  next: ReadonlyArray<StackEntry>,
+  moved: ReadonlySet<StackEntry>,
+): CanvasOrderChange[] {
+  // The first order on a board keys all it holds, as it showed them, which later orders keep.
+  const keyed = band.every(
+    (entry, at) => entry.z !== undefined && (at === 0 || band[at - 1]!.z! < entry.z),
+  );
+  if (!keyed) {
+    const keys = canvasOrderKeysBetween(null, null, next.length);
+    return next.flatMap((entry, at) =>
+      entry.z === keys[at] ? [] : [{ ref: entry.ref, z: keys[at]! }],
+    );
+  }
+  const changes: CanvasOrderChange[] = [];
+  for (let start = 0; start < next.length;) {
+    if (!moved.has(next[start]!)) {
+      start += 1;
+      continue;
+    }
+    let end = start;
+    while (end < next.length && moved.has(next[end]!)) end += 1;
+    const keys = canvasOrderKeysBetween(
+      start === 0 ? null : next[start - 1]!.z!,
+      end === next.length ? null : next[end]!.z!,
+      end - start,
+    );
+    for (let at = start; at < end; at++) changes.push({ ref: next[at]!.ref, z: keys[at - start]! });
+    start = end;
+  }
+  return changes;
+}
+
+/**
+ * The keys that move `picked` as `move` says, each in its own band: a section among sections, the
+ * rest among each other. None for a move that changes nothing.
+ */
+export function canvasOrderChanges(
+  data: Pick<CanvasData, "nodes" | "edges" | "drawings">,
+  picked: ReadonlyArray<CanvasLayerRef>,
+  move: CanvasOrderMove,
+): CanvasOrderChange[] {
+  const stack = canvasStack(data);
+  const nodes = new Map<string, CanvasBounds>(data.nodes.map((node) => [node.id, node]));
+  const wanted = new Set(picked.map(refKey));
+  const sections = stack.sections.map((node): StackEntry => ({
+    ref: { kind: "card", id: node.id },
+    z: node.astrolabe?.z,
+    bounds: node,
+  }));
+  const content = stack.content.map((layer): StackEntry => {
+    const item = canvasLayerOf(layer);
+    const bounds =
+      layer.kind === "card"
+        ? layer.node
+        : layer.kind === "arrow"
+          ? arrowBox(layer.edge, nodes)
+          : canvasInkBounds(layer.ink, nodes);
+    return { ref: { kind: layer.kind, id: item.id }, z: item.astrolabe?.z, bounds };
+  });
+  return [sections, content].flatMap((band) => {
+    const moved = movedBand(band, wanted, move);
+    return moved === null ? [] : bandKeys(band, moved.next, moved.moved);
+  });
+}
+
+/** The hand edits that give each its key, from the file's own JSON so nothing else is touched. */
+export function canvasOrderEdits(
+  document: unknown,
+  changes: ReadonlyArray<CanvasOrderChange>,
+): CanvasHandEdit[] {
+  const file = isRecord(document) ? document : {};
+  const lists = {
+    card: new Map(canvasEntries(file.nodes, "node").map(({ id, raw }) => [id, raw])),
+    arrow: new Map(canvasEntries(file.edges, "edge").map(({ id, raw }) => [id, raw])),
+    drawing: new Map(
+      canvasEntries(isRecord(file.astrolabe) ? file.astrolabe.drawings : undefined, "drawing").map(
+        ({ id, raw }) => [id, raw],
+      ),
+    ),
+  };
+  return changes.flatMap(({ ref, z }): CanvasHandEdit[] => {
+    const raw = lists[ref.kind].get(ref.id);
+    if (raw === undefined) return [];
+    const keys = canvasOrderKeys(raw, z);
+    return ref.kind === "card"
+      ? [{ op: "set-card", card: ref.id, keys }]
+      : ref.kind === "arrow"
+        ? [{ op: "set-arrow", arrow: ref.id, keys }]
+        : [{ op: "set-drawing", drawing: ref.id, keys }];
+  });
 }

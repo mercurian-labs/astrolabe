@@ -15,6 +15,8 @@ const CLI_RUNTIME_EXTERNAL_PREFIXES = [
   "node-addon-api",
   "bufferutil",
   "utf-8-validate",
+  // EPL-2.0: ships as its own unmodified files, with its notices, never folded into our bundle.
+  "elkjs",
 ] as const;
 
 // Match Cursor dependency boundaries so zod does not externalize zod-to-json-schema.

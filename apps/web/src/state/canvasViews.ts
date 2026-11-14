@@ -16,7 +16,12 @@ export const canvasViewsAtom = Atom.family((key: string) => {
     if (thread === null) return last;
     const views = canvasViews(thread.projection.turnItems);
     const same =
-      views.length === last.length && views.every((view, index) => view.id === last[index]?.id);
+      views.length === last.length &&
+      views.every(
+        (view, index) =>
+          view.id === last[index]?.id &&
+          view.recorded?.revision === last[index]?.recorded?.revision,
+      );
     if (!same) last = views;
     return last;
   }).pipe(Atom.withLabel(`web-canvas:views:${key}`));

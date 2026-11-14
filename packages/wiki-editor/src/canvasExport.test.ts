@@ -8,16 +8,17 @@ const data = canvasData({
     { id: "a", type: "text", text: "A", x: -100, y: 0, width: 200, height: 100 },
     { id: "b", type: "text", text: "B", x: 300, y: 200, width: 200, height: 100 },
   ],
+  astrolabe: { drawings: [{ id: "s", type: "stroke", x: 500, y: 300, points: [0, 0, 200, 0] }] },
 });
 
 describe("exporting a board", () => {
   const viewport = { x: 1, y: 2, width: 300, height: 200 };
 
-  it("covers the whole board with room around it, or just the view", () => {
+  it("covers the whole board, drawings too, with room around it, or just the view", () => {
     expect(canvasExportArea(data, viewport, { area: "full" })).toEqual({
       x: -140,
       y: -40,
-      width: 680,
+      width: 880,
       height: 380,
     });
     expect(canvasExportArea(data, viewport, { area: "viewport" })).toEqual(viewport);

@@ -983,6 +983,24 @@
       "name": "iobuffer",
       "license": "MIT",
       "sourceUrl": "https://github.com/image-js/iobuffer"
+    },
+    {
+      "name": "elkjs",
+      "version": "0.12.1",
+      "license": "EPL-2.0",
+      "sourceUrl": "https://github.com/kieler/elkjs/tree/0.12.1",
+      "generatedNotices": [
+        {
+          "licenseId": "EPL-2.0",
+          "copyrights": [
+            "Copyright (c) 2017 Kiel University and others",
+            "Copyright (c) 2021 Kiel University and others"
+          ],
+          "preamble": [
+            "elkjs is the Eclipse Layout Kernel (https://github.com/eclipse-elk/elk) compiled to JavaScript, offered under the Eclipse Public License 2.0 or, as a Secondary License, GPL-3.0-or-later. Astrolabe uses it under the Eclipse Public License 2.0. Astrolabe's server loads it unmodified, as a separate module, only to place the cards of the canvases agents draw; Astrolabe's own code is not a derivative of it and stays under the MIT License. Its source, for the version Astrolabe ships, is at https://github.com/kieler/elkjs/tree/0.12.1."
+          ]
+        }
+      ]
     }
   ]
 }

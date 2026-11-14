@@ -1,6 +1,11 @@
 import "./canvasBoard.css";
 
-import { canvasBounds, type CanvasData } from "@mercurian/wiki/canvas";
+import {
+  canvasBounds,
+  canvasStack,
+  type CanvasData,
+  type CanvasNode,
+} from "@mercurian/wiki/canvas";
 import { useMemo } from "react";
 
 import { canvasEdgeShapes } from "./canvasGeometry";
@@ -8,8 +13,8 @@ import { canvasEdgeShapes } from "./canvasGeometry";
 const PADDING = 24;
 
 /**
- * A canvas as a picture: a shape per card and a line per arrow, with its groups named. Static and
- * cheap, for a note's embed and a nested canvas's card.
+ * A canvas as a picture: a shape per card and a line per arrow, in the order the board stacks
+ * them, with its groups named. Static and cheap, for a note's embed and a nested canvas's card.
  */
 export function CanvasMinimap({
   data,
@@ -18,11 +23,27 @@ export function CanvasMinimap({
   readonly data: CanvasData;
   readonly label: string;
 }) {
-  const { box, shapes } = useMemo(
-    () => ({ box: canvasBounds(data), shapes: canvasEdgeShapes(data) }),
+  const { box, stack, shapes } = useMemo(
+    () => ({
+      box: canvasBounds(data),
+      stack: canvasStack(data),
+      shapes: new Map(canvasEdgeShapes(data).map((shape) => [shape.edge.id, shape])),
+    }),
     [data],
   );
   const size = Math.max(box.width, box.height, 1);
+  const card = (node: CanvasNode) => (
+    <rect
+      key={`card:${node.id}`}
+      className="cv-minimap-card"
+      data-group={node.type === "group" || undefined}
+      x={node.x}
+      y={node.y}
+      width={node.width}
+      height={node.height}
+      rx={size / 200}
+    />
+  );
   return (
     <svg
       className="cv-minimap"
@@ -31,21 +52,14 @@ export function CanvasMinimap({
       viewBox={`${box.x - PADDING} ${box.y - PADDING} ${box.width + PADDING * 2} ${box.height + PADDING * 2}`}
       preserveAspectRatio="xMidYMid meet"
     >
-      {data.nodes.map((node) => (
-        <rect
-          key={node.id}
-          className="cv-minimap-card"
-          data-group={node.type === "group" || undefined}
-          x={node.x}
-          y={node.y}
-          width={node.width}
-          height={node.height}
-          rx={size / 200}
-        />
-      ))}
-      {shapes.map(({ edge, path }) => (
-        <path key={edge.id} className="cv-minimap-edge" d={path} />
-      ))}
+      {stack.sections.map(card)}
+      {stack.content.map((layer) => {
+        if (layer.kind === "card") return card(layer.node);
+        const shape = layer.kind === "arrow" ? shapes.get(layer.edge.id) : undefined;
+        return shape === undefined ? null : (
+          <path key={`arrow:${shape.edge.id}`} className="cv-minimap-edge" d={shape.path} />
+        );
+      })}
       {data.nodes.flatMap((node) =>
         node.type === "group" && node.label !== undefined
           ? [

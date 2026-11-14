@@ -6,6 +6,7 @@
  * @module CanvasKeep
  */
 import {
+  canvasData,
   canvasFile,
   keptCanvasSource,
   placeCanvas,
@@ -18,6 +19,7 @@ import {
   CanvasShowInput,
   CanvasShowResult,
   type RepositoryIdentity,
+  TurnItemId,
   WikiError,
   type WikiKeepCanvasInput,
   type WikiKeepCanvasResult,
@@ -182,19 +184,41 @@ const make = Effect.gen(function* () {
           wikiId: input.wikiId,
         });
       }
-      const item = yield* orchestrator
-        .getTurnItem({ threadId: input.threadId, itemId: input.itemId })
-        .pipe(Effect.mapError((cause) => gone(input, cause)));
-      if (
-        item?.type !== "dynamic_tool" ||
-        item.status !== "completed" ||
-        resolveT3McpToolId(item.toolName) !== CANVAS_SHOW_TOOL_NAME
-      ) {
-        return yield* gone(input);
-      }
-      const drawing = decodeInput(toolArguments(item.input));
-      if (Option.isNone(drawing)) return yield* gone(input);
-      const data = placeCanvas(drawing.value);
+      const read = (itemId: TurnItemId) =>
+        orchestrator
+          .getTurnItem({ threadId: input.threadId, itemId })
+          .pipe(Effect.mapError((cause) => gone(input, cause)));
+      const asked = yield* read(input.itemId);
+      const call =
+        asked?.type === "dynamic_tool" &&
+        asked.status === "completed" &&
+        resolveT3McpToolId(asked.toolName) === CANVAS_SHOW_TOOL_NAME
+          ? asked
+          : undefined;
+      // A call that recorded its board keeps that board, laid out as it was shown.
+      const shown =
+        call === undefined
+          ? undefined
+          : Option.getOrUndefined(decodeResult(toolResultData(call.output) ?? {}));
+      const item =
+        shown?.canvasItemId === undefined
+          ? asked
+          : yield* read(TurnItemId.make(shown.canvasItemId));
+      const board =
+        item?.type === "canvas"
+          ? { title: item.title ?? "Canvas", data: canvasData(item.document), code: item.code }
+          : call === undefined
+            ? undefined
+            : Option.match(decodeInput(toolArguments(call.input)), {
+                onNone: () => undefined,
+                onSome: (drawing) => ({
+                  title: drawing.title,
+                  data: placeCanvas(drawing),
+                  code: shown?.code,
+                }),
+              });
+      if (board === undefined) return yield* gone(input);
+      const { data } = board;
       const codes = data.nodes.flatMap((node) =>
         node.type === "link" && node.astrolabe?.code !== undefined ? [node.astrolabe.code] : [],
       );
@@ -202,8 +226,7 @@ const make = Effect.gen(function* () {
       const pins = new Map<string, CanvasCodePin | Unlinked>();
       const keyOf = ({ path, lines }: Pick<CanvasCodeReference, "path" | "lines">) =>
         JSON.stringify([path, lines ?? null]);
-      const code = Option.getOrUndefined(decodeResult(toolResultData(item.output) ?? {}))?.code;
-      const commit = code?.commit ?? null;
+      const commit = board.code?.commit ?? null;
       const facts = codes.length === 0 ? null : yield* readFacts(input, commit);
       if (facts !== null) {
         for (const each of codes) {
@@ -220,7 +243,7 @@ const make = Effect.gen(function* () {
         `${input.itemId}:${input.name}`,
       );
 
-      const title = `Keep ${drawing.value.title}`;
+      const title = `Keep ${board.title}`;
       const landed = yield* wikis.transform(
         {
           wikiId: input.wikiId,

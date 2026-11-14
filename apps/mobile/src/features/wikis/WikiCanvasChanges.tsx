@@ -85,7 +85,7 @@ export function WikiCanvasChanges({
         keyExtractor={(row) => (row === FOLD ? FOLD : `${row.item}:${row.id}`)}
         ListHeaderComponent={
           <Text className="px-4 py-2 text-xs font-t3-medium text-foreground-muted">
-            {canvasChangeSummary(review.changes)}
+            {canvasChangeSummary(review.changes, review.order)}
           </Text>
         }
         ListFooterComponent={

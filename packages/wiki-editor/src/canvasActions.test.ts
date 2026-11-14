@@ -37,13 +37,13 @@ const { nodes } = canvasData(DOCUMENT);
 
 describe("the clipboard", () => {
   it("takes a group's contents and only the arrows inside what it took", () => {
-    const clip = canvasClip(DOCUMENT, nodes, ["g"]);
+    const clip = canvasClip(DOCUMENT, { nodes }, ["g"]);
     expect(clip.nodes.map((node) => node.id)).toEqual(["g", "a", "b"]);
     expect(clip.edges.map((edge) => edge.id)).toEqual(["ab"]);
   });
 
   it("survives text, unknown keys and all", () => {
-    const clip = canvasClip(DOCUMENT, nodes, ["g"]);
+    const clip = canvasClip(DOCUMENT, { nodes }, ["g"]);
     expect(parseClip(serializeClip(clip))).toEqual(clip);
   });
 
@@ -55,7 +55,7 @@ describe("the clipboard", () => {
   });
 
   it("pastes with new ids, its arrows rejoined, and everything else as it was", () => {
-    const clip = canvasClip(DOCUMENT, nodes, ["g"]);
+    const clip = canvasClip(DOCUMENT, { nodes }, ["g"]);
     const { edits, cards } = placeClip(clip, 1000, 0, mintFrom());
     const { document } = applyCanvasHandEdits(DOCUMENT, edits);
     const pasted = canvasData(document);
@@ -75,7 +75,7 @@ describe("the clipboard", () => {
   });
 
   it("round-trips across boards: an arrow without both ends stays behind", () => {
-    const clip = parseClip(serializeClip(canvasClip(DOCUMENT, nodes, ["a"])))!;
+    const clip = parseClip(serializeClip(canvasClip(DOCUMENT, { nodes }, ["a"])))!;
     const other = { nodes: [], edges: [] };
     const { edits } = pasteClip(clip, { x: 300, y: 300 }, mintFrom());
     const { document } = applyCanvasHandEdits(other, edits);
@@ -83,8 +83,35 @@ describe("the clipboard", () => {
     expect(canvasData(document).nodes[0]).toMatchObject({ x: 260, y: 260, text: "Alpha" });
   });
 
+  it("takes drawings with what they're on, and frees an end on a card left behind", () => {
+    const drawn = {
+      ...DOCUMENT,
+      astrolabe: {
+        drawings: [
+          { id: "inside", type: "stroke", x: 30, y: 200, points: [0, 0, 20, 20] },
+          { id: "on-a", type: "arrow", from: { node: "a", side: "top" }, to: { x: 600, y: 0 } },
+          { id: "to-out", type: "arrow", from: { x: 0, y: 0 }, to: { node: "out", side: "left" } },
+          { id: "away", type: "stroke", x: 900, y: 500, points: [0, 0] },
+        ],
+      },
+    };
+    const clip = parseClip(serializeClip(canvasClip(drawn, canvasData(drawn), ["g"], ["to-out"])))!;
+    expect(clip.drawings.map((ink) => ink.id)).toEqual(["inside", "to-out"]);
+    const { edits, drawings } = placeClip(
+      canvasClip(drawn, canvasData(drawn), ["a"], ["on-a", "to-out"]),
+      100,
+      0,
+      mintFrom(),
+    );
+    const pasted = canvasData(applyCanvasHandEdits(drawn, edits).document).drawings ?? [];
+    expect(pasted.filter((ink) => drawings.includes(ink.id))).toEqual([
+      { id: "new2", type: "arrow", from: { node: "new1", side: "top" }, to: { x: 700, y: 0 } },
+      { id: "new3", type: "arrow", from: { x: 100, y: 0 }, to: { x: 900, y: 50 } },
+    ]);
+  });
+
   it("reads as text outside a board", () => {
-    expect(clipText(canvasClip(DOCUMENT, nodes, ["g"]))).toBe("G\n\nAlpha\n\nB.md");
+    expect(clipText(canvasClip(DOCUMENT, { nodes }, ["g"]))).toBe("G\n\nAlpha\n\nB.md");
   });
 });
 

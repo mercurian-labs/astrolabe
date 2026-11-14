@@ -38,6 +38,7 @@ import {
   respondToThreadApproval,
   respondToThreadUserInput,
   dismissThreadUserInput,
+  editThreadCanvas,
   revertThreadCheckpoint,
   setThreadInteractionMode,
   setThreadRuntimeMode,
@@ -284,6 +285,12 @@ export function createThreadEnvironmentAtoms<R, E>(
     dismissUserInput: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:dismiss-user-input",
       execute: dismissThreadUserInput,
+      scheduler,
+      concurrency,
+    }),
+    editCanvas: createEnvironmentCommand(runtime, {
+      label: "environment-data:commands:thread:edit-canvas",
+      execute: editThreadCanvas,
       scheduler,
       concurrency,
     }),

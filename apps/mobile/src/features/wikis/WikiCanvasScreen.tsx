@@ -686,8 +686,8 @@ export function WikiCanvasScreen({
         <Toolbar placement="right">
           <Toolbar.Menu
             icon="rectangle.3.group"
-            accessibilityLabel="Jump to group"
-            title="Jump to group"
+            accessibilityLabel="Jump to section"
+            title="Jump to section"
           >
             {groups.map((group) => (
               <Toolbar.MenuAction

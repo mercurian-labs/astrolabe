@@ -23,6 +23,7 @@ import type {
   TerminalContextRecord,
   ThreadContextRecord,
   ThreadId,
+  TurnItemId,
   WikiId,
   WikiContextRecord,
   WikiNoteContextRecord,
@@ -352,6 +353,7 @@ export function buildMessageContext(input: {
   wikiContexts?: ReadonlyArray<WikiContextRecord>;
   environmentContexts?: ReadonlyArray<EnvironmentContextRecord>;
   attachments?: ReadonlyArray<BoundComposerAttachment>;
+  omitEditedBoards?: ReadonlyArray<TurnItemId>;
 }): OrchestrationMessageContext | undefined {
   const screenshotAttachmentIds = new Set(
     (input.attachments ?? []).flatMap(({ attachment }) =>
@@ -371,7 +373,11 @@ export function buildMessageContext(input: {
     ),
     ...(input.attachments ?? []).map(attachmentContextRecord),
   ];
-  return records.length === 0 ? undefined : { version: 1, records };
+  const omitEditedBoards = input.omitEditedBoards ?? [];
+  if (records.length === 0 && omitEditedBoards.length === 0) return undefined;
+  return omitEditedBoards.length === 0
+    ? { version: 1, records }
+    : { version: 1, records, omitEditedBoards };
 }
 
 export function asKnownContextRecord(

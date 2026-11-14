@@ -2,7 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import type { CanvasCamera } from "@mercurian/wiki-editor/canvas-geometry";
 import type { WikiEditorCommand, WikiEditorEvent } from "@mercurian/wiki-editor/protocol";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
-import { canvasViewFromToolItem } from "@t3tools/client-runtime/canvasViews";
+import { canvasViewFromItem } from "@t3tools/client-runtime/canvasViews";
 import { EnvironmentId, ThreadId, TurnItemId } from "@t3tools/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { View } from "react-native";
@@ -24,7 +24,7 @@ type ThreadCanvasScreenProps = StaticScreenProps<{
   readonly itemId: string;
 }>;
 
-/** A canvas from a thread, to pan and pinch. It reads the stored call: nothing else holds it. */
+/** A canvas from a thread, to pan and pinch, read from the item that draws it. */
 export function ThreadCanvasScreen({ route }: ThreadCanvasScreenProps) {
   const navigation = useNavigation();
   const { environmentId, threadId, itemId } = route.params;
@@ -35,7 +35,8 @@ export function ThreadCanvasScreen({ route }: ThreadCanvasScreenProps) {
     }),
   );
   const item = detail.data?.item;
-  const view = item?.type === "dynamic_tool" ? canvasViewFromToolItem(item) : undefined;
+  const view =
+    item === undefined || item === null ? undefined : (canvasViewFromItem(item) ?? undefined);
   const theme = useEditorTheme();
   const editor = useRef<WikiEditorHandle>(null);
   const camera = useRef<CanvasCamera | null>(null);

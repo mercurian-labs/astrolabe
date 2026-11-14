@@ -51,6 +51,7 @@ import {
   latestNativeContextUsage,
 } from "@t3tools/provider-core/server/handoffBudget";
 import { deliverContextHandoffs, withInlineContext } from "./ContextHandoffDelivery.ts";
+import { editedCanvasNote } from "./EditedCanvasNote.ts";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProjectionStore from "./ProjectionStore.ts";
@@ -951,9 +952,34 @@ export const layer: Layer.Layer<
           : yield* Effect.cached(
               wikiNoteLinkedSince(lastPrompt.startedAt ?? lastPrompt.requestedAt),
             );
+      // Astrolabe: boards the user changed since the agent's last prompt, as they now stand.
+      const editedBoards =
+        lastPrompt === undefined || isVerbatimPrompt(userText)
+          ? null
+          : yield* projectionStore
+              .getThreadRecords(input.threadId, ["turnItems"], {
+                turnItemTypes: ["canvas"],
+                messageRoles: [],
+              })
+              .pipe(
+                Effect.map(({ turnItems }) =>
+                  editedCanvasNote(
+                    turnItems,
+                    lastPrompt.startedAt ?? lastPrompt.requestedAt,
+                    message.context?.omitEditedBoards,
+                  ),
+                ),
+                Effect.catch((cause) =>
+                  Effect.logWarning("Could not read the boards the user edited.", { cause }).pipe(
+                    Effect.as(null),
+                  ),
+                ),
+              );
       const providerTextFor = (nativeThreadHasTurns: boolean) =>
         (nativeThreadHasTurns ? newlyLinkedWikis : everyLinkedWiki).pipe(
-          Effect.map((note) => (note === null ? userText : `${userText}\n\n${note}`)),
+          Effect.map((note) =>
+            [userText, note, editedBoards].filter((part) => part !== null).join("\n\n"),
+          ),
         );
       const handoffContextForThread = (loadedProviderThread: OrchestrationV2ProviderThread) => {
         const measuredContext = latestNativeContextUsage(projection, providerThread);

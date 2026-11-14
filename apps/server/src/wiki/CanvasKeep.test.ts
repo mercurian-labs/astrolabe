@@ -1,5 +1,5 @@
 import { assert, it } from "@effect/vitest";
-import { parseCanvas, placeCanvas } from "@mercurian/wiki";
+import { canvasDocument, canvasSteps, parseCanvas, placeCanvas } from "@mercurian/wiki";
 import {
   type CanvasShowInput,
   ThreadId,
@@ -43,6 +43,8 @@ const drawing: CanvasShowInput = {
 interface World {
   readonly name?: string;
   readonly item?: unknown;
+  /** Other items of the thread, by id: a call's recorded board. */
+  readonly items?: Readonly<Record<string, unknown>>;
   readonly commit?: string | null;
   readonly identity?: unknown;
   readonly pushed?: string | null;
@@ -69,7 +71,7 @@ const keep = (world: World) => {
     Layer.provide(
       Layer.mergeAll(
         Layer.mock(Orchestrator.OrchestratorV2)({
-          getTurnItem: () => Effect.succeed(item as never),
+          getTurnItem: ({ itemId }) => Effect.succeed((world.items?.[itemId] ?? item) as never),
           getThreadShell: () => Effect.succeed({ projectId: "project-a" } as never),
         }),
         Layer.mock(ProjectService.ProjectService)({
@@ -160,6 +162,98 @@ it.effect("lands a board as a new canvas, at the coordinates the thread showed",
     assert.equal(edges[0].fromNode, nodes[0].id);
     assert.equal(edges[0].toNode, nodes[1].id);
     assert.equal(edges[0].fromSide, shown.edges[0]?.fromSide);
+  }),
+);
+
+it.effect("keeps a recorded board where the thread drew it, even if the layout changed since", () =>
+  Effect.gen(function* () {
+    const recorded = canvasDocument(placeCanvas(drawing));
+    const moved = {
+      ...recorded,
+      nodes: recorded.nodes.map((node) => ({ ...node, x: node.x + 1000 })),
+    };
+    const { result, source } = yield* keep({
+      item: {
+        type: "dynamic_tool",
+        status: "completed",
+        toolName: "mcp__t3-code__astrolabe_canvas_show",
+        input: drawing,
+        output: {
+          structuredContent: { message: "Shown", canvasItemId: "turn-item:canvas:1" },
+        },
+      },
+      items: {
+        "turn-item:canvas:1": {
+          type: "canvas",
+          status: "completed",
+          title: "The merge",
+          document: moved,
+          code: { commit: LOCAL },
+        },
+      },
+    });
+    assert.equal(result.file, "The merge.canvas");
+    assert.deepEqual(
+      JSON.parse(source).nodes.map(({ x }: { readonly x: number }) => x),
+      moved.nodes.map(({ x }) => x),
+    );
+  }),
+);
+
+it.effect("keeps every story, naming its cards by their new ids", () =>
+  Effect.gen(function* () {
+    const walk: CanvasShowInput = {
+      title: "Walk",
+      cards: [
+        { id: "a", text: "Alpha" },
+        { id: "b", text: "Beta" },
+        { id: "c", text: "Gamma" },
+      ],
+      stories: [
+        {
+          title: "Forwards",
+          steps: [
+            { note: "First", cards: ["a"] },
+            { note: "Second", cards: ["b"] },
+            { note: "Back to the start", cards: ["c", "a"] },
+          ],
+        },
+        { title: "Backwards", steps: [{ label: "End", note: "Last", cards: ["c"] }] },
+      ],
+    };
+    const { source } = yield* keep({
+      item: {
+        type: "dynamic_tool",
+        status: "completed",
+        toolName: "mcp__t3-code__astrolabe_canvas_show",
+        input: walk,
+        output: { structuredContent: { message: "Shown" } },
+      },
+    });
+    const parsed = parseCanvas(source);
+    assert.isTrue(parsed.ok);
+    if (!parsed.ok) return;
+    const texts = new Map(
+      parsed.data.nodes.map((node) => [node.id, node.type === "text" ? node.text : ""]),
+    );
+    assert.deepEqual(
+      canvasSteps(parsed.data).map((step) => [
+        step.note,
+        [...step.cards].map((id) => texts.get(id)).toSorted(),
+      ]),
+      [
+        ["First", ["Alpha"]],
+        ["Second", ["Beta"]],
+        ["Back to the start", ["Alpha", "Gamma"]],
+      ],
+    );
+    assert.deepEqual(
+      canvasSteps(parsed.data, 1).map((step) => [
+        step.label,
+        [...step.cards].map((id) => texts.get(id)),
+      ]),
+      [["End", ["Gamma"]]],
+    );
   }),
 );
 

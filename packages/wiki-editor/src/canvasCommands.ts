@@ -1,7 +1,17 @@
-import type { CanvasHandEdit } from "@mercurian/wiki/canvas-edits";
+import {
+  CANVAS_MAX_DRAWINGS,
+  canvasOrderChanges,
+  canvasOrderEdits,
+  type CanvasHandEdit,
+  type CanvasLayerRef,
+  type CanvasOrderMove,
+} from "@mercurian/wiki/canvas-edits";
 import {
   canvasArrowSides,
   canvasCardName,
+  canvasDrawingEntries,
+  canvasEntries,
+  canvasInkBounds,
   type CanvasBounds,
   type CanvasData,
   type CanvasEdge,
@@ -9,6 +19,7 @@ import {
   type CanvasGroupNode,
   type CanvasLinkNode,
   type CanvasNode,
+  type CanvasShape,
 } from "@mercurian/wiki/canvas";
 
 import {
@@ -53,9 +64,28 @@ import {
 } from "./canvasArrange";
 import type { CanvasDocument } from "./canvasDocument";
 import { canvasFileKind, cardFileName, overlaps } from "./canvasGeometry";
-import type { CanvasLooseEnd, CanvasSelection } from "./canvasGestures";
+import { selectedDrawings, type CanvasLooseEnd, type CanvasSelection } from "./canvasGestures";
+import { canvasBendRemoved, canvasStroke, inkMovedWith, movedInk } from "./canvasInk";
+import { canvasPaintKind, type CanvasPaintKind } from "./canvasPaint";
+import { canvasPenKeys, canvasWithPen, type CanvasPen } from "./canvasPen";
 import { baseViewNames, noteBlocks, noteHeadings, noteWithBlockId } from "./canvasNote";
 import type { CanvasView } from "./canvasView";
+
+/** Smaller than this, a drawn box was meant as a click with a wobble. */
+const DRAWN_CARD_LEAST = { width: 100, height: 50 };
+const DRAWN_SECTION_LEAST = { width: 160, height: 100 };
+
+type Size = { readonly width: number; readonly height: number };
+
+const drawnBox = (box: CanvasBounds | null, at: CanvasPoint, size: Size, least: Size) =>
+  box === null
+    ? { ...centeredOn(at, size), ...size }
+    : {
+        x: Math.round(box.x),
+        y: Math.round(box.y),
+        width: Math.round(Math.max(least.width, box.width)),
+        height: Math.round(Math.max(least.height, box.height)),
+      };
 
 /** A board's clipboard for what a system clipboard won't carry, as on a phone's page. */
 let lastClip: { readonly clip: CanvasClip; readonly text: string } | null = null;
@@ -64,7 +94,15 @@ export type CanvasEditing =
   | { readonly kind: "card"; readonly id: string }
   | { readonly kind: "note"; readonly id: string; readonly file: string }
   | { readonly kind: "group"; readonly id: string }
-  | { readonly kind: "arrow"; readonly id: string };
+  | { readonly kind: "arrow"; readonly id: string }
+  /** A drawn arrow's label. */
+  | { readonly kind: "drawing"; readonly id: string };
+
+/** A drawn arrow whose points are being edited, and the bend picked, by its place among them. */
+export interface CanvasPointsEditing {
+  readonly id: string;
+  readonly picked: number | null;
+}
 
 export interface CanvasPickerRequest {
   readonly title: string;
@@ -110,6 +148,8 @@ export interface CanvasCommandAccess {
   readonly select: (selection: CanvasSelection) => void;
   readonly host: () => CanvasEditHost;
   readonly edit: (editing: CanvasEditing | null) => void;
+  /** Edits a drawn arrow's points, with a bend picked by its place among them; null leaves. */
+  readonly editPoints: (id: string | null, picked?: number | null) => void;
   readonly pick: (request: CanvasPickerRequest) => Promise<CanvasPicked | null>;
   readonly prompt: (request: CanvasPromptRequest) => Promise<string | null>;
   readonly notify: (message: string) => void;
@@ -117,6 +157,8 @@ export interface CanvasCommandAccess {
   readonly reread: (file: string) => void;
   readonly element: (id: string) => HTMLElement | null;
   readonly openExport: () => void;
+  /** The style the next thing drawn takes. */
+  readonly pen: () => CanvasPen;
 }
 
 const NOTE_FILE = /\.(md|canvas|base)$/i;
@@ -157,6 +199,12 @@ export class CanvasCommands {
     return this.#board.data().edges.find((edge) => edge.id === id);
   }
 
+  /** The drawings selected, as the board draws them. */
+  get selectedDrawings() {
+    const drawings = selectedDrawings(this.#board.selection());
+    return (this.#board.data().drawings ?? []).filter((ink) => drawings.has(ink.id));
+  }
+
   get selected(): ReadonlyArray<CanvasNode> {
     const { cards } = this.#board.selection();
     return this.#board.data().nodes.filter((node) => cards.has(node.id));
@@ -166,6 +214,12 @@ export class CanvasCommands {
     const { x, y, width, height } = this.#board.view.window();
     return { x: x + width / 2, y: y + height / 2 };
   }
+
+  /** A new item of `kind`, in the style the next thing drawn takes. */
+  readonly styled = <Raw extends Readonly<Record<string, unknown>>>(
+    kind: CanvasPaintKind,
+    raw: Raw,
+  ): Raw => canvasWithPen(kind, raw, this.#board.pen());
 
   #selectOne(id: string) {
     this.#board.select({ cards: new Set([id]), arrow: null });
@@ -187,9 +241,72 @@ export class CanvasCommands {
     if (document === null) return;
     const id = document.mint();
     const at = point === null ? this.#room(TEXT_CARD_SIZE) : centeredOn(point, TEXT_CARD_SIZE);
-    document.commit([{ op: "put-card", node: textCard(id, at) }]);
+    document.commit([{ op: "put-card", node: this.styled("card", textCard(id, at)) }]);
     this.#selectOne(id);
     this.editCard(id);
+  }
+
+  /** Drawn with the Card tool; a click drops one of the usual size centred on `at`. */
+  drawCard(box: CanvasBounds | null, at: CanvasPoint) {
+    const document = this.#document;
+    if (document === null) return;
+    const id = document.mint();
+    const rect = drawnBox(box, at, TEXT_CARD_SIZE, DRAWN_CARD_LEAST);
+    document.commit([
+      { op: "put-card", node: this.styled("card", { ...textCard(id, rect), ...rect }) },
+    ]);
+    this.#selectOne(id);
+    this.editCard(id);
+  }
+
+  /** Drawn with the Section tool: what's wholly inside it is in it, as for any group. */
+  drawSection(box: CanvasBounds | null, at: CanvasPoint) {
+    const document = this.#document;
+    if (document === null) return;
+    const id = document.mint();
+    document.commit([
+      {
+        op: "put-card",
+        node: this.styled(
+          "section",
+          groupCard(id, drawnBox(box, at, FILE_CARD_SIZE, DRAWN_SECTION_LEAST)),
+        ),
+      },
+    ]);
+    this.#selectOne(id);
+    this.#board.edit({ kind: "group", id });
+  }
+
+  /** Drawn with the Shape tool: a text card with an outline, typed in once it's there. */
+  drawShape(shape: CanvasShape, box: CanvasBounds | null, at: CanvasPoint) {
+    const document = this.#document;
+    if (document === null) return;
+    const id = document.mint();
+    const rect = drawnBox(box, at, TEXT_CARD_SIZE, DRAWN_CARD_LEAST);
+    document.commit([
+      {
+        op: "put-card",
+        node: this.styled("shape", { ...textCard(id, rect), ...rect, astrolabe: { shape } }),
+      },
+    ]);
+    this.#selectOne(id);
+    this.editCard(id);
+  }
+
+  /** A Pen stroke as it lifted. The Pen stays in hand, so nothing is selected. */
+  addStroke(points: ReadonlyArray<number>, pressure: ReadonlyArray<number>) {
+    const document = this.#document;
+    if (document === null) return;
+    if ((this.#board.data().drawings?.length ?? 0) >= CANVAS_MAX_DRAWINGS) {
+      this.#board.notify(`A board holds at most ${CANVAS_MAX_DRAWINGS} drawings.`);
+      return;
+    }
+    document.commit([
+      {
+        op: "put-drawing",
+        drawing: this.styled("stroke", canvasStroke(document.mint(), points, pressure)),
+      },
+    ]);
   }
 
   /** From a menu: its top-left at the click. */
@@ -198,7 +315,10 @@ export class CanvasCommands {
     if (document === null) return;
     const id = document.mint();
     document.commit([
-      { op: "put-card", node: textCard(id, { x: Math.round(at.x), y: Math.round(at.y) }) },
+      {
+        op: "put-card",
+        node: this.styled("card", textCard(id, { x: Math.round(at.x), y: Math.round(at.y) })),
+      },
     ]);
     this.#selectOne(id);
     this.editCard(id);
@@ -350,31 +470,91 @@ export class CanvasCommands {
       document.commit([{ op: "remove-arrow", arrow }]);
     } else {
       // A group goes alone: what's in it stays on the board.
-      document.commit(
-        this.selected.map((node): CanvasHandEdit => ({ op: "remove-card", card: node.id })),
-      );
+      document.commit([
+        ...this.selectedDrawings.map((ink): CanvasHandEdit => ({
+          op: "remove-drawing",
+          drawing: ink.id,
+        })),
+        ...this.selected.map((node): CanvasHandEdit => ({ op: "remove-card", card: node.id })),
+      ]);
     }
     this.#board.select({ cards: new Set(), arrow: null });
   }
 
-  setColor(color: string | null) {
+  /** What's selected, cards, sections, arrows and drawings alike, by its kind and file JSON. */
+  get #styleTargets() {
+    const document = this.#document;
+    if (document === null) return [];
+    const { arrow } = this.#board.selection();
+    const file = document.document as { readonly edges?: unknown } | null;
+    if (arrow !== null) {
+      const edge = this.#edge(arrow);
+      const raw = canvasEntries(file?.edges, "edge").find((entry) => entry.id === arrow)?.raw;
+      return edge === undefined || raw === undefined
+        ? []
+        : [{ edit: { op: "set-arrow", arrow } as const, kind: canvasPaintKind(edge), raw }];
+    }
+    const drawn = new Map(canvasDrawingEntries(file).map(({ id, raw }) => [id, raw]));
+    return [
+      ...this.selected.flatMap((node) => {
+        const raw = document.raw(node.id);
+        return raw === undefined
+          ? []
+          : [
+              {
+                edit: { op: "set-card", card: node.id } as const,
+                kind: canvasPaintKind(node),
+                raw,
+              },
+            ];
+      }),
+      ...this.selectedDrawings.flatMap((ink) => {
+        const raw = drawn.get(ink.id);
+        return raw === undefined
+          ? []
+          : [
+              {
+                edit: { op: "set-drawing", drawing: ink.id } as const,
+                kind: canvasPaintKind(ink),
+                raw,
+              },
+            ];
+      }),
+    ];
+  }
+
+  /** Sets part of the style of everything selected, as one step to undo. */
+  setStyle(patch: Partial<CanvasPen>) {
+    const edits = this.#styleTargets.flatMap(({ edit, kind, raw }): CanvasHandEdit[] => {
+      const keys = canvasPenKeys(kind, raw, patch);
+      return Object.keys(keys).length === 0 ? [] : [{ ...edit, keys }];
+    });
+    if (edits.length > 0) this.#document?.commit(edits);
+  }
+
+  /** Moves what's selected in the board's order, sections among sections, as one step to undo. */
+  order(move: CanvasOrderMove) {
     const document = this.#document;
     if (document === null) return;
-    const { arrow } = this.#board.selection();
-    const keys = { color };
-    document.commit(
-      arrow !== null
-        ? [{ op: "set-arrow", arrow, keys }]
-        : this.selected.map((node): CanvasHandEdit => ({ op: "set-card", card: node.id, keys })),
-    );
+    const selection = this.#board.selection();
+    const picked: CanvasLayerRef[] = [
+      ...[...selection.cards].map((id) => ({ kind: "card" as const, id })),
+      ...(selection.arrow === null ? [] : [{ kind: "arrow" as const, id: selection.arrow }]),
+      ...[...selectedDrawings(selection)].map((id) => ({ kind: "drawing" as const, id })),
+    ];
+    const changes = canvasOrderChanges(this.#board.data(), picked, move);
+    const edits = canvasOrderEdits(document.document, changes);
+    if (edits.length > 0) document.commit(edits);
   }
 
   zoomToSelection() {
     const { arrow } = this.#board.selection();
     const { view } = this.#board;
     const { selected } = this;
-    if (selected.length > 0) {
-      view.focus(boundsOfRects(selected));
+    const rects = new Map(this.#board.data().nodes.map((node) => [node.id, node]));
+    const drawn = this.selectedDrawings.flatMap((ink) => canvasInkBounds(ink, rects) ?? []);
+    if (selected.length > 0 || drawn.length > 0) {
+      view.focus(boundsOfRects([...selected, ...drawn]));
       return;
     }
     const edge = arrow === null ? undefined : this.#edge(arrow);
@@ -402,12 +582,26 @@ export class CanvasCommands {
   editSelected() {
     const [only, more] = this.selected;
     const { arrow } = this.#board.selection();
+    const [drawn, another] = this.selectedDrawings;
     if (arrow !== null) {
       this.#board.edit({ kind: "arrow", id: arrow });
+    } else if (only === undefined && drawn?.type === "arrow" && another === undefined) {
+      // An elbow keeps its own route: it has no points but its ends to edit.
+      if (drawn.astrolabe?.style?.route === "elbow")
+        this.#board.edit({ kind: "drawing", id: drawn.id });
+      else this.#board.editPoints(drawn.id);
     } else if (only !== undefined && more === undefined) {
       if (only.type === "group") this.#board.edit({ kind: "group", id: only.id });
       else this.editCard(only.id);
     }
+  }
+
+  /** Takes a bend out of a drawn arrow. */
+  removeBend(id: string, index: number) {
+    const ink = this.#board.data().drawings?.find((each) => each.id === id);
+    if (ink?.type !== "arrow") return;
+    const bends = canvasBendRemoved(ink.bends, index);
+    this.#document?.commit([{ op: "set-drawing", drawing: id, keys: { bends } }]);
   }
 
   /** What Align acts on: a selection, or what's inside a lone group. */
@@ -425,18 +619,30 @@ export class CanvasCommands {
 
   nudge(dx: number, dy: number, large: boolean) {
     const document = this.#document;
-    const { cards } = this.#board.selection();
-    if (document === null || cards.size === 0) return;
+    const selection = this.#board.selection();
+    const { cards } = selection;
+    const picked = selectedDrawings(selection);
+    if (document === null || (cards.size === 0 && picked.size === 0)) return;
     const step = large ? CANVAS_NUDGE_LARGE : CANVAS_NUDGE;
-    const { nodes } = this.#board.data();
+    const { nodes, drawings = [] } = this.#board.data();
     const moved = movedWith(nodes, cards);
+    const carried = new Set([...picked, ...inkMovedWith(nodes, drawings, moved)]);
     document.commit(
-      nodes.flatMap((node): CanvasHandEdit[] =>
-        moved.has(node.id)
-          ? [{ op: "move", card: node.id, x: node.x + dx * step, y: node.y + dy * step }]
-          : [],
-      ),
-      { merge: `nudge:${[...cards].join(",")}` },
+      [
+        ...nodes.flatMap((node): CanvasHandEdit[] =>
+          moved.has(node.id)
+            ? [{ op: "move", card: node.id, x: node.x + dx * step, y: node.y + dy * step }]
+            : [],
+        ),
+        ...drawings.flatMap((ink): CanvasHandEdit[] => {
+          if (!carried.has(ink.id)) return [];
+          const keys = movedInk(ink, dx * step, dy * step);
+          return Object.keys(keys).length === 0
+            ? []
+            : [{ op: "set-drawing", drawing: ink.id, keys }];
+        }),
+      ],
+      { merge: `nudge:${[...cards, ...picked].join(",")}` },
     );
   }
 
@@ -481,17 +687,20 @@ export class CanvasCommands {
   }
 
   selectAll() {
+    const { nodes, drawings = [] } = this.#board.data();
     this.#board.select({
-      cards: new Set(this.#board.data().nodes.map((node) => node.id)),
+      cards: new Set(nodes.map((node) => node.id)),
       arrow: null,
+      drawings: new Set(drawings.map((ink) => ink.id)),
     });
   }
 
   clip(): { readonly clip: CanvasClip; readonly text: string } | null {
-    const { cards } = this.#board.selection();
+    const selection = this.#board.selection();
+    const drawings = selectedDrawings(selection);
     const document = this.#document;
-    if (cards.size === 0 || document === null) return null;
-    const clip = canvasClip(document.document, this.#board.data().nodes, cards);
+    if ((selection.cards.size === 0 && drawings.size === 0) || document === null) return null;
+    const clip = canvasClip(document.document, this.#board.data(), selection.cards, drawings);
     const copied = { clip, text: clipText(clip) };
     lastClip = copied;
     return copied;
@@ -510,9 +719,9 @@ export class CanvasCommands {
   pasteClip(clip: CanvasClip, at: CanvasPoint) {
     const document = this.#document;
     if (document === null) return;
-    const { edits, cards } = pasteClip(clip, at, document.mint);
+    const { edits, cards, drawings } = pasteClip(clip, at, document.mint);
     document.commit(edits);
-    this.#board.select({ cards: new Set(cards), arrow: null });
+    this.#board.select({ cards: new Set(cards), arrow: null, drawings: new Set(drawings) });
   }
 
   /** Whatever was copied, from a menu. */
@@ -543,16 +752,21 @@ export class CanvasCommands {
   /** The cards a duplicate gives: as Alt-drag does, 20 down and across, for a finger or a menu. */
   duplicate() {
     const document = this.#document;
-    const { cards } = this.#board.selection();
-    if (document === null || cards.size === 0) return;
+    const selection = this.#board.selection();
+    const drawings = selectedDrawings(selection);
+    if (document === null || (selection.cards.size === 0 && drawings.size === 0)) return;
     const placed = placeClip(
-      canvasClip(document.document, this.#board.data().nodes, cards),
+      canvasClip(document.document, this.#board.data(), selection.cards, drawings),
       CANVAS_GAP,
       CANVAS_GAP,
       document.mint,
     );
     document.commit(placed.edits);
-    this.#board.select({ cards: new Set(placed.cards), arrow: null });
+    this.#board.select({
+      cards: new Set(placed.cards),
+      arrow: null,
+      drawings: new Set(placed.drawings),
+    });
   }
 
   /** A text card as a note: the same place and size, under a new id, arrows kept. */
@@ -802,10 +1016,13 @@ export class CanvasCommands {
     document.commit([
       {
         op: "put-arrow",
-        edge: arrowBetween(
-          document.mint(),
-          { node: id, side: fromSide },
-          { node: to.id, side: toSide },
+        edge: this.styled(
+          "arrow",
+          arrowBetween(
+            document.mint(),
+            { node: id, side: fromSide },
+            { node: to.id, side: toSide },
+          ),
         ),
       },
     ]);
@@ -861,7 +1078,10 @@ export class CanvasCommands {
     const id = document.mint();
     const side = end.kind === "new" ? end.from.side : end.fixed.side;
     const place = cardAtConnectionDrop(side, at, TEXT_CARD_SIZE);
-    const node = textCard(id, { x: Math.round(place.x), y: Math.round(place.y) });
+    const node = this.styled(
+      "card",
+      textCard(id, { x: Math.round(place.x), y: Math.round(place.y) }),
+    );
     document.commit([{ op: "put-card", node }, this.#loosened(end, id, OPPOSITE_SIDE[side])]);
     this.#selectOne(id);
     this.editCard(id);
@@ -885,7 +1105,10 @@ export class CanvasCommands {
     if (end.kind === "new") {
       return {
         op: "put-arrow",
-        edge: arrowBetween(document?.mint() ?? "", end.from, { node, side: side ?? "left" }),
+        edge: this.styled(
+          "arrow",
+          arrowBetween(document?.mint() ?? "", end.from, { node, side: side ?? "left" }),
+        ),
       };
     }
     return {
