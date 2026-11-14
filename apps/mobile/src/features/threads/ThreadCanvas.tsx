@@ -7,6 +7,8 @@ import {
   canvasLineScale,
   canvasOutline,
   canvasPaint,
+  canvasSketchBox,
+  canvasSketchLine,
   type CanvasPaint,
 } from "@mercurian/wiki-editor/canvas-paint";
 import type { WikiCanvasReference } from "@t3tools/shared/toolOutput";
@@ -125,13 +127,21 @@ function CardShape({
           ? node.file
           : (node.astrolabe?.code?.path.split("/").at(-1) ?? node.url);
   const shape = canvasOutline(node, paint);
+  const sketch = canvasSketchBox(node, paint);
   const outline = {
     ...fillProps(paint, background, subtle),
     ...lineProps(paint, paint.stroke ?? border, lines),
   };
   return (
     <G opacity={paint.opacity}>
-      {shape.kind === "path" ? (
+      {sketch !== undefined ? (
+        <G transform={`translate(${node.x} ${node.y})`}>
+          {sketch.fill === undefined ? null : (
+            <Path d={sketch.fill} {...fillProps(paint, background, subtle)} />
+          )}
+          <Path d={sketch.line} fill="none" {...lineProps(paint, paint.stroke ?? border, lines)} />
+        </G>
+      ) : shape.kind === "path" ? (
         <Path d={shape.d} {...outline} />
       ) : (
         <Rect
@@ -231,7 +241,11 @@ export function ThreadCanvas(props: {
             const color = paint.stroke ?? subtle;
             return (
               <G key={`arrow:${id}`} opacity={paint.opacity}>
-                <Path d={shape.path} fill="none" {...lineProps(paint, color, lines)} />
+                <Path
+                  d={canvasSketchLine(shape.edge, shape.path) ?? shape.path}
+                  fill="none"
+                  {...lineProps(paint, color, lines)}
+                />
                 {shape.heads.map((head) => (
                   <Path key={head} d={head} fill={color} />
                 ))}
@@ -240,12 +254,20 @@ export function ThreadCanvas(props: {
           }
           const shape = inks.get(id);
           if (shape === undefined) return null;
-          const { ink, path, head } = shape;
+          const { ink, path, fill, head } = shape;
           const paint = canvasPaint(ink);
           const color = paint.stroke ?? (ink.type === "stroke" ? foreground : subtle);
           return (
             <G key={`drawing:${id}`} opacity={paint.opacity}>
-              <Path d={path} fill="none" {...lineProps(paint, color, lines)} />
+              {fill === undefined ? (
+                <Path
+                  d={canvasSketchLine(ink, path) ?? path}
+                  fill="none"
+                  {...lineProps(paint, color, lines)}
+                />
+              ) : (
+                <Path d={fill} fill={color} />
+              )}
               {head === undefined ? null : <Path d={head} fill={color} />}
             </G>
           );

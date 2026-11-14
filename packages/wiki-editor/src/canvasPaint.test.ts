@@ -2,7 +2,14 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { CanvasEdge, CanvasInk, CanvasNode, CanvasStyle } from "@mercurian/wiki/canvas";
 
-import { canvasLineScale, canvasOutline, canvasPaint, type CanvasPaint } from "./canvasPaint";
+import {
+  canvasLineScale,
+  canvasOutline,
+  canvasPaint,
+  canvasSketchBox,
+  canvasSketchLine,
+  type CanvasPaint,
+} from "./canvasPaint";
 
 const box = { x: 0, y: 0, width: 200, height: 100 };
 const styled = (style: CanvasStyle) => ({ astrolabe: { style } });
@@ -80,6 +87,13 @@ describe("canvasPaint", () => {
       stroke(styled({ fill: "1" })),
       { fill: { kind: "none" } },
     ],
+    ["a card drawn clean, as it always was", card(), { sloppiness: 0 }],
+    ["a cartoonist's arrow", edge(styled({ sloppiness: 2 })), { sloppiness: 2 }],
+    [
+      "ink with pressure, which is hand-drawn already",
+      stroke({ pressure: [0.5], ...styled({ sloppiness: 2 }) }),
+      { sloppiness: 0 },
+    ],
   ])("paints %s", (_name, item, expected) => {
     expect(canvasPaint(item)).toMatchObject(expected);
   });
@@ -101,5 +115,61 @@ describe("canvasPaint", () => {
     [0.1, 5],
   ])("keeps a line's width at %s zoom to its floor, times %s", (zoom, scale) => {
     expect(canvasLineScale(zoom)).toBe(scale);
+  });
+});
+
+describe("a hand-drawn look", () => {
+  const rough = (more: object = {}) => card({ id: "rough", ...styled({ sloppiness: 1 }), ...more });
+  const line = "M0 0C40 0 60 100 100 100";
+
+  it("draws nothing of its own for a clean item, which keeps its plain outline", () => {
+    expect(canvasSketchBox(card(), canvasPaint(card()))).toBeUndefined();
+    expect(canvasSketchLine(edge(), line)).toBeUndefined();
+  });
+
+  it("draws the same paths for the same item every time, from its id", () => {
+    const first = canvasSketchBox(rough(), canvasPaint(rough()));
+    // A copy of the item, so the board's cache can't be what answers.
+    const again = canvasSketchBox({ ...rough(), width: 201 }, canvasPaint(rough()));
+    const back = canvasSketchBox(rough({ width: 200 }), canvasPaint(rough()));
+    expect(first?.line).toMatch(/^M/);
+    expect(first?.fill).toMatch(/^M/);
+    expect(back).toEqual(first);
+    expect(again?.line).not.toBe(first?.line);
+    expect(canvasSketchBox(rough({ id: "other" }), canvasPaint(rough()))?.line).not.toBe(
+      first?.line,
+    );
+  });
+
+  it("draws a moved card's outline from its corner, so moving it draws nothing anew", () => {
+    const moved = rough({ x: 500, y: 300 });
+    expect(canvasSketchBox(moved, canvasPaint(moved))).toBe(
+      canvasSketchBox(rough(), canvasPaint(rough())),
+    );
+  });
+
+  it("fills nothing for a card with no fill, and roughens more at each level", () => {
+    const empty = rough(styled({ sloppiness: 1, fill: "none" }));
+    expect(canvasSketchBox(empty, canvasPaint(empty))).not.toHaveProperty("fill");
+    const artist = canvasSketchLine(edge(styled({ sloppiness: 1 })), line);
+    const cartoonist = canvasSketchLine(edge(styled({ sloppiness: 2 })), line);
+    expect(artist).toMatch(/^M/);
+    expect(cartoonist).not.toBe(artist);
+  });
+
+  it("draws a stroke's line through its points", () => {
+    const scribble = stroke({
+      x: 10,
+      points: [0, 0, 20, 5, 40, 0, 60, 10],
+      ...styled({ sloppiness: 1 }),
+    });
+    const d = canvasSketchLine(scribble, "M10 0L70 10");
+    const [x, y] = (d ?? "")
+      .split(/[ ,MC]+/)
+      .filter(Boolean)
+      .slice(-2)
+      .map(Number);
+    expect(Math.hypot(x! - 70, y! - 10)).toBeLessThan(3);
+    expect(canvasSketchLine({ ...scribble, x: 11 }, "M11 0L71 10")).not.toBe(d);
   });
 });

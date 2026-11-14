@@ -9,11 +9,13 @@ import type {
   CanvasEdge,
   CanvasInk,
   CanvasNode,
+  CanvasSloppiness,
 } from "@mercurian/wiki/canvas";
 
 import {
   CANVAS_DEFAULT_WIDTH,
   CANVAS_WIDTH_STEPS,
+  canvasIsPressed,
   canvasPaint,
   canvasPaintKind,
   canvasWidthStep,
@@ -30,6 +32,7 @@ export interface CanvasPen {
   readonly dash: CanvasDash | null;
   readonly corners: CanvasCorners | null;
   readonly opacity: number | null;
+  readonly sloppiness: CanvasSloppiness | null;
 }
 
 export type CanvasPenPart = keyof CanvasPen;
@@ -41,6 +44,7 @@ export const CANVAS_DEFAULT_PEN: CanvasPen = {
   dash: null,
   corners: null,
   opacity: null,
+  sloppiness: null,
 };
 
 /** A part the selection doesn't agree on. */
@@ -61,6 +65,11 @@ export const canvasPenApplies = (kind: CanvasPaintKind, part: CanvasPenPart): bo
       ? kind === "card" || kind === "section"
       : true;
 
+/** A stroke drawn with pressure is hand-drawn already, so sloppiness isn't one of its parts. */
+const penAppliesTo = (item: Item, part: CanvasPenPart) =>
+  canvasPenApplies(canvasPaintKind(item), part) &&
+  !(part === "sloppiness" && canvasIsPressed(item));
+
 /** How `item` stands, part by part, with its defaults read as the values they draw as. */
 function penOf(item: Item): Required<{ readonly [Part in CanvasPenPart]: unknown }> {
   const paint = canvasPaint(item);
@@ -73,6 +82,7 @@ function penOf(item: Item): Required<{ readonly [Part in CanvasPenPart]: unknown
     dash: paint.dash,
     corners: style?.corners ?? "round",
     opacity: paint.opacity,
+    sloppiness: paint.sloppiness,
   };
 }
 
@@ -83,6 +93,7 @@ const PARTS: ReadonlyArray<CanvasPenPart> = [
   "dash",
   "corners",
   "opacity",
+  "sloppiness",
 ];
 
 /** A selection as the panel shows it: only the parts something in it has. */
@@ -90,7 +101,7 @@ export function canvasPenOfItems(items: ReadonlyArray<Item>): CanvasPenShown {
   const shown: Record<string, unknown> = {};
   for (const part of PARTS) {
     const values = items
-      .filter((item) => canvasPenApplies(canvasPaintKind(item), part))
+      .filter((item) => penAppliesTo(item, part))
       .map((item) => penOf(item)[part]);
     if (values.length === 0) continue;
     const [first] = values;
@@ -109,6 +120,8 @@ export function canvasPenOfTool(kind: CanvasPaintKind, pen: CanvasPen): CanvasPe
   };
   if (canvasPenApplies(kind, "fill")) shown.fill = pen.fill;
   if (canvasPenApplies(kind, "corners")) shown.corners = pen.corners ?? "round";
+  // The Pen draws with pressure.
+  if (kind !== "stroke") shown.sloppiness = pen.sloppiness ?? 0;
   return shown as CanvasPenShown;
 }
 
@@ -132,6 +145,9 @@ export function canvasPenKeys(
     style.corners = patch.corners === "round" ? null : patch.corners;
   }
   if (patch.opacity !== undefined) style.opacity = patch.opacity === 1 ? null : patch.opacity;
+  if (patch.sloppiness !== undefined && !(kind === "stroke" && Array.isArray(raw.pressure))) {
+    style.sloppiness = patch.sloppiness === 0 ? null : patch.sloppiness;
+  }
   return {
     ...(patch.color === undefined ? {} : { color: patch.color }),
     ...(Object.keys(style).length === 0 ? {} : canvasStyleKeys(raw, style)),

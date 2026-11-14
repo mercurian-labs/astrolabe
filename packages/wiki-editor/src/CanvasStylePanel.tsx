@@ -180,7 +180,7 @@ const Icon = ({ children }: { readonly children: ReactNode }) => (
   </svg>
 );
 
-function OptionRow<Value extends string>({
+function OptionRow<Value extends string | number>({
   name,
   value,
   options,
@@ -218,6 +218,16 @@ const DASHES = [
   ["solid", "Solid", <path key="l" d="M3 10h14" />],
   ["dashed", "Dashed", <path key="l" d="M3 10h14" strokeDasharray="4 3" />],
   ["dotted", "Dotted", <path key="l" d="M3.5 10h13" strokeDasharray="0 3.25" />],
+] as const;
+
+const SLOPPINESS = [
+  [0, "Architect", <path key="l" d="M3 10h14" />],
+  [1, "Artist", <path key="l" d="M3 11c2.5-3 4.5 1 7-1s4.5-2 7 0" />],
+  [
+    2,
+    "Cartoonist",
+    <path key="l" d="M3 12c2-4 3 2 5-1s3-3 4 0 3 1 5-2M3.5 9.5c2 1 4-2 6 0s4 1 7-1" />,
+  ],
 ] as const;
 
 const CORNERS = [
@@ -382,6 +392,14 @@ export function CanvasStylePanel({
               value={value("corners")}
               options={CORNERS}
               onPick={(corners) => onChange({ corners })}
+            />
+          ) : null}
+          {has("sloppiness") ? (
+            <OptionRow
+              name="Sloppiness"
+              value={value("sloppiness")}
+              options={SLOPPINESS}
+              onPick={(sloppiness) => onChange({ sloppiness })}
             />
           ) : null}
           {has("opacity") ? (

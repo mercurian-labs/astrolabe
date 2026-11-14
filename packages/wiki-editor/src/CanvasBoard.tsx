@@ -100,7 +100,10 @@ import { drawCanvasOverview, type CanvasBoardLayer } from "./canvasOverview";
 import {
   CANVAS_WIDTH_STEPS,
   canvasPaint,
+  canvasSketchBox,
+  canvasSketchLine,
   canvasTint,
+  type CanvasSketch,
   type CanvasPaintKind,
   type CanvasPaint as Paint,
 } from "./canvasPaint";
@@ -347,6 +350,18 @@ const BoxLine = ({ paint }: { readonly paint: Paint }) =>
       <rect x="0" y="0" width="100%" height="100%" rx={paint.radius} data-dash={paint.dash} />
     </svg>
   );
+
+/** A hand-drawn card's or section's outline and fill, beneath what it holds. */
+const SketchBox = ({ sketch, paint }: { readonly sketch: CanvasSketch; readonly paint: Paint }) => (
+  <svg className="cv-rough" aria-hidden="true">
+    {sketch.fill === undefined ? null : <path className="cv-rough-fill" d={sketch.fill} />}
+    <path
+      className="cv-rough-line"
+      d={sketch.line}
+      data-dash={paint.dash === "solid" ? undefined : paint.dash}
+    />
+  </svg>
+);
 
 const position = ({ x, y, width, height }: CanvasBounds) => ({
   left: x,
@@ -905,11 +920,13 @@ const CardNode = memo(function CardNode({
   const noteFile =
     editing && node.type === "file" && canvasFileKind(node.file) === "note" ? node.file : null;
   const shape = node.type === "text" ? node.astrolabe?.shape : undefined;
+  const sketch = canvasSketchBox(node, paint);
   return (
     <article
       className="cv-card"
       data-kind={node.type}
       data-shape={shape}
+      data-rough={sketch === undefined ? undefined : ""}
       data-card-id={node.id}
       data-selected={selected || undefined}
       data-mark={mark}
@@ -921,7 +938,9 @@ const CardNode = memo(function CardNode({
       {...painted}
     >
       {node.type === "file" ? <FileCardLabel node={node} /> : null}
-      {shape === undefined ? (
+      {sketch !== undefined ? (
+        <SketchBox sketch={sketch} paint={paint} />
+      ) : shape === undefined ? (
         <BoxLine paint={paint} />
       ) : (
         <ShapeOutline shape={shape} dash={paint.dash} />
@@ -1015,18 +1034,24 @@ const GroupNode = memo(function GroupNode({
   const { host } = useBoard();
   const { paint, props } = paintProps(node);
   const { style, ...painted } = props;
+  const sketch = canvasSketchBox(node, paint);
   // Smaller above larger, and all beneath the cards: their order on the page says so.
   return (
     <div
       className="cv-group"
       data-card-id={node.id}
+      data-rough={sketch === undefined ? undefined : ""}
       data-selected={selected || undefined}
       data-mark={mark}
       data-lit={lit}
       style={{ ...position(node), ...style }}
       {...painted}
     >
-      <BoxLine paint={paint} />
+      {sketch === undefined ? (
+        <BoxLine paint={paint} />
+      ) : (
+        <SketchBox sketch={sketch} paint={paint} />
+      )}
       <MarkBadge mark={mark} />
       <Flash revision={flash} />
       {node.background === undefined
@@ -1170,7 +1195,7 @@ const EdgeNode = memo(function EdgeNode({
         data-lit={lit}
         {...props}
       >
-        <path className="cv-edge-line" d={path} />
+        <path className="cv-edge-line" d={canvasSketchLine(edge, path) ?? path} />
         <path className="cv-edge-hit" d={path} />
         {heads.map((head) => (
           <path key={head} className="cv-edge-head" d={head} />
@@ -1270,7 +1295,7 @@ const InkNode = memo(function InkNode({
   readonly mark: CanvasMark | undefined;
   readonly lit: boolean | undefined;
 }) {
-  const { ink, path, head } = shape;
+  const { ink, path, fill, head } = shape;
   const { props } = paintProps(ink);
   return (
     <LayerSvg bounds={shape.bounds}>
@@ -1281,10 +1306,15 @@ const InkNode = memo(function InkNode({
         data-selected={selected || undefined}
         data-mark={mark}
         data-lit={lit}
+        data-pressed={fill === undefined ? undefined : ""}
         {...props}
       >
         <path className="cv-ink-hit" d={path} />
-        <path className="cv-ink-line" d={path} />
+        {fill === undefined ? (
+          <path className="cv-ink-line" d={canvasSketchLine(ink, path) ?? path} />
+        ) : (
+          <path className="cv-ink-fill" d={fill} />
+        )}
         {head === undefined ? null : <path className="cv-ink-head" d={head} />}
       </g>
     </LayerSvg>
@@ -1964,7 +1994,7 @@ export function CanvasBoard({
         editInkLabel: (id) => setEditing({ kind: "drawing", id }),
         addTextAt: (point) => commands.addTextAt(point),
         tool: () => live.tool,
-        inked: (points) => commands.addStroke(points),
+        inked: (points, pressure) => commands.addStroke(points, pressure),
         drawn: (tool, box, at) => {
           if (tool === "card") commands.drawCard(box, at);
           else if (tool === "shape") commands.drawShape(live.shape, box, at);

@@ -7,16 +7,22 @@ import {
   type CanvasInk,
   type CanvasInkArrow,
   type CanvasInkEnd,
+  type CanvasInkStroke,
   type CanvasNode,
   type CanvasSide,
 } from "@mercurian/wiki/canvas";
+import { getStroke } from "perfect-freehand";
 
 import { containsFully, type CanvasPoint } from "./canvasArrange";
+import { canvasPaint } from "./canvasPaint";
 
 /** What the board draws for a drawing, worked out once per change to it. */
 export interface CanvasInkShape {
   readonly ink: CanvasInk;
+  /** The line through its points, which takes a press. */
   readonly path: string;
+  /** A stroke with pressure: its outline, filled in place of the line. */
+  readonly fill?: string;
   /** An arrow's head, at its `to` end. */
   readonly head?: string;
   readonly labelAt: CanvasPoint;
@@ -39,13 +45,24 @@ const NORMAL: Readonly<Record<CanvasSide, CanvasPoint>> = {
   left: { x: -1, y: 0 },
 };
 
-const distanceToSegment = (p: CanvasPoint, a: CanvasPoint, b: CanvasPoint) => {
+/** A point a pen went through, with its pressure as a third axis so a change of it is kept. */
+interface Inked extends CanvasPoint {
+  readonly z: number;
+}
+
+/** Board units a change of pressure from none to full counts as, beside a point off the line. */
+const PRESSURE_REACH = 10;
+
+const distanceToSegment = (p: Inked, a: Inked, b: Inked) => {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
-  const length = dx * dx + dy * dy;
+  const dz = b.z - a.z;
+  const length = dx * dx + dy * dy + dz * dz;
   const t =
-    length === 0 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / length));
-  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+    length === 0
+      ? 0
+      : Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy + (p.z - a.z) * dz) / length));
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy), p.z - (a.z + t * dz));
 };
 
 const pointsOf = (flat: ReadonlyArray<number>) => {
@@ -55,10 +72,7 @@ const pointsOf = (flat: ReadonlyArray<number>) => {
 };
 
 /** Ramer–Douglas–Peucker, without recursion: a long scribble shouldn't reach the stack's end. */
-function simplified(
-  points: ReadonlyArray<CanvasPoint>,
-  tolerance: number,
-): ReadonlyArray<CanvasPoint> {
+function simplified(points: ReadonlyArray<Inked>, tolerance: number): ReadonlyArray<Inked> {
   if (points.length <= 2) return points;
   const keep = new Uint8Array(points.length);
   keep[0] = 1;
@@ -83,7 +97,7 @@ function simplified(
 }
 
 /** Every so many points, ends kept, when there are more than `most`: simplifying can't be quick. */
-function thinned(points: ReadonlyArray<CanvasPoint>, most: number): ReadonlyArray<CanvasPoint> {
+function thinned<Point>(points: ReadonlyArray<Point>, most: number): ReadonlyArray<Point> {
   if (points.length <= most) return points;
   const every = Math.ceil(points.length / (most - 1));
   const kept = points.filter((_, at) => at % every === 0);
@@ -91,25 +105,97 @@ function thinned(points: ReadonlyArray<CanvasPoint>, most: number): ReadonlyArra
 }
 
 /**
- * A stroke's file entry from the board points a pen went through: simplified, in whole board
- * units, from its first point, and never more points than a stroke may have.
+ * A stroke's file entry from the board points a pen went through, and its pressure at each:
+ * simplified, in whole board units, from its first point, and never more points than a stroke
+ * may have. Pressure is kept to hundredths.
  */
 export function canvasStroke(
   id: string,
   drawn: ReadonlyArray<number>,
-  color?: string,
+  pressure?: ReadonlyArray<number>,
 ): Readonly<Record<string, unknown>> {
+  const points = pointsOf(drawn).map((point, at) => ({
+    ...point,
+    z: (pressure?.[at] ?? 0) * PRESSURE_REACH,
+  }));
   const kept = thinned(
-    simplified(thinned(pointsOf(drawn), CANVAS_MAX_STROKE_POINTS * 8), SIMPLIFY_TOLERANCE),
+    simplified(thinned(points, CANVAS_MAX_STROKE_POINTS * 8), SIMPLIFY_TOLERANCE),
     CANVAS_MAX_STROKE_POINTS,
   );
   const origin = kept[0] ?? { x: 0, y: 0 };
   const x = Math.round(origin.x);
   const y = Math.round(origin.y);
   const flat = kept.flatMap((point) => [Math.round(point.x) - x, Math.round(point.y) - y]);
+  const pressed =
+    pressure === undefined
+      ? undefined
+      : kept.map((point) => Math.round((point.z / PRESSURE_REACH) * 100) / 100);
   // A click is a dot: a line to where it starts, which a round cap draws.
-  if (flat.length === 2) flat.push(0, 0);
-  return { id, type: "stroke", x, y, points: flat, ...(color === undefined ? {} : { color }) };
+  if (flat.length === 2) {
+    flat.push(0, 0);
+    pressed?.push(pressed[0] ?? 0.5);
+  }
+  return { id, type: "stroke", x, y, points: flat, ...(pressed ? { pressure: pressed } : {}) };
+}
+
+/** A pressure stroke's diameter at middling pressure, over its width. */
+const INK_SIZE = 1.75;
+const INK_OPTIONS = { thinning: 0.6, smoothing: 0.5, streamline: 0.2, last: true } as const;
+
+/**
+ * The pressure a mouse or a finger without force presses with, from how far it moved since the
+ * last point: slower is heavier. perfect-freehand's own simulation (MIT), run as the points come.
+ */
+export function canvasSimulatedPressure(previous: number, distance: number, width: number) {
+  const speed = Math.min(1, distance / (width * INK_SIZE * 2));
+  const rest = Math.min(1, 1 - speed);
+  return Math.min(1, previous + (rest - previous) * (speed * 0.275));
+}
+
+/** A closed outline as a path, its corners smoothed by curves through their middles. */
+function outlinePath(outline: ReadonlyArray<ReadonlyArray<number>>): string {
+  const first = outline[0];
+  if (first === undefined) return "";
+  let path = `M${round(first[0]!)} ${round(first[1]!)}`;
+  for (let at = 0; at < outline.length; at++) {
+    const [x0, y0] = outline[at]!;
+    const [x1, y1] = outline[(at + 1) % outline.length]!;
+    path += `Q${round(x0!)} ${round(y0!)} ${round((x0! + x1!) / 2)} ${round((y0! + y1!) / 2)}`;
+  }
+  return `${path}Z`;
+}
+
+/** The outline of ink through board points, each with its pressure, `width` its base size. */
+export function canvasInkPath(
+  x: number,
+  y: number,
+  flat: ReadonlyArray<number>,
+  pressure: ReadonlyArray<number>,
+  width: number,
+): string {
+  const points: number[][] = [];
+  for (let at = 0; at + 1 < flat.length; at += 2) {
+    points.push([flat[at]! + x, flat[at + 1]! + y, pressure[at / 2] ?? 0.5]);
+  }
+  return outlinePath(
+    getStroke(points, { ...INK_OPTIONS, size: width * INK_SIZE, simulatePressure: false }),
+  );
+}
+
+/** By its pressure, which a stroke keeps the same object for until it's drawn again. */
+const inkPaths = new WeakMap<
+  ReadonlyArray<number>,
+  { readonly key: string; readonly path: string }
+>();
+
+function inkPathOf(ink: CanvasInkStroke & { readonly pressure: ReadonlyArray<number> }) {
+  const { width } = canvasPaint(ink);
+  const key = `${ink.x} ${ink.y} ${width} ${ink.points.length}`;
+  const held = inkPaths.get(ink.pressure);
+  if (held?.key === key) return held.path;
+  const path = canvasInkPath(ink.x, ink.y, ink.points, ink.pressure, width);
+  inkPaths.set(ink.pressure, { key, path });
+  return path;
 }
 
 const round = (value: number) => Math.round(value * 10) / 10;
@@ -200,9 +286,11 @@ export function canvasInkShape(ink: CanvasInk, rects: Rects): CanvasInkShape | u
       x: point.x + ink.x,
       y: point.y + ink.y,
     }));
+    const { pressure } = ink;
     return {
       ink,
       path: canvasStrokePath(ink.x, ink.y, ink.points),
+      ...(pressure === undefined ? {} : { fill: inkPathOf({ ...ink, pressure }) }),
       labelAt: points[0] ?? { x: ink.x, y: ink.y },
       bounds: boundsOf(points),
     };

@@ -286,7 +286,7 @@ export class CanvasCommands {
   }
 
   /** A Pen stroke as it lifted. The Pen stays in hand, so nothing is selected. */
-  addStroke(points: ReadonlyArray<number>) {
+  addStroke(points: ReadonlyArray<number>, pressure: ReadonlyArray<number>) {
     const document = this.#document;
     if (document === null) return;
     if ((this.#board.data().drawings?.length ?? 0) >= CANVAS_MAX_DRAWINGS) {
@@ -294,7 +294,10 @@ export class CanvasCommands {
       return;
     }
     document.commit([
-      { op: "put-drawing", drawing: this.styled("stroke", canvasStroke(document.mint(), points)) },
+      {
+        op: "put-drawing",
+        drawing: this.styled("stroke", canvasStroke(document.mint(), points, pressure)),
+      },
     ]);
   }
 

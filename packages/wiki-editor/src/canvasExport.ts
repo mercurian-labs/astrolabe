@@ -18,6 +18,8 @@ import {
   canvasLineScale,
   canvasOutline,
   canvasPaint,
+  canvasSketchBox,
+  canvasSketchLine,
   type CanvasPaint,
   type CanvasPaintFill,
 } from "./canvasPaint";
@@ -95,15 +97,31 @@ function roundedRect(rect: CanvasBounds, radius: number) {
   return path;
 }
 
-/** A card's outline as its paint has it, and the box its text goes in. */
+/** A hand-drawn outline, which `canvasSketchBox` draws from the box's top left. */
+function sketched(d: string | undefined, at: CanvasBounds) {
+  if (d === undefined) return undefined;
+  const path = new Path2D();
+  path.addPath(new Path2D(d), new DOMMatrix().translate(at.x, at.y));
+  return path;
+}
+
+/**
+ * A card's or section's outline as its paint has it: the line it strokes, what it fills, and the
+ * box its text goes in.
+ */
 function outline(node: CanvasNode, paint: CanvasPaint) {
+  const sketch = canvasSketchBox(node, paint);
   const shape = canvasOutline(node, paint);
-  if (shape.kind === "box") return { path: roundedRect(shape, shape.radius), inside: node };
+  const clean = shape.kind === "box" ? roundedRect(shape, shape.radius) : new Path2D(shape.d);
+  const line = sketched(sketch?.line, node) ?? clean;
+  const fill = sketch === undefined ? clean : sketched(sketch.fill, node);
+  if (shape.kind === "box") return { line, fill, inside: node };
   const { x, y, width, height } = node;
   // Where its text goes: the box inside the shape.
   const inset = node.type === "text" && node.astrolabe?.shape === "ellipse" ? 0.146 : 0.25;
   return {
-    path: new Path2D(shape.d),
+    line,
+    fill,
     inside: {
       ...node,
       x: x + width * inset,
@@ -237,7 +255,8 @@ export function drawCanvasExport(
     context.globalAlpha = paint.opacity;
     const tint = paint.stroke ?? colors.muted;
     const path = roundedRect(group, paint.radius);
-    paintFill(context, path, paint.fill, colors);
+    const { line, fill } = outline(group, paint);
+    if (fill !== undefined) paintFill(context, fill, paint.fill, colors);
     const background = group.background === undefined ? undefined : images.get(group.background);
     if (background !== undefined) {
       context.save();
@@ -247,7 +266,7 @@ export function drawCanvasExport(
       context.restore();
     }
     strokeStyle(context, paint, tint, lines);
-    context.stroke(path);
+    context.stroke(line);
     context.setLineDash([]);
     if (group.label !== undefined && !options.privacy) {
       context.fillStyle = colors.muted;
@@ -263,7 +282,7 @@ export function drawCanvasExport(
     context.globalAlpha = paint.opacity;
     strokeStyle(context, paint, tint, lines);
     context.fillStyle = tint;
-    context.stroke(new Path2D(shape.path));
+    context.stroke(new Path2D(canvasSketchLine(shape.edge, shape.path) ?? shape.path));
     context.setLineDash([]);
     for (const head of shape.heads) {
       const tip = new Path2D(head);
@@ -281,10 +300,10 @@ export function drawCanvasExport(
   const drawCard = (node: CanvasNode) => {
     const paint = canvasPaint(node);
     context.globalAlpha = paint.opacity;
-    const { path, inside } = outline(node, paint);
-    paintFill(context, path, paint.fill, colors);
+    const { line, fill, inside } = outline(node, paint);
+    if (fill !== undefined) paintFill(context, fill, paint.fill, colors);
     strokeStyle(context, paint, paint.stroke ?? colors.border, lines);
-    context.stroke(path);
+    context.stroke(line);
     context.setLineDash([]);
     const image = node.type === "file" ? images.get(node.file) : undefined;
     if (image !== undefined) {
@@ -314,7 +333,11 @@ export function drawCanvasExport(
     context.globalAlpha = paint.opacity;
     strokeStyle(context, paint, tint, lines);
     context.fillStyle = tint;
-    context.stroke(new Path2D(shape.path));
+    if (shape.fill === undefined) {
+      context.stroke(new Path2D(canvasSketchLine(ink, shape.path) ?? shape.path));
+    } else {
+      context.fill(new Path2D(shape.fill));
+    }
     context.setLineDash([]);
     if (shape.head !== undefined) context.fill(new Path2D(shape.head));
     if (ink.type === "arrow" && ink.label !== undefined && !options.privacy) {

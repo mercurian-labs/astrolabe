@@ -254,15 +254,67 @@
 .cv-group[style*="--cv-tint"] .cv-box-line {
   stroke: var(--cv-tint);
 }
-:is(.cv-box-line, .cv-shape) [data-dash] {
+:is(.cv-box-line, .cv-shape, .cv-rough) [data-dash] {
   stroke-dasharray: calc(var(--cv-dash-on) * var(--cv-line, 1) * 1px)
     calc(var(--cv-dash-off) * var(--cv-line, 1) * 1px);
 }
-:is(.cv-box-line, .cv-shape) [data-dash="dotted"] {
+:is(.cv-box-line, .cv-shape, .cv-rough) [data-dash="dotted"] {
   stroke-linecap: round;
 }
 .cv-card[data-mark] .cv-box-line,
 .cv-group[data-mark] .cv-box-line {
+  stroke: var(--cv-mark);
+}
+/* A hand-drawn card or section draws its outline and fill beneath its content, not its box's. */
+.cv-card[data-rough],
+.cv-group[data-rough] {
+  background: none;
+  border-color: transparent;
+}
+.cv-rough {
+  position: absolute;
+  top: calc(var(--cv-stroke) * -1);
+  left: calc(var(--cv-stroke) * -1);
+  width: calc(100% + var(--cv-stroke) * 2);
+  height: calc(100% + var(--cv-stroke) * 2);
+  overflow: visible;
+  pointer-events: none;
+}
+.cv-card[data-rough]:not([data-shape]) .cv-card-content {
+  position: relative;
+}
+.cv-rough-fill {
+  fill: var(--background);
+}
+.cv-rough-line {
+  fill: none;
+  stroke: var(--border);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: var(--cv-stroke);
+}
+.cv-card:is([data-color], [style*="--cv-tint"]) .cv-rough-fill {
+  fill: color-mix(in srgb, var(--cv-tint) 10%, var(--background));
+}
+.cv-card:is([data-color], [style*="--cv-tint"]) .cv-rough-line {
+  stroke: color-mix(in srgb, var(--cv-tint) 55%, var(--border));
+}
+.cv-card[data-fill] .cv-rough-fill {
+  fill: color-mix(in srgb, var(--cv-fill) var(--cv-fill-amount), var(--background));
+}
+.cv-group .cv-rough-fill {
+  fill: color-mix(in srgb, var(--cv-tint) 6%, transparent);
+}
+.cv-group .cv-rough-line {
+  stroke: color-mix(in srgb, var(--cv-tint) 40%, transparent);
+}
+.cv-group:is([data-color], [style*="--cv-tint"]) .cv-rough-line {
+  stroke: var(--cv-tint);
+}
+.cv-group[data-fill] .cv-rough-fill {
+  fill: color-mix(in srgb, var(--cv-fill) var(--cv-fill-amount), transparent);
+}
+:is(.cv-card, .cv-group)[data-mark] .cv-rough-line {
   stroke: var(--cv-mark);
 }
 .cv-card-body {
@@ -686,17 +738,19 @@ span.cv-wikilink {
 .cv-ink[style*="--cv-tint"] {
   color: var(--cv-tint);
 }
-.cv-ink-line,
-.cv-ink-draft {
+.cv-ink-line {
   fill: none;
   stroke: currentcolor;
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: var(--cv-stroke);
 }
+/* Ink drawn with pressure is its outline, filled: the line beneath it only takes a press. */
+.cv-ink-fill {
+  fill: currentcolor;
+}
 .cv-ink-draft {
-  --cv-stroke: calc(var(--cv-w, 2.5) * var(--cv-line, 1) * 1px);
-  stroke: var(--foreground);
+  fill: var(--foreground);
 }
 .cv-ink[data-kind="arrow"]:not([data-dash="dotted"]) .cv-ink-line {
   stroke-linecap: butt;
@@ -721,6 +775,10 @@ span.cv-wikilink {
 .cv-board[data-editable] .cv-ink-hit {
   cursor: pointer;
   pointer-events: stroke;
+}
+.cv-board[data-editable] .cv-ink-fill {
+  cursor: pointer;
+  pointer-events: fill;
 }
 .cv-ink[data-selected] .cv-ink-hit {
   stroke: color-mix(in srgb, var(--ring, var(--primary)) 35%, transparent);

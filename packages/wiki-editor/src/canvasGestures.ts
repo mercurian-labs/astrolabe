@@ -35,7 +35,8 @@ import {
 import {
   canvasInkShape,
   canvasInkTouches,
-  canvasStrokePath,
+  canvasInkPath,
+  canvasSimulatedPressure,
   inkArrowEndAt,
   inkMovedWith,
   movedInk,
@@ -122,8 +123,8 @@ export interface CanvasGestureHost {
     box: CanvasBounds | null,
     at: CanvasPoint,
   ) => void;
-  /** A stroke drawn with the Pen: x, y pairs on the board, as the pointer went. */
-  readonly inked: (points: ReadonlyArray<number>) => void;
+  /** A stroke drawn with the Pen: x, y pairs on the board, as the pointer went, and its pressure at each. */
+  readonly inked: (points: ReadonlyArray<number>, pressure: ReadonlyArray<number>) => void;
   readonly editInkLabel: (id: string) => void;
   /** A tool's one gesture is over: the pointer selects again. */
   readonly toolDone: () => void;
@@ -171,7 +172,15 @@ type Session =
       element: HTMLElement | null;
     }
   /** The Pen's line, one path updated as it goes; the board draws nothing new until it lifts. */
-  | { readonly kind: "ink"; readonly points: number[]; draft: SVGPathElement | null }
+  | {
+      readonly kind: "ink";
+      readonly points: number[];
+      readonly pressure: number[];
+      /** The pointer says how hard it presses: a pen, or a finger on a screen that feels force. */
+      readonly pressed: boolean;
+      readonly width: number;
+      draft: SVGPathElement | null;
+    }
   /** The Arrow tool from where there's no card. */
   | { readonly kind: "free-arrow"; readonly from: CanvasPoint; draft: SVGPathElement | null }
   /** A drawn arrow's end, dragged: onto a card it holds there. */
@@ -400,7 +409,19 @@ export class CanvasGestures {
       return { kind: "draw", tool, element: null };
     }
     const at = host.view.toWorld(event.clientX, event.clientY);
-    if (tool === "pen") return { kind: "ink", points: [at.x, at.y], draft: null };
+    if (tool === "pen") {
+      // A pointer that can't feel force reports 0.5 while pressed, and a finger often 0.
+      const pressed =
+        event.pointerType === "pen" || (touch && event.pressure > 0 && event.pressure !== 0.5);
+      return {
+        kind: "ink",
+        points: [at.x, at.y],
+        pressure: [pressed ? event.pressure : 0.5],
+        pressed,
+        width: host.pen().width,
+        draft: null,
+      };
+    }
     if (tool === "arrow") {
       const from = this.#cardAt(at);
       return from === undefined
@@ -572,7 +593,7 @@ export class CanvasGestures {
     press.ctrl = event.ctrlKey;
     press.alt = event.altKey;
     press.shifted = event.shiftKey;
-    if (press.session.kind === "ink") this.#addInk(press.session.points, event);
+    if (press.session.kind === "ink") this.#addInk(press.session, event);
     if (!press.moved) {
       press.moved = Math.hypot(press.x - press.startX, press.y - press.startY) > DRAG_SLOP;
       if (!press.moved) return;
@@ -587,8 +608,9 @@ export class CanvasGestures {
   }
 
   /** Every point the pointer went through, not only the last of each frame. */
-  #addInk(points: number[], event: PointerEvent) {
+  #addInk(session: Extract<Session, { kind: "ink" }>, event: PointerEvent) {
     const { view } = this.#host;
+    const { points, pressure } = session;
     const least = 1 / view.camera.zoom;
     // A synthetic event has none, a real one at least itself.
     const coalesced = event.getCoalescedEvents?.() ?? [];
@@ -596,8 +618,14 @@ export class CanvasGestures {
       const { x, y } = view.toWorld(each.clientX, each.clientY);
       const lastX = points.at(-2) ?? x;
       const lastY = points.at(-1) ?? y;
-      if (points.length > 0 && Math.hypot(x - lastX, y - lastY) < least) continue;
+      const distance = Math.hypot(x - lastX, y - lastY);
+      if (points.length > 0 && distance < least) continue;
       points.push(x, y);
+      pressure.push(
+        session.pressed
+          ? each.pressure
+          : canvasSimulatedPressure(pressure.at(-1) ?? 0.5, distance, session.width),
+      );
     }
   }
 
@@ -758,9 +786,8 @@ export class CanvasGestures {
       case "ink":
         session.draft = this.#newDraft("cv-ink-draft");
         if (session.draft !== null) {
-          const pen = host.pen();
-          session.draft.style.setProperty("--cv-w", String(pen.width));
-          if (pen.color !== undefined) session.draft.style.stroke = pen.color;
+          const { color } = host.pen();
+          if (color !== undefined) session.draft.style.fill = color;
         }
         return;
       case "ink-end": {
@@ -883,7 +910,10 @@ export class CanvasGestures {
         session.draft?.setAttribute("d", canvasDraftPath(session.fixed, session.fixedSide, point));
         return;
       case "ink":
-        session.draft?.setAttribute("d", canvasStrokePath(0, 0, session.points));
+        session.draft?.setAttribute(
+          "d",
+          canvasInkPath(0, 0, session.points, session.pressure, session.width),
+        );
         return;
       case "free-arrow":
         session.draft?.setAttribute(
@@ -1042,7 +1072,7 @@ export class CanvasGestures {
         return;
       case "ink":
         session.draft?.remove();
-        host.inked(session.points);
+        host.inked(session.points, session.pressure);
         return;
       case "free-arrow": {
         this.#abandon(press);

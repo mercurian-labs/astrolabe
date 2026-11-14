@@ -1,13 +1,20 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import type { CanvasEdge, CanvasNode } from "@mercurian/wiki/canvas";
+import type { CanvasEdge, CanvasInk, CanvasNode } from "@mercurian/wiki/canvas";
 
-import { canvasPenKeys, canvasPenOfItems, MIXED } from "./canvasPen";
+import {
+  canvasPenKeys,
+  canvasPenOfItems,
+  canvasPenOfTool,
+  CANVAS_DEFAULT_PEN,
+  MIXED,
+} from "./canvasPen";
 
 const box = { x: 0, y: 0, width: 200, height: 100 };
 const card: CanvasNode = { id: "c", type: "text", text: "", ...box };
 const ellipse: CanvasNode = { ...card, id: "o", astrolabe: { shape: "ellipse" } };
 const arrow: CanvasEdge = { id: "e", fromNode: "a", toNode: "b" };
+const ink: CanvasInk = { id: "s", type: "stroke", x: 0, y: 0, points: [0, 0], pressure: [0.5] };
 
 describe("the style panel's reading", () => {
   it("shows only the rows something selected has, and a mix as neither", () => {
@@ -16,7 +23,18 @@ describe("the style panel's reading", () => {
       width: "medium",
       dash: "solid",
       opacity: 1,
+      sloppiness: 0,
     });
+    // Ink drawn with pressure has no sloppiness, and the Pen draws it.
+    expect(canvasPenOfItems([ink])).not.toHaveProperty("sloppiness");
+    expect(canvasPenOfTool("stroke", CANVAS_DEFAULT_PEN)).not.toHaveProperty("sloppiness");
+    expect(canvasPenOfTool("shape", { ...CANVAS_DEFAULT_PEN, sloppiness: 2 }).sloppiness).toBe(2);
+    expect(
+      canvasPenOfItems([
+        { ...card, astrolabe: { style: { sloppiness: 1 } } },
+        { ...arrow, astrolabe: { style: { sloppiness: 2 } } },
+      ]).sloppiness,
+    ).toBe(MIXED);
     expect(canvasPenOfItems([ellipse, { ...card, color: "1" }])).toMatchObject({
       color: MIXED,
       fill: null,
@@ -39,5 +57,12 @@ describe("the style panel's reading", () => {
       color: "2",
       astrolabe: { shape: "ellipse" },
     });
+    expect(canvasPenKeys("section", {}, { sloppiness: 2 })).toEqual({
+      astrolabe: { style: { sloppiness: 2 } },
+    });
+    expect(
+      canvasPenKeys("card", { astrolabe: { style: { sloppiness: 2 } } }, { sloppiness: 0 }),
+    ).toEqual({ astrolabe: null });
+    expect(canvasPenKeys("stroke", { pressure: [0.5] }, { sloppiness: 2 })).toEqual({});
   });
 });

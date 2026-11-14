@@ -8,8 +8,10 @@ import type {
   CanvasEdge,
   CanvasInk,
   CanvasNode,
+  CanvasSloppiness,
   CanvasStyle,
 } from "@mercurian/wiki/canvas";
+import rough from "roughjs";
 
 import { canvasColor } from "./canvasGeometry";
 
@@ -120,6 +122,8 @@ export interface CanvasPaint {
   readonly cap: "round" | "butt";
   readonly radius: number;
   readonly opacity: number;
+  /** 0 draws clean lines; 1 and 2 draw them by hand, from `canvasSketch`. */
+  readonly sloppiness: CanvasSloppiness;
 }
 
 /** How soft a preset's fill is; a hex fill is what it says. */
@@ -127,6 +131,10 @@ const SOFT_FILL = { box: 0.22, section: 0.14 } as const;
 
 const styleOf = (item: { readonly astrolabe?: { readonly style?: CanvasStyle } }) =>
   item.astrolabe?.style ?? {};
+
+/** Ink drawn with a pen's pressure is hand-drawn already: sloppiness leaves it as it is. */
+export const canvasIsPressed = (item: CanvasNode | CanvasEdge | CanvasInk): boolean =>
+  !("fromNode" in item) && item.type === "stroke" && item.pressure !== undefined;
 
 export function canvasPaintKind(item: CanvasNode | CanvasEdge | CanvasInk): CanvasPaintKind {
   if ("fromNode" in item) return "arrow";
@@ -170,6 +178,7 @@ export function canvasPaint(item: CanvasNode | CanvasEdge | CanvasInk): CanvasPa
     cap: dash === "dotted" || kind === "stroke" ? "round" : "butt",
     radius: box && style.corners === "sharp" ? 0 : box ? CANVAS_CORNER_RADIUS : 0,
     opacity: style.opacity ?? 1,
+    sloppiness: canvasIsPressed(item) ? 0 : (style.sloppiness ?? 0),
   };
 }
 
@@ -192,4 +201,124 @@ export function canvasOutline(node: CanvasNode, paint: CanvasPaint): CanvasOutli
     };
   }
   return { kind: "box", x, y, width, height, radius: paint.radius };
+}
+
+/** What a hand-drawn item draws: lines to stroke, and the inside to fill, as SVG path data. */
+export interface CanvasSketch {
+  readonly line: string;
+  readonly fill?: string;
+}
+
+const generator = rough.generator();
+
+/** Rough's seed is a 31-bit number, and 0 is a random one: an id's hash, so it looks the same everywhere. */
+function seedOf(id: string): number {
+  let hash = 0x811c9dc5;
+  for (let at = 0; at < id.length; at++) {
+    hash ^= id.charCodeAt(at);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 1 || 1;
+}
+
+/** Past this many, the earliest made is forgotten: enough for every item on a big board in view. */
+const MOST_SKETCHES = 6_000;
+const sketches = new Map<string, CanvasSketch>();
+
+function remembered(key: string, make: () => CanvasSketch): CanvasSketch {
+  const held = sketches.get(key);
+  if (held !== undefined) return held;
+  const made = make();
+  if (sketches.size >= MOST_SKETCHES) sketches.delete(sketches.keys().next().value!);
+  sketches.set(key, made);
+  return made;
+}
+
+function roughOptions(id: string, paint: CanvasPaint, small: boolean) {
+  return {
+    seed: seedOf(id),
+    // A small box at full roughness is a scribble: it takes half.
+    roughness: small ? paint.sloppiness / 2 : paint.sloppiness,
+    strokeWidth: paint.width,
+    // A second pass would draw its dashes over each other.
+    disableMultiStroke: paint.dash !== "solid",
+    preserveVertices: paint.sloppiness < 2,
+    fillStyle: "solid",
+  };
+}
+
+const keyOf = (paint: CanvasPaint) =>
+  `${paint.sloppiness}|${paint.dash}|${paint.width}|${paint.radius}|${paint.fill.kind}`;
+
+function drawn(drawable: ReturnType<typeof generator.path>): CanvasSketch {
+  let line = "";
+  let fill: string | undefined;
+  for (const set of drawable.sets) {
+    const d = generator.opsToPath(set, 1);
+    if (set.type === "path") line += d;
+    else if (set.type === "fillPath") fill = (fill ?? "") + d;
+  }
+  return fill === undefined ? { line } : { line, fill };
+}
+
+function roundedBox(width: number, height: number, radius: number) {
+  const r = Math.min(radius, width / 2, height / 2);
+  return `M${r} 0L${width - r} 0Q${width} 0 ${width} ${r}L${width} ${height - r}Q${width} ${height} ${width - r} ${height}L${r} ${height}Q0 ${height} 0 ${height - r}L0 ${r}Q0 0 ${r} 0Z`;
+}
+
+/**
+ * A card's or section's hand-drawn outline, from its top left: moving it draws nothing anew.
+ * None for one drawn clean.
+ */
+export function canvasSketchBox(node: CanvasNode, paint: CanvasPaint): CanvasSketch | undefined {
+  if (paint.sloppiness === 0) return undefined;
+  const { width, height } = node;
+  const shape = node.type === "text" ? node.astrolabe?.shape : undefined;
+  const key = `box|${node.id}|${width}x${height}|${shape ?? ""}|${keyOf(paint)}`;
+  return remembered(key, () => {
+    const options = {
+      ...roughOptions(node.id, paint, Math.min(width, height) < 20 || Math.max(width, height) < 50),
+      ...(paint.fill.kind === "none" ? {} : { fill: "currentColor" }),
+    };
+    if (shape === "ellipse") {
+      return drawn(
+        generator.ellipse(width / 2, height / 2, width, height, { ...options, curveFitting: 1 }),
+      );
+    }
+    if (shape === "diamond") {
+      const corners: Array<[number, number]> = [
+        [width / 2, 0],
+        [width, height / 2],
+        [width / 2, height],
+        [0, height / 2],
+      ];
+      return drawn(generator.polygon(corners, options));
+    }
+    return drawn(
+      paint.radius === 0
+        ? generator.rectangle(0, 0, width, height, options)
+        : generator.path(roundedBox(width, height, paint.radius), options),
+    );
+  });
+}
+
+/**
+ * An arrow's or stroke's hand-drawn line, in board units, for `path`, the line it draws clean.
+ * A stroke's goes through its points. None for one drawn clean.
+ */
+export function canvasSketchLine(item: CanvasEdge | CanvasInk, path: string): string | undefined {
+  const paint = canvasPaint(item);
+  if (paint.sloppiness === 0 || path === "") return undefined;
+  const key = `line|${item.id}|${keyOf(paint)}|${path}`;
+  return remembered(key, () => {
+    const options = roughOptions(item.id, paint, false);
+    if ("fromNode" in item || item.type !== "stroke" || item.points.length < 6) {
+      return drawn(generator.path(path, options));
+    }
+    const points: Array<[number, number]> = [];
+    for (let at = 0; at + 1 < item.points.length; at += 2) {
+      points.push([item.x + item.points[at]!, item.y + item.points[at + 1]!]);
+    }
+    return drawn(generator.curve(points, options));
+  }).line;
 }
