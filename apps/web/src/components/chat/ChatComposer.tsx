@@ -3513,7 +3513,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
 
               {composerAttachmentFileList}
 
-              {!isComposerCollapsedMobile && pendingUserInputs.length === 0 ? (
+              {/* A draft's reserved thread isn't the server's yet: subscribing would mark it deleted. */}
+              {routeKind === "server" &&
+              !isComposerCollapsedMobile &&
+              pendingUserInputs.length === 0 ? (
                 <ComposerEditedBoards threadRef={routeThreadRef} />
               ) : null}
 
