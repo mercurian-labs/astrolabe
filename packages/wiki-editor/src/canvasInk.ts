@@ -96,6 +96,13 @@ function simplified(points: ReadonlyArray<Inked>, tolerance: number): ReadonlyAr
   return points.filter((_, at) => keep[at] === 1);
 }
 
+/** A line through flat board points, less what doesn't bend it by more than `tolerance`. */
+export const canvasSimplified = (flat: ReadonlyArray<number>, tolerance: number): CanvasPoint[] =>
+  simplified(
+    pointsOf(flat).map((point) => ({ ...point, z: 0 })),
+    tolerance,
+  ).map(({ x, y }) => ({ x, y }));
+
 /** Every so many points, ends kept, when there are more than `most`: simplifying can't be quick. */
 function thinned<Point>(points: ReadonlyArray<Point>, most: number): ReadonlyArray<Point> {
   if (points.length <= most) return points;
@@ -182,19 +189,23 @@ export function canvasInkPath(
   );
 }
 
-/** By its pressure, which a stroke keeps the same object for until it's drawn again. */
+/** By its points, which a stroke keeps the same object for until they move or it's scaled. */
 const inkPaths = new WeakMap<
   ReadonlyArray<number>,
-  { readonly key: string; readonly path: string }
+  {
+    readonly key: string;
+    readonly pressure: ReadonlyArray<number>;
+    readonly path: string;
+  }
 >();
 
 function inkPathOf(ink: CanvasInkStroke & { readonly pressure: ReadonlyArray<number> }) {
   const { width } = canvasPaint(ink);
-  const key = `${ink.x} ${ink.y} ${width} ${ink.points.length}`;
-  const held = inkPaths.get(ink.pressure);
-  if (held?.key === key) return held.path;
+  const key = `${ink.x} ${ink.y} ${width}`;
+  const held = inkPaths.get(ink.points);
+  if (held?.key === key && held.pressure === ink.pressure) return held.path;
   const path = canvasInkPath(ink.x, ink.y, ink.points, ink.pressure, width);
-  inkPaths.set(ink.pressure, { key, path });
+  inkPaths.set(ink.points, { key, pressure: ink.pressure, path });
   return path;
 }
 

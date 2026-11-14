@@ -751,6 +751,87 @@ describe("editing a board", () => {
     await vi.waitFor(() => expect(drawings().map((ink) => ink.type)).toEqual(["arrow"]));
   });
 
+  it("scales a card and a stroke together from the selection's box, as one undo", async () => {
+    using _capture = setup();
+    const stroke = { id: "s", type: "stroke", x: 300, y: 0, points: [0, 0, 100, 100] };
+    const canvas = new CanvasDocument({
+      document: { nodes: [text("a", 0, 0)], edges: [], astrolabe: { drawings: [stroke] } },
+      revision: "r0",
+    });
+    await using _screen = await render(<Editing canvas={canvas} />, { router: false });
+    await vi.waitFor(() => expect(element("a")).not.toBeNull());
+    drag(board(), { x: 450, y: 150 }, { x: 440, y: 140 }, { x: 10, y: 10 });
+    const corner = await vi.waitFor(() => {
+      const found = document.querySelector("[data-selection-box] [data-handle='se']");
+      expect(found).not.toBeNull();
+      return found!;
+    });
+    drag(corner, { x: 404, y: 104 }, { x: 420, y: 110 }, { x: 804, y: 204 });
+    await vi.waitFor(() =>
+      expect(nodeIn(canvas, "a")).toMatchObject({ x: 0, y: 0, width: 400, height: 200 }),
+    );
+    expect(canvas.getState().data.drawings?.[0]).toMatchObject({
+      x: 600,
+      y: 0,
+      points: [0, 0, 200, 200],
+    });
+    await userEvent.click(document.querySelector("[aria-label='Undo']")!);
+    await vi.waitFor(() => expect(nodeIn(canvas, "a")).toMatchObject({ width: 200, height: 100 }));
+    expect(canvas.getState().data.drawings?.[0]).toMatchObject(stroke);
+  });
+
+  it("selects what a lasso's loop encloses, and erases drawings it passes over, Alt sparing", async () => {
+    using _capture = setup();
+    const line = (id: string, y: number) => ({
+      id,
+      type: "stroke",
+      x: 100,
+      y,
+      points: [0, 0, 100, 0],
+    });
+    const canvas = new CanvasDocument({
+      document: {
+        nodes: [text("a", 50, 50), text("b", 400, 50)],
+        edges: [],
+        astrolabe: { drawings: [line("s1", 300), line("s2", 400)] },
+      },
+      revision: "r0",
+    });
+    await using screen = await render(<Editing canvas={canvas} />, { router: false });
+    await vi.waitFor(() => expect(element("a")).not.toBeNull());
+    const ink = (id: string) => document.querySelector(`g[data-drawing-id="${id}"]`)!;
+    const drawings = () => (canvas.getState().data.drawings ?? []).map((each) => each.id);
+
+    await userEvent.click(screen.getByLabelText("Lasso (L)"));
+    drag(
+      board(),
+      { x: 20, y: 20 },
+      { x: 300, y: 20 },
+      { x: 300, y: 350 },
+      { x: 20, y: 350 },
+      { x: 22, y: 24 },
+    );
+    await vi.waitFor(() => expect(element("a").hasAttribute("data-selected")).toBe(true));
+    expect(ink("s1").hasAttribute("data-selected")).toBe(true);
+    expect(element("b").hasAttribute("data-selected")).toBe(false);
+    expect(ink("s2").hasAttribute("data-selected")).toBe(false);
+
+    await userEvent.click(screen.getByLabelText("Eraser (X)"));
+    // From on a card, which it leaves alone, across both lines, then back over the second with Alt.
+    fire("pointerdown", element("a"), { x: 150, y: 100 });
+    fire("pointermove", board(), { x: 150, y: 320 });
+    fire("pointermove", board(), { x: 150, y: 420 });
+    expect(ink("s1").hasAttribute("data-erasing")).toBe(true);
+    expect(ink("s2").hasAttribute("data-erasing")).toBe(true);
+    fire("pointermove", board(), { x: 150, y: 380, altKey: true });
+    expect(ink("s2").hasAttribute("data-erasing")).toBe(false);
+    fire("pointerup", board(), { x: 150, y: 380, altKey: true });
+    await vi.waitFor(() => expect(drawings()).toEqual(["s2"]));
+    expect(canvas.getState().data.nodes.map((node) => node.id)).toEqual(["a", "b"]);
+    await userEvent.click(document.querySelector("[aria-label='Undo']")!);
+    await vi.waitFor(() => expect(drawings()).toEqual(["s1", "s2"]));
+  });
+
   it("keeps the Pen in More on a narrow board, and draws with it from there", async () => {
     using _capture = setup();
     const canvas = newCanvas([text("a", 0, 0)]);

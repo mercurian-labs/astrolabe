@@ -340,10 +340,13 @@ export function CanvasPicker({
 const HELP: ReadonlyArray<readonly [string, string]> = [
   ["Hand: drag to pan", "H"],
   ["Select", "V"],
+  ["Lasso: draw a loop round what to select", "L"],
   ["Card: drag or click to add", "C"],
   ["Section: drag around cards", "S"],
   ["Arrow: drag between cards, or anywhere", "A"],
   ["Pen: draw freehand, as often as you like", "D"],
+  ["Eraser: drag over drawings to erase them", "X"],
+  ["Spare from the eraser", "⌥ during its drag"],
   ["Shape: an ellipse or diamond, drag or click", "O"],
   ["Back to Select", "Escape"],
   ["Pan", "Space-drag, or scroll"],
@@ -360,6 +363,8 @@ const HELP: ReadonlyArray<readonly [string, string]> = [
   ["Reach a card", "⌥ arrow key"],
   ["Nudge", "Arrow key, ⇧ for further"],
   ["Resize", "⌘ arrow key, ⇧ for further"],
+  ["Scale several, keeping their shape", "⇧ drag a corner"],
+  ["Scale from the middle", "⌥ drag a corner"],
   ["Edit", "Double-click, or Enter"],
   ["Duplicate", "⌥ drag"],
   ["Hold to an axis", "⇧ drag"],
@@ -495,6 +500,16 @@ const TOOLS: ReadonlyArray<readonly [CanvasTool, string, string, ReadonlyArray<s
       "M11 3h2M11 21h2M3 11v2M21 11v2",
     ],
   ],
+  [
+    "lasso",
+    "Lasso",
+    "L",
+    [
+      "M7 22a5 5 0 0 1-2-4",
+      "M3.3 14A6.8 6.8 0 0 1 2 10c0-4.4 4.5-8 10-8s10 3.6 10 8-4.5 8-10 8a12 12 0 0 1-5-1",
+      "M7 18a2 2 0 1 1-4 0 2 2 0 1 1 4 0",
+    ],
+  ],
   ["arrow", "Arrow", "A", ["M5 19 19 5", "M9 5h10v10"]],
   [
     "pen",
@@ -505,11 +520,23 @@ const TOOLS: ReadonlyArray<readonly [CanvasTool, string, string, ReadonlyArray<s
       "m15 5 4 4",
     ],
   ],
+  [
+    "eraser",
+    "Eraser",
+    "X",
+    [
+      "m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21",
+      "M22 21H7",
+      "m5 11 9 9",
+    ],
+  ],
   ["shape", "Shape", "O", []],
 ];
 
-/** The tools that draw, which can leave a narrow bar; Hand and Select always stay. */
-const DRAW_TOOLS = TOOLS.filter(([kind]) => kind !== "hand" && kind !== "select");
+/** The tools that pick, beside Hand and Select; the rest draw. */
+const PICK_TOOLS: ReadonlySet<CanvasTool> = new Set(["hand", "select", "lasso"]);
+/** The tools that can leave a narrow bar; Hand and Select always stay. */
+const LEAVING_TOOLS = TOOLS.filter(([kind]) => kind !== "hand" && kind !== "select");
 
 const SHAPES: ReadonlyArray<readonly [CanvasShape, string, string]> = [
   ["ellipse", "Ellipse", "M12 5c4.97 0 9 3.13 9 7s-4.03 7-9 7-9-3.13-9-7 4.03-7 9-7z"],
@@ -579,7 +606,9 @@ const OVERFLOW_ORDER = [
   "history",
   "files",
   "step",
+  "lasso",
   "shape",
+  "eraser",
   "pen",
   "arrow",
   "section",
@@ -747,7 +776,10 @@ export function CanvasToolRow({
     { id: "hand", group: "pick" },
     { id: "select", group: "pick" },
     ...(extra ? [{ id: "extra", group: "pick" as const }] : []),
-    ...DRAW_TOOLS.map((each) => ({ id: each[0], group: "draw" as const })),
+    ...LEAVING_TOOLS.map(([kind]) => ({
+      id: kind,
+      group: PICK_TOOLS.has(kind) ? ("pick" as const) : ("draw" as const),
+    })),
     ...(files ? [{ id: "files", group: "files" as const }] : []),
     ...(onStep === undefined ? [] : [{ id: "step", group: "step" as const }]),
     { id: "history", group: "history" },
@@ -930,7 +962,7 @@ export function CanvasToolRow({
 
   const menuItems = (): ReadonlyArray<CanvasMenuEntry> => {
     const groups: Array<ReadonlyArray<CanvasMenuEntry>> = [];
-    const draw = DRAW_TOOLS.filter((each) => hidden.has(each[0])).flatMap(
+    const draw = LEAVING_TOOLS.filter((each) => hidden.has(each[0])).flatMap(
       ([kind, name, key, strokes]): ReadonlyArray<CanvasMenuEntry> =>
         kind === "shape"
           ? SHAPES.map(([each, label, d]) => ({

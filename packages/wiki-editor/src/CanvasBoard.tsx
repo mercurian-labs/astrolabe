@@ -114,6 +114,7 @@ import { CanvasMinimap } from "./CanvasMinimap";
 import { arrowMenu, boardMenu, cardMenu, readOnlyMenu, selectionMenu } from "./canvasMenus";
 import { noteSection } from "./canvasNote";
 import { BatchedReads } from "./canvasReads";
+import { canvasSelectionBounds } from "./canvasSelect";
 import { CanvasView } from "./canvasView";
 
 /** A file a board asked for, as the wiki holds it at the commit shown. */
@@ -848,6 +849,16 @@ const SelectionFrame = memo(function SelectionFrame({
     </div>
   );
 });
+
+/**
+ * The box round several things selected, or any drawing: its handles scale all of it. Like the
+ * one card's frame, only the handles take a press.
+ */
+const SelectionBox = ({ bounds }: { readonly bounds: CanvasBounds }) => (
+  <div className="cv-selection-frame" data-selection-box style={position(bounds)}>
+    <Handles />
+  </div>
+);
 
 /** A shaped card's outline, stretched to its box with the line's width kept. */
 const ShapeOutline = ({
@@ -2611,6 +2622,16 @@ export function CanvasBoard({
 
   const [lone] = selection.cards;
   const single = selection.cards.size === 1 ? layout.byId.get(lone ?? "") : undefined;
+  const boxBounds =
+    editable && editing === null && (selection.cards.size > 1 || drawingsSelected.size > 0)
+      ? canvasSelectionBounds(
+          [...selection.cards].flatMap((id) => layout.byId.get(id) ?? []),
+          layout.inks.flatMap((shape) => (drawingsSelected.has(shape.ink.id) ? shape.ink : [])),
+          layout.byId,
+        )
+      : undefined;
+  // With the box round it all, the one card's own handles would scale it alone.
+  const framed = boxBounds === undefined ? single : undefined;
   const hasSelection =
     selection.cards.size > 0 || selection.arrow !== null || drawingsSelected.size > 0;
   const selectedEdge =
@@ -2776,7 +2797,7 @@ export function CanvasBoard({
               key={node.id}
               node={node}
               selected={selection.cards.has(node.id)}
-              alone={single === node}
+              alone={framed === node}
               mark={marks.cards[node.id]}
               flash={flash?.cards.has(node.id) ? flash.revision : undefined}
               editing={editing?.kind === "group" && editing.id === node.id}
@@ -2811,7 +2832,7 @@ export function CanvasBoard({
                   key={`card:${node.id}`}
                   node={node}
                   selected={selection.cards.has(node.id)}
-                  alone={single === node}
+                  alone={framed === node}
                   simple={shown.simple}
                   mark={marks.cards[node.id]}
                   flash={flash?.cards.has(node.id) ? flash.revision : undefined}
@@ -2887,9 +2908,10 @@ export function CanvasBoard({
               onDone={(text) => finishInkLabel(editedInk.ink.id, text)}
             />
           ) : null}
-          {editable && single !== undefined && single.type !== "group" && editing === null ? (
-            <SelectionFrame node={single} />
+          {editable && framed !== undefined && framed.type !== "group" && editing === null ? (
+            <SelectionFrame node={framed} />
           ) : null}
+          {boxBounds === undefined ? null : <SelectionBox bounds={boxBounds} />}
         </div>
       </Board.Provider>
       <canvas ref={overviewRef} className="cv-overview" hidden={shown !== OVERVIEW} />

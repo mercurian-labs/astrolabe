@@ -959,6 +959,18 @@ span.cv-wikilink {
 .cv-selection-frame > * {
   pointer-events: auto;
 }
+/* Round several things, or a drawing: dashed, with its corners shown, since nothing else is. */
+.cv-selection-frame[data-selection-box] {
+  outline-style: dashed;
+  outline-width: calc(1px * var(--cv-ui, 1));
+}
+.cv-selection-frame[data-selection-box]
+  > .cv-handle:is([data-handle="nw"], [data-handle="ne"], [data-handle="se"], [data-handle="sw"]) {
+  box-sizing: border-box;
+  background: var(--background);
+  border: calc(1.5px * var(--cv-ui, 1)) solid var(--ring, var(--primary));
+  border-radius: calc(2px * var(--cv-ui, 1));
+}
 .cv-card-editor {
   box-sizing: border-box;
   width: 100%;
@@ -1133,6 +1145,26 @@ textarea.cv-label-editor {
   stroke-width: calc(2px * var(--cv-ui, 1));
   stroke-dasharray: calc(6px * var(--cv-ui, 1));
 }
+/* The Lasso's loop, and the Eraser's trail behind the pointer. */
+.cv-lasso {
+  fill: color-mix(in srgb, var(--ring, var(--primary)) 8%, transparent);
+  stroke: var(--ring, var(--primary));
+  stroke-width: calc(1.5px * var(--cv-ui, 1));
+  stroke-dasharray: calc(4px * var(--cv-ui, 1));
+  stroke-linejoin: round;
+}
+.cv-eraser-trail {
+  fill: none;
+  stroke: color-mix(in srgb, var(--foreground) 25%, transparent);
+  stroke-width: calc(6px * var(--cv-ui, 1));
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* What the Eraser has touched, until it lifts. */
+.cv-ink[data-erasing],
+[data-drawing-label][data-erasing] {
+  opacity: 0.2;
+}
 .cv-marquee {
   position: absolute;
   pointer-events: none;
@@ -1157,6 +1189,8 @@ textarea.cv-label-editor {
   [data-tool="section"],
   [data-tool="arrow"],
   [data-tool="pen"],
+  [data-tool="eraser"],
+  [data-tool="lasso"],
   [data-tool="shape"]
 ),
 .cv-board:is(
@@ -1164,6 +1198,8 @@ textarea.cv-label-editor {
     [data-tool="section"],
     [data-tool="arrow"],
     [data-tool="pen"],
+    [data-tool="eraser"],
+    [data-tool="lasso"],
     [data-tool="shape"]
   )
   .cv-world

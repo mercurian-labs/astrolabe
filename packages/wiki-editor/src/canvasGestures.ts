@@ -36,12 +36,24 @@ import {
   canvasInkShape,
   canvasInkTouches,
   canvasInkPath,
+  canvasSimplified,
   canvasSimulatedPressure,
   inkArrowEndAt,
   inkMovedWith,
   movedInk,
   type CanvasInkShape,
 } from "./canvasInk";
+import {
+  canvasEraserTouches,
+  canvasLassoPick,
+  canvasScaledBox,
+  canvasScaledInk,
+  canvasScaleEdits,
+  canvasScaleFor,
+  canvasScaleLeast,
+  canvasSelectionBounds,
+  type CanvasScale,
+} from "./canvasSelect";
 import type { CanvasView } from "./canvasView";
 
 /** Between 3 and 5 pixels in Obsidian. */
@@ -68,10 +80,24 @@ export const selectedDrawings = (selection: CanvasSelection): ReadonlySet<string
   selection.drawings ?? NO_DRAWINGS;
 
 /** What a plain drag on an editable board does. Space-drag pans in every one. */
-export type CanvasTool = "hand" | "select" | "card" | "section" | "arrow" | "pen" | "shape";
+export type CanvasTool =
+  | "hand"
+  | "select"
+  | "lasso"
+  | "card"
+  | "section"
+  | "arrow"
+  | "pen"
+  | "eraser"
+  | "shape";
 
 /** A press this near an arrow's end, on screen, takes that end. */
 const END_REACH = 10;
+/** How near the eraser's path a line's edge must come, on screen: a finger is wider. */
+const ERASER_REACH = 5;
+const ERASER_REACH_TOUCH = 10;
+/** The eraser's trail behind the pointer, in points. */
+const ERASER_TRAIL = 12;
 
 /** A line dropped where there's no card: the host asks what to do with it. */
 export type CanvasLooseEnd =
@@ -237,6 +263,40 @@ type Session =
       draft: SVGPathElement | null;
       hidden: HTMLElement | SVGElement | null;
     }
+  /** The box round several things, or a drawing, dragged by a handle: all of it scales. */
+  | {
+      readonly kind: "scale";
+      readonly handle: CanvasHandle;
+      readonly box: CanvasBounds;
+      readonly nodes: ReadonlyArray<CanvasNode>;
+      readonly drawings: ReadonlyArray<CanvasInk>;
+      readonly rects: ReadonlyMap<string, CanvasBounds>;
+      readonly least: CanvasPoint;
+      elements: ReadonlyArray<MovedElement>;
+      inks: ReadonlyArray<InkElement>;
+      followers: Followers;
+      frame: HTMLElement | null;
+      /** What the gesture redraws, as it was: put back unless the document changes it. */
+      restore: () => void;
+      scale: CanvasScale | null;
+    }
+  /** A loop drawn with the Lasso: what it encloses is selected when it lifts. */
+  | {
+      readonly kind: "lasso";
+      readonly points: number[];
+      readonly additive: boolean;
+      draft: SVGPathElement | null;
+    }
+  /** The Eraser's drag: what it touches fades, and goes when it lifts. */
+  | {
+      readonly kind: "erase";
+      readonly marked: Set<string>;
+      readonly rects: ReadonlyMap<string, CanvasBounds>;
+      readonly reach: number;
+      readonly trail: number[];
+      last: CanvasPoint;
+      draft: SVGPathElement | null;
+    }
   | { readonly kind: "none" };
 
 interface Press {
@@ -387,7 +447,8 @@ export class CanvasGestures {
     if (press.session.kind === "pan") {
       host.view.press(event.pointerId, event.clientX, event.clientY);
     }
-    if (touch && !["resize", "connect", "draw", "ink", "free-arrow"].includes(press.session.kind)) {
+    const held = ["resize", "scale", "connect", "draw", "ink", "free-arrow", "lasso", "erase"];
+    if (touch && !held.includes(press.session.kind)) {
       this.#longPress = setTimeout(() => this.#openMenuFromPress(), LONG_PRESS_MS);
     }
   }
@@ -422,6 +483,23 @@ export class CanvasGestures {
         draft: null,
       };
     }
+    if (tool === "eraser") {
+      const reach = (touch ? ERASER_REACH_TOUCH : ERASER_REACH) / host.view.camera.zoom;
+      const session: Extract<Session, { kind: "erase" }> = {
+        kind: "erase",
+        marked: new Set(),
+        rects: new Map(host.data().nodes.map((node) => [node.id, node])),
+        reach,
+        trail: [at.x, at.y],
+        last: at,
+        draft: null,
+      };
+      this.#erase(session, at, event.altKey);
+      return session;
+    }
+    if (tool === "lasso" && !wasSelected && handleOf(target) === null) {
+      return { kind: "lasso", points: [at.x, at.y], additive: event.shiftKey, draft: null };
+    }
     if (tool === "arrow") {
       const from = this.#cardAt(at);
       return from === undefined
@@ -430,6 +508,10 @@ export class CanvasGestures {
     }
 
     const handle = handleOf(target);
+    if (handle !== null && target.closest("[data-selection-box]") !== null) {
+      const session = this.#scaleSession(handle);
+      if (session !== null) return session;
+    }
     if (handle !== null) {
       const id = cardIdOf(target);
       const node = host.data().nodes.find((each) => each.id === id);
@@ -526,6 +608,62 @@ export class CanvasGestures {
     };
   }
 
+  #scaleSession(handle: CanvasHandle): Session | null {
+    const host = this.#host;
+    const { nodes, drawings = [] } = host.data();
+    const selection = host.selection();
+    const inkIds = selectedDrawings(selection);
+    const rects = new Map(nodes.map((node) => [node.id, node]));
+    const box = canvasSelectionBounds(
+      nodes.filter((node) => selection.cards.has(node.id)),
+      drawings.filter((ink) => inkIds.has(ink.id)),
+      rects,
+    );
+    if (box === undefined) return null;
+    // What a section holds scales with it, as it moves with it.
+    const moved = movedWith(nodes, selection.cards);
+    const carried = inkMovedWith(nodes, drawings, moved);
+    const scaled = drawings.filter((ink) => inkIds.has(ink.id) || carried.has(ink.id));
+    const scaledIds = new Set(scaled.map((ink) => ink.id));
+    const moving = nodes.filter((node) => moved.has(node.id));
+    return {
+      kind: "scale",
+      handle,
+      box,
+      nodes: moving,
+      drawings: scaled,
+      rects,
+      least: canvasScaleLeast(box, moving),
+      elements: [],
+      inks: host
+        .inks()
+        .flatMap((shape) => (scaledIds.has(shape.ink.id) ? (this.#inkElement(shape) ?? []) : [])),
+      followers: this.#followers(moved, scaledIds),
+      frame: null,
+      restore: () => {},
+      scale: null,
+    };
+  }
+
+  /** The eraser's path from where it was to `to`: what it touches is marked, or with Alt let go. */
+  #erase(session: Extract<Session, { kind: "erase" }>, to: CanvasPoint, unmark: boolean) {
+    const host = this.#host;
+    const world = host.world();
+    const from = session.last;
+    session.last = to;
+    for (const shape of host.inks()) {
+      const { id } = shape.ink;
+      if (session.marked.has(id) !== unmark) continue;
+      if (!canvasEraserTouches(shape, from, to, session.reach, session.rects)) continue;
+      if (unmark) session.marked.delete(id);
+      else session.marked.add(id);
+      const selector = `g[data-drawing-id="${CSS.escape(id)}"], [data-drawing-label="${CSS.escape(id)}"]`;
+      for (const element of world?.querySelectorAll(selector) ?? []) {
+        element.toggleAttribute("data-erasing", !unmark);
+      }
+    }
+  }
+
   #retargetSession(id: string, event: PointerEvent): Session | null {
     const host = this.#host;
     const { nodes, edges } = host.data();
@@ -594,6 +732,9 @@ export class CanvasGestures {
     press.alt = event.altKey;
     press.shifted = event.shiftKey;
     if (press.session.kind === "ink") this.#addInk(press.session, event);
+    if (press.session.kind === "lasso" || press.session.kind === "erase") {
+      this.#addPath(press.session, event);
+    }
     if (!press.moved) {
       press.moved = Math.hypot(press.x - press.startX, press.y - press.startY) > DRAG_SLOP;
       if (!press.moved) return;
@@ -626,6 +767,25 @@ export class CanvasGestures {
           ? each.pressure
           : canvasSimulatedPressure(pressure.at(-1) ?? 0.5, distance, session.width),
       );
+    }
+  }
+
+  /** The lasso's loop and the eraser's path, through every point the pointer went. */
+  #addPath(session: Extract<Session, { kind: "lasso" | "erase" }>, event: PointerEvent) {
+    const { view } = this.#host;
+    const least = 2 / view.camera.zoom;
+    const coalesced = event.getCoalescedEvents?.() ?? [];
+    for (const each of coalesced.length > 0 ? coalesced : [event]) {
+      const at = view.toWorld(each.clientX, each.clientY);
+      const points = session.kind === "lasso" ? session.points : session.trail;
+      const lastX = points.at(-2) ?? at.x;
+      const lastY = points.at(-1) ?? at.y;
+      if (Math.hypot(at.x - lastX, at.y - lastY) < least) continue;
+      points.push(at.x, at.y);
+      if (session.kind === "erase") {
+        if (points.length > ERASER_TRAIL * 2) points.splice(0, 2);
+        this.#erase(session, at, event.altKey);
+      }
     }
   }
 
@@ -701,10 +861,15 @@ export class CanvasGestures {
     }
   }
 
-  #setInk({ group, label }: InkElement, drawn: Pick<CanvasInkShape, "path" | "head" | "labelAt">) {
+  #setInk(
+    { group, label }: InkElement,
+    drawn: Pick<CanvasInkShape, "path" | "head" | "labelAt" | "fill">,
+  ) {
     for (const line of group.querySelectorAll(".cv-ink-line, .cv-ink-hit")) {
       line.setAttribute("d", drawn.path);
     }
+    if (drawn.fill !== undefined)
+      group.querySelector(".cv-ink-fill")?.setAttribute("d", drawn.fill);
     group.querySelector(".cv-ink-head")?.setAttribute("d", drawn.head ?? "");
     if (label !== null) {
       label.style.left = `${drawn.labelAt.x}px`;
@@ -783,6 +948,29 @@ export class CanvasGestures {
       case "free-arrow":
         session.draft = this.#newDraft();
         return;
+      case "lasso":
+        session.draft = this.#newDraft("cv-lasso");
+        return;
+      case "erase":
+        session.draft = this.#newDraft("cv-eraser-trail");
+        return;
+      case "scale": {
+        const mounted = new Map<string, HTMLElement>();
+        for (const element of host.world()?.querySelectorAll<HTMLElement>("[data-card-id]") ?? []) {
+          mounted.set(element.getAttribute("data-card-id") ?? "", element);
+        }
+        session.elements = session.nodes.flatMap((node) => {
+          const element = mounted.get(node.id);
+          return element === undefined ? [] : [{ element, node }];
+        });
+        session.frame = host.world()?.querySelector<HTMLElement>("[data-selection-box]") ?? null;
+        session.restore = snapshot([
+          ...session.inks,
+          ...session.followers.inks,
+          ...session.followers.arrows,
+        ]);
+        return;
+      }
       case "ink":
         session.draft = this.#newDraft("cv-ink-draft");
         if (session.draft !== null) {
@@ -900,6 +1088,58 @@ export class CanvasGestures {
         );
         return;
       }
+      case "scale": {
+        const scale = canvasScaleFor(
+          session.box,
+          session.handle,
+          point.x - press.start.x,
+          point.y - press.start.y,
+          { keepAspect: press.shifted, fromCentre: press.alt, least: session.least },
+        );
+        session.scale = scale;
+        const boxes = new Map(session.nodes.map((node) => [node.id, canvasScaledBox(node, scale)]));
+        for (const { element, node } of session.elements) {
+          this.#setBox(element, boxes.get(node.id) ?? node);
+        }
+        const rectOf = (id: string) => boxes.get(id) ?? session.rects.get(id);
+        const rects = { get: rectOf };
+        for (const each of session.inks) {
+          const next = {
+            ...each.shape.ink,
+            ...canvasScaledInk(each.shape.ink, scale),
+          } as CanvasInk;
+          const drawn = canvasInkShape(next, rects);
+          if (drawn !== undefined) this.#setInk(each, drawn);
+        }
+        this.#drawArrows(session.followers, rectOf);
+        const { anchor, sx, sy } = scale;
+        const { box } = session;
+        this.#setBox(session.frame, {
+          x: anchor.x + (box.x - anchor.x) * sx,
+          y: anchor.y + (box.y - anchor.y) * sy,
+          width: box.width * sx,
+          height: box.height * sy,
+        });
+        return;
+      }
+      case "lasso": {
+        const { points } = session;
+        let d = "";
+        for (let at = 0; at + 1 < points.length; at += 2) {
+          d += `${at === 0 ? "M" : "L"}${round(points[at]!)} ${round(points[at + 1]!)}`;
+        }
+        session.draft?.setAttribute("d", `${d}Z`);
+        return;
+      }
+      case "erase": {
+        const { trail } = session;
+        let d = "";
+        for (let at = 0; at + 1 < trail.length; at += 2) {
+          d += `${at === 0 ? "M" : "L"}${round(trail[at]!)} ${round(trail[at + 1]!)}`;
+        }
+        session.draft?.setAttribute("d", d);
+        return;
+      }
       case "connect":
         session.draft?.setAttribute(
           "d",
@@ -969,7 +1209,8 @@ export class CanvasGestures {
     if (press === null || press.id !== event.pointerId) return;
     this.#press = null;
     // A click with a tool that draws drops one, or a dot: it isn't a click on what's under it.
-    if (press.moved || press.session.kind === "draw" || press.session.kind === "ink") {
+    const { kind } = press.session;
+    if (press.moved || kind === "draw" || kind === "ink" || kind === "erase") {
       this.#draw(press);
       this.#finish(press, event);
       return;
@@ -1016,6 +1257,22 @@ export class CanvasGestures {
           this.#drawInks(session.inks, rectOf, NO_DELTA, true);
         }
         return;
+      case "scale":
+        for (const { element, node } of session.elements) this.#setBox(element, node);
+        this.#setBox(session.frame, session.box);
+        session.restore();
+        return;
+      case "lasso":
+        session.draft?.remove();
+        return;
+      case "erase": {
+        session.draft?.remove();
+        const world = host.world();
+        for (const element of world?.querySelectorAll("[data-erasing]") ?? []) {
+          element.removeAttribute("data-erasing");
+        }
+        return;
+      }
       case "resize": {
         this.#setBox(session.element, session.card);
         this.#setBox(session.frame, session.card);
@@ -1064,6 +1321,42 @@ export class CanvasGestures {
         // The document's new size reaches the element with the next render, before any paint.
         if (unchanged) this.#abandon(press);
         else document?.commit([{ op: "resize", card: card.id, ...boxOf(rect) }]);
+        return;
+      }
+      case "scale": {
+        this.#abandon(press);
+        const { scale } = session;
+        if (scale === null || document === null) return;
+        const edits = canvasScaleEdits(session.nodes, session.drawings, scale);
+        if (edits.length > 0) document.commit(edits);
+        return;
+      }
+      case "lasso": {
+        this.#abandon(press);
+        const zoom = host.view.camera.zoom;
+        const loop = canvasSimplified(session.points, 1 / zoom);
+        const { nodes } = host.data();
+        const rects = new Map(nodes.map((node) => [node.id, node]));
+        const picked = canvasLassoPick(loop, nodes, host.inks(), rects);
+        const before = host.selection();
+        const drawings = [
+          ...(session.additive ? selectedDrawings(before) : []),
+          ...picked.drawings,
+        ];
+        host.select({
+          cards: new Set([...(session.additive ? before.cards : []), ...picked.cards]),
+          arrow: null,
+          ...(drawings.length === 0 ? {} : { drawings: new Set(drawings) }),
+        });
+        return;
+      }
+      case "erase": {
+        const marked = [...session.marked];
+        this.#abandon(press);
+        if (document === null || marked.length === 0) return;
+        document.commit(
+          marked.map((id): CanvasHandEdit => ({ op: "remove-drawing", drawing: id })),
+        );
         return;
       }
       case "connect":
@@ -1398,3 +1691,27 @@ export class CanvasGestures {
 }
 
 const boxOf = ({ x, y, width, height }: CanvasBounds) => ({ x, y, width, height });
+
+const round = (value: number) => Math.round(value * 10) / 10;
+
+/** Lines and labels as they are now, and a way to put them back exactly, hand-drawn or not. */
+function snapshot(
+  items: ReadonlyArray<{ readonly group: Element; readonly label: HTMLElement | null }>,
+) {
+  const paths = items.flatMap(({ group }) =>
+    [...group.querySelectorAll("path")].map((path) => [path, path.getAttribute("d")] as const),
+  );
+  const labels = items.flatMap(({ label }) =>
+    label === null ? [] : [[label, label.style.left, label.style.top] as const],
+  );
+  return () => {
+    for (const [path, d] of paths) {
+      if (d === null) path.removeAttribute("d");
+      else path.setAttribute("d", d);
+    }
+    for (const [label, left, top] of labels) {
+      label.style.left = left;
+      label.style.top = top;
+    }
+  };
+}
