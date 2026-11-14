@@ -283,22 +283,37 @@ describe("canvasMerge", () => {
       points: [0, 0, 10, 10],
       ...rest,
     });
-    const free = (id: string, node: string) => ({
+    const free = (id: string, node: string, rest = {}) => ({
       id,
       type: "arrow",
       from: { node, side: "right" },
       to: { x: 500, y: 500 },
+      ...rest,
     });
     const story = { title: "Tour", steps: [{ note: "Start", cards: ["a"] }] };
     const start = drawn([stroke("s"), free("fc", "c")], { stories: [story] });
     const { document, resolved } = merged(
       start,
-      drawn([stroke("s", { x: 40 }), free("fc", "c"), stroke("mine", { pressure: [0.3, 0.7] })], {
-        stories: [story],
-      }),
-      drawn([stroke("s", { color: "2" }), free("fc", "c"), stroke("yours")], {
-        stories: [{ ...story, title: "Walk" }],
-      }),
+      drawn(
+        [
+          stroke("s", { x: 40 }),
+          free("fc", "c", { bends: [300, 100] }),
+          stroke("mine", { pressure: [0.3, 0.7] }),
+        ],
+        { stories: [story] },
+      ),
+      drawn(
+        [
+          stroke("s", { color: "2" }),
+          free("fc", "c", {
+            from: { node: "c", side: "bottom", at: [0.2, 1] },
+            toEnd: "none",
+            astrolabe: { style: { route: "elbow" } },
+          }),
+          stroke("yours"),
+        ],
+        { stories: [{ ...story, title: "Walk" }] },
+      ),
     );
     expect(document.astrolabe.drawings.map((ink: { id: string }) => ink.id)).toEqual([
       "s",
@@ -307,6 +322,15 @@ describe("canvasMerge", () => {
       "mine",
     ]);
     expect(document.astrolabe.drawings[0]).toMatchObject({ x: 40, color: "2" });
+    // Bends, ends, heads and route are each their own look.
+    expect(document.astrolabe.drawings[1]).toEqual(
+      free("fc", "c", {
+        from: { node: "c", side: "bottom", at: [0.2, 1] },
+        bends: [300, 100],
+        toEnd: "none",
+        astrolabe: { style: { route: "elbow" } },
+      }),
+    );
     expect(document.astrolabe.drawings[3]).toMatchObject({ id: "mine", pressure: [0.3, 0.7] });
     expect(document.astrolabe.stories[0].title).toBe("Walk");
     expect(resolved).toEqual([]);

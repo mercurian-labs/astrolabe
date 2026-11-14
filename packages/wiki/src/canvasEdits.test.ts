@@ -622,6 +622,17 @@ describe("a person's edits", () => {
       "an arrow's end re-ended and coloured",
       [{ op: "set-drawing", drawing: "f1", keys: { to: { x: 9, y: 9 }, color: "2" } }],
     ],
+    [
+      "an arrow bent, ended off a side's middle, headless and routed",
+      [
+        {
+          op: "set-drawing",
+          drawing: "f1",
+          keys: { bends: [40, 60], to: { node: "a", side: "top", at: [0.3, 0] }, toEnd: "none" },
+        },
+        { op: "set-arrow", arrow: "e1", keys: canvasStyleKeys({}, { route: "elbow" }) },
+      ],
+    ],
     ["a drawing's removal", [{ op: "remove-drawing", drawing: "s1" }]],
     [
       "a style on a card and a stroke, as one edit",

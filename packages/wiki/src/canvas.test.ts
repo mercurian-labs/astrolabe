@@ -9,6 +9,8 @@ import {
   canvasData,
   canvasDocument,
   canvasDrawingProblems,
+  canvasInkBounds,
+  canvasInkEnd,
   canvasLayoutKind,
   canvasSteps,
   diffCanvas,
@@ -72,7 +74,18 @@ describe("diffCanvas", () => {
   it.each([
     ["new pressure as what it says", { pressure: [0.9, 0.2] }, "text"],
     ["a hand-drawn look as its style", { astrolabe: { style: { sloppiness: 2 } } }, "restyled"],
-  ])("reads a stroke's %s", (_, change, mark) => {
+    ["route as its style", { astrolabe: { style: { route: "elbow" } } }, "restyled"],
+    [
+      "bends as moved",
+      { type: "arrow", from: { x: 0, y: 0 }, to: { x: 9, y: 9 }, bends: [4, 1] },
+      "moved",
+    ],
+    [
+      "heads as restyled",
+      { type: "arrow", from: { x: 0, y: 0 }, to: { x: 9, y: 9 }, toEnd: "none" },
+      "restyled",
+    ],
+  ])("reads a drawing's %s", (_, change, mark) => {
     const stroke = {
       id: "s",
       type: "stroke",
@@ -82,7 +95,9 @@ describe("diffCanvas", () => {
       pressure: [0.5, 0.5],
     };
     const drawn = (ink: object) => ({ nodes: [], astrolabe: { drawings: [ink] } });
-    expect(marks(drawn(stroke), drawn({ ...stroke, ...change }))).toEqual([
+    const before =
+      "from" in change ? { id: "s", type: "arrow", from: change.from, to: change.to } : stroke;
+    expect(marks(drawn(before), drawn({ ...before, ...change }))).toEqual([
       ["s", "drawing", mark, []],
     ]);
   });
@@ -333,6 +348,7 @@ describe("parseCanvas", () => {
       corners: "round",
       opacity: 0.5,
       sloppiness: 2,
+      route: "elbow",
     };
     const card = {
       id: "a",
@@ -341,7 +357,11 @@ describe("parseCanvas", () => {
       astrolabe: { shape: "diamond", style: { ...style, glow: 2, width: -1 } },
     };
     const stroke = { id: "s", type: "stroke", x: 0, y: 0, points: [0, 0], astrolabe: { style } };
-    const group = { id: "g", type: "group", astrolabe: { style: { dash: "wavy", sloppiness: 3 } } };
+    const group = {
+      id: "g",
+      type: "group",
+      astrolabe: { style: { dash: "wavy", sloppiness: 3, route: "wiggly" } },
+    };
     const document = {
       nodes: [card, group],
       edges: [{ id: "e", fromNode: "a", toNode: "g", astrolabe: { style: { opacity: 2 } } }],
@@ -384,6 +404,55 @@ describe("parseCanvas", () => {
       undefined,
     ]);
     expect(JSON.parse(serializeCanvas(document))).toEqual(document);
+  });
+
+  it("reads a drawn arrow's heads, bends and ends anywhere on a card, as an older one if they don't hold", () => {
+    const arrow = (id: string, keys: Record<string, unknown>) => ({
+      id,
+      type: "arrow",
+      from: { node: "a", side: "right" },
+      to: { x: 300, y: 40 },
+      ...keys,
+    });
+    const document = {
+      nodes: [{ id: "a", type: "text", text: "A", x: 0, y: 0, width: 200, height: 100 }],
+      astrolabe: {
+        drawings: [
+          arrow("line", { fromEnd: "arrow", toEnd: "none", bends: [100, 200, 150, 220] }),
+          arrow("anywhere", { from: { node: "a", side: "bottom", at: [0.25, 1] } }),
+          arrow("odd", {
+            fromEnd: "dot",
+            bends: [1, 2, 3],
+            from: { node: "a", side: "top", at: [2, 0] },
+          }),
+          arrow("old", {}),
+        ],
+      },
+    };
+    const [line, anywhere, odd, old] = canvasData(document).drawings ?? [];
+    expect(line).toMatchObject({ fromEnd: "arrow", toEnd: "none", bends: [100, 200, 150, 220] });
+    expect(anywhere).toMatchObject({ from: { node: "a", side: "bottom", at: [0.25, 1] } });
+    expect(odd).toEqual(arrow("odd", { from: { node: "a", side: "top" } }));
+    expect(old).toEqual(arrow("old", {}));
+    expect(canvasInkBounds(line!, new Map([["a", document.nodes[0]!]]))).toEqual({
+      x: 100,
+      y: 40,
+      width: 200,
+      height: 180,
+    });
+    expect(JSON.parse(serializeCanvas(document))).toEqual(document);
+  });
+
+  it("puts an end anywhere on a card where it follows the card, moved or resized", () => {
+    const end = { node: "a", side: "bottom", at: [0.25, 1] } as const;
+    const card = { x: 0, y: 0, width: 200, height: 100 };
+    expect(canvasInkEnd(end, new Map([["a", card]]))).toEqual({ x: 50, y: 100 });
+    const moved = { x: 40, y: -20, width: 400, height: 50 };
+    expect(canvasInkEnd(end, new Map([["a", moved]]))).toEqual({ x: 140, y: 30 });
+    expect(canvasInkEnd({ node: "a", side: "bottom" }, new Map([["a", moved]]))).toEqual({
+      x: 240,
+      y: 30,
+    });
   });
 
   it("refuses only text that isn't JSON", () => {

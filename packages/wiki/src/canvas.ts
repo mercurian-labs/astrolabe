@@ -33,6 +33,8 @@ export type CanvasDash = "solid" | "dashed" | "dotted";
 export type CanvasCorners = "round" | "sharp";
 /** How hand-drawn a line looks: 0 is clean, as a line with none is; 1 and 2 are rougher. */
 export type CanvasSloppiness = 0 | 1 | 2;
+/** How an arrow runs between its ends. Left out, it curves, as it always has. */
+export type CanvasRoute = "curved" | "straight" | "elbow";
 
 /**
  * How a card, section, arrow or drawing is drawn beyond its `color`, which stays the stroke's so
@@ -49,6 +51,8 @@ export interface CanvasStyle {
   /** 0 to 1. */
   readonly opacity?: number;
   readonly sloppiness?: CanvasSloppiness;
+  /** Arrows only. Worked out where it's drawn, never stored: other apps draw their own. */
+  readonly route?: CanvasRoute;
 }
 
 /** Wider than this reads as a fill, not a line. */
@@ -140,10 +144,17 @@ export interface CanvasEdge extends Styled {
   readonly label?: string;
 }
 
-/** One end of a hand-drawn arrow: a point on the board, or a node's side, which it follows. */
+/**
+ * One end of a hand-drawn arrow: a point on the board, or on a node, which it follows. On a node
+ * it's the middle of `side`, or with `at`, that share of the node's width and height, on `side`.
+ */
 export type CanvasInkEnd =
   | { readonly x: number; readonly y: number }
-  | { readonly node: string; readonly side: CanvasSide };
+  | {
+      readonly node: string;
+      readonly side: CanvasSide;
+      readonly at?: readonly [number, number];
+    };
 
 /** A long scribble simplifies to a few hundred; the board simplifies harder past this. */
 export const CANVAS_MAX_STROKE_POINTS = 1_000;
@@ -160,12 +171,20 @@ export interface CanvasInkStroke extends Styled {
   readonly color?: string;
 }
 
-/** An arrow with an end that isn't on a node; one with both on nodes is an edge. */
+/**
+ * An arrow or line with an end that isn't on a node, or what an edge can't hold: an end off a
+ * side's middle, or bends. One with both ends on side middles is an edge.
+ */
 export interface CanvasInkArrow extends Styled {
   readonly id: string;
   readonly type: "arrow";
   readonly from: CanvasInkEnd;
   readonly to: CanvasInkEnd;
+  /** As an edge's: none at `from` and an arrowhead at `to` when left out. */
+  readonly fromEnd?: "none" | "arrow";
+  readonly toEnd?: "none" | "arrow";
+  /** The points it bends at between its ends, as x, y pairs on the board. An elbow leaves them. */
+  readonly bends?: ReadonlyArray<number>;
   readonly color?: string;
   readonly label?: string;
 }
@@ -234,7 +253,9 @@ export function canvasInkEnd(
 ): { readonly x: number; readonly y: number } | undefined {
   if (!("node" in end)) return end;
   const node = nodes.get(end.node);
-  return node === undefined ? undefined : sideMiddle(node, end.side);
+  if (node === undefined) return undefined;
+  if (end.at === undefined) return sideMiddle(node, end.side);
+  return { x: node.x + end.at[0] * node.width, y: node.y + end.at[1] * node.height };
 }
 
 /** What a drawing covers; none for an arrow whose node is gone, which isn't drawn. */
@@ -255,6 +276,11 @@ export function canvasInkBounds(
     if (from === undefined || to === undefined) return undefined;
     xs.push(from.x, to.x);
     ys.push(from.y, to.y);
+    const bends = ink.bends ?? [];
+    for (let at = 0; at + 1 < bends.length; at += 2) {
+      xs.push(bends[at]!);
+      ys.push(bends[at + 1]!);
+    }
   }
   if (xs.length === 0) return undefined;
   const x = Math.min(...xs);
@@ -537,7 +563,7 @@ function canvasStories(astrolabe: unknown): ReadonlyArray<CanvasStory> {
 /** A style as drawn: what it holds that this version can't use is left for the file to keep. */
 export function canvasStyle(astrolabe: unknown): CanvasStyle | undefined {
   if (!isRecord(astrolabe) || !isRecord(astrolabe.style)) return undefined;
-  const { fill, width, dash, corners, opacity, sloppiness } = astrolabe.style;
+  const { fill, width, dash, corners, opacity, sloppiness, route } = astrolabe.style;
   const style: CanvasStyle = {
     ...(typeof fill === "string" && fill !== "" ? { fill } : {}),
     ...(finite(width) && width > 0 && width <= CANVAS_MAX_STYLE_WIDTH ? { width } : {}),
@@ -545,6 +571,7 @@ export function canvasStyle(astrolabe: unknown): CanvasStyle | undefined {
     ...(corners === "round" || corners === "sharp" ? { corners } : {}),
     ...(finite(opacity) && opacity >= 0 && opacity <= 1 ? { opacity } : {}),
     ...(sloppiness === 0 || sloppiness === 1 || sloppiness === 2 ? { sloppiness } : {}),
+    ...(route === "curved" || route === "straight" || route === "elbow" ? { route } : {}),
   };
   return Object.keys(style).length === 0 ? undefined : style;
 }
@@ -572,10 +599,21 @@ const shapeOf = (astrolabe: unknown): CanvasShape | undefined =>
     ? astrolabe.shape
     : undefined;
 
+const share = (value: unknown): value is number => finite(value) && value >= 0 && value <= 1;
+
 function inkEnd(value: unknown): CanvasInkEnd | undefined {
   if (!isRecord(value)) return undefined;
-  const at = side(value.side);
-  if (typeof value.node === "string" && at !== undefined) return { node: value.node, side: at };
+  const on = side(value.side);
+  if (typeof value.node === "string" && on !== undefined) {
+    const { at } = value;
+    // A share that isn't one is the side's middle, as older versions read every end.
+    const [fx, fy] = Array.isArray(at) && at.length === 2 ? at : [];
+    return {
+      node: value.node,
+      side: on,
+      ...(share(fx) && share(fy) ? { at: [fx, fy] as const } : {}),
+    };
+  }
   return finite(value.x) && finite(value.y) ? { x: value.x, y: value.y } : undefined;
 }
 
@@ -609,11 +647,24 @@ function canvasInk(raw: Record<string, unknown>, id: string): CanvasInk | undefi
     const to = inkEnd(raw.to);
     if (from === undefined || to === undefined) return undefined;
     const label = text(raw.label);
+    const fromEnd = end(raw.fromEnd);
+    const toEnd = end(raw.toEnd);
+    const { bends } = raw;
+    // Bends that aren't whole points draw as a line without them.
+    const bent =
+      Array.isArray(bends) &&
+      bends.length > 0 &&
+      bends.length % 2 === 0 &&
+      bends.length <= CANVAS_MAX_STROKE_POINTS * 2 &&
+      bends.every(finite);
     return {
       id,
       type: "arrow",
       from,
       to,
+      ...(fromEnd === undefined ? {} : { fromEnd }),
+      ...(toEnd === undefined ? {} : { toEnd }),
+      ...(bent ? { bends: bends as number[] } : {}),
       ...colored,
       ...(label === undefined ? {} : { label }),
       ...styled(raw),
@@ -849,7 +900,9 @@ export const CANVAS_ARROW_LOOKS: ReadonlyArray<CanvasLook> = [
 export const CANVAS_DRAWING_LOOKS: ReadonlyArray<CanvasLook> = [
   { name: "position", keys: ["x", "y"], mark: "moved" },
   { name: "ends", keys: ["from", "to"], mark: "moved" },
+  { name: "bends", keys: ["bends"], mark: "moved" },
   { name: "colour", keys: ["color"], mark: "restyled" },
+  { name: "arrowheads", keys: ["fromEnd", "toEnd"], mark: "restyled" },
   { name: "style", keys: [STYLE_KEY], mark: "restyled" },
   ORDER_LOOK,
 ];
