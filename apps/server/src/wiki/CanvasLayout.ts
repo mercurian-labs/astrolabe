@@ -16,6 +16,7 @@ import {
 } from "@mercurian/wiki/canvas";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import * as NodeModule from "node:module";
 import type {
   ELK,
   ELKConstructorArguments,
@@ -40,12 +41,13 @@ const GROUP_PADDING = `[top=${CANVAS_GROUP_INSET.top},left=${CANVAS_GROUP_INSET.
 
 type ElkConstructor = new (args?: ELKConstructorArguments) => ELK;
 
-// The engine is a large script: loaded the first time a board needs it, then kept. It's a
-// CommonJS module, whose class Node hands over as the default and some bundlers nest once more.
+// elkjs is external to the CLI bundle; a Node single-executable can load it from disk only with
+// require. It's a large script, loaded the first time a board needs it, then kept.
+const requireElk = NodeModule.createRequire(import.meta.url);
 let engine: Promise<ELK> | undefined;
 const loadEngine = () =>
-  (engine ??= import("elkjs/lib/elk.bundled.js").then((module) => {
-    const exported: unknown = module.default;
+  (engine ??= Promise.resolve().then(() => {
+    const exported: unknown = requireElk("elkjs/lib/elk.bundled.js");
     const Elk = (
       typeof exported === "function" ? exported : (exported as { default: unknown }).default
     ) as ElkConstructor;
