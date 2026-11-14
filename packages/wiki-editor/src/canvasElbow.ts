@@ -392,7 +392,11 @@ function getObstacleRoute(
     const point = at === 0 ? startGlobalPoint : endGlobalPoint;
     const heading = at === 0 ? startHeading : endHeading;
     if (each.box === undefined) return { blocker: null, dongle: point };
-    const blocker = padded(boundsOf(each.box), pad);
+    // Leaving or entering, it keeps Excalidraw's room: a head and a rounded corner fit.
+    const blocker = padded(
+      boundsOf(each.box),
+      offsetFromHeading(heading, BASE_PADDING, OBSTACLE_PADDING),
+    );
     const dongle = getDonglePosition(blocker, heading, point);
     return { blocker, dongle };
   });
