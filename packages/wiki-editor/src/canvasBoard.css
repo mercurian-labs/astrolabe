@@ -1110,8 +1110,33 @@ textarea.cv-label-editor {
   top: calc(50% - var(--cv-dot) / 2);
   right: calc(var(--cv-dot) * -0.5);
 }
+/* A drawn arrow's points being edited: its points, and the middles a new one pulls out of. */
+.cv-point,
+.cv-point-mid {
+  r: calc(5px * var(--cv-ui, 1));
+  fill: var(--background);
+  stroke: var(--primary);
+  stroke-width: calc(1.5px * var(--cv-ui, 1));
+  pointer-events: all;
+  touch-action: none;
+  cursor: move;
+}
+.cv-point[data-picked] {
+  fill: var(--primary);
+}
+.cv-point-mid {
+  r: calc(3.5px * var(--cv-ui, 1));
+  stroke-opacity: 0.6;
+  cursor: copy;
+}
 /* A fingertip needs more than a pointer does; the card itself doesn't grow. */
 @media (pointer: coarse) {
+  .cv-point {
+    r: calc(10px * var(--cv-ui, 1));
+  }
+  .cv-point-mid {
+    r: calc(8px * var(--cv-ui, 1));
+  }
   .cv-handle {
     --cv-grip: calc(22px * var(--cv-ui, 1));
   }

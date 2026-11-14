@@ -2,6 +2,8 @@ import { CANVAS_MAX_STROKE_POINTS, type CanvasInk } from "@mercurian/wiki/canvas
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  canvasBendRemoved,
+  canvasBendsMoved,
   canvasEndOnCard,
   canvasInkIsEdge,
   canvasInkShape,
@@ -163,5 +165,26 @@ describe("a drawn arrow's bends", () => {
       canvasInkShape({ ...arrow, fromEnd: "arrow", toEnd: "none" }, rects)!.heads,
     ).toHaveLength(1);
     expect(canvasInkShape({ ...arrow, toEnd: "none" }, rects)!.heads).toEqual([]);
+  });
+
+  it("are added from a stretch's middle, moved, and deleted down to none", () => {
+    const rects = new Map([["c", { x: 200, y: 0, width: 100, height: 100 }]]);
+    const line = { ...arrow, astrolabe: { style: { route: "straight" as const } } };
+    expect(canvasInkShape(line, rects)!.mids).toEqual([
+      { x: 25, y: 25 },
+      { x: 65, y: 35 },
+      { x: 140, y: 20 },
+    ]);
+    // Pulled out of the stretch from its first point to the next.
+    expect(canvasBendsMoved(arrow.bends, 0, true, { x: 10.4, y: 30.6 })).toEqual([
+      10, 31, 50, 50, 80, 20,
+    ]);
+    expect(canvasBendsMoved(undefined, 0, true, { x: 5, y: 5 })).toEqual([5, 5]);
+    expect(canvasBendsMoved(arrow.bends, 1, false, { x: 90, y: 0 })).toEqual([50, 50, 90, 0]);
+    expect(canvasBendRemoved(arrow.bends, 0)).toEqual([80, 20]);
+    expect(canvasBendRemoved([80, 20], 0)).toBeNull();
+    // An elbow keeps its own route: there's nowhere to pull one from.
+    const elbow = { ...arrow, astrolabe: { style: { route: "elbow" as const } } };
+    expect(canvasInkShape(elbow, rects)!.mids).toEqual([]);
   });
 });

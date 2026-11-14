@@ -34,6 +34,8 @@ export interface CanvasInkShape {
   readonly bounds: CanvasBounds;
   /** Points along its line, close enough to pick it by. */
   readonly along: ReadonlyArray<CanvasPoint>;
+  /** A drawn arrow's: halfway along each stretch between its points; none for an elbow. */
+  readonly mids: ReadonlyArray<CanvasPoint>;
 }
 
 type Rects = Pick<ReadonlyMap<string, CanvasBounds>, "get">;
@@ -318,6 +320,7 @@ export function canvasInkShape(
       labelAt: points[0] ?? { x: ink.x, y: ink.y },
       bounds: boundsOf(points),
       along: points,
+      mids: [],
     };
   }
   const from = canvasInkEnd(ink.from, rects);
@@ -331,6 +334,7 @@ export function canvasInkShape(
     labelAt: line.labelAt,
     bounds: boundsOf([...line.along, ...line.reach]),
     along: line.along,
+    mids: line.mids,
   };
 }
 
@@ -462,4 +466,29 @@ export function canvasInkIsEdge(
     to.at === undefined &&
     (bends === undefined || bends.length === 0)
   );
+}
+
+/**
+ * A drawn arrow's bends with the one at `index` moved to `point`, or with `insert`, a new one
+ * there: the stretch from its point `index` to the next is where it's pulled out of.
+ */
+export function canvasBendsMoved(
+  bends: ReadonlyArray<number> | undefined,
+  index: number,
+  insert: boolean,
+  point: CanvasPoint,
+): number[] {
+  const next = [...(bends ?? [])];
+  next.splice(index * 2, insert ? 0 : 2, Math.round(point.x), Math.round(point.y));
+  return next;
+}
+
+/** Its bends without the one at `index`; null for none left, which the key goes with. */
+export function canvasBendRemoved(
+  bends: ReadonlyArray<number> | undefined,
+  index: number,
+): number[] | null {
+  const next = [...(bends ?? [])];
+  next.splice(index * 2, 2);
+  return next.length === 0 ? null : next;
 }

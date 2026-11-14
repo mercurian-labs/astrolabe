@@ -751,6 +751,45 @@ describe("editing a board", () => {
     await vi.waitFor(() => expect(drawings().map((ink) => ink.type)).toEqual(["arrow"]));
   });
 
+  it("edits a drawn line's points: a double-click, a middle pulled to bend it, and the bend taken out", async () => {
+    using _capture = setup();
+    const line = {
+      id: "l",
+      type: "arrow",
+      from: { x: 300, y: 300 },
+      to: { x: 500, y: 300 },
+      astrolabe: { style: { route: "straight" } },
+    };
+    const canvas = new CanvasDocument({
+      document: { nodes: [text("a", 0, 0)], edges: [], astrolabe: { drawings: [line] } },
+      revision: "r0",
+    });
+    await using _screen = await render(<Editing canvas={canvas} />, { router: false });
+    const drawn = () => canvas.getState().data.drawings?.[0];
+    const hit = () => document.querySelector(`[data-drawing-id="l"] .cv-ink-hit`)!;
+    await vi.waitFor(() => expect(hit()).not.toBeNull());
+    click(hit(), { x: 350, y: 300 });
+    click(hit(), { x: 350, y: 300 });
+    const middle = () => document.querySelector("[data-point-mid='0']");
+    await vi.waitFor(() => expect(middle()).not.toBeNull());
+    drag(middle()!, { x: 400, y: 300 }, { x: 400, y: 290 }, { x: 400, y: 200 });
+    await vi.waitFor(() => expect(drawn()).toMatchObject({ bends: [400, 200] }));
+    expect(hit().getAttribute("d")).toBe("M300 300L400 200L500 300");
+
+    click(document.querySelector("[data-point-handle='1']")!, { x: 400, y: 200 });
+    await vi.waitFor(() =>
+      expect(document.querySelector("[data-point-handle='1']")).toHaveAttribute("data-picked"),
+    );
+    // A pointer that isn't real doesn't focus what it presses.
+    board().focus();
+    await userEvent.keyboard("{Backspace}");
+    await vi.waitFor(() => expect(drawn()).not.toHaveProperty("bends"));
+    // The line stays, and Enter leaves its points.
+    await userEvent.keyboard("{Enter}");
+    await vi.waitFor(() => expect(middle()).toBeNull());
+    expect(drawn()).toMatchObject({ id: "l" });
+  });
+
   it("scales a card and a stroke together from the selection's box, as one undo", async () => {
     using _capture = setup();
     const stroke = { id: "s", type: "stroke", x: 300, y: 0, points: [0, 0, 100, 100] };

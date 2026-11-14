@@ -71,6 +71,7 @@ import {
   type CanvasEditHost,
   type CanvasEditing,
   type CanvasPicked,
+  type CanvasPointsEditing,
   type CanvasPickerRequest,
   type CanvasPromptRequest,
 } from "./canvasCommands";
@@ -83,7 +84,7 @@ import {
   type CanvasSelection,
   type CanvasTool,
 } from "./canvasGestures";
-import { canvasInkShapes, type CanvasInkShape } from "./canvasInk";
+import { canvasInkBends, canvasInkShapes, type CanvasInkShape } from "./canvasInk";
 import {
   cameraWindow,
   canvasColor,
@@ -860,6 +861,46 @@ const SelectionBox = ({ bounds }: { readonly bounds: CanvasBounds }) => (
   </div>
 );
 
+/** A drawn arrow's points while they're edited: each to drag, and each stretch's middle to pull. */
+function PointHandles({
+  shape,
+  picked,
+}: {
+  readonly shape: CanvasInkShape;
+  readonly picked: number | null;
+}) {
+  const { ink, along, mids } = shape;
+  const [from] = along;
+  const to = along.at(-1);
+  if (ink.type !== "arrow" || from === undefined || to === undefined) return null;
+  const points = [from, ...canvasInkBends(ink), to];
+  return (
+    <svg className="cv-edges cv-points" aria-hidden="true" width="1" height="1">
+      {mids.map((mid, at) => (
+        <circle
+          // oxlint-disable-next-line react/no-array-index-key -- a middle is its place along the line
+          key={`mid:${at}`}
+          className="cv-point-mid"
+          data-point-mid={at}
+          cx={mid.x}
+          cy={mid.y}
+        />
+      ))}
+      {points.map((point, at) => (
+        <circle
+          // oxlint-disable-next-line react/no-array-index-key -- a point is its place along the line
+          key={`point:${at}`}
+          className="cv-point"
+          data-point-handle={at}
+          data-picked={(picked !== null && at === picked + 1) || undefined}
+          cx={point.x}
+          cy={point.y}
+        />
+      ))}
+    </svg>
+  );
+}
+
 /** A shaped card's outline, stretched to its box with the line's width kept. */
 const ShapeOutline = ({
   shape,
@@ -1493,6 +1534,7 @@ class BoardLive {
   shape: CanvasShape = "ellipse";
   revision: string | undefined = undefined;
   editing: CanvasEditing | null = null;
+  points: CanvasPointsEditing | null = null;
   openMenu: OpenMenu | null = null;
   readAt: string | undefined = undefined;
   walkable = false;
@@ -1742,6 +1784,7 @@ export function CanvasBoard({
   const [shown, setShown] = useState(NOTHING);
   const [selection, setSelection] = useState<CanvasSelection>(NO_SELECTION);
   const [editing, setEditing] = useState<CanvasEditing | null>(null);
+  const [pointsChosen, setPoints] = useState<CanvasPointsEditing | null>(null);
   const [menu, setMenu] = useState<OpenMenu | null>(null);
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [popover, setPopover] = useState<ToolbarPopover>(null);
@@ -1859,6 +1902,7 @@ export function CanvasBoard({
         },
         host: () => live.host,
         edit: setEditing,
+        editPoints: (id, picked = null) => setPoints(id === null ? null : { id, picked }),
         pick: (request) =>
           new Promise((resolve) => {
             setDialog({ kind: "picker", request, done: resolve });
@@ -2005,6 +2049,8 @@ export function CanvasBoard({
         editGroupLabel: (id) => setEditing({ kind: "group", id }),
         editArrowLabel: (id) => setEditing({ kind: "arrow", id }),
         editInkLabel: (id) => setEditing({ kind: "drawing", id }),
+        points: () => live.points,
+        editPoints: (id, picked = null) => setPoints(id === null ? null : { id, picked }),
         addTextAt: (point) => commands.addTextAt(point),
         tool: () => live.tool,
         inked: (points, pressure) => commands.addStroke(points, pressure),
@@ -2070,6 +2116,22 @@ export function CanvasBoard({
     [host, mode, reads, editable, commands, closeEditing, live],
   );
 
+  // A drawn arrow's points are edited while it's all that's selected, and while it bends.
+  const pointsShape =
+    pointsChosen !== null &&
+    editable &&
+    selection.cards.size === 0 &&
+    selectedDrawings(selection).size === 1 &&
+    selectedDrawings(selection).has(pointsChosen.id)
+      ? layout.inks.find(
+          ({ ink }) =>
+            ink.id === pointsChosen.id &&
+            ink.type === "arrow" &&
+            ink.astrolabe?.style?.route !== "elbow",
+        )
+      : undefined;
+  const points = pointsShape === undefined ? null : pointsChosen;
+
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- gestures and commands run outside React and read the latest of these when they act
   useLayoutEffect(() => {
     live.update({
@@ -2084,6 +2146,7 @@ export function CanvasBoard({
       shape: shapeKind,
       revision,
       editing,
+      points,
       openMenu: menu,
       onSettings,
       onReadOnly,
@@ -2460,6 +2523,15 @@ export function CanvasBoard({
         live.update({ spaceHeld: true, spaceUsed: false });
         boardRef.current?.classList.add("cv-panning");
       }
+    } else if (points !== null && (key === "Enter" || key === "Escape")) {
+      setPoints(null);
+    } else if (
+      points !== null &&
+      points.picked !== null &&
+      (key === "Backspace" || key === "Delete")
+    ) {
+      commands.removeBend(points.id, points.picked);
+      setPoints({ id: points.id, picked: null });
     } else if (arrow !== undefined) {
       const [dx = 0, dy = 0] = arrow;
       if (event.altKey) commands.selectToward(dx, dy);
@@ -2625,7 +2697,10 @@ export function CanvasBoard({
   const [lone] = selection.cards;
   const single = selection.cards.size === 1 ? layout.byId.get(lone ?? "") : undefined;
   const boxBounds =
-    editable && editing === null && (selection.cards.size > 1 || drawingsSelected.size > 0)
+    editable &&
+    editing === null &&
+    points === null &&
+    (selection.cards.size > 1 || drawingsSelected.size > 0)
       ? canvasSelectionBounds(
           [...selection.cards].flatMap((id) => layout.byId.get(id) ?? []),
           layout.inks.flatMap((shape) => (drawingsSelected.has(shape.ink.id) ? shape.ink : [])),
@@ -2914,6 +2989,9 @@ export function CanvasBoard({
             <SelectionFrame node={framed} />
           ) : null}
           {boxBounds === undefined ? null : <SelectionBox bounds={boxBounds} />}
+          {pointsShape === undefined || editing !== null ? null : (
+            <PointHandles shape={pointsShape} picked={points?.picked ?? null} />
+          )}
         </div>
       </Board.Provider>
       <canvas ref={overviewRef} className="cv-overview" hidden={shown !== OVERVIEW} />

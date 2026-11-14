@@ -65,7 +65,7 @@ import {
 import type { CanvasDocument } from "./canvasDocument";
 import { canvasFileKind, cardFileName, overlaps } from "./canvasGeometry";
 import { selectedDrawings, type CanvasLooseEnd, type CanvasSelection } from "./canvasGestures";
-import { canvasStroke, inkMovedWith, movedInk } from "./canvasInk";
+import { canvasBendRemoved, canvasStroke, inkMovedWith, movedInk } from "./canvasInk";
 import { canvasPaintKind, type CanvasPaintKind } from "./canvasPaint";
 import { canvasPenKeys, canvasWithPen, type CanvasPen } from "./canvasPen";
 import { baseViewNames, noteBlocks, noteHeadings, noteWithBlockId } from "./canvasNote";
@@ -97,6 +97,12 @@ export type CanvasEditing =
   | { readonly kind: "arrow"; readonly id: string }
   /** A drawn arrow's label. */
   | { readonly kind: "drawing"; readonly id: string };
+
+/** A drawn arrow whose points are being edited, and the bend picked, by its place among them. */
+export interface CanvasPointsEditing {
+  readonly id: string;
+  readonly picked: number | null;
+}
 
 export interface CanvasPickerRequest {
   readonly title: string;
@@ -142,6 +148,8 @@ export interface CanvasCommandAccess {
   readonly select: (selection: CanvasSelection) => void;
   readonly host: () => CanvasEditHost;
   readonly edit: (editing: CanvasEditing | null) => void;
+  /** Edits a drawn arrow's points, with a bend picked by its place among them; null leaves. */
+  readonly editPoints: (id: string | null, picked?: number | null) => void;
   readonly pick: (request: CanvasPickerRequest) => Promise<CanvasPicked | null>;
   readonly prompt: (request: CanvasPromptRequest) => Promise<string | null>;
   readonly notify: (message: string) => void;
@@ -578,11 +586,22 @@ export class CanvasCommands {
     if (arrow !== null) {
       this.#board.edit({ kind: "arrow", id: arrow });
     } else if (only === undefined && drawn?.type === "arrow" && another === undefined) {
-      this.#board.edit({ kind: "drawing", id: drawn.id });
+      // An elbow keeps its own route: it has no points but its ends to edit.
+      if (drawn.astrolabe?.style?.route === "elbow")
+        this.#board.edit({ kind: "drawing", id: drawn.id });
+      else this.#board.editPoints(drawn.id);
     } else if (only !== undefined && more === undefined) {
       if (only.type === "group") this.#board.edit({ kind: "group", id: only.id });
       else this.editCard(only.id);
     }
+  }
+
+  /** Takes a bend out of a drawn arrow. */
+  removeBend(id: string, index: number) {
+    const ink = this.#board.data().drawings?.find((each) => each.id === id);
+    if (ink?.type !== "arrow") return;
+    const bends = canvasBendRemoved(ink.bends, index);
+    this.#document?.commit([{ op: "set-drawing", drawing: id, keys: { bends } }]);
   }
 
   /** What Align acts on: a selection, or what's inside a lone group. */

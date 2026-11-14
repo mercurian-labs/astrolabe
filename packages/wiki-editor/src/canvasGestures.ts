@@ -34,7 +34,9 @@ import {
 } from "./canvasGeometry";
 import {
   canvasInkShape,
+  canvasBendsMoved,
   canvasEndOnCard,
+  canvasInkBends,
   canvasInkIsEdge,
   canvasInkTouches,
   canvasInkPath,
@@ -163,6 +165,10 @@ export interface CanvasGestureHost {
   /** A stroke drawn with the Pen: x, y pairs on the board, as the pointer went, and its pressure at each. */
   readonly inked: (points: ReadonlyArray<number>, pressure: ReadonlyArray<number>) => void;
   readonly editInkLabel: (id: string) => void;
+  /** The drawn arrow whose points are being edited, and its bend picked, by its place. */
+  readonly points: () => { readonly id: string; readonly picked: number | null } | null;
+  /** Edits a drawn arrow's points, with a bend picked; null leaves them. */
+  readonly editPoints: (id: string | null, picked?: number | null) => void;
   /** A tool's one gesture is over: the pointer selects again. */
   readonly toolDone: () => void;
   readonly fitToContent: (id: string, handle: CanvasHandle) => void;
@@ -220,6 +226,18 @@ type Session =
     }
   /** The Arrow tool from where there's no card. */
   | { readonly kind: "free-arrow"; readonly from: CanvasPoint; draft: SVGPathElement | null }
+  /** A drawn arrow's bend dragged, or with `insert`, pulled out of the middle of a stretch. */
+  | {
+      readonly kind: "bend";
+      readonly ink: CanvasInkArrow;
+      /** Among its bends: the one moved, or where the new one goes. */
+      readonly index: number;
+      readonly insert: boolean;
+      readonly handle: Element;
+      element: InkElement | null;
+      rects: ReadonlyMap<string, CanvasBounds>;
+      restore: () => void;
+    }
   /** A drawn arrow's end, dragged: onto a card it holds there. */
   | {
       readonly kind: "ink-end";
@@ -459,7 +477,17 @@ export class CanvasGestures {
     if (press.session.kind === "pan") {
       host.view.press(event.pointerId, event.clientX, event.clientY);
     }
-    const held = ["resize", "scale", "connect", "draw", "ink", "free-arrow", "lasso", "erase"];
+    const held = [
+      "resize",
+      "scale",
+      "connect",
+      "draw",
+      "ink",
+      "free-arrow",
+      "lasso",
+      "erase",
+      "bend",
+    ];
     if (touch && !held.includes(press.session.kind)) {
       this.#longPress = setTimeout(() => this.#openMenuFromPress(), LONG_PRESS_MS);
     }
@@ -519,6 +547,11 @@ export class CanvasGestures {
         : { kind: "connect", from, side: "right", tool: true, draft: null };
     }
 
+    const point = target.closest("[data-point-handle], [data-point-mid]");
+    if (point !== null) {
+      const session = this.#bendSession(point);
+      if (session !== null) return session;
+    }
     const handle = handleOf(target);
     if (handle !== null && target.closest("[data-selection-box]") !== null) {
       const session = this.#scaleSession(handle);
@@ -577,6 +610,31 @@ export class CanvasGestures {
     }
     if (touch && !host.selectMode()) return { kind: "pan" };
     return { kind: "marquee", element: null, additive: event.shiftKey };
+  }
+
+  /** A press on a point being edited: an end is dragged as ever, a bend moves, a middle adds one. */
+  #bendSession(point: Element): Session | null {
+    const editing = this.#host.points();
+    const ink = this.#host.inks().find((shape) => shape.ink.id === editing?.id)?.ink;
+    if (ink?.type !== "arrow") return null;
+    const mid = point.getAttribute("data-point-mid");
+    const index = Number(mid ?? point.getAttribute("data-point-handle"));
+    const bend = (insert: boolean, at: number): Session => ({
+      kind: "bend",
+      ink,
+      index: at,
+      insert,
+      handle: point,
+      element: null,
+      rects: new Map(),
+      restore: () => {},
+    });
+    if (mid !== null) return bend(true, index);
+    const last = canvasInkBends(ink).length + 1;
+    if (index === 0 || index === last) {
+      return { kind: "ink-end", ink, end: index === 0 ? "from" : "to", element: null };
+    }
+    return bend(false, index - 1);
   }
 
   #dragSession(card: string, ink: boolean): Session {
@@ -979,6 +1037,20 @@ export class CanvasGestures {
       case "free-arrow":
         session.draft = this.#newDraft();
         return;
+      case "bend": {
+        const shape = host.inks().find((each) => each.ink.id === session.ink.id);
+        session.element = shape === undefined ? null : this.#inkElement(shape);
+        session.rects = new Map(host.data().nodes.map((node) => [node.id, node]));
+        const { handle } = session;
+        const [cx, cy] = [handle.getAttribute("cx"), handle.getAttribute("cy")];
+        const lines = snapshot(session.element === null ? [] : [session.element]);
+        session.restore = () => {
+          lines();
+          if (cx !== null) handle.setAttribute("cx", cx);
+          if (cy !== null) handle.setAttribute("cy", cy);
+        };
+        return;
+      }
       case "lasso":
         session.draft = this.#newDraft("cv-lasso");
         return;
@@ -1197,6 +1269,16 @@ export class CanvasGestures {
           `M${session.from.x} ${session.from.y}L${point.x} ${point.y}`,
         );
         return;
+      case "bend": {
+        const { element, ink, index, insert, handle } = session;
+        if (element === null) return;
+        const bends = canvasBendsMoved(ink.bends, index, insert, point);
+        const drawn = canvasInkShape({ ...ink, bends }, session.rects);
+        if (drawn !== undefined) this.#setInk(element, drawn);
+        handle.setAttribute("cx", String(point.x));
+        handle.setAttribute("cy", String(point.y));
+        return;
+      }
       case "ink-end": {
         const { element, ink, end } = session;
         if (element === null) return;
@@ -1325,6 +1407,9 @@ export class CanvasGestures {
       case "ink-end":
         if (session.element !== null) this.#setInk(session.element, session.element.shape);
         return;
+      case "bend":
+        session.restore();
+        return;
       case "retarget":
         session.draft?.remove();
         if (session.hidden !== null) session.hidden.style.visibility = "";
@@ -1416,6 +1501,20 @@ export class CanvasGestures {
         this.#abandon(press);
         this.#finishInkEnd(session, host.view.toWorld(press.x, press.y));
         return;
+      case "bend": {
+        this.#abandon(press);
+        if (document === null) return;
+        const { ink, index, insert } = session;
+        const bends = canvasBendsMoved(
+          ink.bends,
+          index,
+          insert,
+          host.view.toWorld(press.x, press.y),
+        );
+        document.commit([{ op: "set-drawing", drawing: ink.id, keys: { bends } }]);
+        host.editPoints(ink.id, index);
+        return;
+      }
       case "draw": {
         session.element?.remove();
         const a = press.start;
@@ -1677,6 +1776,16 @@ export class CanvasGestures {
       Math.hypot(press.x - last.x, press.y - last.y) < DOUBLE_SLOP;
     this.#lastClick = double ? null : { at: now, x: press.x, y: press.y, id: named };
 
+    const point = target.closest("[data-point-handle], [data-point-mid]");
+    const editing = host.points();
+    if (point !== null && editing !== null) {
+      const at = Number(point.getAttribute("data-point-handle"));
+      const ink = host.inks().find((shape) => shape.ink.id === editing.id)?.ink;
+      const bends = ink?.type === "arrow" ? canvasInkBends(ink).length : 0;
+      const picked = point.hasAttribute("data-point-mid") || at === 0 || at > bends ? null : at - 1;
+      host.editPoints(editing.id, picked);
+      return;
+    }
     if (handle !== null) {
       const card = cardIdOf(target);
       if (double && editable && card !== null) host.fitToContent(card, handle);
@@ -1698,7 +1807,12 @@ export class CanvasGestures {
       }
       host.select({ cards: new Set(), arrow: null, drawings: new Set([drawing]) });
       const ink = host.inks().find((shape) => shape.ink.id === drawing)?.ink;
-      if (double && editable && ink?.type === "arrow") host.editInkLabel(drawing);
+      if (!double || !editable || ink?.type !== "arrow") return;
+      // Its points, as Excalidraw's line editor; its label from the label, an elbow, or the points.
+      const onLabel = target.closest("[data-drawing-label]") !== null;
+      const elbow = ink.astrolabe?.style?.route === "elbow";
+      if (onLabel || elbow || editing?.id === drawing) host.editInkLabel(drawing);
+      else host.editPoints(drawing);
       return;
     }
     const onLabel = target.closest(".cv-card-label") !== null;

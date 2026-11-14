@@ -36,6 +36,8 @@ export interface CanvasLine {
   readonly along: ReadonlyArray<Point>;
   /** What else it can reach: a curve's control points. */
   readonly reach: ReadonlyArray<Point>;
+  /** Halfway along each stretch between its points, where a new bend can be pulled out. */
+  readonly mids: ReadonlyArray<Point>;
 }
 
 export const CANVAS_SIDE_NORMAL: Readonly<Record<CanvasSide, Point>> = {
@@ -108,6 +110,7 @@ function curve(from: CanvasLineEnd, to: CanvasLineEnd): CanvasLine {
     labelAt: cubicAt(from, control1, control2, to, 0.5),
     along,
     reach: [control1, control2],
+    mids: [cubicAt(from, control1, control2, to, 0.5)],
   };
 }
 
@@ -138,6 +141,7 @@ function bentCurve(from: CanvasLineEnd, bends: ReadonlyArray<Point>, to: CanvasL
   let path = `M${from.x} ${from.y}`;
   const along: Point[] = [];
   const reach: Point[] = [];
+  const mids: Point[] = [];
   let firstControl: Point = from;
   let lastControl: Point = to;
   for (let at = 0; at < last; at++) {
@@ -154,12 +158,16 @@ function bentCurve(from: CanvasLineEnd, bends: ReadonlyArray<Point>, to: CanvasL
       along.push(cubicAt(a, c1, c2, b, step / CURVE_STEPS));
     }
     reach.push(c1, c2);
+    mids.push(cubicAt(a, c1, c2, b, 0.5));
   }
-  return { path, along, reach, firstControl, lastControl };
+  return { path, along, reach, mids, firstControl, lastControl };
 }
 
-function polyline(points: ReadonlyArray<Point>, path: string, reach: ReadonlyArray<Point> = []) {
-  return { path, along: points, reach, labelAt: middleOf(points) };
+function polyline(points: ReadonlyArray<Point>, path: string) {
+  const mids = points
+    .slice(1)
+    .map((point, at) => ({ x: (points[at]!.x + point.x) / 2, y: (points[at]!.y + point.y) / 2 }));
+  return { path, along: points, reach: [], labelAt: middleOf(points), mids };
 }
 
 const NO_BENDS: ReadonlyArray<Point> = [];
@@ -175,7 +183,7 @@ export function canvasLine(
   if (route === "elbow") {
     const corners = canvasElbowRoute(from, to, obstacles);
     const line = polyline(corners, canvasElbowPath(corners, CANVAS_ELBOW_CORNER_RADIUS));
-    return { ...line, tips: tipsOf(corners, from, to) };
+    return { ...line, mids: [], tips: tipsOf(corners, from, to) };
   }
   if (route === "straight") {
     const points = [from, ...bends, to];
@@ -188,6 +196,7 @@ export function canvasLine(
     path: bent.path,
     along: bent.along,
     reach: bent.reach,
+    mids: bent.mids,
     labelAt: middleOf(bent.along),
     tips: [
       ...(to.head ? [{ tip: to, back: bent.lastControl }] : []),
