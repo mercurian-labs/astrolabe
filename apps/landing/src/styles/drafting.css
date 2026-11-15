@@ -1291,7 +1291,7 @@ path.pf-rs {
   }
 }
 
-/* ───────────────────────────────────────── [04] How the work moves, assembled while you scroll
+/* ───────────────────────────────────────── [10] The blocks together: one task, assembled while you scroll
    One custom property, --p, runs 0 → 1 across the runway. Each mark has its own window (--a to --b)
    and reads its local progress --t from it. Static (no JS, narrow screens, reduced motion): --p is 1
    and the stages stack. */
@@ -1488,6 +1488,21 @@ path.pf-rs {
 }
 .mf .tg-group text {
   font-size: 13.5px;
+}
+/* The canvas of stage 6, drawn small: three cards and the arrows between them. */
+.tg-board rect {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.2;
+}
+.tg-board path {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.2;
+}
+.tg-board text {
+  font: 400 11px var(--sans);
+  fill: var(--ink);
 }
 
 .story__steps {
@@ -2492,8 +2507,6 @@ hidden, leaves the sticky stage working). */
 .app--tour:not([data-section="agents"]) [data-in="agents"],
 .app--tour:not([data-section="wikis"]) [data-in="wikis"],
 .app--tour:not([data-section="changes"]) [data-in="changes"],
-.app--tour:not([data-wiki="skill"]) [data-wv="skill"],
-.app--tour[data-wiki="skill"] [data-wv="doc"],
 .app--tour[data-cpane="pr"] .pane--group,
 .app--tour:not([data-cpane="pr"]) .pane--pr {
   display: none;
@@ -2796,9 +2809,6 @@ hidden, leaves the sticky stage working). */
 }
 .app--tour[data-edits="accepted"] .doc__typed {
   background: transparent;
-}
-.app--tour .skill__cases .doc__typed {
-  border-radius: 0.2em;
 }
 .app--tour .cursor {
   border-left-color: var(--agent);
@@ -3372,7 +3382,7 @@ hidden, leaves the sticky stage working). */
   }
 }
 
-/* ───────────────────────────────────────── [05] Wikis */
+/* ───────────────────────────────────────── [04] Knowledge: Wikis */
 
 .surface {
   display: grid;
@@ -3575,78 +3585,113 @@ hidden, leaves the sticky stage working). */
   }
 }
 
-/* ───────────────────────────────────────── [06] Skills: a skill note in the wiki beside the chat
-   that uses it, two panes under the rail. */
+/* ───────────────────────────────────────── [09] Skills: a chat that runs a team's own skill, with the
+   composer's $ menu open below it (ComposerCommandMenu: name, description, a source badge). */
 
-.app--skill .tb {
-  grid-template-columns: calc(var(--rail) + (100% - var(--rail)) / 2) minmax(0, 1fr);
-}
 .app--skill .pb {
-  grid-template-columns: var(--rail) minmax(0, 1fr) minmax(0, 1fr);
   height: auto;
 }
-.app--skill .tb .lights {
-  margin-right: 0.8em;
-}
-.skill__second {
-  border-left: 1px solid var(--app-border);
-}
-.app--skill .pane--doc {
-  border-right: 1px solid var(--app-border);
-}
-.app--skill .doc {
-  padding: 1.6em 2em 2em;
-}
-.app--skill .doc h4 {
-  font-size: 1.5em;
-}
-.skill__from {
-  margin-bottom: 0.6em;
-  font-size: 0.8em;
-  color: var(--app-muted);
-}
-.skill__cases {
-  padding-left: 1.3em;
-  list-style: decimal;
-}
-.skill__cases li + li {
-  margin-top: 0.25em;
-}
 .app--skill .chat {
-  justify-content: flex-end;
-  padding: 1.6em 1.8em 1.8em;
+  padding-bottom: 0.4em;
 }
+/* As ContextChip draws a skill: the accent's ink, its box glyph, no fill. */
 .skill__chip {
-  padding: 0.05em 0.35em;
-  border-radius: 0.3em;
-  background: var(--app-agent-tint);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2em;
   color: var(--app-agent);
   font-weight: 500;
+}
+.skill__chip svg {
+  width: 1em;
+  height: 1em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.85;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.skill__composer {
+  position: relative;
+  margin-top: 13.5em;
+}
+.skmenu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 0.4em);
+  padding: 0.35em;
+  border: 1px solid var(--app-border);
+  border-radius: 0.9em;
+  background: var(--app-surface);
+  box-shadow: 0 6px 18px oklch(0 0 0 / 0.1);
+}
+.skmenu__label {
+  padding: 0.3em 0.6em 0.25em;
+  font-size: 0.86em;
+  color: var(--app-muted);
+}
+.skmenu__row {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  height: 2.2em;
+  padding: 0 0.6em;
+  border-radius: 0.55em;
+  font-size: 0.86em;
+  white-space: nowrap;
+}
+.skmenu__row.is-active {
+  background: var(--app-row-active);
+}
+.skmenu__row b {
+  flex: none;
+  font-weight: 500;
+}
+.skmenu__row span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--app-muted);
+}
+.skmenu__row em {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  padding: 0.1em 0.5em;
+  border-radius: 0.4em;
+  background: var(--app-code);
+  font-style: normal;
+  font-size: 0.9em;
+  color: var(--app-muted);
+}
+.skill__typed {
+  color: var(--app-text);
+}
+.skill__caret {
+  display: inline-block;
+  width: 1px;
+  height: 1.1em;
+  margin-left: 1px;
+  vertical-align: -0.2em;
+  background: var(--app-text);
 }
 .surface__desc code {
   font-family: var(--mono);
   font-size: 0.86em;
   white-space: nowrap;
 }
-@container (max-width: 700px) {
-  .app--skill .tb {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .app--skill .skill__second,
-  .app--skill .rail {
+@container (max-width: 560px) {
+  .skmenu__row span {
     display: none;
   }
-  .app--skill .pb {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto auto;
-  }
-  .app--skill .pane--doc {
-    border-right: 0;
-    border-bottom: 1px solid var(--app-border);
+  .skmenu__row b {
+    flex: 1;
   }
 }
 
-/* ───────────────────────────────────────── [07] Repositories: a thread's checkout, as
+/* ───────────────────────────────────────── [05] Code: Projects: a thread's checkout, as
    RepositorySidebar and RepositoryFileView draw it. The sidebar's rows are the app's 32 px rows;
    the file's header is its 32 px bar, and its code the editor's code mode, Alabaster's colours. */
 
@@ -3769,8 +3814,38 @@ hidden, leaves the sticky stage working). */
   height: 1.15em;
 }
 .code {
+  position: relative;
   padding: 0.7em 0 1em;
   font: 400 0.8125em/1.7 var(--mono);
+}
+/* The language server's name in the file header, and its hover on a name, as the editor draws them. */
+.file__lsp {
+  padding: 0.1em 0.5em;
+  border-radius: 0.4em;
+  background: var(--app-code);
+}
+.file__hovered {
+  text-decoration: underline dotted;
+  text-underline-offset: 0.2em;
+}
+.file__hover {
+  position: absolute;
+  top: calc(0.7em + 5 * 1.7em);
+  left: 13em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35em;
+  padding: 0.55em 0.8em;
+  border: 1px solid var(--app-border);
+  border-radius: 0.6em;
+  background: var(--app-surface);
+  box-shadow: 0 6px 18px oklch(0 0 0 / 0.1);
+  line-height: 1.45;
+  white-space: nowrap;
+}
+.file__hover span {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, var(--sans);
+  color: var(--app-muted);
 }
 .code p {
   display: flex;
@@ -3820,7 +3895,7 @@ hidden, leaves the sticky stage working). */
   }
 }
 
-/* ───────────────────────────────────────── [08] Changes: a change group, and what its states mean */
+/* ───────────────────────────────────────── [06] Review: a change group, and what its states mean */
 
 .changes__body {
   display: grid;
@@ -3882,9 +3957,9 @@ hidden, leaves the sticky stage working). */
   }
 }
 
-/* ───────────────────────────────────────── [09] Understanding: a canvas kept in the wiki, as the
-   app's canvas tab draws one: a dotted board, groups labelled above, cards, arrows, changed cards
-   tinted. Drawn wide, and stacked for a phone-width window. */
+/* ───────────────────────────────────────── [07] Understanding: a canvas kept in the wiki, as the
+   app's canvas tab draws one while you edit it: a dotted board, the tool row, sections labelled
+   above, cards, arrows, changed cards tinted. Drawn wide, and stacked for a phone-width window. */
 
 .app--canvas .pb {
   height: auto;
@@ -3934,13 +4009,41 @@ hidden, leaves the sticky stage working). */
   font-size: 12px;
   fill: var(--app-muted);
 }
-.cv-type rect {
-  fill: var(--app-canvas);
-  stroke: var(--app-border);
+.cv-edge .cv-edge--dash {
+  stroke-dasharray: 5 4;
 }
-.cv-type text {
-  font: 500 11.5px var(--mono);
+.cv-edge .is-selected {
+  stroke: var(--app-agent);
+}
+.cv-handles rect {
+  fill: var(--app-surface);
+  stroke: var(--app-agent);
+  stroke-width: 1.25;
+}
+.cv-handles circle {
   fill: var(--app-agent);
+}
+/* The editor's tool row along the board's top, the picked tool filled. */
+.cv-tools__bar {
+  fill: var(--app-surface);
+  stroke: var(--app-border);
+  stroke-width: 1.25;
+}
+.cv-tool rect {
+  fill: transparent;
+}
+.cv-tool.is-on rect {
+  fill: var(--app-row-active);
+}
+.cv-tool text,
+.cv-tools__done {
+  font-size: 11.5px;
+  fill: var(--app-muted);
+}
+.cv-tool.is-on text,
+.cv-tools__done {
+  fill: var(--app-text);
+  font-weight: 600;
 }
 .cv-card rect {
   fill: var(--app-surface);
@@ -3987,10 +4090,10 @@ hidden, leaves the sticky stage working). */
   }
 }
 
-/* ───────────────────────────────────────── [10] Automations: one weekday, three ways an agent starts
+/* ───────────────────────────────────────── [08] Automations: one weekday, three ways an agent starts
    Each row is a trigger beside its lane on one shared day. A lane places its marks by time, as
    fractions of the day: --x where it starts, --w where the pull request wakes it, --y where it ends.
-   Each mark draws in as the playhead (--p) passes, through the same windows as [04]. Static (no JS,
+   Each mark draws in as the playhead (--p) passes, through the same windows as [10]. Static (no JS,
    phones, a short window, reduced motion): --p is 1, every lane is complete and the playhead hides. */
 
 .auto {
