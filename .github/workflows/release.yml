@@ -260,8 +260,9 @@ jobs:
       - name: Typecheck
         run: vp run typecheck
 
-  # Keep tests on their own runners, using the same package split and server
-  # shards as CI (test, test_web, test_server in ci.yml). Keep the two in sync.
+  # Keep tests on their own runners, using the same package split as CI (test,
+  # test_web, test_server in ci.yml). Keep the two in sync. Server shards differ
+  # on purpose: CI runs four to stay inside boat's start limits.
   test:
     name: Release tests
     needs: [preflight]

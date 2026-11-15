@@ -14,6 +14,10 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Heavy jobs run on boat.dev, which bills per job start ($20 plan: 60 an hour,
+  # 200 a day). Boat refuses public-repo runs by anyone off its allowlist, so
+  # runs-on falls back to GitHub's runners unless BOAT_CI_USERS (a JSON array of
+  # logins, kept in step with `boat ci public`) lists the author and starter.
   # Skips jobs a pull request cannot affect: a web change does not run the
   # server shards, a server change does not run the mobile tests, and the macOS
   # lint (~6.7x a Linux minute) runs only for native mobile sources.
@@ -22,7 +26,7 @@ jobs:
   # open: if the diff cannot be resolved, everything runs.
   changes:
     name: Changes
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       typecheck: ${{ steps.detect.outputs.typecheck }}
@@ -63,7 +67,7 @@ jobs:
       contents: read
       id-token: write
     name: Lint
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ${{ contains(fromJSON(vars.BOAT_CI_USERS || '[]'), github.triggering_actor) && contains(fromJSON(vars.BOAT_CI_USERS || '[]'), github.event.pull_request.user.login || github.actor) && 'boat-large' || 'ubuntu-24.04' }}
     timeout-minutes: 10
     steps:
       - name: Checkout
@@ -119,7 +123,7 @@ jobs:
     name: Build and Typecheck
     needs: changes
     if: ${{ !cancelled() && (needs.changes.outputs.build != 'false' || needs.changes.outputs.typecheck != 'false') }}
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ${{ contains(fromJSON(vars.BOAT_CI_USERS || '[]'), github.triggering_actor) && contains(fromJSON(vars.BOAT_CI_USERS || '[]'), github.event.pull_request.user.login || github.actor) && 'boat-large' || 'ubuntu-24.04' }}
     timeout-minutes: 10
     steps:
       - name: Checkout
@@ -213,7 +217,7 @@ jobs:
     name: Test
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.test != 'false' }}
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ${{ contains(fromJSON(vars.BOAT_CI_USERS || '[]'), github.triggering_actor) && contains(fromJSON(vars.BOAT_CI_USERS || '[]'), github.event.pull_request.user.login || github.actor) && 'boat-large' || 'ubuntu-24.04' }}
     timeout-minutes: 10
     steps:
       - name: Checkout
@@ -289,7 +293,7 @@ jobs:
     name: Test Web
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.test_web != 'false' }}
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ${{ contains(fromJSON(vars.BOAT_CI_USERS || '[]'), github.triggering_actor) && contains(fromJSON(vars.BOAT_CI_USERS || '[]'), github.event.pull_request.user.login || github.actor) && 'boat-large' || 'ubuntu-24.04' }}
     timeout-minutes: 10
     steps:
       - name: Checkout
@@ -344,7 +348,8 @@ jobs:
   # one at a time. Sharding spreads them over separate runners instead of
   # separate workers, so no two server test files ever share a machine and the
   # isolation that flag buys is preserved exactly. One file at a time keeps
-  # about 1.5 cores busy, so 4 vCPU runners lose nothing against 8. The shards
+  # about 1.5 cores busy, so more cores do not speed a shard up. Four shards,
+  # not eight, keep a busy hour inside boat's per-hour start limit. The shards
   # split files by recorded duration (apps/server/src/testUtils/weightedShardSequencer.ts).
   # The shards are the longest jobs, so they gate themselves instead of waiting
   # ~15s for `changes`: a shard the change cannot affect stops after checkout.
@@ -353,14 +358,14 @@ jobs:
       contents: read
       id-token: write
     name: Test Server ${{ matrix.shard }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    # Shards take 2-5 minutes. When the shared task cache throttles reads, each
-    # failed fetch stalls vp for 15-90s, which pushed shards past 10 minutes.
-    timeout-minutes: 20
+    runs-on: ${{ contains(fromJSON(vars.BOAT_CI_USERS || '[]'), github.triggering_actor) && contains(fromJSON(vars.BOAT_CI_USERS || '[]'), github.event.pull_request.user.login || github.actor) && 'boat-large' || 'ubuntu-24.04' }}
+    # Shards take 5-9 minutes. When the shared task cache throttles reads, each
+    # failed fetch stalls vp for 15-90s, which pushed shards past 20 minutes.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        shard: [1, 2, 3, 4]
     steps:
       # Depth 2 brings the base commit the change is diffed against.
       - name: Checkout
@@ -469,7 +474,7 @@ jobs:
     name: Rust
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.rust != 'false' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ${{ contains(fromJSON(vars.BOAT_CI_USERS || '[]'), github.triggering_actor) && contains(fromJSON(vars.BOAT_CI_USERS || '[]'), github.event.pull_request.user.login || github.actor) && 'boat' || 'ubuntu-24.04' }}
     timeout-minutes: 10
     steps:
       - name: Checkout
@@ -535,7 +540,7 @@ jobs:
     name: Release Smoke
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.release_smoke != 'false' }}
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ${{ contains(fromJSON(vars.BOAT_CI_USERS || '[]'), github.triggering_actor) && contains(fromJSON(vars.BOAT_CI_USERS || '[]'), github.event.pull_request.user.login || github.actor) && 'boat-large' || 'ubuntu-24.04' }}
     timeout-minutes: 10
     steps:
       - name: Checkout
@@ -575,7 +580,7 @@ jobs:
         mobile_native_static_analysis,
         release_smoke,
       ]
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Require every job to pass

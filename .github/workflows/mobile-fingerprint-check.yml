@@ -25,7 +25,8 @@ concurrency:
 jobs:
   fingerprint:
     name: Native fingerprint diff
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    # Boat when BOAT_CI_USERS allows the run; see the note atop ci.yml.
+    runs-on: ${{ contains(fromJSON(vars.BOAT_CI_USERS || '[]'), github.triggering_actor) && contains(fromJSON(vars.BOAT_CI_USERS || '[]'), github.event.pull_request.user.login || github.actor) && 'boat-large' || 'ubuntu-24.04' }}
     permissions:
       contents: read
     env:
