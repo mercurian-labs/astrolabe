@@ -2,32 +2,32 @@
 import Frontispiece from "./Frontispiece.astro";
 import plate from "../data/sphinx-plate.json";
 ---
-          <!-- ───────────────────────────────────────── [04] Walkthrough -->
+          <!-- ───────────────────────────────────────── [10] The blocks together -->
           <section class="story" id="how" aria-labelledby="story-title" data-story>
             <div class="head head--plate">
               <div class="head__main">
-                <p class="tag">[04] How the work moves</p>
-                <h2 id="story-title" class="h2" data-reveal>One task, three agents, one change.</h2>
+                <p class="tag">[10] The blocks together</p>
+                <h2 id="story-title" class="h2" data-reveal>One task through every block.</h2>
               </div>
               <p class="body head__aside" data-reveal>
-                A planning agent splits the work, hands the pieces out and gets the results back. What the
-                agents learned goes into the wiki, and the next task starts there. Here is the shape of it, a
-                step at a time.
+                A question starts a thread. Agents take parts of it, the work comes back as one change, and a
+                canvas shows what it did. What the agents learned lands in the wiki, and the next task starts
+                there. Here is the shape of it, a step at a time.
               </p>
               <Frontispiece plate={plate} />
             </div>
             <div class="story__runway">
               <div class="story__stage">
                 <div class="story__top">
-                  <span class="tag">Fig. 3 · How a piece of work moves</span>
+                  <span class="tag">Fig. 6 · One task through every block</span>
                   <i class="story__bar" aria-hidden="true"><i></i></i>
-                  <span class="tag story__count" data-story-count aria-hidden="true">Stage 1 / 6</span>
+                  <span class="tag story__count" data-story-count aria-hidden="true">Stage 1 / 7</span>
                 </div>
                 <div class="story__graph">
                   <div class="story__fig">
                     <svg class="tg" viewBox="0 0 1200 560" role="img" aria-labelledby="tg-title tg-desc">
                       <title id="tg-title">One task, handed out and brought back as one change</title>
-                      <desc id="tg-desc">You ask Claude to plan Add Apple Pay to checkout. It hands the payment intents API to Codex and the Apple Pay button to Claude Code, each in a git worktree of its own. Both work at once and say where they stand. Each result comes back to the planning thread, and the two pull requests and the wiki change become one change group, merged. What the agents learned lands in the team's wiki, and the next task starts from it, back where the figure began.</desc>
+                      <desc id="tg-desc">You ask Claude to plan Add Apple Pay to checkout. It hands the payment intents API to Codex and the Apple Pay button to Claude Code, each in a git worktree of its own. Both work at once and say where they stand. Each result comes back to the planning thread, and the two pull requests and the wiki change become one change group, merged. Claude draws the change on a canvas and you keep it. What the agents learned lands in the team's wiki, and the next task starts from it, back where the figure began.</desc>
                       <defs>
                         <mask id="tg-back-a" maskUnits="userSpaceOnUse" x="0" y="0" width="1200" height="560">
                           <path class="k-draw" style="--a: 0.52; --b: 0.58" pathLength="1" d="M740 120C800 120 800 280 860 280" stroke="#fff" stroke-width="10" fill="none" />
@@ -130,25 +130,45 @@ import plate from "../data/sphinx-plate.json";
                         <text x="1000" y="346">Merged together</text>
                       </g>
 
-                      <!-- Stage 6: what they learned lands in the wiki, and the next task starts from it -->
-                      <path class="tg-line k-draw" style="--a: 0.79; --b: 0.85" pathLength="1" d="M1090 364V544H175V490" />
+                      <!-- Stage 6: a canvas shows what the change did, kept beside it -->
+                      <path class="tg-line k-draw" style="--a: 0.79; --b: 0.81" pathLength="1" d="M1090 364V392" />
                       <g class="tg-lbl tg-lbl--mute k-fade" style="--a: 0.8; --b: 0.84">
+                        <text x="1078" y="384" text-anchor="end">Drawn and kept</text>
+                      </g>
+                      <g class="tg-group k-fade" style="--a: 0.8; --b: 0.85">
+                        <rect x="960" y="392" width="236" height="108" />
+                        <path d="M960 424H1196" />
+                        <text class="tg-group__head" x="976" y="413">Canvas · Apple Pay</text>
+                      </g>
+                      <g class="tg-board k-fade" style="--a: 0.82; --b: 0.86">
+                        <rect x="976" y="436" width="62" height="20" />
+                        <rect x="1052" y="436" width="62" height="20" />
+                        <rect x="976" y="468" width="204" height="20" />
+                        <path d="M1038 446H1052M1007 456V468" />
+                        <text x="1007" y="450" text-anchor="middle">System</text>
+                        <text x="1083" y="450" text-anchor="middle">Change</text>
+                        <text x="1078" y="482" text-anchor="middle">Effect</text>
+                      </g>
+
+                      <!-- Stage 7: what they learned lands in the wiki, and the next task starts from it -->
+                      <path class="tg-line k-draw" style="--a: 0.87; --b: 0.91" pathLength="1" d="M1078 500V544H175V490" />
+                      <g class="tg-lbl tg-lbl--mute k-fade" style="--a: 0.88; --b: 0.91">
                         <text x="965" y="532" text-anchor="middle">What they learned</text>
                       </g>
-                      <g class="tg-group k-fade" style="--a: 0.83; --b: 0.86">
+                      <g class="tg-group k-fade" style="--a: 0.9; --b: 0.93">
                         <rect x="50" y="388" width="250" height="102" />
                         <path d="M50 420H300" />
                         <text class="tg-group__head" x="64" y="409">Wiki · engineering</text>
                         <text x="64" y="448">Payments · Apple Pay</text>
                         <text x="64" y="474">Testing · shared phones</text>
                       </g>
-                      <path class="tg-xfer k-fade" style="--a: 0.86; --b: 0.9" d="M70 388V292" />
-                      <g class="tg-lbl tg-lbl--strong k-fade" style="--a: 0.88; --b: 0.91">
+                      <path class="tg-xfer k-fade" style="--a: 0.93; --b: 0.96" d="M70 388V292" />
+                      <g class="tg-lbl tg-lbl--strong k-fade" style="--a: 0.94; --b: 0.97">
                         <text x="84" y="366">Next task starts here</text>
                       </g>
                     </svg>
-                    <svg class="mf" viewBox="0 0 340 590" role="img" aria-labelledby="mf-title">
-                      <title id="mf-title">You ask Claude to plan a task. It hands two pieces to Codex and Claude Code, each in a worktree of its own; both work at once, and each result comes back to the planning thread. The pull requests and the wiki change become one change group. What they learned lands in the wiki, and the next task starts from it.</title>
+                    <svg class="mf" viewBox="0 0 340 670" role="img" aria-labelledby="mf-title">
+                      <title id="mf-title">You ask Claude to plan a task. It hands two pieces to Codex and Claude Code, each in a worktree of its own; both work at once, and each result comes back to the planning thread. The pull requests and the wiki change become one change group, and a canvas shows what changed. What they learned lands in the wiki, and the next task starts from it.</title>
                       <path class="tg-line" d="M16 6V104" />
                       <path class="tg-future" d="M16 104V330" />
                       <path class="tg-line" d="M16 104C16 140 92 132 92 168V262" />
@@ -174,12 +194,12 @@ import plate from "../data/sphinx-plate.json";
                       <text class="mf-tag" x="102" y="244">Done</text>
                       <text class="mf-tag" x="224" y="244">Done</text>
                       <g class="mf-cap">
-                        <text x="40" y="20"><tspan class="mf-tag">1/6</tspan><tspan dx="8">You ask one agent to plan.</tspan></text>
-                        <text x="40" y="64"><tspan class="mf-tag">2/6</tspan><tspan dx="8">It hands out two tasks,</tspan></text>
+                        <text x="40" y="20"><tspan class="mf-tag">1/7</tspan><tspan dx="8">You ask one agent to plan.</tspan></text>
+                        <text x="40" y="64"><tspan class="mf-tag">2/7</tspan><tspan dx="8">It hands out two tasks,</tspan></text>
                         <text x="40" y="80">each in a worktree of its own.</text>
-                        <text x="40" y="108"><tspan class="mf-tag">3/6</tspan><tspan dx="8">Two agents work at once.</tspan></text>
-                        <text x="40" y="348"><tspan class="mf-tag">4/6</tspan><tspan dx="8">Each result comes back.</tspan></text>
-                        <text x="40" y="380"><tspan class="mf-tag">5/6</tspan><tspan dx="8">Two pull requests and a wiki</tspan></text>
+                        <text x="40" y="108"><tspan class="mf-tag">3/7</tspan><tspan dx="8">Two agents work at once.</tspan></text>
+                        <text x="40" y="348"><tspan class="mf-tag">4/7</tspan><tspan dx="8">Each result comes back.</tspan></text>
+                        <text x="40" y="380"><tspan class="mf-tag">5/7</tspan><tspan dx="8">Two pull requests and a wiki</tspan></text>
                         <text x="40" y="396">change, merged as one.</text>
                       </g>
                       <g class="tg-group">
@@ -187,27 +207,36 @@ import plate from "../data/sphinx-plate.json";
                         <text x="20" y="434">#512 · #513 · Payments wiki change</text>
                         <text class="mf-tag" x="20" y="458">One change group · Merged</text>
                       </g>
-                      <path class="tg-line" d="M16 472V540" />
-                      <path class="tg-xfer" d="M324 558C332 558 332 550 332 542V12C332 6 328 2 322 2H16" />
+                      <path class="tg-line" d="M16 472V620" />
                       <g class="mf-cap">
-                        <text x="40" y="500"><tspan class="mf-tag">6/6</tspan><tspan dx="8">What they learned lands in</tspan></text>
-                        <text x="40" y="516">the wiki. The next task starts there.</text>
+                        <text x="40" y="498"><tspan class="mf-tag">6/7</tspan><tspan dx="8">A canvas shows what changed.</tspan></text>
                       </g>
                       <g class="tg-group">
-                        <rect x="8" y="532" width="316" height="52" />
-                        <text x="20" y="555">Payments · Testing</text>
-                        <text class="mf-tag" x="20" y="574">Wiki · engineering · Read first</text>
+                        <rect x="8" y="512" width="316" height="52" />
+                        <text x="20" y="535">Canvas · System · Change · Effect</text>
+                        <text class="mf-tag" x="20" y="554">Drawn in the thread · Kept</text>
+                      </g>
+                      <path class="tg-xfer" d="M324 638C332 638 332 630 332 622V12C332 6 328 2 322 2H16" />
+                      <g class="mf-cap">
+                        <text x="40" y="582"><tspan class="mf-tag">7/7</tspan><tspan dx="8">What they learned lands in</tspan></text>
+                        <text x="40" y="598">the wiki. The next task starts there.</text>
+                      </g>
+                      <g class="tg-group">
+                        <rect x="8" y="612" width="316" height="52" />
+                        <text x="20" y="635">Payments · Testing</text>
+                        <text class="mf-tag" x="20" y="654">Wiki · engineering · Read first</text>
                       </g>
                     </svg>
                   </div>
                 </div>
                 <ol class="story__steps">
-                  <li data-step="0"><span class="tag">[1/6]</span><span>You ask one agent to plan the work. Here, Claude, in one thread.</span></li>
-                  <li data-step="1"><span class="tag">[2/6]</span><span>It hands two tasks to two agents, on any provider, each in a git worktree of its own.</span></li>
-                  <li data-step="2"><span class="tag">[3/6]</span><span>They work at once, and each says where it stands: working, then done.</span></li>
-                  <li data-step="3"><span class="tag">[4/6]</span><span>Each result comes back to the planning thread, as a row it can read and act on.</span></li>
-                  <li data-step="4"><span class="tag">[5/6]</span><span>Their pull requests and the wiki change form one change group, and merge together.</span></li>
-                  <li data-step="5"><span class="tag">[6/6]</span><span>What they learned lands in the team's wiki, and the next task starts from it.</span></li>
+                  <li data-step="0"><span class="tag">[1/7]</span><span>You ask one agent to plan the work. Here, Claude, in one thread.</span></li>
+                  <li data-step="1"><span class="tag">[2/7]</span><span>It hands two tasks to two agents, on any provider, each in a git worktree of its own.</span></li>
+                  <li data-step="2"><span class="tag">[3/7]</span><span>They work at once, and each says where it stands: working, then done.</span></li>
+                  <li data-step="3"><span class="tag">[4/7]</span><span>Each result comes back to the planning thread, as a row it can read and act on.</span></li>
+                  <li data-step="4"><span class="tag">[5/7]</span><span>Their pull requests and the wiki change form one change group, and merge together.</span></li>
+                  <li data-step="5"><span class="tag">[6/7]</span><span>Claude draws the change on a canvas, and you keep it in the wiki beside the change.</span></li>
+                  <li data-step="6"><span class="tag">[7/7]</span><span>What they learned lands in the team's wiki, and the next task starts from it.</span></li>
                 </ol>
                 <div class="story__text">
                   <h3 class="h2 story__title">One thread holds the whole task.</h3>
@@ -220,6 +249,7 @@ import plate from "../data/sphinx-plate.json";
                     <li>Each agent works in a git worktree of its own.</li>
                     <li>Results land back in the thread that asked.</li>
                     <li>Code and docs from every thread ship as one change.</li>
+                    <li>A canvas shows what the change did.</li>
                     <li>What the agents learned is there for the next task.</li>
                   </ul>
                 </div>

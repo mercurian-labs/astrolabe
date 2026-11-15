@@ -1,7 +1,8 @@
 ---
-// A canvas an agent drew of its change and kept in the wiki, as the app's canvas tab shows one: groups
-// with their labels above, cards, arrows, the changed cards marked. Drawn twice: wide, and stacked for
-// a phone-width window.
+// A canvas an agent drew of its change and kept in the wiki, as the app's canvas tab shows one while
+// you edit it: the tool row, sections labelled above, cards, sharp, curved and elbow arrows, the
+// changed cards marked, one arrow selected with its bends. Drawn twice: wide, and stacked for a
+// phone-width window.
 const wide = {
   system: [
     { id: "a", x: 48, y: 76, w: 180, title: "Checkout", sub: "checkout/PayButtons.tsx", mark: "#513" },
@@ -20,18 +21,27 @@ const wide = {
     { x: 672, title: "The card form stays", lines: ["Where Apple Pay can’t pay, checkout", "shows the card form as before."] },
   ],
 };
+// The tool row, as the board's editor names its tools; the Arrow tool is in hand.
+const tools = ["Hand", "Select", "Lasso", "Card", "Section", "Arrow", "Pen", "Eraser", "Shape"];
+let at = 292;
+const toolRow = tools.map((name) => {
+  const w = name.length * 6.6 + 16;
+  const tool = { name, x: at, w };
+  at += w + 4;
+  return tool;
+});
 ---
-          <!-- ───────────────────────────────────────── [09] Understanding -->
+          <!-- ───────────────────────────────────────── [07] Understanding -->
           <section class="surfaces" id="understanding" aria-labelledby="understanding-title">
             <div class="head">
               <div class="head__main">
-                <p class="tag">[09] Understanding</p>
+                <p class="tag">[07] Understanding</p>
                 <h2 id="understanding-title" class="h2" data-reveal>See what changed, drawn.</h2>
               </div>
               <p class="body head__aside" data-reveal>
                 An agent can explain its work as a drawing: how the parts fit, what it moved and what that
-                means for the people who use it. The drawing goes into the wiki with the change, so a reviewer
-                starts from the picture.
+                means for the people who use it. Keep the drawing, and it goes into the wiki with the change,
+                so a reviewer starts from the picture.
               </p>
             </div>
 
@@ -42,7 +52,7 @@ const wide = {
               </div>
               <div class="surface__ui">
           <figure class="window">
-            <div class="app app--poster app--doc app--canvas" role="img" aria-label="A canvas open in the Wikis section of Astrolabe, kept from Claude’s thread in the change request Add Apple Pay to checkout. Its System group shows Checkout calling Payment intents, which creates the intent with the payment provider and posts totals to the Ledger; the Ledger depends on the wiki note Rounding. Checkout and Payment intents are marked as changed by #513 and #512. The Change group lists the two pull requests. The Effect group says a shopper with a card in Wallet pays in two taps, Apple Pay totals round once in the ledger, and the card form stays where Apple Pay can’t pay.">
+            <div class="app app--poster app--doc app--canvas" role="img" aria-label="A canvas open for editing in the Wikis section of Astrolabe, kept from Claude’s thread in the pull request Add Apple Pay to checkout, with the Arrow tool picked in the tool row. Its System section shows Checkout calling Payment intents, which creates the intent with the payment provider and posts totals to the Ledger; a dashed arrow labelled rounds by runs from the Ledger to the wiki note Rounding. Checkout and Payment intents are marked as changed by #513 and #512. The Change section lists the two pull requests. An elbow arrow from #513 to the card form, selected, shows its two bends. The Effect section says a shopper with a card in Wallet pays in two taps, Apple Pay totals round once in the ledger, and the card form stays where Apple Pay can’t pay.">
               <div class="tb">
                 <div class="tb__cap">
                   <span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
@@ -93,16 +103,29 @@ const wide = {
                     <span class="doc__name">Apple Pay checkout</span>
                     <span class="doc__scope">In “Add Apple Pay to checkout” · kept from Claude’s thread</span>
                     <span class="spacer"></span>
-                    <span class="mini mini--ghost">Jump to group</span>
+                    <span class="mini mini--ghost">Jump to section</span>
                     <span class="mini">Fit</span>
                   </div>
                   <div class="board">
-                    <svg class="cv cv--wide" viewBox="0 0 1000 560" aria-hidden="true">
+                    <svg class="cv cv--wide" viewBox="0 0 1000 604" aria-hidden="true">
                       <defs>
                         <marker id="cv-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
                           <path class="cv-head" d="M0 1L9 5L0 9Z" />
                         </marker>
                       </defs>
+                      <g class="cv-tools">
+                        <rect class="cv-tools__bar" x={toolRow[0].x - 6} y="4" width={at - toolRow[0].x + 58} height="30" rx="9" />
+                        {
+                          toolRow.map((t) => (
+                            <g class:list={["cv-tool", { "is-on": t.name === "Arrow" }]}>
+                              <rect x={t.x} y="8" width={t.w} height="22" rx="6" />
+                              <text x={t.x + t.w / 2} y="23" text-anchor="middle">{t.name}</text>
+                            </g>
+                          ))
+                        }
+                        <text class="cv-tools__done" x={at + 22} y="23" text-anchor="middle">Done</text>
+                      </g>
+                      <g transform="translate(0 44)">
                       <g class="cv-group">
                         <text x="24" y="34">System · how the parts fit</text>
                         <rect x="24" y="44" width="640" height="256" rx="10" />
@@ -112,20 +135,26 @@ const wide = {
                         <rect x="24" y="340" width="952" height="196" rx="10" />
                       </g>
                       <g class="cv-edge">
-                        <path d="M228 106H262" marker-end="url(#cv-head)" />
+                        <path d="M230 106H262" marker-start="url(#cv-head)" marker-end="url(#cv-head)" />
                         <path d="M454 106H488" marker-end="url(#cv-head)" />
                         <path d="M344 136V206" marker-end="url(#cv-head)" />
-                        <path d="M424 238H518" marker-end="url(#cv-head)" />
+                        <path class="cv-edge--dash" d="M424 238H518" marker-end="url(#cv-head)" />
                         <path d="M138 136V374" marker-end="url(#cv-head)" />
                         <path d="M344 268C344 330 470 320 470 374" marker-end="url(#cv-head)" />
-                        <path d="M836 224V374" marker-end="url(#cv-head)" />
+                        <path class="is-selected" d="M956 194H966V318H812V374" marker-end="url(#cv-head)" />
+                      </g>
+                      <g class="cv-handles">
+                        <rect x="952" y="190" width="8" height="8" />
+                        <rect x="962" y="314" width="8" height="8" />
+                        <rect x="808" y="314" width="8" height="8" />
+                        <rect x="808" y="370" width="8" height="8" />
+                        <circle cx="966" cy="256" r="3.5" />
+                        <circle cx="889" cy="318" r="3.5" />
                       </g>
                       <g class="cv-label">
                         <text x="354" y="176">posts totals</text>
-                      </g>
-                      <g class="cv-type">
-                        <rect x="428" y="227" width="86" height="22" rx="11" />
-                        <text x="471" y="242" text-anchor="middle">@depends-on</text>
+                        <text x="471" y="230" text-anchor="middle">rounds by</text>
+                        <text x="850" y="312" text-anchor="middle">Elbow</text>
                       </g>
                       {
                         wide.system.map((c) => (
@@ -158,6 +187,7 @@ const wide = {
                           </g>
                         ))
                       }
+                      </g>
                     </svg>
                     <svg class="cv cv--tall" viewBox="0 0 400 900" aria-hidden="true">
                       <defs>
@@ -174,14 +204,19 @@ const wide = {
                         <rect x="8" y="564" width="384" height="326" rx="10" />
                       </g>
                       <g class="cv-edge">
-                        <path d="M180 78H218" marker-end="url(#cv-head-tall)" />
+                        <path d="M182 78H218" marker-start="url(#cv-head-tall)" marker-end="url(#cv-head-tall)" />
                         <path d="M300 108V138" marker-end="url(#cv-head-tall)" />
                         <path d="M240 108C240 130 160 120 140 138" marker-end="url(#cv-head-tall)" />
-                        <path d="M100 198V230" marker-end="url(#cv-head-tall)" />
+                        <path class="cv-edge--dash" d="M100 198V230" marker-end="url(#cv-head-tall)" />
+                        <path class="is-selected" d="M380 474H397V829H382" marker-end="url(#cv-head-tall)" />
                       </g>
-                      <g class="cv-type">
-                        <rect x="110" y="203" width="86" height="22" rx="11" />
-                        <text x="153" y="218" text-anchor="middle">@depends-on</text>
+                      <g class="cv-handles">
+                        <rect x="393" y="470" width="8" height="8" />
+                        <rect x="393" y="825" width="8" height="8" />
+                        <circle cx="397" cy="652" r="3.5" />
+                      </g>
+                      <g class="cv-label">
+                        <text x="110" y="219">rounds by</text>
                       </g>
                       <g class="cv-card is-changed"><rect x="20" y="48" width="160" height="60" rx="8" /><text class="cv-card__title" x="32" y="73">Checkout</text><text class="cv-card__mark" x="170" y="72" text-anchor="end">#513</text><text class="cv-card__sub" x="32" y="93">PayButtons.tsx</text></g>
                       <g class="cv-card is-changed"><rect x="220" y="48" width="160" height="60" rx="8" /><text class="cv-card__title" x="232" y="73">Intents</text><text class="cv-card__mark" x="370" y="72" text-anchor="end">#512</text><text class="cv-card__sub" x="232" y="93">intents.ts</text></g>
@@ -210,18 +245,18 @@ const wide = {
               </div>
               <div class="surface__desc">
                 <p>
-                  Ask Claude what a change did, and it draws the answer on a canvas of cards, arrows and
-                  groups. Here it drew Apple Pay three ways: how the parts fit, what the two pull requests
-                  moved and what a shopper sees.
+                  Ask Claude what a change did, and it draws the answer in the thread, on a canvas of cards,
+                  arrows and sections. Here it drew Apple Pay three ways: how the parts fit, what the two pull
+                  requests moved and what a shopper sees.
                 </p>
                 <p>
-                  Keep the canvas, and the agent saves it to the wiki beside the change, in a change request
-                  you merge like any other. A reviewer who was not in the thread reads the board and follows
-                  the change.
+                  Edit the board by hand on a computer or your phone. Draw arrows sharp, curved or at right
+                  angles, put a head at either end or none, and add bends where you want one to go. Keep the canvas,
+                  and it goes into the wiki in a pull request you merge like any other.
                 </p>
                 <p class="surface__note">
-                  Canvases are JSON Canvas files, so the same board opens in Obsidian. So far we have tried
-                  this with Claude.
+                  Canvases are JSON Canvas files, so the same board opens in Obsidian, which draws every
+                  card’s arrow curved. So far we have tried drawing with Claude.
                 </p>
                 <a class="link" href="/download">Download Astrolabe<svg class="arw" aria-hidden="true"><use href="#i-arrow" /></svg></a>
               </div>

@@ -2,17 +2,17 @@
 import Frontispiece from "./Frontispiece.astro";
 import plate from "../data/lasilla-plate.json";
 ---
-          <!-- ───────────────────────────────────────── [07] Repositories -->
+          <!-- ───────────────────────────────────────── [05] Code -->
           <section class="surfaces" id="repositories" aria-labelledby="repositories-title">
             <div class="head head--plate head--plate-left">
               <div class="head__main">
-                <p class="tag">[07] Repositories</p>
-                <h2 id="repositories-title" class="h2" data-reveal>Your code, beside the agents.</h2>
+                <p class="tag">[05] Code</p>
+                <h2 id="repositories-title" class="h2" data-reveal>Read and edit the code your agents change.</h2>
               </div>
               <p class="body head__aside" data-reveal>
-                Read a repository's files and see what changed, in the same window as the agents doing the
-                work, instead of an editor or GitHub. It has its own section in the app and a tab on your
-                iPhone.
+                Projects is the app’s section for your code. Open the copy an agent works in, read and edit
+                its files with language servers behind them, and see how the code connects on the code
+                graph. It has a tab on your iPhone too.
               </p>
               <Frontispiece plate={plate} />
             </div>
@@ -24,7 +24,7 @@ import plate from "../data/lasilla-plate.json";
               </div>
               <div class="surface__ui">
           <figure class="window">
-            <div class="app app--poster app--repo" role="img" aria-label="The Repositories section of Astrolabe, on the billing repository, with the checkout of the thread Invoices pass exact totals picked. The sidebar lists its three uncommitted files, a row for its changes against main, and the files changed recently. The file totals.ts is open with line numbers, and its header says an agent is working in this checkout.">
+            <div class="app app--poster app--repo" role="img" aria-label="The Projects section of Astrolabe, on the billing repository, with the checkout of the thread Invoices pass exact totals picked. The sidebar lists its three uncommitted files, a row for its changes against main, and the files changed recently. The file totals.ts is open with line numbers. Its header says an agent is working in this checkout and that TypeScript is its language server, and a hover on total shows its signature.">
               <div class="tb">
                 <div class="tb__cap">
                   <span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
@@ -57,7 +57,7 @@ import plate from "../data/lasilla-plate.json";
                 <i class="pb__corner" aria-hidden="true"></i>
                 <aside class="side">
                   <div class="side__head">
-                    <span class="side__title">Repositories</span>
+                    <span class="side__title">Projects</span>
                     <span class="side__tools"><svg class="ico"><use href="#i-search" /></svg><svg class="ico"><use href="#i-filter" /></svg><svg class="ico"><use href="#i-new" /></svg></span>
                   </div>
                   <div class="checkout"><svg class="ico ico--xs"><use href="#i-branch" /></svg><span>Invoices pass exact totals · invoices-exact-totals</span><svg class="ico ico--xs"><use href="#i-chevron" /></svg></div>
@@ -80,6 +80,7 @@ import plate from "../data/lasilla-plate.json";
                   <div class="file__bar">
                     <code>src/invoices/totals.ts</code>
                     <span class="file__working"><svg class="ico ico--xs"><use href="#i-bot" /></svg>An agent is working in this checkout</span>
+                    <span class="file__lsp">TypeScript</span>
                     <span class="file__saved">Saved</span>
                   </div>
                   <div class="code">
@@ -87,7 +88,7 @@ import plate from "../data/lasilla-plate.json";
                     <p><i>2</i><code>import type &#123; Invoice &#125; from <span class="syn-s">"./invoice"</span>;</code></p>
                     <p><i>3</i><code></code></p>
                     <p><i>4</i><code><span class="syn-c">// Unrounded: the ledger rounds once.</span></code></p>
-                    <p><i>5</i><code>export function <span class="syn-d">total</span>(invoice: Invoice) &#123;</code></p>
+                    <p><i>5</i><code>export function <span class="syn-d file__hovered">total</span>(invoice: Invoice) &#123;</code></p>
                     <p><i>6</i><code>  let sum = <span class="syn-n">0</span>;</code></p>
                     <p><i>7</i><code>  for (const line of invoice.lines) &#123;</code></p>
                     <p><i>8</i><code>    sum += line.quantity * line.unitPrice;</code></p>
@@ -102,6 +103,10 @@ import plate from "../data/lasilla-plate.json";
                     <p><i>17</i><code>    amount: total(invoice),</code></p>
                     <p><i>18</i><code>  &#125;);</code></p>
                     <p><i>19</i><code>&#125;</code></p>
+                    <div class="file__hover" aria-hidden="true">
+                      <code>function total(invoice: Invoice): number</code>
+                      <span>Unrounded: the ledger rounds once.</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -110,17 +115,22 @@ import plate from "../data/lasilla-plate.json";
               </div>
               <div class="surface__desc">
                 <p>
-                  A thread can work in a checkout of its own. Pick it, and the sidebar leads with what is
-                  moving there: its uncommitted changes, its branch against main, then the files its
-                  latest commits touched.
+                  A thread can work in a worktree of its own. Pick it, and the sidebar leads with what is
+                  moving there: its uncommitted changes, its branch against main, then the files its latest
+                  commits touched. It keeps up as agents change files on disk.
                 </p>
                 <p>
                   Edit a file and it saves a moment after you stop typing. It says when an agent is working
-                  in its checkout, and your edit never overwrites newer changes saved there. Comment on a
-                  line of a diff to send it to that agent's thread.
+                  in the same copy, and your edit never overwrites newer changes saved there. Comment on a
+                  line of a diff to send it to that agent’s thread.
+                </p>
+                <p>
+                  Language servers for TypeScript, Python, Rust, Go and more show problems as you read, with
+                  completions, go to definition, find references and rename. A file’s local graph draws what
+                  it imports and what imports it.
                 </p>
                 <p class="surface__note">
-                  On your iPhone, the Repositories tab lists the same files, read only.
+                  On your iPhone, the Projects tab lists the same files, read only.
                 </p>
                 <a class="link" href="/download">Download Astrolabe<svg class="arw" aria-hidden="true"><use href="#i-arrow" /></svg></a>
               </div>

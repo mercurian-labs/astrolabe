@@ -260,7 +260,7 @@ if (manifesto && motion) {
 }
 
 /* ───────────────────────────── Scrubbed figures: scroll carries a figure's progress, written to --p on
-   its stage, and the CSS draws each mark in its own window of it (drafting.css, [04]). Only while the
+   its stage, and the CSS draws each mark in its own window of it (drafting.css, [10]). Only while the
    figure is active (wide screens with motion; static otherwise, at --p 1) and near the window. */
 
 const scrubQuery = matchMedia("(min-width: 901px) and (min-height: 560px)");
@@ -300,7 +300,7 @@ const story = $("[data-story]");
 const storyCount = story && $("[data-story-count]", story);
 const storySteps = story ? $$(".story__steps li", story) : [];
 let storyStep = -1;
-const storyStages = [0.16, 0.32, 0.5, 0.66, 0.78];
+const storyStages = [0.16, 0.32, 0.5, 0.66, 0.78, 0.86];
 function layoutStory() {
   if (!story) return;
   story.classList.toggle("is-pinned", story.classList.contains("is-scrubbed"));

@@ -2,11 +2,11 @@
 import Frontispiece from "./Frontispiece.astro";
 import plate from "../data/gemini-plate.json";
 ---
-          <!-- ───────────────────────────────────────── [10] Automations -->
+          <!-- ───────────────────────────────────────── [08] Automations -->
           <section class="auto" id="automations" aria-labelledby="auto-title">
             <div class="head head--plate">
               <div class="head__main">
-                <p class="tag">[10] Automations</p>
+                <p class="tag">[08] Automations</p>
                 <h2 id="auto-title" class="h2" data-reveal>Agents that start themselves.</h2>
               </div>
               <p class="body head__aside" data-reveal>
@@ -18,7 +18,7 @@ import plate from "../data/gemini-plate.json";
             <!-- One weekday, three ways an agent starts without you. Each row names the trigger and draws
                  its run on the shared day: the trigger's mark, the agent at work, done. Times are
                  fractions of the day (--x starts, --y ends, --w the pull request's wake), and each mark
-                 draws in as the playhead passes it (drafting.js sets --p; see [04]). -->
+                 draws in as the playhead passes it (drafting.js sets --p; see [10]). -->
             <figure class="day" data-day>
               <ol class="day__rows">
                 <li class="day__row">
@@ -38,7 +38,7 @@ import plate from "../data/gemini-plate.json";
                 <li class="day__row">
                   <div class="day__label">
                     <h3 class="day__title">On a webhook</h3>
-                    <p class="day__note">GitHub opens a pull request and an agent starts on it. Signed requests only.</p>
+                    <p class="day__note">GitHub opens a pull request and an agent starts on it. Turn on Require signature to accept only GitHub’s requests.</p>
                   </div>
                   <div class="day__lane" style="--x: 0.4861; --y: 0.5764" aria-hidden="true">
                     <span class="day__trig k-fade">GitHub opened #214</span>
@@ -76,7 +76,7 @@ import plate from "../data/gemini-plate.json";
               </div>
               <div class="day__head" aria-hidden="true"><i><span data-day-time>00:00</span></i></div>
               <figcaption class="day__cap">
-                <span class="tag" aria-hidden="true">Fig. 6 · One weekday</span>
+                <span class="tag" aria-hidden="true">Fig. 4 · One weekday</span>
                 <span class="sr-only">One weekday of automations. At 07:00 a schedule starts Claude on the night’s new issues, and it finishes by 09:30. At 11:40 GitHub opens pull request 214, and a webhook starts Codex on a review. Claude has been waiting on pull request 212 since the day began; its checks fail at 15:20, Claude wakes and fixes the test, and is done by 17:40.</span>
               </figcaption>
             </figure>
