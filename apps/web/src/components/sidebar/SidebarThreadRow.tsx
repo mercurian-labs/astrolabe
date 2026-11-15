@@ -122,10 +122,12 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MiddleTruncate } from "../ui/middle-truncate";
 import { useThreadHasUnsentDraft } from "../../composerDraftStore";
 import {
+  SIDEBAR_CARD_ITEM_CLASS,
   SIDEBAR_ROW_ACTIVE_CLASS,
   SIDEBAR_ROW_IDLE_CLASS,
   SIDEBAR_ROW_SELECTED_CLASS,
   SIDEBAR_ROW_SURFACE_CLASS,
+  SidebarCardContent,
   preventMiddleClickScroll,
 } from "./SidebarCard";
 import { UnpinRowAction } from "./UnpinRowAction";
@@ -1434,8 +1436,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       {...sortableRootProps}
       {...(fileDropHandlers ?? {})}
       className={cn(
-        "list-none py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_78px]",
-        metaLineEmpty && "[contain-intrinsic-size:auto_58px]",
+        "list-none",
+        SIDEBAR_CARD_ITEM_CLASS,
+        metaLineEmpty && "[contain-intrinsic-size:auto_56px]",
         sortable?.isDragging && "relative z-20",
       )}
     >
@@ -1463,13 +1466,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           }
         >
           {accessibleTitle}
-          <div
-            className={cn(
-              "relative z-10 h-[4.875rem] px-(--sidebar-row-content-inset) py-(--sidebar-content-inset)",
-              metaLineEmpty && "h-auto",
-            )}
-          >
-            {/* Astrolabe: the title leads, with the status and its hover actions beside it. */}
+          <SidebarCardContent className={cn(metaLineEmpty && "h-auto")}>
+            {/* Astrolabe: the title leads; the status and its hover actions sit on the project line. */}
             <div className="flex h-5 min-w-0 items-center gap-1.5">
               {draftIndicator}
               {title}
@@ -1479,6 +1477,19 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                   Regenerating title
                 </span>
               ) : null}
+            </div>
+            <div className="mt-0.5 flex h-5 min-w-0 items-center gap-1.5">
+              {props.project ? (
+                <ProjectFavicon project={props.project} className="size-4 shrink-0" />
+              ) : null}
+              {props.projectDisplayName ? (
+                <span className="min-w-0 flex-1 truncate font-normal text-secondary-label text-xs">
+                  {props.projectDisplayName}
+                </span>
+              ) : (
+                <span className="flex-1" />
+              )}
+              {titleLineIcons}
               {sortable?.isDragging ? (
                 dragDestination
               ) : (
@@ -1608,21 +1619,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               )}
               {props.sweepAction !== null ? dragDestination : null}
             </div>
-            <div className="mt-1 flex min-w-0 items-center gap-1.5">
-              {props.project ? (
-                <ProjectFavicon project={props.project} className="size-4 shrink-0" />
-              ) : null}
-              {props.projectDisplayName ? (
-                <span className="min-w-0 flex-1 truncate font-normal text-secondary-label text-xs">
-                  {props.projectDisplayName}
-                </span>
-              ) : (
-                <span className="flex-1" />
-              )}
-              {titleLineIcons}
-            </div>
             {metaLine}
-          </div>
+          </SidebarCardContent>
         </TooltipTrigger>
         {detailsTooltip}
       </Tooltip>
