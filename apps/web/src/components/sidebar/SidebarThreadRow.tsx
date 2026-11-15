@@ -1175,54 +1175,57 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     prBadge === null &&
     diff === null &&
     runningTerminalIds.length === 0;
-  const metaLine = metaLineEmpty ? null : (
-    <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-secondary-label text-xs">
-      {thread.branch ? (
-        <>
-          <ThreadWorktreeIndicator thread={thread} />
-          <span className="flex min-w-0 flex-1">
-            <MiddleTruncate value={thread.branch} showTitle={false} />
-          </span>
-        </>
-      ) : showsScratchMachine ? (
-        <>
-          <span aria-hidden className="inline-flex size-4 shrink-0 items-center justify-center">
-            <EnvironmentMachineIcon kind={props.environmentMachine} className="size-3" />
-          </span>
-          <span className="min-w-0 flex-1 truncate">{props.scratchMachineLabel}</span>
-        </>
-      ) : (
-        <span className="flex-1" />
-      )}
-      {terminalStatusIcon}
-      {prBadge}
-      {diff ? (
-        <span className="shrink-0 font-mono">
-          <span className="text-diff-addition-foreground">+{formatDiffCount(diff.insertions)}</span>{" "}
-          <span className="text-diff-deletion-foreground">−{formatDiffCount(diff.deletions)}</span>
-        </span>
-      ) : null}
-      <span
-        aria-hidden
-        className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1"
-      >
-        {remoteMachineIcon}
-        <SidebarProviderStack
-          thread={thread}
-          providerEntryByInstanceId={props.providerEntryByInstanceId}
-        />
+  const metaLocation = thread.branch ? (
+    <>
+      <ThreadWorktreeIndicator thread={thread} />
+      <span className="flex min-w-0 flex-1">
+        <MiddleTruncate value={thread.branch} showTitle={false} />
       </span>
-    </div>
+    </>
+  ) : showsScratchMachine ? (
+    <>
+      <span aria-hidden className="inline-flex size-4 shrink-0 items-center justify-center">
+        <EnvironmentMachineIcon kind={props.environmentMachine} className="size-3" />
+      </span>
+      <span className="min-w-0 flex-1 truncate">{props.scratchMachineLabel}</span>
+    </>
+  ) : (
+    <span className="flex-1" />
   );
-  const titleLineIcons = metaLineEmpty ? (
-    <span aria-hidden className="inline-flex shrink-0 items-center gap-1">
+  const diffCount = diff ? (
+    <span className="shrink-0 font-mono">
+      <span className="text-diff-addition-foreground">+{formatDiffCount(diff.insertions)}</span>{" "}
+      <span className="text-diff-deletion-foreground">−{formatDiffCount(diff.deletions)}</span>
+    </span>
+  ) : null;
+  const machineAndProviderIcons = (
+    <span aria-hidden className="pointer-events-none inline-flex shrink-0 items-center gap-1">
       {remoteMachineIcon}
       <SidebarProviderStack
         thread={thread}
         providerEntryByInstanceId={props.providerEntryByInstanceId}
       />
     </span>
-  ) : null;
+  );
+  const metaLine = metaLineEmpty ? null : (
+    <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-secondary-label text-xs">
+      {metaLocation}
+      {terminalStatusIcon}
+      {prBadge}
+      {diffCount}
+      <span className="ml-auto inline-flex shrink-0">{machineAndProviderIcons}</span>
+    </div>
+  );
+  const titleLineIcons = metaLineEmpty ? machineAndProviderIcons : null;
+  // Astrolabe: cards keep the third line for git; terminals, machine and providers join the project line.
+  const cardMetaLine =
+    !thread.branch && !showsScratchMachine && prBadge === null && diff === null ? null : (
+      <div className="mt-0.5 flex h-5 min-w-0 items-center gap-1.5 text-secondary-label text-xs">
+        {metaLocation}
+        {prBadge}
+        {diffCount}
+      </div>
+    );
 
   if (variant !== "card") {
     const multiline = variant === "folder-multiline";
@@ -1436,7 +1439,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       className={cn(
         "list-none",
         SIDEBAR_CARD_ITEM_CLASS,
-        metaLineEmpty && "[contain-intrinsic-size:auto_56px]",
+        cardMetaLine === null && "[contain-intrinsic-size:auto_56px]",
         sortable?.isDragging && "relative z-20",
       )}
     >
@@ -1464,7 +1467,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           }
         >
           {accessibleTitle}
-          <SidebarCardContent className={cn(metaLineEmpty && "h-auto")}>
+          <SidebarCardContent className={cn(cardMetaLine === null && "h-auto")}>
             {/* Astrolabe: the title leads; the status and its hover actions sit on the project line. */}
             <div className="flex h-5 min-w-0 items-center gap-1.5">
               {draftIndicator}
@@ -1487,7 +1490,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               ) : (
                 <span className="flex-1" />
               )}
-              {titleLineIcons}
+              {terminalStatusIcon}
+              {machineAndProviderIcons}
               {sortable?.isDragging ? (
                 dragDestination
               ) : (
@@ -1617,7 +1621,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               )}
               {props.sweepAction !== null ? dragDestination : null}
             </div>
-            {metaLine}
+            {cardMetaLine}
           </SidebarCardContent>
         </TooltipTrigger>
         {detailsTooltip}
