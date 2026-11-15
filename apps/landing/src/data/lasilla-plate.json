@@ -3,6 +3,7 @@
   "assets": "/assets/art/lasilla",
   "size": [1024, 644],
   "relief": 170.67,
+  "moonlight": 0.12,
   "box": [-18.5, 326.6, 1023.0, 643.4],
   "fig": "Fig. 4 · New Technology Telescope · La Silla · 2,400 m · 1989",
   "alt": "A print of ESO's New Technology Telescope on its crown of granite at La Silla, lit by the astrolabe's sun",
