@@ -1186,11 +1186,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         </>
       ) : showsScratchMachine ? (
         <>
-          <EnvironmentMachineIcon
-            aria-hidden
-            kind={props.environmentMachine}
-            className="size-3 shrink-0"
-          />
+          <span aria-hidden className="inline-flex size-4 shrink-0 items-center justify-center">
+            <EnvironmentMachineIcon kind={props.environmentMachine} className="size-3" />
+          </span>
           <span className="min-w-0 flex-1 truncate">{props.scratchMachineLabel}</span>
         </>
       ) : (
