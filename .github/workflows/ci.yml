@@ -164,8 +164,12 @@ jobs:
       # jobs. `--parallel` drops package dependency ordering: these `test` tasks
       # declare no `dependsOn` and resolve workspace deps from source. `changes`
       # lists the affected packages, or nothing when all of them are.
+      # Boat's job user holds CAP_DAC_READ_SEARCH, which reads past `chmod 000`
+      # and breaks tests of unreadable files. Test steps drop it; GitHub's
+      # runners never have it.
       - name: Test
         if: ${{ !cancelled() && steps.electron.outcome == 'success' && steps.apt.outcome == 'success' && needs.changes.outputs.test != 'false' }}
+        shell: setpriv --ambient-caps -all --inh-caps -all -- bash --noprofile --norc -eo pipefail {0}
         env:
           TEST_PACKAGES: ${{ needs.changes.outputs.test_packages }}
         run: |
@@ -280,7 +284,9 @@ jobs:
             node apps/web/node_modules/playwright/cli.js install-deps chromium
           fi
 
+      # Drops boat's CAP_DAC_READ_SEARCH; see the Test step in Checks.
       - name: Test
+        shell: setpriv --ambient-caps -all --inh-caps -all -- bash --noprofile --norc -eo pipefail {0}
         run: vp run --filter @t3tools/web test
 
       # Browser tests run source modules; this boots the production chunk graph.
@@ -363,8 +369,10 @@ jobs:
             node apps/server/node_modules/playwright-core/cli.js install-deps chromium
           fi
 
+      # Drops boat's CAP_DAC_READ_SEARCH; see the Test step in Checks.
       - name: Test
         if: steps.changes.outputs.test_server != 'false'
+        shell: setpriv --ambient-caps -all --inh-caps -all -- bash --noprofile --norc -eo pipefail {0}
         env:
           T3CODE_TRANSFER_BUDGET_REPORT_PATH: ${{ runner.temp }}/t3code-transfer-budget.md
           T3CODE_TRANSFER_BUDGET_RESULT_PATH: ${{ runner.temp }}/thread-transfer-result.json
