@@ -25,8 +25,9 @@ concurrency:
 jobs:
   fingerprint:
     name: Native fingerprint diff
-    # Boat when BOAT_CI_USERS allows the run; see the note atop ci.yml.
-    runs-on: ${{ contains(fromJSON(vars.BOAT_CI_USERS || '[]'), github.triggering_actor) && contains(fromJSON(vars.BOAT_CI_USERS || '[]'), github.event.pull_request.user.login || github.actor) && 'boat-large' || 'ubuntu-24.04' }}
+    # GitHub's free runner, not boat: this advisory check starts on every PR
+    # event, title edits included, and boat bills per job start.
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     env:
