@@ -28,9 +28,12 @@ const setup = Effect.fn("setup")(function* (version: string | null, name = "type
   if (version !== null) {
     yield* put("node_modules/typescript/package.json", JSON.stringify({ name, version }));
   }
-  const installer = yield* makeInstaller({ cacheDir: path.join(root, "cache"), registry: "" }).pipe(
-    Effect.provideService(HttpClient.HttpClient, unusedHttp),
-  );
+  // No Go install outside PATH: the machine running the tests may have one.
+  const installer = yield* makeInstaller({
+    cacheDir: path.join(root, "cache"),
+    registry: "",
+    goInstalls: [],
+  }).pipe(Effect.provideService(HttpClient.HttpClient, unusedHttp));
   return { cwd, put, installer, cache: path.join(root, "cache") };
 });
 

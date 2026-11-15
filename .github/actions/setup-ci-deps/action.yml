@@ -26,6 +26,10 @@ runs:
         echo "version=$(sed -nE 's/^  vite-plus: ([0-9][^ ]*)$/\1/p' pnpm-workspace.yaml)" >> "$GITHUB_OUTPUT"
         echo "node=$(jq -r '.engines.node' package.json)" >> "$GITHUB_OUTPUT"
         echo "pnpm=$(jq -r '.packageManager' package.json)" >> "$GITHUB_OUTPUT"
+        # A `~` cache path restores to the home of the runner that saved it, and
+        # homes differ (/home/runner on GitHub and Blacksmith, /home/user on
+        # boat), so every `~` cache key names the home.
+        echo "CI_HOME_KEY=$(printf '%s' "$HOME" | tr / -)" >> "$GITHUB_ENV"
 
     # Pinned because release-desktop.yml signs builds with this action in the job.
     - name: Cache Vite+
@@ -34,7 +38,7 @@ runs:
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
         path: ~/.vite-plus
-        key: vite-plus-home-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.vp.outputs.version }}-node${{ steps.vp.outputs.node }}-${{ steps.vp.outputs.pnpm }}
+        key: vite-plus-home-v2-${{ runner.os }}-${{ runner.arch }}${{ env.CI_HOME_KEY }}-${{ steps.vp.outputs.version }}-node${{ steps.vp.outputs.node }}-${{ steps.vp.outputs.pnpm }}
 
     # setup-vp always runs the installer, which fetches vp from npm even when
     # this exact version is installed. A cache hit already has everything, so

@@ -14,6 +14,10 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Heavy jobs run on boat.dev, which bills per job start ($20 plan: 60 an hour,
+  # 200 a day). Boat refuses public-repo runs by anyone off its allowlist, so
+  # runs-on falls back to GitHub's runners unless BOAT_CI_USERS (a JSON array of
+  # logins, kept in step with `boat ci public`) lists the author and starter.
   # Skips jobs a pull request cannot affect: a web change does not run the
   # server shards, a server change does not run the mobile tests, and the macOS
   # lint (~6.7x a Linux minute) runs only for native mobile sources.
@@ -22,7 +26,7 @@ jobs:
   # open: if the diff cannot be resolved, everything runs.
   changes:
     name: Changes
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       typecheck: ${{ steps.detect.outputs.typecheck }}
@@ -54,17 +58,20 @@ jobs:
         id: detect
         uses: ./.github/actions/ci-changes
 
-  # Lint and the desktop build each get a runner so they run side by side.
-  # Typecheck shares the build's install. Lint always runs: it formats every
-  # file, docs included. The `Check` job at the end of this file passes only
-  # when every other job passes or was skipped by `changes`.
-  lint:
+  # Lint, Build and Typecheck, Test, Release Smoke and Rust share one runner:
+  # boat bills per job start, and each spent about a minute on setup for one to
+  # three minutes of work. Every task runs even after another fails, so no
+  # failure hides another. Lint always runs (it formats every file, docs too)
+  # and goes first, so build and typecheck output never reach knip or fmt.
+  checks:
     permissions:
       contents: read
       id-token: write
-    name: Lint
-    runs-on: blacksmith-8vcpu-ubuntu-2404
-    timeout-minutes: 10
+    name: Checks
+    needs: changes
+    if: ${{ !cancelled() }}
+    runs-on: ${{ contains(fromJSON(vars.BOAT_CI_USERS || '[]'), github.triggering_actor) && contains(fromJSON(vars.BOAT_CI_USERS || '[]'), github.event.pull_request.user.login || github.actor) && 'boat-large' || 'ubuntu-24.04' }}
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -83,7 +90,24 @@ jobs:
             exit 1
           fi
 
+      - uses: ./.github/actions/setup-apt-mirrors
+        if: ${{ !cancelled() && (needs.changes.outputs.build != 'false' || needs.changes.outputs.test != 'false') }}
+
+      # The desktop build and tests compile the browser secret helper. The install
+      # runs in the background while Vite+ installs; a later step waits for it.
+      - name: Start installing browser secret helper build libraries
+        if: ${{ !cancelled() && (needs.changes.outputs.build != 'false' || needs.changes.outputs.test != 'false') }}
+        run: |
+          sudo sed -i 's|http://|https://|g' /etc/apt/blacksmith-ubuntu-mirrors.txt /etc/apt/sources.list.d/ubuntu.sources
+          (
+            set +e
+            sudo apt-get update && sudo apt-get install -y libsecret-1-dev pkg-config
+            echo "$?" > "$RUNNER_TEMP/apt-status"
+          ) > "$RUNNER_TEMP/apt.log" 2>&1 < /dev/null &
+
       - name: Setup Vite+
+        id: setup
+        if: ${{ !cancelled() }}
         uses: ./.github/actions/setup-ci-deps
         with:
           task-cache-read-token: ${{ secrets.T3_TASK_CACHE_READ_TOKEN }}
@@ -91,184 +115,61 @@ jobs:
       # electron's install.js (run by ensure:electron) reads this cache before it
       # downloads from GitHub. The key changes only with the Electron version.
       - name: Cache Electron download
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         uses: actions/cache@v6
         with:
           path: ~/.cache/electron
-          key: electron-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('node_modules/.pnpm/electron@*/node_modules/electron/package.json') }}
+          key: electron-${{ runner.os }}-${{ runner.arch }}${{ env.CI_HOME_KEY }}-${{ hashFiles('node_modules/.pnpm/electron@*/node_modules/electron/package.json') }}
 
       - name: Ensure Electron runtime is installed
+        id: electron
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: vp run --filter @t3tools/desktop ensure:electron
 
       # Files/dependencies are repo-wide; export checks cover clean workspaces only.
       - name: Check unused code
+        if: ${{ !cancelled() && steps.electron.outcome == 'success' }}
         run: vp run knip:check
 
       - name: Check generated GitHub GraphQL operations
+        if: ${{ !cancelled() && steps.electron.outcome == 'success' }}
         run: vp run --filter @t3tools/source-control-github generate --check
 
       - name: Check generated Expo GraphQL operations
+        if: ${{ !cancelled() && steps.electron.outcome == 'success' }}
         run: vp run --filter t3 generate --check
 
       - name: Check
+        if: ${{ !cancelled() && steps.electron.outcome == 'success' }}
         run: vp check
-
-  build:
-    permissions:
-      contents: read
-      id-token: write
-    name: Build and Typecheck
-    needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.build != 'false' || needs.changes.outputs.typecheck != 'false') }}
-    runs-on: blacksmith-8vcpu-ubuntu-2404
-    timeout-minutes: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          sparse-checkout: |
-            /*
-            !/.repos/
-            !/apps/mobile/modules/t3-terminal/Vendor/**/*.a
-          sparse-checkout-cone-mode: false
-
-      - uses: ./.github/actions/setup-apt-mirrors
-        if: needs.changes.outputs.build != 'false'
-
-      # Runs in the background while Vite+ installs; the step before the build waits for it.
-      - name: Start installing browser secret helper build libraries
-        if: needs.changes.outputs.build != 'false'
-        run: |
-          sudo sed -i 's|http://|https://|g' /etc/apt/blacksmith-ubuntu-mirrors.txt /etc/apt/sources.list.d/ubuntu.sources
-          (
-            set +e
-            sudo apt-get update && sudo apt-get install -y libsecret-1-dev pkg-config
-            echo "$?" > "$RUNNER_TEMP/apt-status"
-          ) > "$RUNNER_TEMP/apt.log" 2>&1 < /dev/null &
-
-      - name: Setup Vite+
-        uses: ./.github/actions/setup-ci-deps
-        with:
-          task-cache-read-token: ${{ secrets.T3_TASK_CACHE_READ_TOKEN }}
-
-      # electron's install.js (run by ensure:electron) reads this cache before it
-      # downloads from GitHub. The key changes only with the Electron version.
-      - name: Cache Electron download
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/electron
-          key: electron-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('node_modules/.pnpm/electron@*/node_modules/electron/package.json') }}
-
-      - name: Ensure Electron runtime is installed
-        id: electron
-        run: vp run --filter @t3tools/desktop ensure:electron
-
-      # Runs in the background while the build runs, and reports in the last
-      # step: neither result hides the other.
-      - name: Start typecheck
-        id: typecheck
-        if: ${{ !cancelled() && steps.electron.outcome == 'success' && needs.changes.outputs.typecheck != 'false' }}
-        run: |
-          (
-            set +e
-            vpr typecheck
-            echo "$?" > "$RUNNER_TEMP/typecheck-status"
-          ) > "$RUNNER_TEMP/typecheck.log" 2>&1 < /dev/null &
 
       - name: Finish installing browser secret helper build libraries
         id: apt
-        if: ${{ !cancelled() && needs.changes.outputs.build != 'false' }}
+        if: ${{ !cancelled() && (needs.changes.outputs.build != 'false' || needs.changes.outputs.test != 'false') }}
         timeout-minutes: 5
         run: |
           until test -s "$RUNNER_TEMP/apt-status"; do sleep 1; done
           cat "$RUNNER_TEMP/apt.log"
           exit "$(cat "$RUNNER_TEMP/apt-status")"
 
-      - name: Build desktop pipeline
-        id: build
-        if: ${{ !cancelled() && steps.electron.outcome == 'success' && steps.apt.outcome == 'success' && needs.changes.outputs.build != 'false' }}
-        run: vp run build:desktop
-
-      - name: Verify preload bundle output
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: node apps/desktop/scripts/verify-preload-bundle.mjs
-
-      - name: Typecheck
-        if: ${{ !cancelled() && steps.typecheck.outcome == 'success' }}
-        timeout-minutes: 5
-        run: |
-          until test -s "$RUNNER_TEMP/typecheck-status"; do sleep 1; done
-          cat "$RUNNER_TEMP/typecheck.log"
-          exit "$(cat "$RUNNER_TEMP/typecheck-status")"
-
-  # Everything except `t3` (apps/server) and the web app, which has its own job
-  # below. `--parallel` drops the package dependency ordering that `vp run`
-  # applies by default: these `test` tasks declare no `dependsOn` and resolve
-  # workspace deps from source, so ordering only bought us idle runners between
-  # dependency layers. The concurrency limit stays at the default 4 so peak load
-  # per runner is unchanged.
-  test:
-    permissions:
-      contents: read
-      id-token: write
-    name: Test
-    needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.test != 'false' }}
-    runs-on: blacksmith-8vcpu-ubuntu-2404
-    timeout-minutes: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          sparse-checkout: |
-            /*
-            !/.repos/
-            !/apps/mobile/modules/t3-terminal/Vendor/**/*.a
-          sparse-checkout-cone-mode: false
-
-      - uses: ./.github/actions/setup-apt-mirrors
-
-      # The desktop tests compile the browser secret helper. The install runs in
-      # the background while Vite+ installs; the step before the tests waits for it.
-      - name: Start installing browser secret helper build libraries
-        run: |
-          sudo sed -i 's|http://|https://|g' /etc/apt/blacksmith-ubuntu-mirrors.txt /etc/apt/sources.list.d/ubuntu.sources
-          (
-            set +e
-            sudo apt-get update && sudo apt-get install -y libsecret-1-dev pkg-config
-            echo "$?" > "$RUNNER_TEMP/apt-status"
-          ) > "$RUNNER_TEMP/apt.log" 2>&1 < /dev/null &
-
-      - name: Setup Vite+
-        uses: ./.github/actions/setup-ci-deps
-        with:
-          task-cache-read-token: ${{ secrets.T3_TASK_CACHE_READ_TOKEN }}
-
-      # electron's install.js (run by ensure:electron) reads this cache before it
-      # downloads from GitHub. The key changes only with the Electron version.
-      - name: Cache Electron download
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/electron
-          key: electron-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('node_modules/.pnpm/electron@*/node_modules/electron/package.json') }}
-
-      - name: Ensure Electron runtime is installed
-        run: vp run --filter @t3tools/desktop ensure:electron
-
       - name: Test preview artifact validation
+        if: ${{ !cancelled() && needs.changes.outputs.test != 'false' }}
         run: python3 -B .github/scripts/stage-preview-bundle.test.py
 
       - name: Test release checks
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' && needs.changes.outputs.test != 'false' }}
         run: node --test .github/scripts/check-nightly-release.test.cjs .github/scripts/vercel-deployment-output.test.cjs
 
-      - name: Finish installing browser secret helper build libraries
-        timeout-minutes: 5
-        run: |
-          until test -s "$RUNNER_TEMP/apt-status"; do sleep 1; done
-          cat "$RUNNER_TEMP/apt.log"
-          exit "$(cat "$RUNNER_TEMP/apt-status")"
-
-      # `changes` lists the affected packages, or nothing when all of them are.
+      # Everything except `t3` (apps/server) and the web app, which have their own
+      # jobs. `--parallel` drops package dependency ordering: these `test` tasks
+      # declare no `dependsOn` and resolve workspace deps from source. `changes`
+      # lists the affected packages, or nothing when all of them are.
+      # Boat's job user holds CAP_DAC_READ_SEARCH, which reads past `chmod 000`
+      # and breaks tests of unreadable files. Test steps drop it; GitHub's
+      # runners never have it.
       - name: Test
+        if: ${{ !cancelled() && steps.electron.outcome == 'success' && steps.apt.outcome == 'success' && needs.changes.outputs.test != 'false' }}
+        shell: setpriv --ambient-caps -all --inh-caps -all -- bash --noprofile --norc -eo pipefail {0}
         env:
           TEST_PACKAGES: ${{ needs.changes.outputs.test_packages }}
         run: |
@@ -279,9 +180,61 @@ jobs:
           fi
           vp run --parallel --concurrency-limit 4 "${filters[@]}" test
 
-  # The web suite is the largest outside the server. In the shared Test job it
-  # started last and ran alone for about 40s after everything else finished.
-  # release.yml mirrors this test, test_web, and test_server split.
+      # Runs in the background beside the build and reports in the last step.
+      - name: Start typecheck
+        id: typecheck
+        if: ${{ !cancelled() && steps.electron.outcome == 'success' && needs.changes.outputs.typecheck != 'false' }}
+        run: |
+          (
+            set +e
+            vpr typecheck
+            echo "$?" > "$RUNNER_TEMP/typecheck-status"
+          ) > "$RUNNER_TEMP/typecheck.log" 2>&1 < /dev/null &
+
+      - name: Build desktop pipeline
+        id: build
+        if: ${{ !cancelled() && steps.electron.outcome == 'success' && steps.apt.outcome == 'success' && needs.changes.outputs.build != 'false' }}
+        run: vp run build:desktop
+
+      - name: Verify preload bundle output
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: node apps/desktop/scripts/verify-preload-bundle.mjs
+
+      - name: Exercise release-only workflow steps
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' && needs.changes.outputs.release_smoke != 'false' }}
+        run: node scripts/release-smoke.ts
+
+      - name: Setup Rust
+        id: rust
+        if: ${{ !cancelled() && needs.changes.outputs.rust != 'false' }}
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check Rust formatting
+        if: ${{ !cancelled() && steps.rust.outcome == 'success' }}
+        run: |
+          for crate in resource-monitor kde-snap-shot hyprland-snap-shot; do
+            cargo fmt --manifest-path "native/$crate/Cargo.toml" -- --check
+          done
+
+      - name: Test Rust crates
+        if: ${{ !cancelled() && steps.rust.outcome == 'success' }}
+        run: |
+          for crate in resource-monitor kde-snap-shot hyprland-snap-shot; do
+            cargo test --locked --manifest-path "native/$crate/Cargo.toml"
+          done
+
+      - name: Typecheck
+        if: ${{ !cancelled() && steps.typecheck.outcome == 'success' }}
+        timeout-minutes: 5
+        run: |
+          until test -s "$RUNNER_TEMP/typecheck-status"; do sleep 1; done
+          cat "$RUNNER_TEMP/typecheck.log"
+          exit "$(cat "$RUNNER_TEMP/typecheck-status")"
+
+  # The web suite is the largest outside the server, so it keeps its own runner
+  # beside Checks instead of adding its minutes to that job's.
   test_web:
     permissions:
       contents: read
@@ -289,7 +242,7 @@ jobs:
     name: Test Web
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.test_web != 'false' }}
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ${{ contains(fromJSON(vars.BOAT_CI_USERS || '[]'), github.triggering_actor) && contains(fromJSON(vars.BOAT_CI_USERS || '[]'), github.event.pull_request.user.login || github.actor) && 'boat-large' || 'ubuntu-24.04' }}
     timeout-minutes: 10
     steps:
       - name: Checkout
@@ -317,7 +270,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-chromium-shell-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright_version.outputs.version }}
+          key: playwright-chromium-shell-${{ runner.os }}-${{ runner.arch }}${{ env.CI_HOME_KEY }}-${{ steps.playwright_version.outputs.version }}
 
       - name: Install Chromium for web browser tests
         if: steps.chromium_cache.outputs.cache-hit != 'true'
@@ -331,7 +284,9 @@ jobs:
             node apps/web/node_modules/playwright/cli.js install-deps chromium
           fi
 
+      # Drops boat's CAP_DAC_READ_SEARCH; see the Test step in Checks.
       - name: Test
+        shell: setpriv --ambient-caps -all --inh-caps -all -- bash --noprofile --norc -eo pipefail {0}
         run: vp run --filter @t3tools/web test
 
       # Browser tests run source modules; this boots the production chunk graph.
@@ -344,7 +299,8 @@ jobs:
   # one at a time. Sharding spreads them over separate runners instead of
   # separate workers, so no two server test files ever share a machine and the
   # isolation that flag buys is preserved exactly. One file at a time keeps
-  # about 1.5 cores busy, so 4 vCPU runners lose nothing against 8. The shards
+  # about 1.5 cores busy, so more cores do not speed a shard up. Four shards,
+  # not eight, keep a busy hour inside boat's per-hour start limit. The shards
   # split files by recorded duration (apps/server/src/testUtils/weightedShardSequencer.ts).
   # The shards are the longest jobs, so they gate themselves instead of waiting
   # ~15s for `changes`: a shard the change cannot affect stops after checkout.
@@ -353,14 +309,14 @@ jobs:
       contents: read
       id-token: write
     name: Test Server ${{ matrix.shard }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    # Shards take 2-5 minutes. When the shared task cache throttles reads, each
-    # failed fetch stalls vp for 15-90s, which pushed shards past 10 minutes.
-    timeout-minutes: 20
+    runs-on: ${{ contains(fromJSON(vars.BOAT_CI_USERS || '[]'), github.triggering_actor) && contains(fromJSON(vars.BOAT_CI_USERS || '[]'), github.event.pull_request.user.login || github.actor) && 'boat-large' || 'ubuntu-24.04' }}
+    # Shards take 5-9 minutes. When the shared task cache throttles reads, each
+    # failed fetch stalls vp for 15-90s, which pushed shards past 20 minutes.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        shard: [1, 2, 3, 4]
     steps:
       # Depth 2 brings the base commit the change is diffed against.
       - name: Checkout
@@ -398,7 +354,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-chromium-shell-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright_version.outputs.version }}
+          key: playwright-chromium-shell-${{ runner.os }}-${{ runner.arch }}${{ env.CI_HOME_KEY }}-${{ steps.playwright_version.outputs.version }}
 
       - name: Install Chromium for server browser integration tests
         if: steps.changes.outputs.test_server != 'false' && steps.chromium_cache.outputs.cache-hit != 'true'
@@ -413,8 +369,10 @@ jobs:
             node apps/server/node_modules/playwright-core/cli.js install-deps chromium
           fi
 
+      # Drops boat's CAP_DAC_READ_SEARCH; see the Test step in Checks.
       - name: Test
         if: steps.changes.outputs.test_server != 'false'
+        shell: setpriv --ambient-caps -all --inh-caps -all -- bash --noprofile --norc -eo pipefail {0}
         env:
           T3CODE_TRANSFER_BUDGET_REPORT_PATH: ${{ runner.temp }}/t3code-transfer-budget.md
           T3CODE_TRANSFER_BUDGET_RESULT_PATH: ${{ runner.temp }}/thread-transfer-result.json
@@ -463,41 +421,6 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
-  # Split out of Check and Test: both paid ~7-9s to install a Rust toolchain
-  # for checks that take under 3s, on the critical path of every PR.
-  rust:
-    name: Rust
-    needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.rust != 'false' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    timeout-minutes: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          sparse-checkout: |
-            /*
-            !/.repos/
-            !/apps/mobile/modules/t3-terminal/Vendor/**/*.a
-          sparse-checkout-cone-mode: false
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
-
-      - name: Check Rust formatting
-        run: |
-          for crate in resource-monitor kde-snap-shot hyprland-snap-shot; do
-            cargo fmt --manifest-path "native/$crate/Cargo.toml" -- --check
-          done
-
-      - name: Test Rust crates
-        run: |
-          for crate in resource-monitor kde-snap-shot hyprland-snap-shot; do
-            cargo test --locked --manifest-path "native/$crate/Cargo.toml"
-          done
-
   mobile_native_static_analysis:
     name: Mobile Native Static Analysis
     needs: changes
@@ -528,33 +451,6 @@ jobs:
       - name: Lint mobile native sources
         run: vp run lint:mobile
 
-  release_smoke:
-    permissions:
-      contents: read
-      id-token: write
-    name: Release Smoke
-    needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.release_smoke != 'false' }}
-    runs-on: blacksmith-8vcpu-ubuntu-2404
-    timeout-minutes: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          sparse-checkout: |
-            /*
-            !/.repos/
-            !/apps/mobile/modules/t3-terminal/Vendor/**/*.a
-          sparse-checkout-cone-mode: false
-
-      - name: Setup Vite+
-        uses: ./.github/actions/setup-ci-deps
-        with:
-          task-cache-read-token: ${{ secrets.T3_TASK_CACHE_READ_TOKEN }}
-
-      - name: Exercise release-only workflow steps
-        run: node scripts/release-smoke.ts
-
   # Branch protection requires this job by its name, `Check`. It fails when any
   # other job fails, is cancelled, or is skipped without a reason, so splitting
   # or resharding jobs needs no ruleset change. Add every new job to `needs`.
@@ -563,19 +459,8 @@ jobs:
   check:
     name: Check
     if: ${{ always() }}
-    needs:
-      [
-        changes,
-        lint,
-        build,
-        test,
-        test_web,
-        test_server,
-        rust,
-        mobile_native_static_analysis,
-        release_smoke,
-      ]
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    needs: [changes, checks, test_web, test_server, mobile_native_static_analysis]
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Require every job to pass
@@ -584,10 +469,10 @@ jobs:
         run: |
           echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
           # A job may skip only when `changes` said every gate it represents was
-          # not needed. Gates are keyed by job name, except merged Build and the
-          # macOS lint.
+          # not needed. Gates are keyed by job name, except the macOS lint.
+          # Checks has no gate of its own, so it must always pass.
           echo "$RESULTS" | jq -e '.changes.outputs as $gates
-            | {build: ["build", "typecheck"], mobile_native_static_analysis: ["mobile_native"]} as $renamed
+            | {mobile_native_static_analysis: ["mobile_native"]} as $renamed
             | all(to_entries[];
                 .value.result == "success"
                 or (.value.result == "skipped"

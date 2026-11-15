@@ -25,7 +25,9 @@ concurrency:
 jobs:
   fingerprint:
     name: Native fingerprint diff
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    # GitHub's free runner, not boat: this advisory check starts on every PR
+    # event, title edits included, and boat bills per job start.
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     env:
