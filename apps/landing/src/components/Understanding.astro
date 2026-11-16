@@ -31,11 +31,11 @@ const toolRow = tools.map((name) => {
   return tool;
 });
 ---
-          <!-- ───────────────────────────────────────── [07] Understanding -->
+          <!-- ───────────────────────────────────────── [06] Understanding -->
           <section class="surfaces" id="understanding" aria-labelledby="understanding-title">
             <div class="head">
               <div class="head__main">
-                <p class="tag">[07] Understanding</p>
+                <p class="tag">[06] Understanding</p>
                 <h2 id="understanding-title" class="h2" data-reveal>See what changed, drawn.</h2>
               </div>
               <p class="body head__aside" data-reveal>
@@ -248,6 +248,11 @@ const toolRow = tools.map((name) => {
                   Ask Claude what a change did, and it draws the answer in the thread, on a canvas of cards,
                   arrows and sections. Here it drew Apple Pay three ways: how the parts fit, what the two pull
                   requests moved and what a shopper sees.
+                </p>
+                <p>
+                  The agent that draws it can query the code index and the language servers in the same
+                  turn, and a card can cite a file and its lines. Click the card to open the code there. Once
+                  the canvas is kept, a card that cites code is marked when that file is changed or deleted.
                 </p>
                 <p>
                   Edit the board by hand on a computer or your phone. Draw arrows sharp, curved or at right

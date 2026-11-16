@@ -7,24 +7,24 @@ import plate from "../data/lasilla-plate.json";
             <div class="head head--plate head--plate-left">
               <div class="head__main">
                 <p class="tag">[05] Code</p>
-                <h2 id="repositories-title" class="h2" data-reveal>Read and edit the code your agents change.</h2>
+                <h2 id="repositories-title" class="h2" data-reveal>The same code intelligence for you and your agents.</h2>
               </div>
               <p class="body head__aside" data-reveal>
-                Projects is the app’s section for your code. Open the copy an agent works in, read and edit
-                its files with language servers behind them, and see how the code connects on the code
-                graph. It has a tab on your iPhone too.
+                The editor is here on purpose. Reading a program is still the fastest way to understand it,
+                and a small fix by hand stays small. You and your agents ask the same language servers and
+                the same code index, so you find what they found in the time it takes to hover.
               </p>
               <Frontispiece plate={plate} />
             </div>
 
             <article class="surface" aria-labelledby="surface-repositories">
               <div class="surface__title">
-                <p class="tag">Checkouts</p>
-                <h3 id="surface-repositories" class="h3">Read the copy an agent is changing.</h3>
+                <p class="tag">Projects</p>
+                <h3 id="surface-repositories" class="h3">Hover where the agent searched.</h3>
               </div>
               <div class="surface__ui">
           <figure class="window">
-            <div class="app app--poster app--repo" role="img" aria-label="The Projects section of Astrolabe, on the billing repository, with the checkout of the thread Invoices pass exact totals picked. The sidebar lists its three uncommitted files, a row for its changes against main, and the files changed recently. The file totals.ts is open with line numbers. Its header says an agent is working in this checkout and that TypeScript is its language server, and a hover on total shows its signature.">
+            <div class="app app--poster app--repo app--split" role="img" aria-label="The Projects section of Astrolabe, on the billing repository, with the checkout of the thread Invoices pass exact totals picked. The sidebar lists its three uncommitted files, a row for its changes against main, and the files changed recently. The file totals.ts is open with line numbers. Its header says an agent is working in this checkout and that TypeScript is its language server, and a hover on total shows its signature. Beside the file, Claude’s thread on the same checkout found the definition of total and its references through the same language server, and explains where the total is rounded.">
               <div class="tb">
                 <div class="tb__cap">
                   <span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
@@ -41,6 +41,10 @@ import plate from "../data/lasilla-plate.json";
                   <svg class="ico ico--muted"><use href="#i-plus" /></svg>
                   <span class="spacer"></span>
                   <svg class="ico ico--muted"><use href="#i-more" /></svg>
+                </div>
+                <div class="tb__strip tb__strip--pane split__strip">
+                  <span class="tab is-front"><svg class="logo"><use href="#p-claude" /></svg><span class="tab__title">Invoices pass exact totals</span><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
+                  <span class="spacer"></span>
                 </div>
               </div>
               <div class="pb">
@@ -109,28 +113,41 @@ import plate from "../data/lasilla-plate.json";
                     </div>
                   </div>
                 </div>
+                <div class="pane pane--chat split__chat">
+                  <div class="chat">
+                    <div class="msg msg--user">Where does an invoice total get rounded now?</div>
+                    <ul class="worklog">
+                      <li><svg class="ico ico--xs"><use href="#i-eye" /></svg><span>Found a definition <code>total</code></span></li>
+                      <li><svg class="ico ico--xs"><use href="#i-eye" /></svg><span>Found references <code>total</code></span></li>
+                      <li><svg class="ico ico--xs"><use href="#i-eye" /></svg><span>Found a definition <code>ledger.post</code></span></li>
+                    </ul>
+                    <div class="msg msg--agent">
+                      <p><code>total</code> returns the exact sum, and <code>post</code> is its only caller. <code>ledger.post</code> rounds once, half to even, before it writes the entry.</p>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </figure>
               </div>
               <div class="surface__desc">
                 <p>
-                  A thread can work in a worktree of its own. Pick it, and the sidebar leads with what is
-                  moving there: its uncommitted changes, its branch against main, then the files its latest
-                  commits touched. It keeps up as agents change files on disk.
+                  Point at a name and its language server shows what it is. Go to its definition, or find
+                  every place it is used. An agent that needs the same answer asks the same server at the
+                  same checkout, and its work log shows what it found.
+                </p>
+                <p>
+                  The code index holds each file’s definitions and imports for every branch. Agents search it
+                  in place of grep, and a file’s local graph draws from it what the file imports and what
+                  imports it.
                 </p>
                 <p>
                   Edit a file and it saves a moment after you stop typing. It says when an agent is working
-                  in the same copy, and your edit never overwrites newer changes saved there. Comment on a
-                  line of a diff to send it to that agent’s thread.
-                </p>
-                <p>
-                  Language servers for TypeScript, Python, Rust, Go and more show problems as you read, with
-                  completions, go to definition, find references and rename. A file’s local graph draws what
-                  it imports and what imports it.
+                  in the same copy, and your edit never overwrites newer changes saved there.
                 </p>
                 <p class="surface__note">
-                  On your iPhone, the Projects tab lists the same files, read only.
+                  Language servers for TypeScript, Python, Rust, Go and more. On your iPhone, the Projects tab
+                  lists the same files, read only.
                 </p>
                 <a class="link" href="/download">Download Astrolabe<svg class="arw" aria-hidden="true"><use href="#i-arrow" /></svg></a>
               </div>

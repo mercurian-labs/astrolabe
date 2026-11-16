@@ -3894,6 +3894,54 @@ hidden, leaves the sticky stage working). */
     height: auto;
   }
 }
+/* The file beside the thread working in its checkout: one pane each, as a split shows them. */
+.app--split .tb {
+  grid-template-columns: calc(var(--rail) + var(--side)) minmax(0, 1fr) 24em;
+}
+.app--split .pb {
+  grid-template-columns: var(--rail) var(--side) minmax(0, 1fr) 24em;
+}
+.split__strip,
+.split__chat {
+  border-left: 1px solid var(--app-border);
+}
+.split__chat .chat {
+  justify-content: flex-end;
+  padding: 1.4em 1.4em 1.6em;
+}
+.split__chat .worklog li {
+  white-space: normal;
+}
+.app--split .file__saved {
+  display: none;
+}
+@container (max-width: 900px) {
+  .app--split .tb {
+    grid-template-columns: minmax(0, 1fr) 22em;
+  }
+  .app--split .pb {
+    grid-template-columns: minmax(0, 1fr) 22em;
+  }
+}
+@container (max-width: 560px) {
+  .app--split .tb {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .app--split .tb .split__strip {
+    display: none;
+  }
+  .app--split .pb {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
+  }
+  .split__chat {
+    border-left: 0;
+    border-top: 1px solid var(--app-border);
+  }
+  .file__hover {
+    left: 6em;
+  }
+}
 
 /* ───────────────────────────────────────── [06] Review: a change group, and what its states mean */
 
