@@ -15,6 +15,7 @@ import {
   AuthSourceControlWriteScope,
   AuthTerminalReadScope,
   AuthTerminalOperateScope,
+  ORCHESTRATION_V2_WS_METHODS,
   WS_METHODS,
   WsRpcGroup,
   clientRpcRequiredScopes,
@@ -79,6 +80,7 @@ describe("RPC authorization scopes", () => {
       WS_METHODS.documentsDiscard,
       WS_METHODS.documentsReplaceAll,
       WS_METHODS.documentsUndoReplaceAll,
+      ORCHESTRATION_V2_WS_METHODS.previewFileRevert,
     ]) {
       expect(requiredScopeForRpcMethod(method)).toBe(AuthFilesystemWriteScope);
       expect(clientRpcRequiredScopes(method, undefined)).toEqual([AuthFilesystemWriteScope]);

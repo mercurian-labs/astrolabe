@@ -878,6 +878,8 @@ export function applyToProjection(
         updatedAt: event.payload.updatedAt,
       };
     case "thread.visited":
+    case "thread.file-edited":
+    case "thread.file-edit-cleared":
     case "thread.marked-unread":
       return {
         ...projection,
@@ -2068,6 +2070,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             case "thread.active-reordered":
             case "thread.tags-updated":
             case "thread.visited":
+            case "thread.file-edited":
+            case "thread.file-edit-cleared":
             case "thread.marked-unread":
             case "thread.metadata-updated":
             case "thread.pull-request-synced":
@@ -2885,6 +2889,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             event.type !== "thread.active-reordered" &&
             event.type !== "thread.tags-updated" &&
             event.type !== "thread.visited" &&
+            event.type !== "thread.file-edited" &&
+            event.type !== "thread.file-edit-cleared" &&
             event.type !== "thread.marked-unread" &&
             event.type !== "thread.metadata-updated" &&
             event.type !== "thread.pull-request-synced" &&

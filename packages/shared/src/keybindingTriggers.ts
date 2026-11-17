@@ -44,6 +44,9 @@ export const DEFAULT_TRIGGER_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   // Half a page of the focused place, as Vim's Ctrl-D and Ctrl-U.
   { key: "menu d", command: "scroll.down" },
   { key: "menu u", command: "scroll.up" },
+  // Undo and redo in the editor the menu opened from, as mod+z and mod+shift+z.
+  { key: "menu z", command: "edit.undo" },
+  { key: "menu Z", command: "edit.redo" },
   { key: "menu g t", command: "section.threads" },
   { key: "menu g w", command: "section.wikis" },
   { key: "menu g r", command: "section.repositories" },
@@ -56,6 +59,7 @@ export const DEFAULT_TRIGGER_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "menu t r", command: "view.reopenClosed" },
   { key: "menu t k", command: "tab.toggleLink" },
   { key: "menu t n", command: "tab.newLinked" },
+  { key: "menu t e", command: "file.toggleEdit" },
   // The tab in front's history, as h/l step left and right ([ and ] step between tabs).
   { key: "menu t h", command: "navigation.back" },
   { key: "menu t l", command: "navigation.forward" },

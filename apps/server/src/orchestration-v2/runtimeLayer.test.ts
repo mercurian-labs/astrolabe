@@ -7490,6 +7490,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
                     version: 1 as const,
                     records: [],
                     omitEditedBoards: [TurnItemId.make("left-out-board")],
+                    omitEditedFiles: ["src/left-out.ts"],
                   },
                 }
               : {}),
@@ -7596,11 +7597,18 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
           started ? "Edited second message" : "Active",
         );
         if (started) {
+          const editedContext = resumed.messages.find(
+            (row) => row.id === second.userMessageId,
+          )?.context;
           assert.deepEqual(
-            resumed.messages.find((row) => row.id === second.userMessageId)?.context
-              ?.omitEditedBoards,
+            editedContext?.omitEditedBoards,
             [TurnItemId.make("left-out-board")],
             "an edit keeps the boards the message leaves out",
+          );
+          assert.deepEqual(
+            editedContext?.omitEditedFiles,
+            ["src/left-out.ts"],
+            "an edit keeps the files the message leaves out",
           );
         }
         if (!started) {

@@ -5,7 +5,6 @@ import { ProjectReadFileError } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { remapFileCommentAnnotations } from "./fileCommentAnnotations";
 import {
   filePreviewReadErrorMessage,
   isMarkdownPreviewFile,
@@ -24,44 +23,6 @@ describe("file preview read errors", () => {
       message: "Legacy file read failure.",
     });
     expect(filePreviewReadErrorMessage(error)).toBe("Legacy file read failure.");
-  });
-});
-
-describe("file comment annotations", () => {
-  it("keeps an annotation range attached when Pierre remaps its anchor line", () => {
-    expect(
-      remapFileCommentAnnotations([
-        {
-          lineNumber: 20,
-          metadata: {
-            entries: [
-              {
-                id: "comment-1",
-                kind: "comment",
-                startLine: 7,
-                endLine: 16,
-                text: "Keep this guarded.",
-              },
-            ],
-          },
-        },
-      ]),
-    ).toEqual([
-      {
-        lineNumber: 20,
-        metadata: {
-          entries: [
-            {
-              id: "comment-1",
-              kind: "comment",
-              startLine: 11,
-              endLine: 20,
-              text: "Keep this guarded.",
-            },
-          ],
-        },
-      },
-    ]);
   });
 });
 

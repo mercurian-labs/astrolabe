@@ -443,6 +443,19 @@ const LenientThreadOpens = Schema.NullOr(OrchestrationV2ThreadOpens).pipe(
   Schema.catchDecoding(() => Effect.succeedSome(null)),
 );
 
+/** Astrolabe: how many edited files a thread keeps, newest first; older edits drop off. */
+export const THREAD_EDITED_FILES_MAX = 100;
+
+/**
+ * Astrolabe: a file the user saved from the editor in one of the thread's linked file tabs, by
+ * its path in the thread's checkout, at its latest edit. The next prompt tells the agent of it.
+ */
+export const OrchestrationV2ThreadEditedFile = Schema.Struct({
+  path: TrimmedNonEmptyString,
+  editedAt: Schema.DateTimeUtc,
+});
+export type OrchestrationV2ThreadEditedFile = typeof OrchestrationV2ThreadEditedFile.Type;
+
 export const OrchestrationV2AppThread = Schema.Struct({
   ...OrchestrationV2CreationFields,
   id: ThreadId,
@@ -498,6 +511,7 @@ export const OrchestrationV2AppThread = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
   opens: Schema.optional(LenientThreadOpens),
+  editedFiles: Schema.optional(Schema.Array(OrchestrationV2ThreadEditedFile)),
   titleRegeneration: Schema.optional(
     Schema.NullOr(
       Schema.Struct({
@@ -1932,6 +1946,8 @@ export const OrchestrationV2DomainEvent = Schema.Union([
       "thread.active-reordered",
       "thread.tags-updated",
       "thread.visited",
+      "thread.file-edited",
+      "thread.file-edit-cleared",
       "thread.marked-unread",
       "thread.metadata-updated",
       "thread.pull-request-synced",
@@ -2343,6 +2359,14 @@ export const OrchestrationV2AppThreadJson = OrchestrationV2AppThread.mapFields((
   autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
   lastVisitedAt: Schema.NullOr(Schema.DateTimeUtcFromString).pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
+  editedFiles: Schema.optional(
+    Schema.Array(
+      OrchestrationV2ThreadEditedFile.mapFields((editedFields) => ({
+        ...editedFields,
+        editedAt: Schema.DateTimeUtcFromString,
+      })),
+    ),
   ),
   titleRegeneration: Schema.optional(
     Schema.NullOr(
@@ -2833,6 +2857,8 @@ export const OrchestrationV2DomainEventJson = Schema.Union([
       "thread.active-reordered",
       "thread.tags-updated",
       "thread.visited",
+      "thread.file-edited",
+      "thread.file-edit-cleared",
       "thread.marked-unread",
       "thread.pull-request-synced",
       "thread.metadata-updated",
@@ -3356,6 +3382,14 @@ export const OrchestrationV2Command = Schema.Union([
     threadId: ThreadId,
     requestId: RuntimeRequestId,
   }),
+  /** Astrolabe: the user saved a file from the editor in one of the thread's linked file tabs. */
+  Schema.Struct({
+    type: Schema.Literal("thread.file-edit.record"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    /** The file's path in the thread's checkout. */
+    path: TrimmedNonEmptyString.check(Schema.isMaxLength(4096)),
+  }),
   /** Astrolabe: the user's edits to a board an agent drew, replayed on the board as it is now. */
   Schema.Struct({
     type: Schema.Literal("canvas.edit"),
@@ -3617,6 +3651,17 @@ const OrchestrationV2InternalCommand = Schema.Union([
     delivery: Schema.optional(OrchestrationV2SecretRequestDelivery),
     secretStatus: OrchestrationV2SecretRequestStatus,
   }),
+  /**
+   * Astrolabe: the user's edits to a file net out to nothing since the last turn, so its edit is
+   * dropped. Only the edit at `editedAt` is: a newer one stands.
+   */
+  Schema.Struct({
+    type: Schema.Literal("thread.file-edit.clear"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    path: TrimmedNonEmptyString,
+    editedAt: Schema.DateTimeUtc,
+  }),
   /** Astrolabe: records a board an agent drew, laid out by the server. */
   Schema.Struct({
     type: Schema.Literal("canvas.record"),
@@ -3681,6 +3726,7 @@ export const ORCHESTRATION_V2_WS_METHODS = {
   getThreadProjection: "orchestration.getThreadProjection",
   getWorkflowScript: "orchestration.getWorkflowScript",
   getNativeChildWork: "orchestration.getNativeChildWork",
+  previewFileRevert: "orchestration.previewFileRevert",
   stopWorkflow: "orchestration.stopWorkflow",
   forceStopThread: "orchestration.forceStopThread",
   getTurnItem: "orchestration.getTurnItem",
@@ -4257,6 +4303,58 @@ export class OrchestrationV2GetNativeChildWorkError extends Schema.TaggedError<O
   }
 }
 
+/** Astrolabe: a file the user edited in the thread's checkout, to put back as the agent left it. */
+export const OrchestrationV2PreviewFileRevertInput = Schema.Struct({
+  threadId: ThreadId,
+  /** The file's path in the thread's checkout. */
+  path: TrimmedNonEmptyString.check(Schema.isMaxLength(4096)),
+});
+export type OrchestrationV2PreviewFileRevertInput =
+  typeof OrchestrationV2PreviewFileRevertInput.Type;
+
+/**
+ * Why a file can't be reverted here: a turn is running (the agent may be writing it), a commit since
+ * the checkpoint changed it, the thread has no finished turn, the agent's version has no such file,
+ * the file reads as the agent left it, or either side can't be read.
+ */
+export const OrchestrationV2FileRevertBlock = Schema.Literals([
+  "running",
+  "committed",
+  "no-checkpoint",
+  "not-in-checkpoint",
+  "unchanged",
+  "unreadable",
+]);
+export type OrchestrationV2FileRevertBlock = typeof OrchestrationV2FileRevertBlock.Type;
+
+/** Astrolabe: what reverting an edited file to the agent's last checkpoint would throw away. */
+export const OrchestrationV2FileRevertPreview = Schema.Struct({
+  /** The thread's checkout the path is in. */
+  cwd: Schema.String,
+  /** The file as the checkpoint has it; null when blocked before it was read. */
+  checkpointText: Schema.NullOr(Schema.String),
+  /** The file is gone from disk: reverting recreates it. */
+  missing: Schema.Boolean,
+  /** From the checkpoint to the file now, as the agent's note diffs it; null when too large. */
+  diff: Schema.NullOr(Schema.String),
+  /** Changes that didn't come through the editor may be in the diff, and would go too. */
+  outsideChanges: Schema.Boolean,
+  blocked: Schema.NullOr(OrchestrationV2FileRevertBlock),
+});
+export type OrchestrationV2FileRevertPreview = typeof OrchestrationV2FileRevertPreview.Type;
+
+export class OrchestrationV2PreviewFileRevertError extends Schema.TaggedError<OrchestrationV2PreviewFileRevertError>()(
+  "OrchestrationV2PreviewFileRevertError",
+  {
+    threadId: ThreadId,
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {
+  override get message(): string {
+    return "Could not compare the file with the agent's version.";
+  }
+}
+
 const WORKFLOW_FILE_ERROR_MESSAGES = {
   "invalid-path": "Workflow files must be absolute paths with the expected extension.",
   "root-unavailable": "Workflow file root unavailable.",
@@ -4447,6 +4545,10 @@ export const OrchestrationV2RpcSchemas = {
   getNativeChildWork: {
     input: OrchestrationV2GetNativeChildWorkInput,
     output: OrchestrationV2GetNativeChildWorkResult,
+  },
+  previewFileRevert: {
+    input: OrchestrationV2PreviewFileRevertInput,
+    output: OrchestrationV2FileRevertPreview,
   },
   getTurnItem: {
     input: OrchestrationV2GetTurnItemInput,

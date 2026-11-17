@@ -10,6 +10,7 @@ import {
 } from "@t3tools/contracts";
 import type { CodeEditingCommand, CodeEditingKeys } from "@mercurian/editor/code/editing";
 import type { HunkCommand } from "@mercurian/editor/git";
+import type { EditorHistoryKeys } from "@mercurian/editor/history";
 import type { DiagnosticKeys } from "@mercurian/editor/lsp/diagnostics";
 import type { ExcerptKeys } from "@mercurian/editor/multibuffer/excerpt";
 import type { LivePreviewOptions } from "@mercurian/editor/markdown";
@@ -132,6 +133,19 @@ export function editorHunkKeys(
 /** The find bar's keys, the same array until they change. */
 export function useEditorFindKeys(): readonly string[] {
   return useStableKeys(editorFindKeys(useAtomValue(primaryServerKeybindingsAtom)));
+}
+
+/** A code file's or note's undo and redo keys (`edit.undo`, `edit.redo`). */
+export function editorHistoryKeys(keybindings: ResolvedKeybindingsConfig): EditorHistoryKeys {
+  return {
+    undo: editorKeysFor(keybindings, "edit.undo"),
+    redo: editorKeysFor(keybindings, "edit.redo"),
+  };
+}
+
+/** An editor's undo and redo keys, the same object until they change. */
+export function useEditorHistoryKeys(): EditorHistoryKeys {
+  return useStableKeys(editorHistoryKeys(useAtomValue(primaryServerKeybindingsAtom)));
 }
 
 /** A code file's change keys, the same object until they change. */

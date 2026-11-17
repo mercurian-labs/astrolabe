@@ -225,7 +225,6 @@ export function createPanesController(storage: StorageLike | null): PanesControl
         before.previewSessions === next.previewSessions &&
         before.desktopByTabId === next.desktopByTabId &&
         before.terminalLabelsById === next.terminalLabelsById &&
-        before.pendingSurfaceIds === next.pendingSurfaceIds &&
         before.pullRequestStatusSeeds === next.pullRequestStatusSeeds &&
         before.environmentId === next.environmentId &&
         before.browserAvailable === next.browserAvailable &&

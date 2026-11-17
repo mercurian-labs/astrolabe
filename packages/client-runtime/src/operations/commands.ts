@@ -7,6 +7,7 @@ import {
   ORCHESTRATION_V2_WS_METHODS,
   OrchestrationV2CheckpointUnavailableError,
   WS_METHODS,
+  TrimmedNonEmptyString,
   type CanvasHandEdit,
   type ChatAttachment,
   MessageId,
@@ -215,6 +216,12 @@ export interface DismissThreadUserInputInput extends ThreadCommandInput {
 export interface EditThreadCanvasInput extends ThreadCommandInput {
   readonly turnItemId: TurnItemId;
   readonly edits: ReadonlyArray<CanvasHandEdit>;
+}
+
+/** Astrolabe: a file the user saved from the editor in one of the thread's linked file tabs. */
+export interface RecordThreadFileEditInput extends ThreadCommandInput {
+  /** The file's path in the thread's checkout. */
+  readonly path: string;
 }
 
 export interface RevertThreadCheckpointInput extends ThreadCommandInput {
@@ -938,6 +945,17 @@ export const editThreadCanvas = Effect.fn("EnvironmentCommands.editThreadCanvas"
     edits: input.edits,
   });
 });
+
+export const recordThreadFileEdit = Effect.fn("EnvironmentCommands.recordThreadFileEdit")(
+  function* (input: RecordThreadFileEditInput) {
+    return yield* dispatch({
+      type: "thread.file-edit.record",
+      commandId: yield* allocateCommandId(input),
+      threadId: input.threadId,
+      path: TrimmedNonEmptyString.make(input.path),
+    });
+  },
+);
 
 export const revertThreadCheckpoint = Effect.fn("EnvironmentCommands.revertThreadCheckpoint")(
   function* (input: RevertThreadCheckpointInput) {

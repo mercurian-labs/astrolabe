@@ -1,10 +1,4 @@
-import {
-  type EnvironmentId,
-  ProjectId,
-  type ProjectReadFileResult,
-  type ScopedProjectRef,
-  WS_METHODS,
-} from "@t3tools/contracts";
+import { ProjectId, type ScopedProjectRef, WS_METHODS } from "@t3tools/contracts";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -37,21 +31,6 @@ export type {
   UpdateProjectInput,
 } from "../operations/commands.ts";
 
-export interface OptimisticProjectFile {
-  readonly data: ProjectReadFileResult;
-  readonly confirmedAgainst: object | null | undefined;
-}
-
-export interface OptimisticProjectFileTarget {
-  readonly environmentId: EnvironmentId;
-  readonly cwd: string;
-  readonly relativePath: string;
-}
-
-function optimisticProjectFileKey(target: OptimisticProjectFileTarget): string {
-  return JSON.stringify([target.environmentId, target.cwd, target.relativePath]);
-}
-
 function writtenFilePaths(
   input: EnvironmentRpcInput<typeof WS_METHODS.projectsWriteFile>,
   result: EnvironmentRpcSuccess<typeof WS_METHODS.projectsWriteFile>,
@@ -81,11 +60,6 @@ export function createProjectEnvironmentAtoms<R, E>(
   const fileMetadata = createFileMetadataAtoms(runtime);
   const projectScheduler = createAtomCommandScheduler();
   const fileScheduler = createAtomCommandScheduler();
-  const optimisticFileFamily = Atom.family((key: string) =>
-    Atom.make<OptimisticProjectFile | null>(null).pipe(
-      Atom.withLabel(`environment-data:projects:optimistic-file:${key}`),
-    ),
-  );
   const projectConcurrency = {
     mode: "serial" as const,
     key: ({ environmentId, input }: { environmentId: string; input: { projectId: string } }) =>
@@ -147,8 +121,6 @@ export function createProjectEnvironmentAtoms<R, E>(
               : fileMetadata.rememberFile(input.cwd, result, isCurrent),
         ),
     }),
-    optimisticFile: (target: OptimisticProjectFileTarget) =>
-      optimisticFileFamily(optimisticProjectFileKey(target)),
     create: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:project:create",
       execute: createProject,

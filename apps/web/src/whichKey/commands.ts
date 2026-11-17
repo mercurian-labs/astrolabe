@@ -9,6 +9,7 @@ import {
 import { hasCodeEditing, runCodeEditing, softWrapOn } from "@mercurian/editor/code/editing";
 import { hasGitChanges, runHunkCommand, type HunkCommand } from "@mercurian/editor/git";
 import { hasInFileSearch, openInFileSearch } from "@mercurian/editor/search";
+import { editorHistory, hasEditorHistory } from "@mercurian/editor/history";
 import { hasOutline } from "@mercurian/editor/outline";
 import { excerptControls, isExcerpt } from "@mercurian/editor/multibuffer/excerpt";
 import {
@@ -69,6 +70,7 @@ import {
   toggleMaximizedPane,
 } from "~/panes/paneCommands";
 import { localGraphOpener } from "~/components/repositories/localGraph";
+import { linkedFileEditToggle } from "~/components/files/linkedFileEditToggle";
 import { problemsOpener } from "~/components/repositories/multibuffer/openMultibuffer";
 import { focusRegion, regionToward } from "~/keyboardNav/regions";
 import { isListRow } from "~/keyboardNav/placeLists";
@@ -242,6 +244,31 @@ const HUNK_ENTRIES: Record<
   "hunk.next": { command: "next", label: "Next change" },
   "hunk.previous": { command: "previous", label: "Previous change" },
 };
+
+/**
+ * Undo or redo in the code file or note the key came from, through its own history; faint
+ * elsewhere, and with nothing that way.
+ */
+function historyEntry(step: "undo" | "redo", origin: KeyOrigin | null): AppCommand {
+  const view = editorFrom(origin, hasEditorHistory);
+  const history = view?.state.facet(editorHistory);
+  const can =
+    view && history && !view.state.readOnly
+      ? step === "undo"
+        ? history.canUndo(view.state)
+        : history.canRedo(view.state)
+      : false;
+  return repeatableEntry(
+    step === "undo" ? "Undo" : "Redo",
+    view && history && can
+      ? () =>
+          afterPalette(() => {
+            view.focus();
+            history[step](view);
+          })
+      : null,
+  );
+}
 
 /** A language-server command on the code file the key came from; faint where none serves it. */
 function lspEntry(origin: KeyOrigin | null, label: string, run: (view: EditorView) => boolean) {
@@ -559,6 +586,9 @@ function astrolabeCommand(
       return languageServerEntry(context, "Select Python interpreter", (file) =>
         maintaining(file, file.toolchain === "python", () => openInterpreterPicker(file)),
       );
+    case "edit.undo":
+    case "edit.redo":
+      return historyEntry(command === "edit.undo" ? "undo" : "redo", context.origin);
     case "file.save": {
       const view = editorFrom(context.origin, hasFileSave);
       const run = view?.state.facet(fileSave) ?? null;
@@ -605,6 +635,10 @@ function astrolabeCommand(
     }
     case "repository.localGraph":
       return entry("Open local graph", localGraphOpener(panes?.controller ?? null));
+    case "file.toggleEdit": {
+      const toggle = linkedFileEditToggle(focused?.leaf.active ?? null);
+      return entry(toggle?.label ?? "Edit file", toggle?.run ?? null);
+    }
     case "multibuffer.expand":
     case "multibuffer.openExcerpt":
     case "multibuffer.nextFile":

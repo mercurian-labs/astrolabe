@@ -396,8 +396,6 @@ const EMPTY_RUNS: ThreadStructure["runs"] = [];
 const EMPTY_AUTO_UPDATE_ENVIRONMENTS: ReadonlyArray<EnvironmentPresentation> = [];
 const EMPTY_COMPOSER_BANNER_ITEMS: ReadonlyArray<ComposerBannerStackItem> = [];
 
-const EMPTY_PENDING_FILE_SURFACE_IDS: ReadonlySet<string> = new Set();
-
 type ChatViewProps =
   | {
       environmentId: EnvironmentId;
@@ -1164,28 +1162,6 @@ export default function ChatView(props: ChatViewProps) {
   const activeProjectKey = activeProject
     ? `${activeProject.environmentId}:${activeProject.workspaceRoot}`
     : null;
-  const [pendingFileSurfaceIdsByProject, setPendingFileSurfaceIdsByProject] = useState<
-    ReadonlyMap<string, ReadonlySet<string>>
-  >(() => new Map());
-  const pendingFileSurfaceIds = activeProjectKey
-    ? (pendingFileSurfaceIdsByProject.get(activeProjectKey) ?? EMPTY_PENDING_FILE_SURFACE_IDS)
-    : EMPTY_PENDING_FILE_SURFACE_IDS;
-  const handleFilePendingChange = (relativePath: string, pending: boolean) => {
-    if (!activeProjectKey) return;
-    setPendingFileSurfaceIdsByProject((currentByProject) => {
-      const current = currentByProject.get(activeProjectKey) ?? EMPTY_PENDING_FILE_SURFACE_IDS;
-      const surfaceId = `file:${relativePath}`;
-      if (current.has(surfaceId) === pending) return currentByProject;
-      const next = new Set(current);
-      if (pending) next.add(surfaceId);
-      else next.delete(surfaceId);
-      const nextByProject = new Map(currentByProject);
-      if (next.size === 0) nextByProject.delete(activeProjectKey);
-      else nextByProject.set(activeProjectKey, next);
-      return nextByProject;
-    });
-  };
-  const handleFilePendingChangeStable = useStableCallback(handleFilePendingChange);
   const configuredPreviewUrls = getConfiguredPreviewUrls(activeProjectScripts);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- drops file surfaces from the right panel store once bootstrap shows the thread has no workspace
@@ -3241,7 +3217,6 @@ export default function ChatView(props: ChatViewProps) {
         environmentId={activeThread.environmentId}
         visible={rightPanelOpen}
         composerDraftTarget={composerDraftTarget}
-        keybindings={keybindings}
         configuredPreviewUrls={configuredPreviewUrls}
         workspaceMutationId={workspaceMutationId}
         getShortcutContext={getShortcutContextStable}
@@ -3284,10 +3259,7 @@ export default function ChatView(props: ChatViewProps) {
           projectId: activeProject?.id,
           projectName: activeProject?.title ?? null,
           workspaceRoot: activeWorkspaceRoot,
-          availableEditors,
-          pendingSurfaceIds: pendingFileSurfaceIds,
           onOpenFile: openFileSurfaceStable,
-          onPendingChange: handleFilePendingChangeStable,
         }}
       />
     ) : null;
@@ -3913,13 +3885,6 @@ export default function ChatView(props: ChatViewProps) {
                   keybindings={keybindings}
                   availableEditors={availableEditors}
                   showOpenInPicker={showOpenInPicker}
-                  openInShortcutEnabled={
-                    !(
-                      rightPanelOpen &&
-                      renderedRightPanelSurface?.kind === "file" &&
-                      renderedRightPanelSurface.attachment === undefined
-                    )
-                  }
                   gitCwd={gitCwd}
                   isGitRepo={isGitRepo}
                   envLocked={envLocked}
@@ -4016,7 +3981,6 @@ export default function ChatView(props: ChatViewProps) {
           renderSurface={renderRightPanelSurface}
           environmentId={activeThreadRef.environmentId}
           activeSurfaceId={renderedRightPanelSurface?.id ?? null}
-          pendingSurfaceIds={pendingFileSurfaceIds}
           previewSessions={activePreviewState.sessions}
           desktopByTabId={activePreviewState.desktopByTabId}
           previewRuntimeTabId={resolvePreviewRuntimeTabId}

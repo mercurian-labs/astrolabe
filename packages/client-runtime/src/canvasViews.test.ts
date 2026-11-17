@@ -1,7 +1,11 @@
 import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
-import { canvasViewFromItem, editedBoardsSinceLastPrompt } from "./canvasViews.ts";
+import {
+  canvasViewFromItem,
+  editedBoardsSinceLastPrompt,
+  editedFilesSinceLastPrompt,
+} from "./canvasViews.ts";
 
 const input = { title: "Flow", cards: [{ id: "a", text: "A" }] };
 const item = (overrides: Record<string, unknown>) => ({
@@ -114,5 +118,28 @@ describe("editedBoardsSinceLastPrompt", () => {
     expect(editedBoardsSinceLastPrompt(thread, dismissed)[0]?.dismissed).toBe(true);
     const reedited = { ...thread, turnItems: [board("after", "2026-11-12T11:45:00Z")] };
     expect(editedBoardsSinceLastPrompt(reedited, dismissed)[0]?.dismissed).toBe(false);
+  });
+
+  it("finds the files edited since the last prompt the same way, each left out until edited again", () => {
+    const file = (path: string, editedAt: string) => ({ path, editedAt: at(editedAt) });
+    const edited = {
+      ...thread,
+      thread: {
+        editedFiles: [
+          file("src/after.ts", "2026-11-12T11:00:00Z"),
+          file("src/before.ts", "2026-11-12T09:00:00Z"),
+        ],
+      },
+    };
+    expect(editedFilesSinceLastPrompt(edited, {})).toEqual([
+      { path: "src/after.ts", editedAt: "2026-11-12T11:00:00.000Z", dismissed: false },
+    ]);
+    const dismissed = { "src/after.ts": "2026-11-12T11:00:00.000Z" };
+    expect(editedFilesSinceLastPrompt(edited, dismissed)[0]?.dismissed).toBe(true);
+    const reedited = {
+      ...edited,
+      thread: { editedFiles: [file("src/after.ts", "2026-11-12T11:45:00Z")] },
+    };
+    expect(editedFilesSinceLastPrompt(reedited, dismissed)[0]?.dismissed).toBe(false);
   });
 });

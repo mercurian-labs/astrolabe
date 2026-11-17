@@ -103,6 +103,20 @@ describe("rightPanelStore", () => {
     expect(useClosedViewStore.getState().entries).toEqual([]);
   });
 
+  it("keeps a file tab in Edit across a reopen at a line and a reload, until it previews again", async () => {
+    const store = useRightPanelStore.getState();
+    const surfaceOf = () =>
+      selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA).surfaces[0];
+    store.openFile(refA, "src/app.ts");
+    store.setFileEditing(refA, "file:src/app.ts", true);
+    store.openFile(refA, "src/app.ts", 12);
+    expect(surfaceOf()).toMatchObject({ editing: true, revealLine: 12 });
+    await reloadRightPanelStore();
+    expect(surfaceOf()).toMatchObject({ editing: true });
+    useRightPanelStore.getState().setFileEditing(refA, "file:src/app.ts", false);
+    expect(surfaceOf()).not.toHaveProperty("editing");
+  });
+
   it("ignores session tabs without browser snapshots and records the empty browser tab", () => {
     const store = useRightPanelStore.getState();
     store.openBrowser(refA, "tab-1");

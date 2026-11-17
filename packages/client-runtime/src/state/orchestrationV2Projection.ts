@@ -295,6 +295,8 @@ export function applyOrchestrationV2ProjectionEvent(
       return { ...base, thread: event.payload };
     // Visited tracking and tags are not activity: skip the updatedAt bump.
     case "thread.visited":
+    case "thread.file-edited":
+    case "thread.file-edit-cleared":
     case "thread.tags-updated":
     case "thread.marked-unread":
       return { ...projection, thread: event.payload };

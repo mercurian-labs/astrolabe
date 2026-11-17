@@ -139,6 +139,10 @@ export const ASTROLABE_KEYBINDING_COMMANDS = [
   "run.last",
   "repository.localGraph",
   "file.save",
+  "file.toggleEdit",
+  // Undo and redo in the code file or note the key came from, which each editor binds itself.
+  "edit.undo",
+  "edit.redo",
   // Multi-file views (search results, problems): stacked excerpt editors.
   "multibuffer.expand",
   "multibuffer.openExcerpt",

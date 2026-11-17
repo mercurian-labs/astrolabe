@@ -359,6 +359,7 @@ export function buildMessageContext(input: {
   environmentContexts?: ReadonlyArray<EnvironmentContextRecord>;
   attachments?: ReadonlyArray<BoundComposerAttachment>;
   omitEditedBoards?: ReadonlyArray<TurnItemId>;
+  omitEditedFiles?: ReadonlyArray<string>;
 }): OrchestrationMessageContext | undefined {
   const screenshotAttachmentIds = new Set(
     (input.attachments ?? []).flatMap(({ attachment }) =>
@@ -379,10 +380,16 @@ export function buildMessageContext(input: {
     ...(input.attachments ?? []).map(attachmentContextRecord),
   ];
   const omitEditedBoards = input.omitEditedBoards ?? [];
-  if (records.length === 0 && omitEditedBoards.length === 0) return undefined;
-  return omitEditedBoards.length === 0
-    ? { version: 1, records }
-    : { version: 1, records, omitEditedBoards };
+  const omitEditedFiles = input.omitEditedFiles ?? [];
+  if (records.length === 0 && omitEditedBoards.length === 0 && omitEditedFiles.length === 0) {
+    return undefined;
+  }
+  return {
+    version: 1,
+    records,
+    ...(omitEditedBoards.length === 0 ? {} : { omitEditedBoards }),
+    ...(omitEditedFiles.length === 0 ? {} : { omitEditedFiles }),
+  };
 }
 
 export function asKnownContextRecord(

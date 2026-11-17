@@ -122,7 +122,6 @@ export interface RightPanelTabsProps {
   surfaces: readonly RightPanelSurface[];
   environmentId: EnvironmentId | null;
   activeSurfaceId: string | null;
-  pendingSurfaceIds: ReadonlySet<string>;
   previewSessions: Readonly<Record<string, PreviewSessionSnapshot>>;
   desktopByTabId: Readonly<Record<string, DesktopPreviewOverlay>>;
   /** Maps server-local session ids to desktop runtime ids; session ids cannot address desktop operations. */
@@ -918,7 +917,6 @@ function RightPanelTab(
     surface: RightPanelSurface;
     dragDisabled: boolean;
     active: boolean;
-    pending: boolean;
     title: string;
     audio: TabAudioState;
     audioRuntimeTabId: string | null;
@@ -965,12 +963,6 @@ function RightPanelTab(
           environmentId={props.environmentId}
           pullRequestStatusSeed={props.pullRequestStatusSeed}
         />
-        {props.pending ? (
-          <span
-            className="absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full bg-current"
-            aria-hidden
-          />
-        ) : null}
       </PanelTabCloseButton>
       {audio === "none" || !audioRuntimeTabId ? null : (
         <Tooltip>
@@ -1424,7 +1416,6 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                     surface={surface}
                     dragDisabled={!props.onMoveSurface || renamingDevice === surface.id}
                     active={surface.id === props.activeSurfaceId}
-                    pending={props.pendingSurfaceIds.has(surface.id)}
                     title={surfaceTitle(surface, props.previewSessions, props.terminalLabelsById)}
                     audio={tabAudioState(
                       previewTabId ? (props.desktopByTabId[previewTabId] ?? null) : null,

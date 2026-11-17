@@ -300,12 +300,6 @@ function useTabLabel(tabKey: string): PaneTabLabel {
           environmentId={environmentId}
           pullRequestStatusSeed={panel?.pullRequestStatusSeeds?.[surface.id]}
         />
-        {panel?.pendingSurfaceIds.has(surface.id) ? (
-          <span
-            className="absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full bg-current"
-            aria-hidden
-          />
-        ) : null}
       </span>
     ),
     ...(previewTabId && audio !== "none" && panel?.previewRuntimeTabId

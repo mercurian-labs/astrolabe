@@ -7,7 +7,8 @@ import { useStableCallback } from "~/hooks/useStableCallback";
 import { documentsEnvironment } from "~/state/documents";
 
 // Unique per editor; `crypto.randomUUID` is missing on plain-HTTP origins such as a LAN address.
-const newClientId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+export const newClientId = () =>
+  `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 
 /**
  * Opens a repository file as the environment's live document for as long as the caller is

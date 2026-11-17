@@ -203,7 +203,6 @@ vi.mock(import("~/components/ChatView"), async () => {
     surfaces: [],
     environmentId: "env-1",
     activeSurfaceId: null,
-    pendingSurfaceIds: new Set(),
     previewSessions: {},
     desktopByTabId: {},
     previewRuntimeTabId: (tabId: string) => tabId,

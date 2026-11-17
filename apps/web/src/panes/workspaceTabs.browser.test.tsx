@@ -154,7 +154,6 @@ function panelProps(overrides: Partial<PanelProps>): PanelProps {
     surfaces: [],
     environmentId: ref.environmentId,
     activeSurfaceId: null,
-    pendingSurfaceIds: new Set(),
     previewSessions: {},
     desktopByTabId: {},
     previewRuntimeTabId: (tabId) => `runtime:${tabId}`,

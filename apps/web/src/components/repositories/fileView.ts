@@ -64,16 +64,16 @@ export function fileView(path: string): FileView {
 }
 
 /**
- * Where a file shown in a thread's file panel opens in a Projects tab, as a path in the thread's
- * checkout; null for a folder, a file outside the checkout, or a draft thread, which has no thread
- * on the server to find the checkout of.
+ * Where our editor opens a file of a thread's file panel, as a path in the thread's checkout; null
+ * for a file it doesn't edit: one not text, one outside the checkout, or a draft thread's, which has
+ * no thread on the server to find the checkout of.
  */
-export function threadFileInCheckout(
+export function linkedFileEditorPath(
   draft: boolean,
   cwd: string,
   absolutePath: string | null,
-  isFile: boolean,
 ): string | null {
-  if (draft || !isFile || absolutePath === null) return null;
-  return mediaFileReference(absolutePath, cwd).relativePath ?? null;
+  if (draft || absolutePath === null) return null;
+  const path = mediaFileReference(absolutePath, cwd).relativePath ?? null;
+  return path !== null && fileView(path).kind === "text" ? path : null;
 }

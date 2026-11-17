@@ -169,6 +169,7 @@ import { EditorView } from "@codemirror/view";
 import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity";
 
 import { getClientSettings, updateClientSettings } from "~/hooks/useSettings";
+import { revertEditedFile } from "../files/revertEditedFile";
 import { RepositoryFileView } from "./RepositoryFileView";
 
 const tab = {
@@ -229,6 +230,25 @@ describe("RepositoryFileView", () => {
     authority().save();
     await expect.element(screen.getByTestId("first").getByText("Saved")).toBeVisible();
     await expect.element(screen.getByTestId("second").getByText("Saved")).toBeVisible();
+  });
+
+  it("keeps its undo history when it closes and opens again on the same text", async () => {
+    setup("hello\n");
+    await using screen = await render(<RepositoryFileView tabKey="linked" tab={tab} />);
+    await expect.element(screen.getByRole("textbox")).toHaveTextContent("hello");
+    await userEvent.click(screen.getByRole("textbox"));
+    await userEvent.keyboard("typed");
+    await vi.waitFor(() => expect(authority().doc.toString()).toContain("typed"));
+    authority().save();
+    await expect.element(screen.getByText("Saved")).toBeVisible();
+
+    // A linked file tab going to Preview and back to Edit.
+    await screen.rerender(<div />);
+    await screen.rerender(<RepositoryFileView tabKey="linked" tab={tab} />);
+    await expect.element(screen.getByRole("textbox")).toHaveTextContent("hellotyped");
+    await userEvent.click(screen.getByRole("textbox"));
+    await userEvent.keyboard("{Control>}z{/Control}");
+    await vi.waitFor(() => expect(authority().doc.toString()).toBe("hello\n"));
   });
 
   it("takes a language server on and off while open, keeping the editor and its text", async () => {
@@ -325,6 +345,70 @@ describe("RepositoryFileView", () => {
     await act(() => updateClientSettings({ runMarkers: true }));
     await vi.waitFor(() => expect(marker()).not.toBeNull());
     expect(screen.getByRole("textbox").element().textContent).toContain("fn main");
+  });
+
+  it("reverts to the agent's version as one edit that undo takes back and redo makes again", async () => {
+    setup("one\ntwo\n");
+    await using screen = await render(<RepositoryFileView tabKey="only" tab={tab} />);
+    const editor = screen.getByRole("textbox");
+    await expect.element(editor).toHaveTextContent("onetwo");
+    await userEvent.click(editor);
+    await userEvent.keyboard("{Control>}{End}{/Control}mine");
+    await vi.waitFor(() => expect(authority().doc.toString()).toBe("one\ntwo\nmine"));
+    authority().save();
+
+    const onSaved = vi.fn();
+    const target = {
+      registry: AtomRegistry.make(),
+      environmentId: tab.environmentId,
+      cwd: "/repo",
+      path: tab.path,
+      onSaved,
+    };
+    const reverting = revertEditedFile(target, { text: "one\r\ntwo\r\n", missing: false });
+    await vi.waitFor(() => expect(authority().doc.toString()).toBe("one\ntwo\n"));
+    // What the environment's autosave does.
+    authority().save();
+    const reverted = await reverting;
+    if (!reverted.ok || reverted.undo === null) throw new Error("Expected an undoable revert");
+    expect(onSaved).toHaveBeenCalledTimes(1);
+
+    await userEvent.click(editor);
+    await userEvent.keyboard("{Control>}z{/Control}");
+    await vi.waitFor(() => expect(authority().doc.toString()).toBe("one\ntwo\nmine"));
+    await userEvent.keyboard("{Control>}{Shift>}z{/Shift}{/Control}");
+    await vi.waitFor(() => expect(authority().doc.toString()).toBe("one\ntwo\n"));
+
+    // The toast's Undo puts back the text from before, as one more edit.
+    const undoing = reverted.undo();
+    await vi.waitFor(() => expect(authority().doc.toString()).toBe("one\ntwo\nmine"));
+    authority().save();
+    expect(await undoing).toBeNull();
+    expect(onSaved).toHaveBeenCalledTimes(2);
+    await userEvent.keyboard("{Control>}z{/Control}");
+    await vi.waitFor(() => expect(authority().doc.toString()).toBe("one\ntwo\n"));
+  });
+
+  it("reverts a file no editor has open through a document of its own, and undoes it", async () => {
+    setup("one\ntwo\nmine\n");
+    const onSaved = vi.fn();
+    const target = {
+      registry: AtomRegistry.make(),
+      environmentId: tab.environmentId,
+      cwd: "/repo",
+      path: tab.path,
+      onSaved,
+    };
+    const reverted = await revertEditedFile(target, { text: "one\ntwo\n", missing: false });
+    if (!reverted.ok || reverted.undo === null) throw new Error("Expected an undoable revert");
+    expect(authority().disk).toBe("one\ntwo\n");
+    expect(onSaved).toHaveBeenCalledTimes(1);
+
+    expect(await reverted.undo()).toBeNull();
+    expect(authority().disk).toBe("one\ntwo\nmine\n");
+    // It no longer reads as the revert left it: nothing is put back over it.
+    expect(await reverted.undo()).not.toBeNull();
+    expect(authority().disk).toBe("one\ntwo\nmine\n");
   });
 
   it("offers to save a deleted file with unsaved edits, and saving recreates it", async () => {

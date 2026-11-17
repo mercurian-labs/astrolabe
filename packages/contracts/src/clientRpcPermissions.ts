@@ -81,6 +81,8 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.documentsDiscard]: AuthFilesystemWriteScope,
   [WS_METHODS.documentsReplaceAll]: AuthFilesystemWriteScope,
   [WS_METHODS.documentsUndoReplaceAll]: AuthFilesystemWriteScope,
+  // Astrolabe: offered only to who may write the file the revert then edits.
+  [ORCHESTRATION_V2_WS_METHODS.previewFileRevert]: AuthFilesystemWriteScope,
   // Astrolabe: rebuilding or clearing a code index is environment maintenance.
   [WS_METHODS.codeIndexRebuild]: AuthEnvironmentMaintainScope,
   [WS_METHODS.codeIndexPrune]: AuthEnvironmentMaintainScope,

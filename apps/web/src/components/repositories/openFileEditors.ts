@@ -1,5 +1,6 @@
 import { ChangeSet } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
+import type { DocumentSession } from "@t3tools/client-runtime/state/document-session";
 import type { EnvironmentId } from "@t3tools/contracts";
 import {
   madeReplacements,
@@ -20,6 +21,8 @@ export interface OpenFileEditor {
   readonly writable: () => boolean;
   /** Writes what isn't on disk yet, and says whether the file now holds what this editor does. */
   readonly save: () => Promise<boolean>;
+  /** The live document it edits; null when the file was read once from disk. */
+  readonly session: DocumentSession | null;
 }
 
 const editors = new Set<OpenFileEditor>();

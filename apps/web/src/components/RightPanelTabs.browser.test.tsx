@@ -85,7 +85,6 @@ describe("RightPanelTabs", () => {
           surfaces={surfaces}
           environmentId={null}
           activeSurfaceId={null}
-          pendingSurfaceIds={new Set()}
           previewSessions={{}}
           desktopByTabId={{}}
           terminalLabelsById={new Map(surfaces.map((surface) => [surface.id, "Terminal"]))}
