@@ -6,8 +6,9 @@ real model, and ask for a diagram of boxes and arrows that cites a file.
 
 - **Web and desktop:** the board shows in the timeline with no layout shift when it loads. Its
   caption's `Open <title> in a linked tab` (`components/canvas/CanvasFrame.tsx`) opens a Canvas
-  tab. Drag, wheel, Ctrl-wheel and the zoom buttons (`Zoom in`, `Reset zoom`, `Fit the board in
-  view` with text "Fit", `Zoom out`; `packages/wiki-editor/src/CanvasBoard.tsx`) all work there. A code card opens its file at the cited line. Check dark mode.
+  tab. Drag, wheel, Ctrl-wheel and the zoom chip (`Zoom out`, `Fit the board in view` whose text is
+  the zoom level such as "99%", `Zoom in`; `packages/wiki-editor/src/CanvasChrome.tsx`) all work
+  there. A code card opens its file at the cited line. Check dark mode.
 - **Phone:** the feed shows the layout as a thumbnail. Tapping opens the board, which pans by
   touch. A swipe from the left edge goes back, and doesn't pan. A code card opens its file. A
   killed page (`onContentProcessDidTerminate`) comes back with the camera where it was.

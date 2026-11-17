@@ -184,7 +184,7 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
 - **Canvases** (`wiki/WikiCanvasView.tsx`, the board in `packages/wiki-editor/src/CanvasBoard.tsx`,
   the format in `packages/wiki/src/canvas.ts`): a `.canvas` is a document named by its file, with a
   `Waypoints` icon in the sidebar and Finder. Its tab reads as **Canvas**, with **Read only** only where it can't be edited. Walk: fit
-  on open; `Zoom in`, `Reset zoom`, `Fit the board in view`, `Zoom out`; ⇧1 and ⇧2; below 0.3 text
+  on open; `Zoom out`, `Fit the board in view` (its text the zoom level), `Zoom in`; ⇧1 and ⇧2; below 0.3 text
   cards become a lines glyph; a first click selects (`data-selected`) and only then is content
   live (`data-live`). `[data-card-id]` counts what's mounted, and it must follow the view. Every
   card kind: text with Mermaid and math, note with `subpath`, image, PDF, audio, video, base with a
@@ -218,8 +218,8 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   (`brokenBasesMessage`, `RunFinalizationService.saveWikiEdits`); the turn it starts never gets
   another. On the phone,
   the page asks the app for each block (`queryBase`/`baseResult` in `wiki-editor/protocol.ts`)
-  and draws its first view. A `.base` file lists on the phone too, `button "<name>.base, <wiki>"`
-  with a table icon and "Base · read only" under it, and opens in `WikiDocument` (the same
+  and draws its first view. A `.base` file lists on the phone too (in the tree as
+  `button "<name>.base"`) and opens in `WikiDocument` (the same
   route; `WikiBaseScreen.tsx`) titled `<name>`, subtitle `<wiki> · Main · Base · read only`. The
   page draws only the base (`showBase` in `protocol.ts`, the same `BaseBlock`); a `View` header
   menu (iOS only, as every header button) appears with two or more views and ticks the one shown.
@@ -243,9 +243,10 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
 - **Canvases on the phone** (`WikiCanvasScreen.tsx`, the page's `mobileCanvas.tsx`): an agent's
   change shows in the feed as a row, `Changed the canvas <name>`, that opens it in the change
   request, with the same marks and one highlight per commit. A `.canvas`
-  lists as `button "<name>, canvas, <wiki>"` with "Canvas", or "Canvas · read only" where it can't be edited, and opens in `WikiDocument`
+  lists in the tree as `button "<name>.canvas"`, and opens in `WikiDocument`
   from the list, a pull request's documents, links in notes and a base's rows, subtitle
-  `<wiki> · Main · Canvas · read only`, with a `Jump to group` header menu when it has labelled
+  `<wiki> · Main · Canvas` (`· read only` where it can't be edited), full screen with no tab bar,
+  and a `Jump to section` header menu when it has labelled
   groups. Walk: touch pan, pinch, left-edge back swipe, first tap selects and a second acts (a link,
   a code card, a file card's name; Back returns to the board with its camera). File cards read in
   batches at the commit shown (`readFiles`/`filesRead`, split at 256 KB a message). Images, audio and
@@ -257,10 +258,14 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   the same code and needs its own walk.
 - **Mobile** (iPhone; iPad drops the tab, `workspace-tabs-state.ts`): a Wikis tab
   (`apps/mobile/src/features/wikis/WikisScreen.tsx`) with its search `Search wikis` and a
-  `Filter by wiki` menu (All wikis, each wiki). With any open, the first row reads "Open
+  `Filter by wiki` menu (All wikis, each wiki), then a `Show or hide hidden files` pill. The pills
+  share one scroll area, so a snapshot ref's centre can land on the next pill: tap a pill by its
+  coordinate. With any open, the first row reads "Open
   changes · N" but is named `button "N open changes"` ("1 open change"); it narrows Change
-  requests to wikis and this filter's wiki, then switches there. Documents follow as
-  `button "<doc>, <wiki>"`. A document (route `WikiDocument`) is the wiki editor in a web
+  requests to wikis and this filter's wiki, then switches there. A draft adds a
+  `Draft · N documents` row. Documents follow as a tree by folder, each wiki under its name:
+  folders are `button "<folder>"` (a tap folds it), files `button "<path>"` (`Home.md`,
+  `ops/Runbook.md`). Search results name a document with its wiki, `button "<doc>, <wiki>"`. A document (route `WikiDocument`) is the wiki editor in a web
   view; its header has `Edit the document`/`Stop editing` (iOS exposes them as `button "Edit"`/`"Done"`;
   not on read-only skill maps), and
   there is no Save: the subtitle reads `Saving…` then `Saved`, or `saves when the turn ends`

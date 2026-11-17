@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 vi.mock("~/panes/workspace", () => ({
   WORKSPACE_LAYOUT_KEY: "test-layout",

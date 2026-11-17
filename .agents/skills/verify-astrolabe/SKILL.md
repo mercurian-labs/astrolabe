@@ -238,10 +238,12 @@ when the feature needs a real thread. Then:
   without a screenshot, and surviving `location.reload()` proves persistence. Tab histories
   live in `astrolabe:workspace-tab-history:v1`.
 - The `incognito` profile is shared by every incognito tab in this session (a tab the user
-  walks in, for one), so its localStorage is too, per origin. Only when another incognito tab
-  is on your origin (the same port), copy every `astrolabe:*` and `t3code:*` localStorage key
-  into your tab's sessionStorage before driving, and write them back before closing your tab
-  (desktop Browser panel; the server browser isolates each incognito tab).
+  walks in, for one, or another walker's), so its localStorage is too, per origin. Another tab
+  on your origin overwrites your panes and client settings mid-walk. Take an origin of your
+  own instead: the dev server also answers on `http://[::1]:<webPort>`, so pair there (swap
+  the host in the pairing URL). When you must share an origin, copy every `astrolabe:*` and
+  `t3code:*` localStorage key into your tab's sessionStorage before driving, and write them
+  back before closing your tab.
 - Panel shortcuts (Cmd+J, Cmd+Alt+B) act on the focused pane's chat only; Cmd+Alt+B also
   on the chat whose linked tab has focus (`takesTerminalToggle`/`takesPanelShortcut` in
   `useChatShortcuts.ts`, `workspace.ts`). Click the target pane's `[data-testid=composer-editor]` first so it is the

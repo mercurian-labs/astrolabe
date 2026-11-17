@@ -157,7 +157,9 @@ Walk these end to end; each crosses into another feature.
    → mode `normal`, no "jk" typed → back in settings, remove the row and reset Search
    patterns → only the hand-written lines remain.
 6. **Formatting keys.** In the composer, select a word in visual mode (`v` `b`) →
-   Cmd+B → `**word**`, the sidebar still open → `u` → Cmd+Shift+K → `[word]()`
+   Cmd+B → `**word**`, the sidebar still open, still in visual mode → Escape, `u` (in
+   visual mode `u` lowercases the selection instead) → `v` `b` again → Cmd+Shift+K →
+   `[word]()`
    → Settings › Appearance → the Monospace font row names Vim's normal mode.
 7. **Off is upstream.** Turn the switch off → the composer has no `[data-vim-mode]`
    value, Escape leaves it.
