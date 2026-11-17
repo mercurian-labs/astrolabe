@@ -409,7 +409,7 @@ function SnoozeMenuButton(props: {
             />
           }
         >
-          <ClockIcon className="size-3" />
+          <ClockIcon className="size-3.5" />
         </TooltipTrigger>
         <TooltipPopup>Snooze thread</TooltipPopup>
       </Tooltip>
@@ -1177,7 +1177,13 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     runningTerminalIds.length === 0;
   const metaLocation = thread.branch ? (
     <>
-      <ThreadWorktreeIndicator thread={thread} />
+      {thread.worktreePath?.trim() ? (
+        <ThreadWorktreeIndicator thread={thread} />
+      ) : (
+        <span aria-hidden className="inline-flex size-4 shrink-0 items-center justify-center">
+          <GitBranchIcon className="size-3.5 text-icon-muted" />
+        </span>
+      )}
       <span className="flex min-w-0 flex-1">
         <MiddleTruncate value={thread.branch} showTitle={false} />
       </span>
@@ -1532,12 +1538,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                               aria-label="Settle thread"
                               onClick={handleSettleClick}
                               onPointerDown={handleActionPointerDown}
-                              className="-mr-1 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
+                              className="-mr-1.5 inline-flex cursor-pointer items-center rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
                             />
                           }
                         >
                           <CheckIcon className="size-3.5" />
-                          Settle
                         </TooltipTrigger>
                         <TooltipPopup>Settle thread</TooltipPopup>
                       </Tooltip>
@@ -1551,82 +1556,91 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 <ProjectFavicon project={props.project} className="size-4 shrink-0" />
               ) : null}
               {props.projectDisplayName ? (
-                <span className="min-w-0 flex-1 truncate font-normal text-secondary-label text-xs">
+                <span className="min-w-0 truncate font-normal text-secondary-label text-xs">
                   {props.projectDisplayName}
                 </span>
-              ) : (
-                <span className="flex-1" />
-              )}
-              {terminalStatusIcon}
-              {machineAndProviderIcons}
-              {sortable?.isDragging ? (
-                dragDestination
-              ) : (
-                <span
-                  className={cn(
-                    "relative ml-auto flex h-5 shrink-0 items-stretch justify-end text-xs",
-                    props.sweepAction !== null && "hidden",
-                    jumpHintLabel && JUMP_HINT_SLOT_CLASS_NAME,
-                  )}
-                >
+              ) : null}
+              {remoteMachineIcon}
+              <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                {terminalStatusIcon}
+                {sortable?.isDragging ? (
+                  dragDestination
+                ) : (
                   <span
                     className={cn(
-                      isWokeStatus ? "pointer-events-auto" : "pointer-events-none",
-                      "flex items-center self-center tabular-nums text-secondary-label",
+                      // The provider icon closes the slot so it lines up down the list.
+                      "relative flex h-5 shrink-0 items-stretch justify-end gap-1.5 text-xs",
+                      props.sweepAction !== null && "hidden",
+                      jumpHintLabel && JUMP_HINT_SLOT_CLASS_NAME,
                     )}
                   >
-                    {topStatus ? (
-                      isWokeStatus ? (
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={
-                              <button
-                                type="button"
-                                aria-label="Dismiss Woke notification"
-                                onClick={handleAcknowledgeWokeClick}
-                                className={cn(
-                                  "inline-flex cursor-pointer items-center gap-1 rounded-sm font-medium outline-none hover:underline focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-                                  topStatus.className,
-                                )}
-                              >
-                                <AlarmClockIcon aria-hidden className="size-4 shrink-0" />
-                                <span role="status">{topStatus.label}</span>
-                              </button>
-                            }
-                          />
-                          <TooltipPopup side="top">Dismiss Woke notification</TooltipPopup>
-                        </Tooltip>
-                      ) : (
-                        <span
-                          className={cn(
-                            "inline-flex items-center gap-1 font-medium",
-                            topStatus.className,
-                          )}
-                        >
-                          <TopStatusIcon icon={topStatus.icon} className="size-4" />
-                          {/* Not a live region: a collapsed sidebar is inert, so
+                    <span
+                      className={cn(
+                        isWokeStatus ? "pointer-events-auto" : "pointer-events-none",
+                        "flex items-center self-center tabular-nums text-secondary-label",
+                      )}
+                    >
+                      {topStatus ? (
+                        isWokeStatus ? (
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <button
+                                  type="button"
+                                  aria-label="Dismiss Woke notification"
+                                  onClick={handleAcknowledgeWokeClick}
+                                  className={cn(
+                                    "inline-flex cursor-pointer items-center gap-1 rounded-sm font-medium outline-none hover:underline focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                                    topStatus.className,
+                                  )}
+                                >
+                                  <AlarmClockIcon aria-hidden className="size-4 shrink-0" />
+                                  <span role="status">{topStatus.label}</span>
+                                </button>
+                              }
+                            />
+                            <TooltipPopup side="top">Dismiss Woke notification</TooltipPopup>
+                          </Tooltip>
+                        ) : (
+                          <span
+                            className={cn(
+                              "inline-flex items-center gap-1 font-medium",
+                              topStatus.className,
+                            )}
+                          >
+                            <TopStatusIcon icon={topStatus.icon} className="size-4" />
+                            {/* Not a live region: a collapsed sidebar is inert, so
                             BackgroundThreadAnnouncer and the open thread's
                             timeline speak status changes instead. */}
-                          {topStatus.label}
-                          {status === "preparing" || status === "working" ? (
-                            <span aria-hidden>
-                              <WorkingDuration startedAt={resolveWorkingStartedAt(thread)} />
-                            </span>
-                          ) : status === "waiting" ? (
-                            <span aria-hidden>
-                              <WorkingDuration startedAt={thread.latestRun?.completedAt ?? null} />
-                            </span>
-                          ) : null}
-                        </span>
-                      )
-                    ) : (
-                      <RelativeTimeLabel timestamp={resolveThreadActivityTimestamp(thread)} />
-                    )}
+                            {topStatus.label}
+                            {status === "preparing" || status === "working" ? (
+                              <span aria-hidden>
+                                <WorkingDuration startedAt={resolveWorkingStartedAt(thread)} />
+                              </span>
+                            ) : status === "waiting" ? (
+                              <span aria-hidden>
+                                <WorkingDuration
+                                  startedAt={thread.latestRun?.completedAt ?? null}
+                                />
+                              </span>
+                            ) : null}
+                          </span>
+                        )
+                      ) : (
+                        <RelativeTimeLabel timestamp={resolveThreadActivityTimestamp(thread)} />
+                      )}
+                    </span>
+                    <span aria-hidden className="pointer-events-none flex shrink-0 items-center">
+                      <SidebarProviderStack
+                        thread={thread}
+                        providerEntryByInstanceId={props.providerEntryByInstanceId}
+                      />
+                    </span>
+                    {jumpHintLabel ? <JumpHintBadge label={jumpHintLabel} /> : null}
                   </span>
-                  {jumpHintLabel ? <JumpHintBadge label={jumpHintLabel} /> : null}
-                </span>
-              )}
-              {props.sweepAction !== null ? dragDestination : null}
+                )}
+                {props.sweepAction !== null ? dragDestination : null}
+              </span>
             </div>
             {cardMetaLine}
           </SidebarCardContent>
