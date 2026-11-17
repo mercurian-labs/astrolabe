@@ -23,7 +23,12 @@ import { useEffect, useState } from "react";
 import ChatView from "~/components/ChatView";
 import { PullRequestDetailPanel } from "~/components/pullRequest/PullRequestDetailPanel";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
-import { guideShown, pullRequestActed } from "~/components/pullRequest/pullRequestWorkspace";
+import {
+  guideShown,
+  pullRequestActed,
+  settlePullRequestTabReveal,
+  usePullRequestTabReveals,
+} from "~/components/pullRequest/pullRequestWorkspace";
 import {
   pullRequestTargetOfKey,
   type FullPullRequestTarget,
@@ -344,14 +349,17 @@ function PanePullRequest({
   readonly store: PaneArrangementStore;
   readonly active: boolean;
 }) {
+  const revealUrl = usePullRequestTabReveals((state) => state.byTabKey[tabKey]);
   return (
     <PullRequestDetailPanel
       environmentId={target.environmentId as ScopedThreadRef["environmentId"]}
       shortcutsEnabled={active}
       getShortcutContext={shortcutContext}
       tabOnPage
+      revealUrl={revealUrl}
+      onRevealSettled={(url) => settlePullRequestTabReveal(tabKey, url)}
       onGuideShown={() => guideShown(tabKey)}
-      onActed={(action, phase = "done") => pullRequestActed(target, action, phase)}
+      onActed={(action, phase = "done", reply) => pullRequestActed(target, action, phase, reply)}
       reference={{
         projectId: target.projectId as ProjectId,
         repository: target.repository,

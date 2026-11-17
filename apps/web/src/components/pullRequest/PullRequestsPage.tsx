@@ -1395,11 +1395,19 @@ export function PullRequestsPage() {
       target: FullPullRequestTarget,
       action: PullRequestAction | undefined,
       phase: "sent" | "done" | "failed",
+      reply?: PullRequestSummary,
     ) => {
       const environmentId = target.environmentId as EnvironmentId;
       // From every row held, not the ones on screen: a pull request closed from an open
       // list has left the screen, and reopening it has to find it anyway.
       const acted = heldPullRequestsBySurface.get(pullRequestListEntryId(target));
+      if (reply !== undefined) {
+        if (acted !== undefined) {
+          if (action !== undefined) overrideEntry(acted, action, reply);
+          detailOverrideTokens.current.delete(pullRequestEntryKey(acted));
+        }
+        return;
+      }
       const stateOnly =
         action !== undefined &&
         acted !== undefined &&
