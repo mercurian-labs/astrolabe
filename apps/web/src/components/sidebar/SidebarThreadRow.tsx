@@ -1551,7 +1551,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 </span>
               )}
             </div>
-            <div className="mt-0.5 flex h-5 min-w-0 items-center gap-1.5">
+            <div className="@container/project-line mt-0.5 flex h-5 min-w-0 items-center gap-1.5">
               {props.project ? (
                 <ProjectFavicon project={props.project} className="size-4 shrink-0" />
               ) : null}
@@ -1612,7 +1612,18 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                             {/* Not a live region: a collapsed sidebar is inert, so
                             BackgroundThreadAnnouncer and the open thread's
                             timeline speak status changes instead. */}
-                            {topStatus.label}
+                            <span
+                              className={cn(
+                                // A narrow card keeps a timed status's icon and timer; the
+                                // widest line (other machine, terminal, Setting up) needs 13rem.
+                                (status === "preparing" ||
+                                  status === "working" ||
+                                  status === "waiting") &&
+                                  "@max-[13rem]/project-line:sr-only",
+                              )}
+                            >
+                              {topStatus.label}
+                            </span>
                             {status === "preparing" || status === "working" ? (
                               <span aria-hidden>
                                 <WorkingDuration startedAt={resolveWorkingStartedAt(thread)} />
