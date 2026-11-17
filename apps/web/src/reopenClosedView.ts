@@ -6,7 +6,9 @@ import type { PullRequestListPreferences } from "./components/pullRequest/pullRe
 import { openPreviewSession } from "./components/preview/openPreviewSession";
 import { workspace } from "./panes/workspace";
 import {
+  rightPanelHostRef,
   type RightPanelSurface,
+  selectThreadRightPanelState,
   type ThreadRightPanelState,
   useRightPanelStore,
 } from "./rightPanelStore";
@@ -135,8 +137,24 @@ export async function reopenClosedView(
       break;
     case "file":
       if (surface.attachment) panels.openAttachment(ref, surface.attachment);
-      else panels.openFile(ref, surface.relativePath, surface.revealLine ?? undefined);
+      else {
+        panels.openFile(ref, surface.relativePath, surface.revealLine ?? undefined);
+        if (typeof surface.folderTrail === "string") {
+          panels.navigateFolder(ref, surface.id, surface.relativePath, surface.folderTrail);
+        }
+      }
       break;
+    case "files": {
+      const rootAlreadyExists = selectThreadRightPanelState(
+        panels.byThreadKey,
+        rightPanelHostRef(ref),
+      ).surfaces.some((current) => current.kind === "files");
+      panels.open(ref, "files");
+      if (!rootAlreadyExists && typeof surface.folderTrail === "string") {
+        panels.navigateFolder(ref, surface.id, "", surface.folderTrail);
+      }
+      break;
+    }
     case "device":
       if (surface.target) {
         panels.openDevice(ref, surface.target);

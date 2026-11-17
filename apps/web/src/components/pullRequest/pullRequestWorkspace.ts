@@ -1,7 +1,13 @@
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { projectChangeRequestUrl } from "@t3tools/client-runtime/change-request-links";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
-import { EnvironmentId, ProjectId, type PullRequestAction } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  ProjectId,
+  type PullRequestAction,
+  type PullRequestSummary,
+} from "@t3tools/contracts";
+import { create } from "zustand";
 
 import { surfaceKey } from "~/panes/arrangement";
 import { focusedPaneOf, isPaneMaximized, toggleMaximizedPane } from "~/panes/paneCommands";
@@ -74,9 +80,33 @@ export function showChangeRequestTab(key: string, intent: RowClickIntent) {
   else workspace.open(key);
 }
 
-export function showPullRequest(target: PullRequestTarget, intent: RowClickIntent) {
+/** A clicked link into a pull request tab, waiting until the tab shows what it names. */
+export const usePullRequestTabReveals = create<{
+  readonly byTabKey: Readonly<Record<string, string>>;
+}>(() => ({ byTabKey: {} }));
+
+/** Clears the tab's pending link only while it is still `revealUrl`; a later link replaces it. */
+export function settlePullRequestTabReveal(tabKey: string, revealUrl: string) {
+  usePullRequestTabReveals.setState((state) => {
+    if (state.byTabKey[tabKey] !== revealUrl) return state;
+    const { [tabKey]: _settled, ...rest } = state.byTabKey;
+    return { byTabKey: rest };
+  });
+}
+
+export function showPullRequest(
+  target: PullRequestTarget & { readonly revealUrl?: string },
+  intent: RowClickIntent,
+) {
   const key = pullRequestTabKey(target);
-  if (key !== null) showChangeRequestTab(key, intent);
+  if (key === null) return;
+  const { revealUrl } = target;
+  if (revealUrl !== undefined) {
+    usePullRequestTabReveals.setState((state) => ({
+      byTabKey: { ...state.byTabKey, [key]: revealUrl },
+    }));
+  }
+  showChangeRequestTab(key, intent);
 }
 
 /** Opens tabs dragged from the sidebar where they land on `paneId`, `front` in front. */
@@ -125,6 +155,7 @@ export interface ChangesList {
     target: FullPullRequestTarget,
     action: PullRequestAction | undefined,
     phase: "sent" | "done" | "failed",
+    reply?: PullRequestSummary,
   ) => void;
   /** Folds the sidebar away for a review's Guide. */
   readonly foldForGuide: () => void;

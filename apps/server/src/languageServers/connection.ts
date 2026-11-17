@@ -1,3 +1,4 @@
+import * as Cause from "effect/Cause";
 import * as Data from "effect/Data";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -18,6 +19,7 @@ export const ContentModified = -32801;
 export const ServerCancelled = -32802;
 const MethodNotFound = -32601;
 
+// @effect-diagnostics-next-line preferSchemaTaggedError:off - carries a server's JSON-RPC error as sent, unvalidated.
 export class ResponseError extends Data.TaggedError("ResponseError")<{
   readonly code: number;
   readonly message: string;
@@ -131,12 +133,15 @@ export const connect = Effect.fn("LanguageServers.connect")(function* (
   const decoder = new MessageDecoder();
   yield* child.stdout.pipe(
     Stream.runForEach((chunk) =>
-      Effect.try(() => {
-        for (const text of decoder.push(chunk)) {
-          if (handlers.tracing()) handlers.onMessage("received", text);
-          const message = parseJson(text);
-          if (typeof message === "object" && message !== null) dispatch(message);
-        }
+      Effect.try({
+        try: () => {
+          for (const text of decoder.push(chunk)) {
+            if (handlers.tracing()) handlers.onMessage("received", text);
+            const message = parseJson(text);
+            if (typeof message === "object" && message !== null) dispatch(message);
+          }
+        },
+        catch: (cause) => new Cause.UnknownError(cause),
       }),
     ),
     Effect.ignore,

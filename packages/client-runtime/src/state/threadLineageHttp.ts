@@ -1,9 +1,9 @@
 import type { EnvironmentId, OrchestrationV2ThreadLineage, ThreadId } from "@t3tools/contracts";
 import * as Context from "effect/Context";
-import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { HttpClient } from "effect/http";
 import type { Atom } from "effect/reactivity";
@@ -23,9 +23,10 @@ import { createEnvironmentQueryAtomFamily } from "./runtime.ts";
 const DEFAULT_THREAD_LINEAGE_TIMEOUT_MS = 6_000;
 
 /** @public Required to name the error in consumers' inferred lineage results. */
-export class ThreadLineageConnectionNotReadyError extends Data.TaggedError(
+export class ThreadLineageConnectionNotReadyError extends Schema.TaggedError<ThreadLineageConnectionNotReadyError>()(
   "ThreadLineageConnectionNotReadyError",
-)<{ readonly message: string }> {}
+  { message: Schema.String },
+) {}
 
 /** Loads a thread's fork family over HTTP, the same authenticated path as thread history. */
 export class ThreadLineageLoader extends Context.Service<

@@ -10,15 +10,25 @@ import {
   useRepositoryTabLabel,
 } from "~/components/repositories/RepositoryTabView";
 import type { EnvironmentChangeGroup } from "@t3tools/client-runtime/changeGroups";
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import {
+  parseScopedThreadKey,
+  scopedThreadKey,
+  scopeThreadRef,
+} from "@t3tools/client-runtime/environment";
 import { ThreadId, type ProjectId, type ScopedThreadRef } from "@t3tools/contracts";
 import type { NavigateFn } from "@tanstack/react-router";
 import { MessageSquareIcon } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import ChatView from "~/components/ChatView";
 import { PullRequestDetailPanel } from "~/components/pullRequest/PullRequestDetailPanel";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
-import { guideShown, pullRequestActed } from "~/components/pullRequest/pullRequestWorkspace";
+import {
+  guideShown,
+  pullRequestActed,
+  settlePullRequestTabReveal,
+  usePullRequestTabReveals,
+} from "~/components/pullRequest/pullRequestWorkspace";
 import {
   pullRequestTargetOfKey,
   type FullPullRequestTarget,
@@ -43,7 +53,11 @@ import { workspace } from "~/panes/workspace";
 import { leafWithTab } from "~/panes/tree";
 import { pullRequestSurface } from "~/rightPanelStore";
 import { useComposerDraftStore } from "~/composerDraftStore";
-import { useThreadShell } from "~/state/entities";
+import { appAtomRegistry } from "~/rpc/atomRegistry";
+import { useQuietThreadShell, useThreadShell } from "~/state/entities";
+import { useEnvironmentShellStatus } from "~/state/shell";
+import { threadFamilies } from "~/state/threads";
+import { isThreadRouteSnapshotAuthoritative } from "~/threadRoutes";
 import { chatTabKey, parseChatTabKey } from "./sectionTabs";
 
 /** An arrangement showing `key`: brought forward where it is, else opened in the focused pane. */
@@ -234,12 +248,36 @@ function openTabGroup(keys: ReadonlyArray<string>, group: EnvironmentChangeGroup
 }
 
 /**
+ * Keeps the family of an open thread the shell leaves out (an older settled thread) in the shell
+ * rows until the chat leaves it, so every reader of its shell row finds it.
+ */
+function useOpenThreadFamily(threadRef: ScopedThreadRef, missing: boolean) {
+  const key = scopedThreadKey(threadRef);
+  // Sticks to the chat's thread, so the row the family brings in does not release it.
+  const [mountedKey, setMountedKey] = useState<string | null>(null);
+  const nextKey = missing || mountedKey === key ? key : null;
+  if (nextKey !== mountedKey) setMountedKey(nextKey);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- holds the open thread's family in the thread family registry until the chat leaves it
+  useEffect(() => {
+    const ref = mountedKey === null ? null : parseScopedThreadKey(mountedKey);
+    if (ref === null) return;
+    return threadFamilies.mount(appAtomRegistry, ref.environmentId, ref.threadId);
+  }, [mountedKey]);
+}
+
+/**
  * A thread's chat in a pane: its tab is the pane's, and its surfaces are tabs linked to it
  * (`LinkedPanel`). A thread with a draft shows the draft, as the draft's route does, until the
  * draft becomes the thread; one unkeyed ChatView carries the chat through that change.
  */
 export function PaneChat({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
   const draftId = useComposerDraftStore((store) => store.getDraftIdByRef(threadRef));
+  const shell = useQuietThreadShell(threadRef);
+  const shellStatus = useEnvironmentShellStatus(threadRef.environmentId);
+  useOpenThreadFamily(
+    threadRef,
+    isThreadRouteSnapshotAuthoritative(shellStatus) && shell === null && draftId === null,
+  );
   return draftId ? (
     <ChatView
       draftId={draftId}
@@ -311,14 +349,17 @@ function PanePullRequest({
   readonly store: PaneArrangementStore;
   readonly active: boolean;
 }) {
+  const revealUrl = usePullRequestTabReveals((state) => state.byTabKey[tabKey]);
   return (
     <PullRequestDetailPanel
       environmentId={target.environmentId as ScopedThreadRef["environmentId"]}
       shortcutsEnabled={active}
       getShortcutContext={shortcutContext}
       tabOnPage
+      revealUrl={revealUrl}
+      onRevealSettled={(url) => settlePullRequestTabReveal(tabKey, url)}
       onGuideShown={() => guideShown(tabKey)}
-      onActed={(action, phase = "done") => pullRequestActed(target, action, phase)}
+      onActed={(action, phase = "done", reply) => pullRequestActed(target, action, phase, reply)}
       reference={{
         projectId: target.projectId as ProjectId,
         repository: target.repository,

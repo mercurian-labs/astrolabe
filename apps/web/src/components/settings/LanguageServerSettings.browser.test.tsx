@@ -208,7 +208,7 @@ it("says settings reach restricted servers in projects that aren't trusted", asy
   const { screen } = await setup();
   await using _screen = screen;
   await expect
-    .element(screen.getByText(/reach servers running restricted in projects that aren't trusted/))
+    .element(screen.getByText(/reach servers running restricted in untrusted projects/))
     .toBeVisible();
 });
 

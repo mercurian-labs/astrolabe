@@ -68,8 +68,8 @@ export function RepositoryDiffView({
     : getRenderablePatch(source?.diff, `repository-diff:${resolvedTheme}`, {
         compactPartialHunkOffsets: true,
       });
-  const { renderableFiles, readyFilePaths, settledFileCount, loadNextFiles } = useReviewFilePatches(
-    {
+  const { renderableFiles, readyFilePaths, remainingFileCount, loadNextFiles } =
+    useReviewFilePatches({
       environmentId,
       cwd: preview.data?.cwd,
       source: lazySource,
@@ -78,8 +78,7 @@ export function RepositoryDiffView({
       theme: resolvedTheme,
       previewInput,
       preview: renderablePatch,
-    },
-  );
+    });
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
   const files = renderableFiles
     .filter((fileDiff) => !lazySource || readyFilePaths.has(resolveFileDiffPath(fileDiff)))
@@ -169,11 +168,8 @@ export function RepositoryDiffView({
           sectionTitle={title}
           composerDraftTarget={target}
           renderCodeViewFooter={() =>
-            settledFileCount < renderableFiles.length ? (
-              <DiffFileLoadingBoundary
-                load={loadNextFiles}
-                count={renderableFiles.length - settledFileCount}
-              />
+            remainingFileCount > 0 ? (
+              <DiffFileLoadingBoundary load={loadNextFiles} count={remainingFileCount} />
             ) : null
           }
           renderHeaderFilenameSuffix={(fileDiff) => (

@@ -252,7 +252,9 @@ const make = Effect.gen(function* () {
       yield* pullRequests.detail(refOf(projectId, link)).pipe(
         Effect.flatMap((detail) =>
           detail.capabilities.actions.includes("draft")
-            ? pullRequests.runAction({ ...refOf(projectId, link), action: "draft" })
+            ? pullRequests
+                .runAction({ ...refOf(projectId, link), action: "draft" })
+                .pipe(Effect.asVoid)
             : Effect.void,
         ),
         Effect.catch((cause) =>

@@ -1,15 +1,15 @@
 ---
 title: Privacy Policy
 description: What Astrolabe keeps on your machine, what it sends and to whom, and what our websites see.
-updated: November 3, 2026
+updated: November 17, 2026
 ---
 
-**Effective date:** November 3, 2026
+**Effective date:** November 17, 2026
 
 ## The short version
 
 - Astrolabe is software that runs on your own computer. Your projects, threads and code stay there. Mercurian doesn't receive them.
-- Your prompts and code go to the AI provider you choose, through that provider's own tool, under your account and that provider's terms. They go from your machine to the provider, not through us.
+- Your prompts and code go to the AI provider you choose, through that provider's own tool, under your account and that provider's terms. Some features you turn on, such as cloud dictation, send what they need straight to a provider's API with your key. Either way it goes from your machine to the provider, not through us.
 - Mercurian runs no accounts or other hosted services yet. We don't collect usage analytics or crash reports, and we don't sell your data, show you ads or train AI models on your content.
 - A few requests happen automatically, such as update checks to GitHub. Section 3.4 lists them all.
 - Our websites set no tracking or advertising cookies and run no analytics. Our web host sees your IP address when you visit.
@@ -34,7 +34,7 @@ Astrolabe keeps its data in a folder on the computer that runs the Astrolabe ser
 - your threads in full: prompts, replies, the agent's reasoning, diffs, command and tool output, attachments and terminal scrollback;
 - your projects, settings and scheduled tasks, and the last 50 webhook requests each task received;
 - logs. Provider logs, which contain prompts and replies, are deleted after 14 days. Other logs are kept up to a fixed size, with the oldest deleted first;
-- the API keys and sign-in tokens you give Astrolabe for AI providers and code hosts;
+- the API keys and sign-in tokens you give Astrolabe for AI providers, code hosts, and speech and text services;
 - a list of the browsers and devices you've paired, with each one's IP address and browser type.
 
 Astrolabe also saves a checkpoint of your project after each turn, so you can see and undo what an agent changed. Checkpoints are hidden git references inside your repository. They can include files that git doesn't track but your `.gitignore` doesn't exclude, such as an `.env` file you forgot to ignore. Astrolabe never pushes them.
@@ -70,8 +70,11 @@ You send it at your direction, under your own account and your agreement with th
 A few provider requests happen without you starting a turn:
 
 - **Titles and commit messages.** Astrolabe asks a provider to write thread titles, branch names, commit messages, pull request text and review guides. By default it asks Codex (OpenAI), even for threads that run on another provider, and another enabled provider if Codex is off. That provider receives the thread's first message and its images, or the diff. For a thread forked from another, it also receives the parent thread's title and up to 8,000 characters of its conversation before the fork. You can change this in Settings → Threads → Text generation model.
-- **Usage limits.** To show how much of your plan you have left, the server calls some providers' usage services with your saved credentials: Claude on Linux, Cursor, Grok, OpenCode Go and Antigravity. It checks at startup, when you change settings, and every 5 minutes by default.
+- **Text generators.** If you add a text generator in Settings → Providers → Text generators, the server sends text tasks you assign to it straight to that service's API with the key you saved: OpenAI, Anthropic, OpenRouter, or an OpenAI-compatible address you enter. Each request carries what its task needs, such as the staged diff for a commit message or a transcript to clean up. Review guides never use one.
+- **Suggested next prompt (off by default).** If you turn it on in Settings → Labs, Astrolabe makes one more request to Claude or Codex after each of their turns, to predict your next message from the conversation so far.
+- **Usage limits.** To show how much of your plan you have left, the server calls some providers' usage services with your saved credentials: Claude on Linux, Cursor, Grok, OpenCode Go and Antigravity. It checks at startup, when you change settings, and every 5 minutes by default. If you connect a CLIProxyAPI hub, the server also reads its accounts' limits from that hub with the management key you enter.
 - **Switching providers.** If you move a thread to another provider, Astrolabe sends the new provider earlier messages from the thread so it can carry on.
+- **Voice input.** Dictation is off until you choose where it runs, on each device. With a speech model on one of your machines, the recording goes from your device to that machine, is transcribed there and is discarded, and doesn't leave your machines. A recording from the phone app is deleted from the phone after transcription. With cloud dictation (OpenAI, Grok or OpenRouter), the machine sends your recording and its language setting to that service's API with the key saved there, and the service bills your API account and handles the audio under its own terms. OpenAI and Grok also receive your vocabulary hints. OpenRouter passes the recording to a company it chooses to run the model: Astrolabe asks it to use only providers that keep no data, and dictation fails rather than use another, though your OpenRouter account settings can allow retention for safety checks. **Transcript cleanup**, off by default, sends the transcript and up to 1,024 characters of your draft around it, never the audio, to the model you pick for cleanup.
 - **Signing in to a provider inside Astrolabe.** If you sign in to ChatGPT or Cursor from Astrolabe, the tokens are stored on your machine. When you sign in to ChatGPT, OpenAI sees the request come from Astrolabe, with an ID for your Astrolabe server. Signing in to Cursor creates a Cursor API key named after Astrolabe.
 
 ### 3.2 Code hosts and other services you connect
@@ -98,7 +101,7 @@ These happen without a specific action from you. None of them include your promp
 
 - **Desktop update checks.** The desktop app checks Astrolabe's releases on GitHub 15 seconds after it opens and then every 4 minutes. Each check carries a random ID the updater creates for your installation. Setting the environment variable `ASTROLABE_DISABLE_AUTO_UPDATE` turns this off.
 - **Server update checks.** When you switch the update track (stable or nightly) in Settings, the app asks a connected server which version of `@mercurian/astrolabe` that track offers. The server asks npm, through your own npm settings, or the public npm registry if npm isn't installed.
-- **Downloads.** The `@mercurian/astrolabe` launcher downloads Astrolabe's server from Astrolabe's GitHub Releases the first time you run each version. `astrolabe update` and installing Astrolabe on a remote machine over SSH download it the same way. On first use, Astrolabe also downloads tools it needs: a headless Chrome from Google, Codex from GitHub, Antigravity's agent server from Google, and device tools from npm.
+- **Downloads.** The `@mercurian/astrolabe` launcher downloads Astrolabe's server from Astrolabe's GitHub Releases the first time you run each version. `astrolabe update` and installing Astrolabe on a remote machine over SSH download it the same way. On first use, Astrolabe also downloads tools it needs: a headless Chrome from Google, Codex from GitHub, Antigravity's agent server from Google, and device tools from npm. If you set up local dictation, the speech model you choose downloads from Hugging Face.
 - **Provider lists.** To keep provider versions, model lists and prices current, the server fetches lists from GitHub (including a model list from T3 Code's public repository), npm, the Agent Client Protocol registry and Meta. These requests carry only package and list names. You can turn them off in Settings → Maintenance → Provider update checks.
 - **Link icons.** When a chat or a preview tab shows a link to a public website, Astrolabe asks Google's favicon service for that site's icon, so Google learns the site's name. Some tool activity loads a site's icon from the site itself. Images in messages load straight from the websites that host them. There's no setting to turn these off yet.
 - **Spell-check dictionaries (Linux desktop).** The desktop app's spell checker downloads its dictionaries from Google the first time it needs them. On macOS it uses the system's.

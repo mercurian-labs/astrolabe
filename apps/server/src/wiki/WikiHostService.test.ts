@@ -147,6 +147,7 @@ const makeLayers = (baseDir: string, bare: string, clone: string, host: FakeHost
         if (input.action === "draft") pull.isDraft = true;
         if (input.action === "close") pull.state = "closed";
         if (input.action === "reopen") pull.state = "open";
+        return undefined;
       }),
   });
   const provider = {

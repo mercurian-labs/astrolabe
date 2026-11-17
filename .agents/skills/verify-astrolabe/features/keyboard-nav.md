@@ -113,7 +113,7 @@ composer. Never anything inside one (no stop for a tab strip, the timeline or th
 
 ## How to get to it (user POV)
 
-Focus a sidebar row (Cmd+K `h`) or click the chat's title, then Ctrl+H/J/K/L, or Cmd+K
+Focus a sidebar row (Cmd+K `h`) or click the chat's timeline, then Ctrl+H/J/K/L, or Cmd+K
 `l` (or →), then `l` again within half a second. In the composer with Vim on, Escape, then Ctrl+W `l`.
 Space `d` scrolls the place half a page.
 
@@ -213,8 +213,9 @@ dark: only one pill carries the bar.
 1. **Sidebar to chat to panes.** On a chat tab with its linked tabs showing and split right:
    Cmd+K `h` to a sidebar row (a click on a row already focuses the composer) → Ctrl+L →
    the chat's pane (`pane <id>`, not `chat`), element `composer-editor`, the chat
-   tab's bar → click the chat's title (focus leaves every place, `place: null`, and Ctrl+L
-   still moves on from the chat) → Ctrl+L → the left linked pane, its
+   tab's bar → click a message in the timeline (focus moves to the pane's `Conversation`
+   area, still `pane <id>`, where Ctrl+L works; the title is a button that opens the thread
+   menu) → Ctrl+L → the left linked pane, its
    active pill, the bar moved to that pill → Ctrl+L → the right pane → Ctrl+L →
    unchanged (no wrap) → Ctrl+H twice → the chat's pane → Ctrl+H → sidebar, the row clicked
    first, no bar anywhere.
@@ -227,7 +228,8 @@ dark: only one pill carries the bar.
    chat: Cmd+K `h` → sidebar → Escape → `h` → unchanged (a row has no `h`). Set Repeat
    window to 0 → Space `l` `l` → one move. Reset restores 500.
 3. **Remembered focus.** In the left pane click a control inside the content (not the
-   pill) → Ctrl+H → chat → Ctrl+L → that same control, not the pill.
+   pill) → Ctrl+H → the chat's pane, its composer (where Ctrl+L is the editor's) → Cmd+K
+   `l` (or Ctrl+W `l` with Vim on) → that same control, not the pill.
 4. **Maximized and collapsed.** Maximize the left pane (Cmd+K `p` `m`) → Ctrl+L from it →
    unchanged (the other pane is inert) → restore. Collapse the sidebar (Cmd+K `s` `s`) →
    Ctrl+H from the chat → the rail (the sidebar is skipped) → Ctrl+H → unchanged; Cmd+K
@@ -257,7 +259,9 @@ dark: only one pill carries the bar.
    → Escape → the sidebar.
    Collapse the sidebar → Ctrl+H from the chat → the rail → Ctrl+L → the chat. Tab
    into the rail → only one button is a tab stop.
-10. **Scrolling.** On a long thread: click the chat's title → Cmd+K `d` → `scrollTop`
+10. **Scrolling.** On a long thread: click a message in the timeline (a settled thread
+    opens at the bottom, where `d` is faint: Cmd+K `u` first, `scrollTop` falls by half
+    the timeline's height) → Cmd+K `d` → `scrollTop`
     of the timeline up by half its height → `d` `d` within half a second → two more →
     Space `u` → back up. Ctrl+D/Ctrl+U the same; in the composer Ctrl+D stays the
     editor's. Cmd+K `l` to a pane with a long note (Wikis) or a diff → Ctrl+D scrolls

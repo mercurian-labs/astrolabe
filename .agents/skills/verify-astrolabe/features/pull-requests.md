@@ -154,12 +154,14 @@ thread's own Pull request tab. Shown only when a connected server reports
   here). Known gap, not intended: it never resets the kind, so after picking a project,
   Filters → Project → All projects leaves this trigger reading "Projects" and Wiki changes
   hidden; pick **All** here to reset.
-  Mobile's iOS **More filters** pill (`button "More filters"`, or `Filters, N active`;
+  Mobile's iOS **More filters** pill (`"More filters"`, or `Filters, N active`, an `[other]`
+  in the snapshot whose centre can land on the next pill, so tap it by coordinate;
   Android's header `Filter pull requests`) → **Project** lists All, "Projects" and each
   project (sidebar order), then "Wikis" and `<wiki> · Wiki`; without wikis it is All projects
   and the projects, and with only wikis the first row still reads "All projects". The
   submenu's title follows the pick (Project, Projects, Wikis, `<wiki> · Wiki`, or the
-  project). The menu scrolls, so walk it with two short `scroll down 0.3` steps. Mobile's
+  project). Read every row from a full `snapshot` (without `-i`) rather than scrolling: a
+  `scroll` gesture over the open menu dismisses it and can pick the row under it. Mobile's
   change groups ignore the filter. The mobile thread list's project menu (iPhone's
   `Filter threads by project`, elsewhere the **Project** submenu of `Filter threads`) is
   upstream's: All projects and each project.
@@ -213,6 +215,10 @@ thread's own Pull request tab. Shown only when a connected server reports
   `astrolabe:workspace-tab-history:v1`) with `mod+[`/`mod+]` and Space `t h`/`t l`, and the
   arrows in its header. A pull request picked inside a review (stack menu, a link in its
   text) or a Changes row click replaces that review's tab, which pushes onto its history.
+  A link that names a place (`#issuecomment-…`, `/files#diff-…`, `/commits/<sha>`) opens
+  that review on the tab holding it (Timeline or Code) scrolled to it, the item marked
+  `[data-pr-link-target]` (`usePullRequestTabReveals` in `pullRequestWorkspace.ts`). Seeded
+  data had one: #37824's Summary links `…/pull/34860#issuecomment-6817985936`.
 - **Header** (`PullRequestTabHeading.tsx`, the shared `TabHeader`, panes.md): in the shared
   panes, `nav[aria-label='Pull request breadcrumb']` reads `<owner/repo> / #<n> <title>`, the
   title truncating before the repository; then `button "Change group: <title>"` when the pull

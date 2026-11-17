@@ -1,6 +1,6 @@
 import { ScrollView } from "react-native";
 
-import { ListFilterMenu } from "../workspace/ListFilterMenu";
+import { ListFilterMenu } from "../layout/workspace/ListFilterMenu";
 
 /** The filter by wiki, as the thread list's filter by project: all wikis or one. */
 export function WikiListFilters(props: {

@@ -1,10 +1,8 @@
 import { repositoryMoveOfSurface } from "~/components/repositories/openInRepositories";
-import { Link2, Plus, SquareDashed } from "lucide-react";
-import { Volume2, VolumeOff } from "lucide";
+import { Link2, Plus, SquareDashed, Volume2Icon, VolumeOffIcon } from "lucide-react";
 import { useEffect, useEffectEvent, useSyncExternalStore } from "react";
 
 import { useBrowserDefaults } from "~/browser/browserDefaults";
-import { MorphIcon } from "~/components/MorphIcon";
 import { previewBridge } from "~/components/preview/previewBridge";
 import {
   DeviceTabTooltip,
@@ -421,7 +419,7 @@ function TabAudioButton({
           />
         }
       >
-        <MorphIcon className="size-3" icon={muted ? VolumeOff : Volume2} />
+        {muted ? <VolumeOffIcon className="size-3" /> : <Volume2Icon className="size-3" />}
       </TooltipTrigger>
       <TooltipPopup>{label}</TooltipPopup>
     </Tooltip>

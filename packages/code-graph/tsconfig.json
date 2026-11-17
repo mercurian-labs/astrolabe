@@ -16,7 +16,8 @@
           "globalRandom": "off",
           "globalTimers": "off",
           "globalFetch": "off",
-          "preferSchemaOverJson": "off"
+          "globalJsonInEffect": "off",
+          "globalJson": "off"
         }
       }
     ]

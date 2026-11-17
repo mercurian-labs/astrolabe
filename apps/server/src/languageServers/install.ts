@@ -87,6 +87,7 @@ export const describeDownload = (download: Download): string => {
   }
 };
 
+// @effect-diagnostics-next-line preferSchemaTaggedError:off - internal to installs; never crosses the wire.
 class InstallError extends Data.TaggedError("InstallError")<{
   readonly message: string;
   readonly cause?: unknown;

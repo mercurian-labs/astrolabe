@@ -189,6 +189,9 @@ const setup = Effect.fn("setup")(function* (threads: ReadonlyArray<string> = [])
           refreshLocalStatus: notUsed,
           refreshStatus: notUsed,
           refreshPullRequestStatus: notUsed,
+          streamBranchStatus: () => Stream.never,
+          refreshBranchStatus: notUsed,
+          streamBranchChanges: Stream.never,
           // Asked for once the checkout's first read is in.
           streamStatus: () => {
             Deferred.doneUnsafe(following, Effect.void);

@@ -3,11 +3,11 @@ import * as Endpoint from "@distilled.cloud/aws/Endpoint";
 import * as Region from "@distilled.cloud/aws/Region";
 import * as SES from "@distilled.cloud/aws/sesv2";
 import * as Context from "effect/Context";
-import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import type * as HttpClient from "effect/http/HttpClient";
 import * as Layer from "effect/Layer";
+import * as Schema from "effect/Schema";
 
 export interface Mail {
   readonly to: string;
@@ -15,9 +15,9 @@ export interface Mail {
   readonly text: string;
 }
 
-export class MailSendError extends Data.TaggedError("MailSendError")<{
-  readonly cause: unknown;
-}> {}
+export class MailSendError extends Schema.TaggedError<MailSendError>()("MailSendError", {
+  cause: Schema.Defect(),
+}) {}
 
 /** Sends the cloud's transactional mail: sign-in codes, invitations, account notices. */
 export class Mailer extends Context.Service<

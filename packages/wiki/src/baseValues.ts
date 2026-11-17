@@ -5,6 +5,7 @@
  */
 import { key, type TypedLink } from "./links.ts";
 
+// @effect-diagnostics-next-line extendsNativeError:off - thrown by synchronous parsing outside Effect.
 export class BaseError extends Error {
   override readonly name = "BaseError";
 }

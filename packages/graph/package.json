@@ -11,7 +11,7 @@
     "./styles.css": "./src/styles.css"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "effect-tsgo tsrs --noEmit",
     "test": "vp test run",
     "lint": "vp lint ."
   },
@@ -27,7 +27,6 @@
     "happy-dom": "^20.14.5",
     "react": "19.2.6",
     "react-dom": "19.2.6",
-    "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
