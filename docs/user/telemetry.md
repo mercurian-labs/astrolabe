@@ -3,24 +3,49 @@
 Astrolabe doesn't collect product usage data. The server sends no usage events, so nothing about
 your providers, models, turns or accounts leaves your machine for analytics.
 
+## Relay connection diagnostics
+
 A build can include relay connection traces, which are sent to Axiom to diagnose remote access
-connections. They're off unless the build was configured with a trace destination.
+connections. They're off unless the build was configured with a trace destination. Depending on
+the client version, traces can include connection timings, environment identifiers and the
+connected machine's name. Failed spans can include error messages and stack traces; error text can
+quote a value the app was handling.
 
-To make sure relay tracing stays off, set `ASTROLABE_TELEMETRY_ENABLED=false` in the server's
-environment before starting it. Relay tracing also stops when `ASTROLABE_OTEL_SDK_DISABLED` or
-`OTEL_SDK_DISABLED` turns OpenTelemetry export off. The web app in a browser, including one the
-`astrolabe` CLI opens, does not read these variables.
+To make sure relay tracing stays off from the server, set `ASTROLABE_TELEMETRY_ENABLED=false` in
+its environment before starting it. Relay tracing also stops when `ASTROLABE_OTEL_SDK_DISABLED` or
+`OTEL_SDK_DISABLED` turns OpenTelemetry export off.
 
-An administrator can turn relay tracing off for every user on a machine with
-a [managed policy](./managed-policy.md#other-capabilities).
+An administrator can turn relay tracing off in the server and desktop app with
+a [managed policy](./managed-policy.md#other-capabilities). This does not control traces sent by
+separate browser or mobile clients.
 
 The desktop app reads `ASTROLABE_TELEMETRY_ENABLED` from your shell profile (for example `~/.zshrc`) on macOS and
 Linux, so export it there and restart the app. On Windows, set it as a user environment variable.
 
-## Mobile app crash reports
+The web app in a browser, including one the `astrolabe` CLI opens, does not read these environment
+variables. When its build has relay tracing configured, it sends its own connection traces even
+if the server has opted out. The browser app has no relay tracing toggle.
+
+## Mobile app diagnostics
 
 The iOS and Android apps include crash reporting through the remote access relay, but Astrolabe's
 builds ship with it switched off, so the apps send no crash reports.
+
+The mobile app also sends relay connection traces when its build has tracing configured. These
+carry an identifier for the current app session. **Send crash reports** does not control these
+traces, and the mobile app has no separate relay tracing toggle. Server environment variables and
+managed policy do not disable mobile tracing.
+
+## Agent activity for mobile notifications
+
+When **Publish agent activity** is enabled on a host, it sends project and thread titles, model
+names, activity status, and environment and thread identifiers to the remote access relay for
+[mobile notifications and live activities](./mobile-notifications.md). This is separate from
+relay diagnostics. The telemetry opt-out does not disable it.
+
+To stop publishing, turn off **Publish agent activity** under **Settings > Sharing & access** on
+the host. Turning off notifications on a phone controls that phone's alerts, not the host's
+publishing setting.
 
 ## Export diagnostics to your own receiver
 

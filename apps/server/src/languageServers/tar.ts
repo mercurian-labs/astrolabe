@@ -27,6 +27,7 @@ const paxPath = (data: Uint8Array): string | null => {
   return null;
 };
 
+// @effect-diagnostics-next-line extendsNativeError:off - a throw sentinel inside the synchronous tar reader.
 export class TarError extends Error {}
 
 /** A path inside the package; anything absolute or climbing out is refused. */

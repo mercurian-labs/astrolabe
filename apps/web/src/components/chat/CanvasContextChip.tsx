@@ -76,6 +76,7 @@ export function CanvasContextChip(props: {
             description="Enter to save the comment; Shift+Enter for a new line."
             saveLabel="Save"
             extraActions={openAction}
+            speechOwnerKey={JSON.stringify(["canvas", record.title])}
             onSubmit={(comment) => {
               onComment(comment);
               setOpen(false);

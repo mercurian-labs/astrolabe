@@ -1,11 +1,12 @@
 import { useAtomValue } from "@effect/atom-react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
-import { PanelLeft, PanelLeftClose } from "lucide";
 import {
   BookOpenIcon,
   ChartNoAxesColumnIcon,
   FolderGit2Icon,
   MessagesSquare,
+  PanelLeftCloseIcon,
+  PanelLeftIcon,
   SettingsIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
@@ -18,7 +19,6 @@ import { cn } from "~/lib/utils";
 import { workspaceAreaProps } from "~/lib/workspaceFocus";
 import { primaryServerKeybindingsAtom } from "~/state/server";
 import { AstrolabeMarkSmall } from "../brand/AstrolabeMarks";
-import { MorphIcon } from "../MorphIcon";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { usePullRequestsSupported } from "~/state/environments";
 import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
@@ -251,7 +251,7 @@ function SidebarToggleItem() {
     <RailItem
       label="Toggle main sidebar"
       tooltip={`Toggle main sidebar${shortcutLabel ? ` (${shortcutLabel})` : ""}`}
-      icon={<MorphIcon className="size-4" icon={open ? PanelLeftClose : PanelLeft} />}
+      icon={open ? <PanelLeftCloseIcon className="size-4" /> : <PanelLeftIcon className="size-4" />}
       active={false}
       pressed={open}
       onClick={toggleSidebar}

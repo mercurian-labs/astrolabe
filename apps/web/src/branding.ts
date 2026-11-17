@@ -33,3 +33,5 @@ export const APP_VERSION = import.meta.env.APP_VERSION || "0.0.0";
 export const DESKTOP_DOWNLOAD_URL = "https://astrolabe.sh/download" as string | null;
 export const APP_STORE_URL = null as string | null;
 export const GOOGLE_PLAY_URL = null as string | null;
+// Redirects to the App Store or Google Play to match the phone that opens it.
+export const MOBILE_APP_URL = null as string | null;

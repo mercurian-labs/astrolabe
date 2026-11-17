@@ -1,3 +1,4 @@
+import * as WorktreeBranchSync from "./WorktreeBranchSync.ts";
 import * as GuestShareService from "../guest/GuestShareService.ts";
 import * as UsageLimitRecoveryWorker from "./UsageLimitRecoveryWorker.ts";
 import * as ChangeGroupService from "../changeGroups/ChangeGroupService.ts";
@@ -408,6 +409,9 @@ export const layer = Layer.mergeAll(
 );
 
 export const layerProduction = Layer.mergeAll(
+  WorktreeBranchSync.layer.pipe(
+    Layer.provide(Layer.merge(layerThreadManagementProvided, ProjectionStore.layer)),
+  ),
   // Astrolabe: turn start reads the wiki services when they are there, to tell agents their
   // wikis and mount the thread's checkouts of them; run finalization saves those checkouts.
   layer.pipe(

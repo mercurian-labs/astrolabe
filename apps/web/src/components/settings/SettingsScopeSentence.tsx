@@ -51,7 +51,7 @@ export const SETTINGS_DEVICE_ONLY_PATHS: ReadonlySet<string> = new Set([
   // Each wiki lives on one environment and says which.
   "/settings/wikis",
   "/settings/connections",
-  // Network access and authorized clients belong to the environment serving this app.
+  // Access picks its environment on the page itself.
   "/settings/access",
   "/settings/about",
 ]);

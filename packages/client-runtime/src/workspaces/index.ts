@@ -38,6 +38,7 @@ export {
 export { createReactNativeRuntimeVisibilityAdapter } from "@electric-sql/client";
 
 /** The cloud refused a write; `code` is its rule, e.g. `NOT_TEAM_OWNER`. */
+// @effect-diagnostics-next-line extendsNativeError:off - thrown from a Promise-based Electric write, outside Effect.
 export class WorkspaceWriteRefused extends Error {
   readonly code: string;
   constructor(code: string, message: string) {

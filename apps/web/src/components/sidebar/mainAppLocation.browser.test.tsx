@@ -48,7 +48,7 @@ describe("main app return location", () => {
     const router = screen.router!;
     using _tracking = { [Symbol.dispose]: startMainAppLocationTracking(router) };
 
-    await settled(router, router.navigate(assistantCitationNavigation(citation)));
+    await settled(router, router.navigate(assistantCitationNavigation(citation, null)));
     expect(assistantCitationFromLocation(router.state.location.href)).toEqual(citation);
     await settled(router, router.navigate({ href: "/usage" }));
     await userEvent.click(screen.getByRole("button", { name: "Close modal" }));

@@ -68,15 +68,19 @@ exit 7
   yield* fs.chmod(path.join(root, "release", stem, "astrolabe"), 0o755);
   const tar = yield* run("tar", ["-czf", archiveName, stem], {
     cwd: path.join(root, "release"),
-    env: { PATH: process.env.PATH },
+    env: { PATH: (yield* HostProcess.Environment).PATH },
   });
   assert.equal(tar.exitCode, 0, tar.stderr);
   const archive = yield* fs.readFile(path.join(root, "release", archiveName));
   let checksum = NodeCrypto.createHash("sha256").update(archive).digest("hex");
   const requests: Array<string> = [];
+  const failures: Array<number> = [];
   const server = NodeHttp.createServer((request, response) => {
     requests.push(request.url ?? "");
-    if (request.url === `/v${VERSION}/SHA256SUMS`) {
+    const failure = failures.shift();
+    if (failure !== undefined) {
+      response.writeHead(failure).end("upstream timed out");
+    } else if (request.url === `/v${VERSION}/SHA256SUMS`) {
       response.end(`${checksum}  ${archiveName}\n`);
     } else if (request.url === `/v${VERSION}/${archiveName}`) {
       response.writeHead(200, { "Content-Length": archive.length }).end(archive);
@@ -100,6 +104,9 @@ exit 7
     requests,
     corruptChecksum: () => {
       checksum = "0".repeat(64);
+    },
+    failNextRequests: (...statuses: Array<number>) => {
+      failures.push(...statuses);
     },
   };
 });
@@ -139,17 +146,19 @@ it.layer(NodeServices.layer)("build-npm-launcher", (it) => {
         yield* fs.makeDirectory(installed);
         const unpack = yield* run("tar", ["-xzf", output.tarball, "-C", installed], {
           cwd: root,
-          env: { PATH: process.env.PATH },
+          env: { PATH: (yield* HostProcess.Environment).PATH },
         });
         assert.equal(unpack.exitCode, 0, unpack.stderr);
         const packageDir = path.join(installed, "package");
 
         const release = yield* serveFakeRelease(root);
+        // regression: #32897
+        release.failNextRequests(504, 524);
         const home = path.join(root, "home");
         // People set ASTROLABE_*; a home inherited from a T3 Code shell is ignored.
         const t3codeHome = path.join(root, "t3code-home");
         const env = {
-          PATH: process.env.PATH,
+          PATH: (yield* HostProcess.Environment).PATH,
           T3CODE_HOME: t3codeHome,
           ASTROLABE_HOME: home,
           ASTROLABE_TEST_CALLS: path.join(root, "calls"),
@@ -382,7 +391,7 @@ fs.readFileSync = (file, ...rest) => {
       const result = yield* run(
         process.execPath,
         [path.join(output.packageDir, "bin/astrolabe.mjs"), "--version"],
-        { cwd: root, env: { PATH: process.env.PATH, ASTROLABE_HOME: home } },
+        { cwd: root, env: { PATH: (yield* HostProcess.Environment).PATH, ASTROLABE_HOME: home } },
       );
       assert.equal(result.exitCode, 1);
       assert.include(result.stderr, "Astrolabe publishes no release of 1.2.3 to download yet.");
@@ -422,7 +431,7 @@ syncBuiltinESMExports();
 `,
           );
           const env = {
-            PATH: process.env.PATH,
+            PATH: (yield* HostProcess.Environment).PATH,
             ASTROLABE_HOME: home,
             ASTROLABE_RELEASE_BASE_URL: release.baseUrl,
             ASTROLABE_TEST_READY: path.join(root, "probe-ready"),

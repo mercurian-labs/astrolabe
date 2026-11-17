@@ -15,6 +15,7 @@ import type {
   PullRequestListCursors,
   PullRequestListInput,
   PullRequestListResult,
+  PullRequestSummary,
 } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
@@ -68,6 +69,7 @@ import {
 import { PullRequestCompactFilterMenu } from "./PullRequestCompactFilterMenu";
 import { INVOLVEMENT_TABS, SORT_OPTIONS, STATE_TABS } from "./pullRequestListOptions";
 import { PullRequestListGroups } from "./PullRequestListGroups";
+import { usePullRequestIntentPrefetch } from "./usePullRequestIntentPrefetch";
 import {
   usePullRequestDisplayGroups,
   usePullRequestQueryFilters,
@@ -417,9 +419,10 @@ export function PullRequestsPage() {
   const overrideEntry = (
     entry: EnvironmentPullRequestEntry,
     action: PullRequestAction,
+    reply?: PullRequestSummary,
   ): number | null => {
     const token = ++overrideToken.current;
-    const override = pullRequestOverrideAfterAction(entry, action, new Date(), token);
+    const override = pullRequestOverrideAfterAction(entry, action, new Date(), token, reply);
     if (override === null) return null;
     setOverrides((current) => new Map(current).set(pullRequestEntryKey(entry), override));
     return token;
@@ -434,13 +437,17 @@ export function PullRequestsPage() {
     });
   };
   const detailOverrideTokens = useRef(new Map<string, number | null>());
-  const onSpeedAction = useStableCallback(({ entry, action }: PullRequestSpeedActionResult) => {
-    // Some hosts accept a merge before it completes. Let the next host read declare it merged.
-    if (action !== "merge") overrideEntry(entry, action);
-  });
-  const onBatchClosed = useStableCallback((entry: EnvironmentPullRequestEntry) => {
-    onSpeedAction({ entry, action: "close" });
-  });
+  const onSpeedAction = useStableCallback(
+    ({ entry, action, reply }: PullRequestSpeedActionResult) => {
+      // Some hosts accept a merge before it completes. Without a reply, let the next read say so.
+      if (reply !== undefined || action !== "merge") overrideEntry(entry, action, reply);
+    },
+  );
+  const onBatchClosed = useStableCallback(
+    (entry: EnvironmentPullRequestEntry, reply: PullRequestSummary | undefined) => {
+      onSpeedAction({ entry, action: "close", reply });
+    },
+  );
   const { close: closeBatch, closingKeys } = usePullRequestCloseBatch(onBatchClosed);
   const [snapshotEnvironmentKey, setSnapshotEnvironmentKey] = useState("");
   if (environmentKey.length > 0 && snapshotEnvironmentKey !== environmentKey) {
@@ -877,21 +884,27 @@ export function PullRequestsPage() {
     setInvalidating(false);
     refreshListAndStats(requestedStatsScope);
   };
-  const { hosts, displayGroups, shownCount, hostActionsOf, closeSweepRows } =
-    usePullRequestDisplayGroups({
-      answered,
-      host: search.host,
-      groups,
-      statsByRow,
-      overrides,
-      state: search.state,
-      localFilters,
-      hasLocalFilters,
-      viewers,
-      sort,
-      text: typedParsed.text,
-      involvement: search.involvement,
-    });
+  const {
+    hosts,
+    displayGroups,
+    shownCount,
+    hostActionsOf,
+    closeSweepRows,
+    listedPullRequestsBySurface,
+  } = usePullRequestDisplayGroups({
+    answered,
+    host: search.host,
+    groups,
+    statsByRow,
+    overrides,
+    state: search.state,
+    localFilters,
+    hasLocalFilters,
+    viewers,
+    sort,
+    text: typedParsed.text,
+    involvement: search.involvement,
+  });
   const showProvider = hosts.length > 1;
   const [closeSweepKeys, setCloseSweepKeys] = useState<ReadonlySet<string>>(() => new Set());
   const closeSensorRef = useRef<SidebarPointerSensor | null>(null);
@@ -1042,6 +1055,9 @@ export function PullRequestsPage() {
     ),
   );
 
+  const prefetchEntry = usePullRequestIntentPrefetch((entry) =>
+    listedPullRequestsBySurface.has(pullRequestListEntryId(entry)),
+  );
   // Astrolabe: Cmd/Ctrl-click and Shift-click select rows, as in Agents; a drag or the menu on a
   // selected row carries the selection, in the list's order. The rows' handlers read the list as
   // it is now, and stay stable so a list change does not re-render every memoized row.
@@ -1180,6 +1196,7 @@ export function PullRequestsPage() {
           showProvider={showProvider}
           statsRef={registerStatsRow}
           onSelect={selectEntry}
+          onIntent={prefetchEntry}
           hostActionsOf={hostActionsOf}
           onActed={onSpeedAction}
           closingKeys={closingKeys}

@@ -1,3 +1,4 @@
+import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
 import { normalizeAuthOrigin } from "@t3tools/shared/mercurianAccount";
 import { isRelayTracingEnabled } from "@t3tools/shared/otelEnvironment";
 import { normalizeSecureRelayUrl } from "@t3tools/shared/relayUrl";
@@ -8,6 +9,7 @@ import * as SchemaIssue from "effect/SchemaIssue";
 
 declare const __T3CODE_BUILD_RELAY_URL__: string | undefined;
 declare const __T3CODE_BUILD_AUTH_URL__: string | undefined;
+declare const __T3CODE_BUILD_CHANNEL__: "nightly" | "latest" | undefined;
 declare const __T3CODE_BUILD_RELAY_CLIENT_OTLP_TRACES_URL__: string | undefined;
 declare const __T3CODE_BUILD_RELAY_CLIENT_OTLP_TRACES_DATASET__: string | undefined;
 declare const __T3CODE_BUILD_RELAY_CLIENT_OTLP_TRACES_TOKEN__: string | undefined;
@@ -101,6 +103,47 @@ export const relayUrlConfig = makeRelayUrlConfig();
  */
 export function makeAuthUrlConfig(fallback = buildTimeAuthUrl) {
   return makePublicValueConfig("T3CODE_AUTH_URL", fallback).pipe(Config.mapEffect(validateAuthUrl));
+}
+
+const NIGHTLY_HOSTED_APP_URL = "https://nightly.app.astrolabe.sh";
+
+/**
+ * Where agent sign-ins on the remote access address are approved. A nightly build defaults to the
+ * nightly hosted app, which ships the same approval page; app.astrolabe.sh serves stable.
+ */
+export const agentApprovalAppUrlConfig = makePublicValueConfig(
+  "T3CODE_HOSTED_APP_URL",
+  typeof __T3CODE_BUILD_CHANNEL__ !== "undefined" && __T3CODE_BUILD_CHANNEL__ === "nightly"
+    ? NIGHTLY_HOSTED_APP_URL
+    : DEFAULT_HOSTED_APP_URL,
+).pipe(Config.mapEffect(validateHostedAppUrl));
+
+function validateHostedAppUrl(value: string) {
+  try {
+    const url = new URL(value);
+    const isLoopbackHttp =
+      url.protocol === "http:" &&
+      (url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]");
+    if (
+      (url.protocol !== "https:" && !isLoopbackHttp) ||
+      url.pathname !== "/" ||
+      url.search !== "" ||
+      url.hash !== ""
+    ) {
+      throw new Error("invalid hosted app origin");
+    }
+    return Effect.succeed(url.origin);
+  } catch {
+    return Effect.fail(
+      new Config.ConfigError(
+        new Schema.SchemaError(
+          new SchemaIssue.InvalidValue({
+            message: "Hosted app URL must be an absolute HTTPS origin (or HTTP loopback origin).",
+          }),
+        ),
+      ),
+    );
+  }
 }
 
 function validateAuthUrl(value: string) {
