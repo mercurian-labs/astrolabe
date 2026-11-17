@@ -104,11 +104,11 @@ describe("CommandPalette open intents", () => {
     });
     await using _screen = await render(<CommandPalette>{null}</CommandPalette>);
 
-    openCommandPalette({});
-    await expect
-      .element(page.getByPlaceholder("Search commands, projects, and threads..."))
-      .toHaveFocus();
-    await userEvent.keyboard("{ArrowDown}");
+    // Astrolabe: the root is Search; the actions list is the Command Palette (`:`), after the
+    // editor's ex commands and the current project's New thread.
+    openCommandPalette({ query: ":" });
+    await expect.element(page.getByPlaceholder("Run a command…")).toHaveFocus();
+    await userEvent.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}");
     await expect
       .element(page.getByRole("option", { name: /^New thread in\.\.\./ }))
       .toHaveAttribute("data-highlighted");

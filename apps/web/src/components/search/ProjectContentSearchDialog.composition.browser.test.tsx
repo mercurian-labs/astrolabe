@@ -1,9 +1,8 @@
-import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 import { expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 
 import { act, render } from "../../../test/render";
-import { useRightPanelStore } from "../../rightPanelStore";
 import { ProjectContentSearchDialog } from "./ProjectContentSearchDialog";
 
 const threadRef = {
@@ -11,7 +10,9 @@ const threadRef = {
   threadId: ThreadId.make("thread"),
 };
 
-const { search } = vi.hoisted(() => ({
+// Astrolabe: a match opens its file in Projects rather than the thread's right panel.
+const { openFile, search } = vi.hoisted(() => ({
+  openFile: vi.fn(),
   search: {
     canReadFiles: true,
     isCheckingAccess: false,
@@ -31,6 +32,7 @@ const { search } = vi.hoisted(() => ({
 vi.mock("~/hooks/useActiveProjectTarget", () => ({
   useActiveProjectTarget: () => ({
     environmentId: threadRef.environmentId,
+    projectId: ProjectId.make("project"),
     cwd: "/workspace",
     projectName: "workspace",
     threadRef,
@@ -39,6 +41,10 @@ vi.mock("~/hooks/useActiveProjectTarget", () => ({
 vi.mock("~/hooks/useTheme", () => ({
   useRenderedAppearance: () => "light",
   useTheme: () => ({ theme: "t3-chat", resolvedTheme: "light", appearanceMode: "light" }),
+}));
+vi.mock("../repositories/openInRepositories", async (original) => ({
+  ...(await original<typeof import("../repositories/openInRepositories")>()),
+  openRepositoryFileAtLine: openFile,
 }));
 vi.mock("~/state/session", async (original) => ({
   ...(await original<typeof import("~/state/session")>()),
@@ -50,7 +56,7 @@ vi.mock("~/state/queries", async (original) => ({
 }));
 
 it("ignores composing keys in the search", async () => {
-  using openFile = vi.spyOn(useRightPanelStore.getState(), "openFile").mockImplementation(() => {});
+  openFile.mockReset();
   const onOpenChange = vi.fn();
   await using _screen = await render(<ProjectContentSearchDialog onOpenChange={onOpenChange} />);
   const input = page.getByRole("combobox");
@@ -70,5 +76,14 @@ it("ignores composing keys in the search", async () => {
 
   await userEvent.keyboard("{Enter}");
   expect(onOpenChange).toHaveBeenCalledExactlyOnceWith(false);
-  expect(openFile).toHaveBeenCalledExactlyOnceWith(threadRef, "a.ts", 1);
+  expect(openFile).toHaveBeenCalledExactlyOnceWith(
+    {
+      environmentId: threadRef.environmentId,
+      projectId: ProjectId.make("project"),
+      cwd: "/workspace",
+      path: "a.ts",
+      line: 1,
+    },
+    expect.any(Function),
+  );
 });

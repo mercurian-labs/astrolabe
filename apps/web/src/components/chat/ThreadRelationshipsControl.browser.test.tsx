@@ -124,7 +124,8 @@ it.each([
 ])("clears the previous %s error after a successful retry", async (action, title) => {
   setup();
   await using screen = await render(
-    <ToastProvider timeout={0}>
+    // Under Astrolabe's lower title bar, a top-right toast would cover the retried button.
+    <ToastProvider timeout={0} position="bottom-right">
       <ThreadRelationshipsPanel
         environmentId={environmentId}
         threadId={threadId}
