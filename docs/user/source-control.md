@@ -1,6 +1,6 @@
 # Source control
 
-T3 Code integrates with GitHub, GitLab, Forgejo, Gitea, Bitbucket, Azure DevOps, GitCafe, and Cursor
+Astrolabe integrates with GitHub, GitLab, Forgejo, Gitea, Bitbucket, Azure DevOps, GitCafe, and Cursor
 Origin to clone and publish repositories, create pull requests, and review changes.
 
 ## Review turn changes
@@ -331,8 +331,8 @@ single commit keeps them. A file pushed to after you cleared it comes back marke
 
 On GitHub these are GitHub's own viewed marks, so a review carries between T3 Code and github.com
 in either direction. Forgejo, GitLab, Bitbucket, Azure DevOps, and Cursor Origin expose no record
-T3 Code can read, so the server you are connected to keeps them instead: they follow you across the
-apps connected to that server, but the host's own site will not show them, and the count reads **viewed in T3 Code**.
+Astrolabe can read, so the server you are connected to keeps them instead: they follow you across the
+apps connected to that server, but the host's own site will not show them, and the count reads **viewed in Astrolabe**.
 
 On mobile, open a changed file and mark it viewed from its header. Viewed files collapse,
 and their marks follow the same rules as on web and desktop.

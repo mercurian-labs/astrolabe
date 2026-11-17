@@ -203,7 +203,7 @@ are, and cleanup covers both the default folder and the custom one.
 ## Fast worktree checkout on macOS
 
 Fast worktree checkout is a beta. Turn it on for each Mac in **Settings → Labs → Fast worktree
-checkout**. T3 Code then keeps a few recent checkouts of each repository in the `caches` folder of
+checkout**. Astrolabe then keeps a few recent checkouts of each repository in the `caches` folder of
 the T3 home directory. A new worktree is cloned from one of them with APFS copy-on-write, which is
 about twice as fast as writing every file and makes the first `git status` in it fast as well.
 Turning it off deletes the cache.
