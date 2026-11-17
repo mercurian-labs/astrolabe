@@ -28,8 +28,8 @@ export function preventMiddleClickScroll(event: ReactMouseEvent) {
 
 /** A card's outer box; it holds its height while scrolled out of view. */
 export const SIDEBAR_CARD_ITEM_CLASS =
-  // Matches the h-[4.875rem] content box; the py-0.5 padding is added on top.
-  "py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_78px]";
+  // Matches the h-18 content box; the py-px padding is added on top.
+  "py-px [content-visibility:auto] [contain-intrinsic-size:auto_74px]";
 
 /** The list item. */
 export function SidebarCardItem({ className, ...props }: ComponentProps<"li">) {
@@ -39,10 +39,7 @@ export function SidebarCardItem({ className, ...props }: ComponentProps<"li">) {
 export function SidebarCardContent({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
-      className={cn(
-        "relative z-10 h-[4.875rem] px-(--sidebar-row-content-inset) py-(--sidebar-content-inset)",
-        className,
-      )}
+      className={cn("relative z-10 h-18 px-(--sidebar-row-content-inset) py-1.5", className)}
       {...props}
     />
   );
@@ -53,7 +50,7 @@ export function SidebarCardHeader({ className, ...props }: ComponentProps<"div">
 }
 
 export function SidebarCardTitle({ className, ...props }: ComponentProps<"div">) {
-  return <div className={cn("mt-1 flex min-w-0", className)} {...props} />;
+  return <div className={cn("mt-0.5 flex min-w-0", className)} {...props} />;
 }
 
 export function SidebarCardFooter({ className, ...props }: ComponentProps<"div">) {

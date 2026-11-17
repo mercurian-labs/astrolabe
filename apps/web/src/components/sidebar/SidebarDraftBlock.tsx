@@ -21,7 +21,11 @@ import {
   type DraftSessionState,
 } from "../../composerDraftStore";
 import { draftPenClassName, draftSurfaceClassName } from "./SidebarThreadRow";
-import { SIDEBAR_ROW_SURFACE_CLASS, preventMiddleClickScroll } from "./SidebarCard";
+import {
+  SIDEBAR_ROW_SURFACE_CLASS,
+  SidebarCardContent,
+  preventMiddleClickScroll,
+} from "./SidebarCard";
 
 const SidebarDraftRow = memo(function SidebarDraftRow(props: {
   draftId: DraftId;
@@ -84,7 +88,7 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
     onDiscard(draftId);
   };
   return (
-    <li className="list-none py-0.5">
+    <li className="list-none py-px">
       <div
         role="button"
         tabIndex={0}
@@ -106,7 +110,7 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
       >
         <span className="sr-only">{preview}</span>
         {/* Astrolabe: laid out as the thread rows are, the preview leading. */}
-        <div className="relative z-10 h-[4.875rem] px-(--sidebar-row-content-inset) py-(--sidebar-content-inset)">
+        <SidebarCardContent>
           <div className="flex h-5 min-w-0 items-center gap-1.5">
             <SquarePenIcon aria-hidden className={draftPenClassName} />
             <span
@@ -133,7 +137,7 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
               </Tooltip>
             </span>
           </div>
-          <div className="mt-1 flex min-w-0 items-center gap-1.5">
+          <div className="mt-0.5 flex min-w-0 items-center gap-1.5">
             {props.project ? (
               <ProjectFavicon project={props.project} className="size-4 shrink-0" />
             ) : null}
@@ -141,7 +145,7 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
               {props.projectDisplayName}
             </span>
           </div>
-        </div>
+        </SidebarCardContent>
       </div>
     </li>
   );
