@@ -133,7 +133,7 @@ describe.skipIf(HostProcess.Platform.defaultValue() !== "linux")("installer chan
   });
 });
 
-/** Runs an installer for a version that is already unpacked, so only the t3 command step runs. */
+/** Runs an installer for a version that is already unpacked, so only the astrolabe command step runs. */
 async function installOver(input: {
   readonly script: "install.sh" | "install.ps1";
   readonly home: string;
@@ -154,122 +154,127 @@ async function installOver(input: {
     ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
     env: {
       ...process.env,
-      T3CODE_CHANNEL: "",
-      T3CODE_VERSION: "1.2.3",
-      T3CODE_HOME: input.home,
-      T3CODE_INSTALL_BIN_DIR: input.binDir,
-      T3CODE_RELEASE_BASE_URL: "http://127.0.0.1:9",
+      ASTROLABE_CHANNEL: "",
+      ASTROLABE_VERSION: "1.2.3",
+      ASTROLABE_HOME: input.home,
+      ASTROLABE_INSTALL_BIN_DIR: input.binDir,
+      ASTROLABE_RELEASE_BASE_URL: "http://127.0.0.1:9",
       ...input.env,
     },
   });
   return { code: result.status, output: `${result.stdout}${result.stderr}`, target };
 }
 
-describe.skipIf(HostProcess.Platform.defaultValue() !== "linux")("install.sh t3 command", () => {
-  it("replaces only this home's own links and prints a PATH command", async () => {
-    const root = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "t3-install-link-"));
-    try {
-      const home = NodePath.join(root, "home");
-      const binDir = NodePath.join(root, "bin");
-      const link = NodePath.join(binDir, "t3");
-      await NodeFSP.mkdir(binDir, { recursive: true });
+describe.skipIf(HostProcess.Platform.defaultValue() !== "linux")(
+  "install.sh astrolabe command",
+  () => {
+    it("replaces only this home's own links and prints a PATH command", async () => {
+      const root = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "t3-install-link-"));
+      try {
+        const home = NodePath.join(root, "home");
+        const binDir = NodePath.join(root, "bin");
+        const link = NodePath.join(binDir, "astrolabe");
+        await NodeFSP.mkdir(binDir, { recursive: true });
 
-      await NodeFSP.writeFile(link, "#!/bin/sh\necho mine\n");
-      const foreign = await installOver({ script: "install.sh", home, binDir });
-      expect(foreign.code).not.toBe(0);
-      expect(foreign.output).toContain(`another t3 is already at ${link}`);
-      expect(await NodeFSP.readFile(link, "utf8")).toBe("#!/bin/sh\necho mine\n");
-      // Not even from inside the versions folder, where `.` would resolve into it.
-      const fromVersions = await installOver({
-        script: "install.sh",
-        home,
-        binDir,
-        cwd: foreign.target,
-      });
-      expect(fromVersions.code).not.toBe(0);
-      expect(await NodeFSP.readFile(link, "utf8")).toBe("#!/bin/sh\necho mine\n");
+        await NodeFSP.writeFile(link, "#!/bin/sh\necho mine\n");
+        const foreign = await installOver({ script: "install.sh", home, binDir });
+        expect(foreign.code).not.toBe(0);
+        expect(foreign.output).toContain(`another astrolabe is already at ${link}`);
+        expect(await NodeFSP.readFile(link, "utf8")).toBe("#!/bin/sh\necho mine\n");
+        // Not even from inside the versions folder, where `.` would resolve into it.
+        const fromVersions = await installOver({
+          script: "install.sh",
+          home,
+          binDir,
+          cwd: foreign.target,
+        });
+        expect(fromVersions.code).not.toBe(0);
+        expect(await NodeFSP.readFile(link, "utf8")).toBe("#!/bin/sh\necho mine\n");
 
-      // A link that only looks like it points into versions (join() would normalize the ..).
-      await NodeFSP.rm(link);
-      await NodeFSP.mkdir(NodePath.join(home, "other"), { recursive: true });
-      await NodeFSP.writeFile(NodePath.join(home, "other/t3"), "#!/bin/sh\n");
-      await NodeFSP.symlink(`${home}/runtime/versions/../../other/t3`, link);
-      const climbing = await installOver({ script: "install.sh", home, binDir });
-      expect(climbing.code).not.toBe(0);
-      expect(await NodeFSP.readlink(link)).toBe(`${home}/runtime/versions/../../other/t3`);
+        // A link that only looks like it points into versions (join() would normalize the ..).
+        await NodeFSP.rm(link);
+        await NodeFSP.mkdir(NodePath.join(home, "other"), { recursive: true });
+        await NodeFSP.writeFile(NodePath.join(home, "other/astrolabe"), "#!/bin/sh\n");
+        await NodeFSP.symlink(`${home}/runtime/versions/../../other/astrolabe`, link);
+        const climbing = await installOver({ script: "install.sh", home, binDir });
+        expect(climbing.code).not.toBe(0);
+        expect(await NodeFSP.readlink(link)).toBe(`${home}/runtime/versions/../../other/astrolabe`);
 
-      // Only `<version>/t3` counts, not another program inside a version.
-      await NodeFSP.rm(link);
-      await NodeFSP.symlink(NodePath.join(home, "runtime/versions/1.0.0/helper"), link);
-      const sibling = await installOver({ script: "install.sh", home, binDir });
-      expect(sibling.code).not.toBe(0);
-      expect(await NodeFSP.readlink(link)).toBe(
-        NodePath.join(home, "runtime/versions/1.0.0/helper"),
-      );
+        // Only `<version>/astrolabe` counts, not another program inside a version.
+        await NodeFSP.rm(link);
+        await NodeFSP.symlink(NodePath.join(home, "runtime/versions/1.0.0/helper"), link);
+        const sibling = await installOver({ script: "install.sh", home, binDir });
+        expect(sibling.code).not.toBe(0);
+        expect(await NodeFSP.readlink(link)).toBe(
+          NodePath.join(home, "runtime/versions/1.0.0/helper"),
+        );
 
-      // An upgrade over an older version's link, written through a symlinked T3 home.
-      await NodeFSP.rm(link);
-      await NodeFSP.symlink(NodePath.join(home, "runtime/versions/1.0.0/t3"), link);
-      await NodeFSP.symlink(home, NodePath.join(root, "alias"));
-      const upgrade = await installOver({
-        script: "install.sh",
-        home: NodePath.join(root, "alias"),
-        binDir,
-        env: { HOME: root, SHELL: "/bin/zsh", PATH: "/usr/bin:/bin" },
-      });
-      expect(upgrade.code, upgrade.output).toBe(0);
-      expect(await NodeFSP.readlink(link)).toBe(
-        NodePath.join(root, "alias/runtime/versions/1.2.3/t3"),
-      );
-      expect(upgrade.output).toContain(
-        `printf '\\n%s\\n' 'export PATH="$PATH:$HOME/bin"' >> ~/.zshrc`,
-      );
+        // An upgrade over an older version's link, written through a symlinked T3 home.
+        await NodeFSP.rm(link);
+        await NodeFSP.symlink(NodePath.join(home, "runtime/versions/1.0.0/astrolabe"), link);
+        await NodeFSP.symlink(home, NodePath.join(root, "alias"));
+        const upgrade = await installOver({
+          script: "install.sh",
+          home: NodePath.join(root, "alias"),
+          binDir,
+          env: { HOME: root, SHELL: "/bin/zsh", PATH: "/usr/bin:/bin" },
+        });
+        expect(upgrade.code, upgrade.output).toBe(0);
+        expect(await NodeFSP.readlink(link)).toBe(
+          NodePath.join(root, "alias/runtime/versions/1.2.3/astrolabe"),
+        );
+        expect(upgrade.output).toContain(
+          `printf '\\n%s\\n' 'export PATH="$PATH:$HOME/bin"' >> ~/.zshrc`,
+        );
 
-      // Containers and CI often have no SHELL; `set -u` must not stop the installer there.
-      const noShell = await installOver({
-        script: "install.sh",
-        home,
-        binDir,
-        env: { HOME: root, SHELL: undefined, PATH: "/usr/bin:/bin" },
-      });
-      expect(noShell.code, noShell.output).toBe(0);
-      expect(noShell.output).toContain(`Add ${binDir} to your PATH`);
+        // Containers and CI often have no SHELL; `set -u` must not stop the installer there.
+        const noShell = await installOver({
+          script: "install.sh",
+          home,
+          binDir,
+          env: { HOME: root, SHELL: undefined, PATH: "/usr/bin:/bin" },
+        });
+        expect(noShell.code, noShell.output).toBe(0);
+        expect(noShell.output).toContain(`Add ${binDir} to your PATH`);
 
-      // Its folder on PATH with a trailing slash is still this t3, not another one.
-      const slashed = await installOver({
-        script: "install.sh",
-        home,
-        binDir,
-        env: { HOME: root, PATH: `${binDir}/:/usr/bin:/bin` },
-      });
-      expect(slashed.code, slashed.output).toBe(0);
-      expect(slashed.output).toContain("Run t3 to use T3 Code here");
+        // Its folder on PATH with a trailing slash is still this astrolabe, not another one.
+        const slashed = await installOver({
+          script: "install.sh",
+          home,
+          binDir,
+          env: { HOME: root, PATH: `${binDir}/:/usr/bin:/bin` },
+        });
+        expect(slashed.code, slashed.output).toBe(0);
+        expect(slashed.output).toContain("Run astrolabe to use Astrolabe here");
 
-      // A relative folder is made absolute, so the PATH command never follows the working directory.
-      const relative = await installOver({
-        script: "install.sh",
-        home,
-        binDir: "bin",
-        cwd: root,
-        env: { HOME: root, SHELL: "/bin/zsh", PATH: "/usr/bin:/bin" },
-      });
-      expect(relative.code, relative.output).toBe(0);
-      expect(relative.output).toContain(`'export PATH="$PATH:$HOME/bin"'`);
+        // A relative folder is made absolute, so the PATH command never follows the working directory.
+        const relative = await installOver({
+          script: "install.sh",
+          home,
+          binDir: "bin",
+          cwd: root,
+          env: { HOME: root, SHELL: "/bin/zsh", PATH: "/usr/bin:/bin" },
+        });
+        expect(relative.code, relative.output).toBe(0);
+        expect(relative.output).toContain(`'export PATH="$PATH:$HOME/bin"'`);
 
-      await NodeFSP.rm(link);
-      await NodeFSP.symlink(NodePath.join(home, "bin/t3"), link);
-      const overDesktop = await installOver({
-        script: "install.sh",
-        home: `${home}//`,
-        binDir: `${binDir}/`,
-      });
-      expect(overDesktop.code, overDesktop.output).toBe(0);
-      expect(await NodeFSP.readlink(link)).toBe(NodePath.join(home, "runtime/versions/1.2.3/t3"));
-    } finally {
-      await NodeFSP.rm(root, { recursive: true, force: true });
-    }
-  });
-});
+        await NodeFSP.rm(link);
+        await NodeFSP.symlink(NodePath.join(home, "bin/astrolabe"), link);
+        const overDesktop = await installOver({
+          script: "install.sh",
+          home: `${home}//`,
+          binDir: `${binDir}/`,
+        });
+        expect(overDesktop.code, overDesktop.output).toBe(0);
+        expect(await NodeFSP.readlink(link)).toBe(
+          NodePath.join(home, "runtime/versions/1.2.3/astrolabe"),
+        );
+      } finally {
+        await NodeFSP.rm(root, { recursive: true, force: true });
+      }
+    });
+  },
+);
 
 describe.skipIf(HostProcess.Platform.defaultValue() !== "win32")("install.ps1 t3 command", () => {
   it("replaces only its own t3.cmd, also in non-ASCII and bracketed paths", async () => {
