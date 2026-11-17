@@ -160,7 +160,9 @@ export const loadOrCreateDpopProofKeyPair = Effect.fn("dpop.loadOrCreateDpopProo
         catch: cloudDpopError("This device's saved signing key is invalid."),
       });
       if (!matches) {
-        return yield* new CloudDpopError({ message: "This device's saved signing key is invalid." });
+        return yield* new CloudDpopError({
+          message: "This device's saved signing key is invalid.",
+        });
       }
       return { privateJwk: storedPrivateJwk, publicJwk };
     }

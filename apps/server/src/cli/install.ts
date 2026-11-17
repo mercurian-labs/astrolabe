@@ -212,7 +212,9 @@ const reportInstalled = Effect.fn("cli.install.report")(function* (
       `${installed.binDir} is not on your PATH yet. In this PowerShell window, run:`,
     );
     yield* Console.log(`  ${installed.pathCommand}`);
-    return yield* Console.log("Then run `astrolabe`. For new windows, add the folder to your PATH.");
+    return yield* Console.log(
+      "Then run `astrolabe`. For new windows, add the folder to your PATH.",
+    );
   }
   yield* Console.log(`${installed.binDir} is not on your PATH yet. Add it with:`);
   yield* Console.log(`  ${installed.pathCommand}`);

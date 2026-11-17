@@ -169,6 +169,7 @@ export type CanvasHandEdit =
 
 export type CanvasEdit = CanvasStructureEdit | CanvasHandEdit;
 
+// @effect-diagnostics-next-line extendsNativeError:off - thrown by synchronous parsing outside Effect.
 export class CanvasEditError extends Error {
   override readonly name = "CanvasEditError";
 }

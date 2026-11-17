@@ -36,6 +36,7 @@ import type { WikiMove } from "./trailers.ts";
 /** Whole new file content per changed file; `null` deletes the file. */
 export type WikiChanges = Readonly<Record<string, string | null>>;
 
+// @effect-diagnostics-next-line extendsNativeError:off - thrown by synchronous parsing outside Effect.
 export class AmendmentError extends Error {
   override readonly name = "AmendmentError";
 }
