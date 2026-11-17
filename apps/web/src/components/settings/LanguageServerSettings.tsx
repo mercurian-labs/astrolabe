@@ -645,7 +645,7 @@ export function LanguageServerProjectSettings({ members }: { members: ReadonlyAr
       <SettingsRow
         {...searchableSetting("project-language-servers")}
         title="Language servers"
-        description="Power completion, go to definition, rename and problems in the editor, and agents' code tools. In a trusted project Astrolabe uses the project's server or one installed on the machine, or downloads one the first time a file needs it."
+        description="Completion, go to definition, rename and problems in the editor, and agents' code tools. Trusted projects use the project's server, one on the machine, or one downloaded when a file first needs it."
         control={
           <Button size="sm" variant="outline" disabled={waiting} onClick={recheck}>
             {waiting ? "Checking…" : "Check again"}
@@ -665,7 +665,7 @@ export function LanguageServerProjectSettings({ members }: { members: ReadonlyAr
       )}
       <SettingsRow
         title="Changes here apply to"
-        description="All projects is everything on this machine. A project's own settings go over that, and over its .astrolabe/language-servers.json. Settings and initialization options also reach servers running restricted in projects that aren't trusted."
+        description="All projects covers this machine. A project's own settings override it and the project's .astrolabe/language-servers.json, and also reach servers running restricted in untrusted projects."
         control={
           <span className="flex items-center gap-2">
             {members.length > 1 ? (

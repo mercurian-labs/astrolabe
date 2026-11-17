@@ -116,7 +116,7 @@ function ScreenLinesSettingsRow() {
   return (
     <SettingsRow
       {...searchableSetting("vim-screen-lines")}
-      description="With Vim on, j and k move one line as it shows on screen, so a long line that wraps takes as many presses as the lines it shows, as gj and gk do. With a count, or after an operator such as d, they still move by lines of text."
+      description="With Vim on, j and k move by screen line, as gj and gk do, so a wrapped line takes a press per line it shows. With a count, or after an operator such as d, they move by lines of text."
       resetAction={
         on !== DEFAULT_CLIENT_SETTINGS.vimScreenLinesEnabled ? (
           <SettingResetButton
@@ -150,7 +150,7 @@ function RepeatWindowSettingsRow() {
   return (
     <SettingsRow
       {...searchableSetting("menu-repeat-window")}
-      description="After a focus move or a scroll from the keyboard menu, its keys (the arrows, h, j, k, l, d and u) keep working for this long without opening the menu again. Each one restarts it, any other key ends it, and 0 turns it off."
+      description="After a keyboard menu focus move or scroll, its keys (arrows, h, j, k, l, d, u) keep working this long without reopening the menu. Each restarts it, other keys end it, and 0 turns it off."
       resetAction={
         windowMs !== DEFAULT_MENU_REPEAT_WINDOW_MS ? (
           <SettingResetButton
