@@ -49,6 +49,7 @@ import {
   type Arrangement,
 } from "~/panes/arrangement";
 import type { PaneArrangementStore, PaneTabLabel } from "~/panes/panesHost";
+import { openNear } from "~/panes/placement";
 import { workspace } from "~/panes/workspace";
 import { leafWithTab } from "~/panes/tree";
 import { pullRequestSurface } from "~/rightPanelStore";
@@ -68,7 +69,7 @@ function showKeyIn(
 ): Arrangement {
   if (leafWithTab(arrangement.root, key)) return activateTab(arrangement, key);
   return placement === "beside"
-    ? openBeside(arrangement, key, arrangement.focused, "right")
+    ? openNear(arrangement, key, arrangement.focused)
     : openTab(arrangement, key, arrangement.focused);
 }
 
@@ -242,7 +243,7 @@ function openTabGroup(keys: ReadonlyArray<string>, group: EnvironmentChangeGroup
   for (const key of keys) {
     if (parseChatTabKey(key) !== null) continue;
     if (inGroup) workspace.openLinked(key, groupKey);
-    else workspace.open(key, beside ? "beside" : "tab");
+    else workspace.open(key, beside ? "near" : "tab");
     beside = false;
   }
 }

@@ -2,7 +2,8 @@ import { findProjectForChangeRequest } from "@t3tools/client-runtime/change-requ
 import { threadChangeRequestsTarget } from "@t3tools/client-runtime/changeGroups";
 import type { ScopedThreadRef, ThreadPullRequestLink } from "@t3tools/contracts";
 
-import { activateTab, openBeside } from "~/panes/arrangement";
+import { activateTab } from "~/panes/arrangement";
+import { openNear } from "~/panes/placement";
 import { leafWithTab } from "~/panes/tree";
 import { workspace } from "~/panes/workspace";
 import { useRightPanelStore } from "~/rightPanelStore";
@@ -16,7 +17,7 @@ export function showChangeGroupTab(group: ChangeGroupTab) {
   workspace.update((arrangement) =>
     leafWithTab(arrangement.root, key)
       ? activateTab(arrangement, key)
-      : openBeside(arrangement, key, arrangement.focused, "right"),
+      : openNear(arrangement, key, arrangement.focused),
   );
 }
 

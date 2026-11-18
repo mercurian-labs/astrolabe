@@ -63,6 +63,7 @@ import {
   type LinkedTab,
 } from "./linkedTabs";
 import type { PanelProps } from "./panesController";
+import { openNear } from "./placement";
 import type { PaneArrangementSnapshot, PaneArrangementStore } from "./panesHost";
 import {
   arrangementStorageKey,
@@ -664,12 +665,14 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
   };
 
   /** Shows `key`: in front where it is open, else in `paneId` (the focused pane), or beside it. */
-  const open = (key: string, placement: "tab" | "beside" = "tab", paneId?: string) =>
+  /** `beside` divides the pane as asked; `near` leaves it to the placement rule (`openNear`). */
+  const open = (key: string, placement: "tab" | "beside" | "near" = "tab", paneId?: string) =>
     update((arrangement) => {
       if (leafWithTab(arrangement.root, key) && placement === "tab") {
         return activateTab(arrangement, key);
       }
       const target = paneId ?? arrangement.focused;
+      if (placement === "near") return openNear(arrangement, key, target);
       return placement === "beside"
         ? openBeside(arrangement, key, target, "right")
         : openTab(arrangement, key, target);
@@ -873,7 +876,7 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
     const linked = current();
     const by = owner ?? linked.front;
     if (by === null) {
-      open(key, "beside");
+      open(key, "near");
       return;
     }
     const ref = refOf(linked.front);

@@ -6,6 +6,7 @@ import {
   paneLeaf,
   type Arrangement,
 } from "./arrangement";
+import { openNear } from "./placement";
 import { findLeaf, leafWithTab, leaves, mapLeaf, removeLeaf } from "./tree";
 
 /**
@@ -144,9 +145,10 @@ export function openLinked(
   const beside = leafWithTab(arrangement.root, owner)?.id ?? arrangement.focused;
   return {
     ...linked,
-    arrangement: openBeside(arrangement, key, beside, "right", {
+    arrangement: openNear(arrangement, key, beside, {
       focus,
       weight: LINKED_PANE_WEIGHT,
+      ownPane: true,
     }),
   };
 }
@@ -311,9 +313,10 @@ export function settleLinks(state: LinkedArrangement, context: LinkContext): Lin
       const beside =
         (front === null ? undefined : leafWithTab(arrangement.root, front)?.id) ??
         arrangement.focused;
-      arrangement = openBeside(arrangement, key, beside, "right", {
+      arrangement = openNear(arrangement, key, beside, {
         focus: false,
         weight: LINKED_PANE_WEIGHT,
+        ownPane: true,
       });
       home = leafWithTab(arrangement.root, key)?.id ?? null;
       continue;

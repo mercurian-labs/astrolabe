@@ -93,7 +93,8 @@ import { useEnvironmentQuery } from "~/state/query";
 import { useEnvironmentScope } from "~/state/session";
 import { vcsEnvironment, vcsStatusRevalidation } from "~/state/vcs";
 import { useProject, useThreadShells } from "~/state/entities";
-import { activateTab, allTabs, openBeside, openTab } from "~/panes/arrangement";
+import { activateTab, allTabs, openTab } from "~/panes/arrangement";
+import { openNear } from "~/panes/placement";
 import { recordJump, trackJumpCursor } from "~/panes/jumpHistory";
 import { leafWithTab } from "~/panes/tree";
 import { toastManager } from "../ui/toast";
@@ -458,11 +459,10 @@ function RepositoryFile({
         });
         recordJump(tabKey, key);
         panes.update((arrangement) =>
-          openBeside(
+          openNear(
             arrangement,
             key,
             leafWithTab(arrangement.root, tabKey)?.id ?? arrangement.focused,
-            "right",
           ),
         );
         return;

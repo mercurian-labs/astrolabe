@@ -201,7 +201,11 @@ describe("a chat's linked tabs", () => {
   it("stay put once unlinked, whichever chat comes to the front", () => {
     let state = unlinkTab(withPanel(), diffA);
     state = change(state, (arrangement) => activateTab(arrangement, chatB));
-    expect(panes(state)).toEqual([[chatB, chatA], [filesB], [diffA]]);
+    // B's files join the pane beside the chats rather than divide them again.
+    expect(panes(state)).toEqual([
+      [chatB, chatA],
+      [diffA, filesB],
+    ]);
   });
 
   it("show for every thread of a change group they are linked to, and no other", () => {
@@ -252,7 +256,9 @@ describe("hiding a chat's linked tabs", () => {
 
 describe("showing and hiding a chat's linked tabs", () => {
   it("gives the room their pane took back to the chat, every other pane as it was", () => {
-    const other = "repository:other";
+    // Chats either side, so neither neighbour takes the linked tab and the chat's pane divides.
+    const file = "chat:e:c";
+    const other = "chat:e:d";
     let arrangement = openTab(startingArrangement(), chatA);
     arrangement = openBeside(arrangement, file, "p0", "left");
     arrangement = openBeside(arrangement, other, "p0", "right");

@@ -1,12 +1,14 @@
 import { Fragment, useContext, useEffect, useRef, useState, type PointerEvent } from "react";
 
 import { BackgroundThreadContext } from "../components/chat/backgroundThread";
+import { observeResize } from "../lib/observeResize";
 import { cn } from "../lib/utils";
 import { resizePanes } from "./arrangement";
 import { useMaximizedPaneId, useMaximizedPaneStore } from "./maximize";
 import { panesSlot, type PanesPanel } from "../whichKey/handles";
 import { usePanesHost, usePanesLayoutKey, type PaneArrangementSnapshot } from "./panesHost";
 import { PaneView } from "./PaneView";
+import { setPanesWidthPx } from "./placement";
 import {
   findLeaf,
   leaves,
@@ -56,6 +58,16 @@ export function PaneTree({
       ...(panel ? { panel } : {}),
     });
   }, [background, controller, layoutKey, panel, tabs]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- measures the panes for the placement rule, which runs outside React
+  useEffect(() => {
+    const element = root.current;
+    if (background || !element) return;
+    const stop = observeResize(element, () => setPanesWidthPx(element.clientWidth));
+    return () => {
+      stop();
+      setPanesWidthPx(null);
+    };
+  }, [background]);
   // Maximizing ends once the pane is gone or the last one left, so a later split shows every
   // pane rather than maximizing again.
   const maximized =

@@ -3,7 +3,8 @@ import { useNavigate } from "@tanstack/react-router";
 import { FileTextIcon } from "lucide-react";
 import { useContext } from "react";
 
-import { activateTab, openBeside } from "~/panes/arrangement";
+import { activateTab } from "~/panes/arrangement";
+import { openNear } from "~/panes/placement";
 import { PanesHostContext } from "~/panes/panesHost";
 import { leafWithTab } from "~/panes/tree";
 import { ContextChip, ContextChipLabel } from "./ContextChip";
@@ -34,7 +35,7 @@ export function WikiNoteContextChip(props: {
       panes.controller.update((arrangement) =>
         leafWithTab(arrangement.root, key)
           ? activateTab(arrangement, key)
-          : openBeside(arrangement, key, arrangement.focused, "right"),
+          : openNear(arrangement, key, arrangement.focused),
       );
       return;
     }

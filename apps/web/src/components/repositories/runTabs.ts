@@ -3,15 +3,9 @@ import { isRunnableText } from "@mercurian/editor/run/command";
 import { runTerminalThreadId, ThreadId, type EnvironmentId } from "@t3tools/contracts";
 
 import { environmentCatalog } from "~/connection/catalog";
-import {
-  activateTab,
-  allTabs,
-  type Arrangement,
-  openBeside,
-  openTab,
-  replaceTab,
-} from "~/panes/arrangement";
+import { activateTab, allTabs, type Arrangement, openTab, replaceTab } from "~/panes/arrangement";
 import type { PaneArrangementStore } from "~/panes/panesHost";
+import { openNear } from "~/panes/placement";
 import { leafWithTab, leaves } from "~/panes/tree";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { languageServersEnvironment } from "~/state/languageServers";
@@ -88,7 +82,7 @@ export function placeRunTab(
   );
   if (runPane) return openTab(arrangement, key, runPane.id, false);
   return filePane
-    ? openBeside(arrangement, key, filePane.id, "right", { focus: false, weight: RUN_WEIGHT })
+    ? openNear(arrangement, key, filePane.id, { focus: false, weight: RUN_WEIGHT })
     : openTab(arrangement, key, undefined, false);
 }
 

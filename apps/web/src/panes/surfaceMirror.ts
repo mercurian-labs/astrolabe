@@ -4,13 +4,13 @@ import {
   closeTabs,
   focusedPane,
   isEmptyTab,
-  openBeside,
   openTab,
   replaceTab,
   surfaceIdOf,
   surfaceKey,
   type Arrangement,
 } from "./arrangement";
+import { openNear } from "./placement";
 import { findLeaf, leafWithTab, leaves } from "./tree";
 
 /**
@@ -116,9 +116,10 @@ export function followRecord(
     const asked = home !== null && home === targetPaneId;
     arrangement =
       home === null
-        ? openBeside(arrangement, surfaceKey(id), keys.splitFrom ?? arrangement.focused, "right", {
+        ? openNear(arrangement, surfaceKey(id), keys.splitFrom ?? arrangement.focused, {
             focus: false,
             weight: SPLIT_WEIGHT,
+            ownPane: true,
           })
         : openTab(arrangement, surfaceKey(id), home, asked);
     consumedTarget ||= asked;

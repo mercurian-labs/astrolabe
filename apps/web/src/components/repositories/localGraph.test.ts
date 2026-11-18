@@ -117,16 +117,16 @@ describe("opening a local graph", () => {
     ]);
   });
 
-  it("opens a separate graph for another checkout's file", () => {
+  it("opens a separate graph for another checkout's file, beside the other graph", () => {
     const before = arranged(
       row(leaf("p1", [key("a.ts", "/worktree")]), leaf("p2", [FOLLOWING])),
       "p1",
     );
     const after = openLocalGraph(before, file("a.ts", "/worktree"));
-    expect(leaves(after.root)).toHaveLength(3);
-    expect(
-      leafWithTab(after.root, localGraphKey({ ...checkout, checkout: { cwd: "/worktree" } })),
-    ).toBeDefined();
+    expect(leaves(after.root).map((pane) => pane.tabs)).toEqual([
+      [key("a.ts", "/worktree")],
+      [FOLLOWING, localGraphKey({ ...checkout, checkout: { cwd: "/worktree" } })],
+    ]);
   });
 });
 
