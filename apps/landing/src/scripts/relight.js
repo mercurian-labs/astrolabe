@@ -1,4 +1,4 @@
-// Astrolabe · drafting · the instrument's ground ([02]): a crop of Mercury in the two-ink grain under
+// Astrolabe · drafting · the instrument's ground ([01]): a crop of Mercury in the two-ink grain under
 // the astrolabe's sun, redrawn on `astrolabe:time`. The grain thresholds against fixed noise on the
 // canvas's own pixels so a moving light flips only grains crossing it; nothing shimmers. Repaints only
 // on change while on screen in a visible tab; without WebGL (or `?gl=0`) the static print shows.

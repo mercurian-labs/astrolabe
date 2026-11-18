@@ -795,18 +795,34 @@ section {
 }
 
 /* ───────────────────────────────────────── [01] Hero
-   A modest proposition and two actions on the paper, the tour's three phases, then the panel: a
-   dark two-ink print of Mercury filling it edge to edge, and the app's window sitting on it. */
+   A modest proposition and two actions on the paper beside the working astrolabe (its field, .sky, is
+   styled with the instrument below), the tour's phases, then the panel: a dark two-ink print of
+   Mercury filling it edge to edge, and the app's window sitting on it. */
 
 .hero {
   padding-top: var(--head);
 }
+.hero__top {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+}
 .hero__head {
+  grid-column: span 7;
   display: flex;
   flex-direction: column;
+  justify-content: center;
   align-items: flex-start;
   gap: 1rem;
-  padding: clamp(2.25rem, 4.6vw, 5.5rem) var(--pad) clamp(1.75rem, 2.8vw, 3rem);
+  padding: clamp(2rem, 3.4vw, 4rem) var(--pad);
+}
+.hero__top > .sky {
+  grid-column: span 5;
+}
+@media (max-width: 1180px) {
+  .hero__head,
+  .hero__top > .sky {
+    grid-column: span 6;
+  }
 }
 .hero__title {
   font-family: var(--serif);
@@ -970,9 +986,15 @@ section {
 }
 
 @media (max-width: 900px) {
+  .hero__head,
+  .hero__top > .sky,
   .tour__phases,
   .tour__caption {
     grid-column: 1 / -1;
+  }
+  .hero__top > .sky {
+    border-left: 0;
+    border-top: 1px solid var(--rule);
   }
   .tour__phase {
     padding-inline: 0 0.75rem;
@@ -1011,30 +1033,27 @@ section {
   }
 }
 
-/* ───────────────────────────────────────── [02] Value: the working astrolabe beside the manifesto
-   (the field, .sky, is styled with the instrument below; twilight covers the whole section). */
+/* ───────────────────────────────────────── [02] Value: the manifesto, then the agents it works with */
 
 .value {
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
   border-top: 1px solid var(--rule);
 }
-.value > .sky {
-  grid-column: span 7;
-  border-left: 0;
+.value__tag {
+  grid-column: span 4;
+  padding: var(--pad-lg) var(--pad) var(--pad);
 }
 .value__text {
-  grid-column: span 5;
+  grid-column: span 8;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  gap: 2.5rem;
-  padding: var(--pad) var(--pad) var(--pad-lg);
-  border-left: 1px solid var(--rule);
+  align-items: flex-start;
+  gap: 2.25rem;
+  padding: var(--pad-lg) var(--pad) var(--pad-lg);
 }
 .manifesto {
   max-width: 21em;
-  margin-top: auto;
   font-family: var(--serif);
   font-weight: 380;
   font-size: clamp(1.625rem, 0.75rem + 1.65vw, 3.1rem);
@@ -1061,7 +1080,7 @@ section {
   border-top: 1px solid var(--rule);
 }
 .works__label {
-  grid-column: span 7;
+  grid-column: span 4;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -1085,9 +1104,9 @@ section {
   text-decoration-color: currentColor;
 }
 .works__list {
-  grid-column: span 5;
+  grid-column: span 8;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 .works__list li {
   display: grid;
@@ -1103,9 +1122,6 @@ section {
   text-transform: uppercase;
   text-align: center;
 }
-.works__list li:nth-child(n + 4) {
-  border-top: 1px solid var(--rule);
-}
 /* Each agent's mark, in the page's ink rather than its brand colours, so it relights with the page.
    Antigravity's mark is a raster, so it prints through a mask. */
 .works__mark {
@@ -1119,19 +1135,33 @@ section {
   mask: var(--mark) center / contain no-repeat;
 }
 
-@media (max-width: 900px) {
-  .value > .sky,
-  .value__text,
+@media (max-width: 1100px) {
   .works__label,
   .works__list {
     grid-column: 1 / -1;
   }
-  .value__text {
-    border-left: 0;
+  .works__list {
     border-top: 1px solid var(--rule);
-    padding-top: var(--pad-lg);
+  }
+  .works__list li:first-child {
+    border-left: 0;
+  }
+}
+@media (max-width: 900px) {
+  .value__tag,
+  .value__text {
+    grid-column: 1 / -1;
+  }
+  .value__tag {
+    padding-bottom: 0;
+  }
+  .value__text {
+    padding-top: 1.5rem;
   }
   .works__list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .works__list li:nth-child(n + 4) {
     border-top: 1px solid var(--rule);
   }
   .works__list li {
@@ -4968,12 +4998,14 @@ hidden, leaves the sticky stage working). */
 
 /* The field the instrument stands in: rulers on two edges, crosses at the corners, its labels,
    the reading below it, and the sighting over all of it. */
+/* Its height is capped so that at 1440 × 900 the tour's phases and the window's top still show. */
 .sky {
   position: relative;
-  grid-column: span 7;
-  min-height: clamp(38rem, 54vw, 66rem);
+  height: clamp(26rem, calc(100svh - 28rem), 44rem);
   overflow: hidden;
   border-left: 1px solid var(--rule);
+  scroll-margin-top: calc(var(--head) + var(--inset));
+  container-type: inline-size;
   /* A drag anywhere in the field turns the rete (instrument.js). On a phone the field is full width,
      so it keeps vertical swipes and pinches for the page; a drag that leads sideways turns the rete. */
   touch-action: pan-y pinch-zoom;
@@ -4982,8 +5014,8 @@ hidden, leaves the sticky stage working). */
 .sky__art {
   position: absolute;
   left: 50%;
-  top: 4.25rem;
-  height: calc(100% - 9.5rem);
+  top: 3.75rem;
+  height: calc(100% - 8.75rem);
   aspect-ratio: 1600 / 1800;
   transform: translateX(-50%);
 }
@@ -5235,7 +5267,6 @@ hidden, leaves the sticky stage working). */
   z-index: 1;
   bottom: 1.5rem;
 }
-.sky__time[hidden],
 .sky__wind[hidden] {
   display: none;
 }
@@ -5256,11 +5287,17 @@ hidden, leaves the sticky stage working). */
 }
 .sky__wind {
   right: 3rem;
-  display: flex;
-  align-items: center;
-  gap: 1rem;
 }
+.sky__time[hidden],
+.sky__hint[hidden] {
+  display: none;
+}
+/* The hint stands under the plate's label, clear of the reading and the buttons. */
 .sky__hint {
+  position: absolute;
+  z-index: 1;
+  top: 3.1rem;
+  right: 3rem;
   margin: 0;
   color: var(--ink-3);
 }
@@ -5369,6 +5406,11 @@ hidden, leaves the sticky stage working). */
   top: 1.75rem;
   text-align: right;
   color: var(--ink-3);
+}
+@container (max-width: 36rem) {
+  .wide-only {
+    display: none;
+  }
 }
 .sky__tag--bl {
   left: 3rem;
@@ -5514,13 +5556,14 @@ html:not(.js) .hover-only {
     display: none;
   }
   /* The working instrument takes a band of its own: the plate label under the figure number, the
-     instrument as wide as the field allows with room for its callouts, the reading beneath. */
+     instrument two thirds of the field wide, so it does not take over the first screen, the reading
+     beneath. */
   .sky:has(.has-model) {
-    min-height: calc(13rem + (100vw - 18px) * 0.86 * 1.125);
+    height: calc(13rem + min(100vw - 18px, 34rem) * 0.66 * 1.125);
   }
   .sky__art.has-model {
     top: 3.6rem;
-    height: min(calc(100% - 13rem), calc((100vw - 18px) * 0.86 * 1.125));
+    height: calc(100% - 13rem);
   }
   .sky:has(.has-model) .sky__tag--tr {
     display: block;
@@ -5541,6 +5584,7 @@ html:not(.js) .hover-only {
     left: 1.5rem;
     right: 1.5rem;
     bottom: 1.1rem;
+    display: flex;
   }
   .sky__jumps {
     flex: 1;
@@ -5875,7 +5919,7 @@ html:not(.js) .hover-only {
   }
 }
 
-/* ───────────────────────────────────────── [02] Value · the ground under the instrument's sun
+/* ───────────────────────────────────────── [01] Hero · the ground under the instrument's sun
 
    relight.js prints the ground of the instrument's field, a close crop of Mercury, under the sun at
    the instrument's represented moment (twilight.js sets the page's theme from the same sun). The
@@ -5981,9 +6025,9 @@ html:not(.js) .relight__static,
 [data-relight] .sky__time .tag {
   justify-self: start;
 }
-/* The reading and the hint wrap before they meet (twilight's sentence is long). */
+/* The reading wraps before it meets the buttons (twilight's sentence is long). */
 [data-relight] .sky__time {
-  max-width: calc(100% - 27rem);
+  max-width: calc(100% - 17rem);
 }
 [data-relight] .sky__hint {
   max-width: 15rem;

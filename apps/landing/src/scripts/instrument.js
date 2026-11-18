@@ -1,7 +1,7 @@
-// Astrolabe · drafting · the closing instrument: an astrolabe set to the visitor's sky now, engraved
-// for the latitude the time zone suggests (places.js); maths in sky.js. One sweep into place on
-// arrival, then at most one redraw a minute and none while hidden; parts turn as SVG group transforms,
-// nothing repaints in a loop. Reduced motion arrives set; without JavaScript the static drawing shows.
+// Astrolabe · drafting · the instrument beside the headline: an astrolabe set to the visitor's sky
+// now, engraved for the latitude the time zone suggests (places.js); maths in sky.js. One sweep into
+// place, then at most one redraw a minute and none while hidden; parts turn as SVG transforms, nothing
+// repaints in a loop. Reduced motion arrives set; without JavaScript the static drawing shows.
 
 import Places from "./places.js";
 import Sky from "./sky.js";
