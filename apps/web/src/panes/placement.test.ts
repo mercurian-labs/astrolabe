@@ -32,6 +32,10 @@ describe("opening a view near the pane you are reading", () => {
     const alone = arranged(leaf("p1", [chat]));
     expect(tabsOf(openNear(alone, note, "p1", { widthPx: wide }))).toEqual([[chat], [note]]);
     expect(tabsOf(openNear(alone, note, "p1", { widthPx: wide - 1 }))).toEqual([[chat, note]]);
+    // Settings › General › Panes › Open beside: As a tab.
+    expect(tabsOf(openNear(alone, note, "p1", { widthPx: wide, divides: false }))).toEqual([
+      [chat, note],
+    ]);
   });
 
   it("joins the pane beside it rather than divide again, however wide the panes are", () => {

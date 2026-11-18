@@ -76,6 +76,10 @@ export const DiffLayout = Schema.Literals(["stacked", "split"]);
 export type DiffLayout = typeof DiffLayout.Type;
 const DEFAULT_DIFF_LAYOUT: DiffLayout = "stacked";
 
+/** Whether a view opened beside the pane you read divides it when there is room, or opens a tab. */
+export const PaneOpenBeside = Schema.Literals(["when-room", "as-tab"]);
+export type PaneOpenBeside = typeof PaneOpenBeside.Type;
+
 export const SidebarProjectSortOrder = Schema.Literals(["updated_at", "created_at", "manual"]);
 export type SidebarProjectSortOrder = typeof SidebarProjectSortOrder.Type;
 export const DEFAULT_SIDEBAR_PROJECT_SORT_ORDER: SidebarProjectSortOrder = "updated_at";
@@ -484,6 +488,9 @@ export const ClientSettingsSchema = Schema.Struct({
   diffFilesCollapsed: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   diffIgnoreWhitespace: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   diffLayout: DiffLayout.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_DIFF_LAYOUT))),
+  paneOpenBeside: PaneOpenBeside.pipe(
+    Schema.withDecodingDefault(Effect.succeed("when-room" as const)),
+  ),
   environmentIdentificationMode: EnvironmentIdentificationMode.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_ENVIRONMENT_IDENTIFICATION_MODE)),
   ),
@@ -2125,6 +2132,7 @@ export const ClientSettingsPatch = Schema.Struct({
   diffFilesCollapsed: Schema.optionalKey(Schema.Boolean),
   diffIgnoreWhitespace: Schema.optionalKey(Schema.Boolean),
   diffLayout: Schema.optionalKey(DiffLayout),
+  paneOpenBeside: Schema.optionalKey(PaneOpenBeside),
   environmentIdentificationMode: Schema.optionalKey(EnvironmentIdentificationMode),
   glassOpacity: Schema.optionalKey(GlassOpacity),
   onboardingCompletedAt: Schema.optionalKey(Schema.NullOr(Schema.String)),

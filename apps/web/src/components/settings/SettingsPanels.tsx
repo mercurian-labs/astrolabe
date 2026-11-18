@@ -17,6 +17,7 @@ import {
 import {
   DEFAULT_UNIFIED_SETTINGS,
   type DiffLayout,
+  type PaneOpenBeside,
   MAX_SIDEBAR_AUTO_SETTLE_AFTER_DAYS,
   MIN_SIDEBAR_AUTO_SETTLE_AFTER_DAYS,
   type ResponseStreamingMode,
@@ -140,6 +141,11 @@ const TIMESTAMP_FORMAT_LABELS = {
   "12-hour": "12-hour",
   "24-hour": "24-hour",
 } as const;
+
+const PANE_OPEN_BESIDE_LABELS: Record<PaneOpenBeside, string> = {
+  "when-room": "When there's room",
+  "as-tab": "As a tab",
+};
 
 const DIFF_LAYOUT_LABELS: Record<DiffLayout, string> = {
   stacked: "Stacked",
@@ -525,6 +531,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       ? ["Diff whitespace changes"]
       : []),
     ...(settings.diffLayout !== DEFAULT_UNIFIED_SETTINGS.diffLayout ? ["Diff layout"] : []),
+    ...(settings.paneOpenBeside !== DEFAULT_UNIFIED_SETTINGS.paneOpenBeside ? ["Open beside"] : []),
     ...(settings.proactivePanelsEnabled !== DEFAULT_UNIFIED_SETTINGS.proactivePanelsEnabled
       ? ["Open pull requests and changes panels proactively"]
       : []),
@@ -653,6 +660,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       diffFilesCollapsed: DEFAULT_UNIFIED_SETTINGS.diffFilesCollapsed,
       diffIgnoreWhitespace: DEFAULT_UNIFIED_SETTINGS.diffIgnoreWhitespace,
       diffLayout: DEFAULT_UNIFIED_SETTINGS.diffLayout,
+      paneOpenBeside: DEFAULT_UNIFIED_SETTINGS.paneOpenBeside,
       proactivePanelsEnabled: DEFAULT_UNIFIED_SETTINGS.proactivePanelsEnabled,
       showSkillsInSlashMenu: DEFAULT_UNIFIED_SETTINGS.showSkillsInSlashMenu,
       composerRichTextEnabled: DEFAULT_UNIFIED_SETTINGS.composerRichTextEnabled,
@@ -1044,6 +1052,45 @@ export function GeneralSettingsPanel() {
                 </SelectItem>
                 <SelectItem hideIndicator value="24-hour">
                   {TIMESTAMP_FORMAT_LABELS["24-hour"]}
+                </SelectItem>
+              </SelectPopup>
+            </Select>
+          }
+        />
+      </SettingsSection>
+
+      <SettingsSection id="panes" title="Panes">
+        <SettingsRow
+          {...searchableSetting("pane-open-beside")}
+          description="Where a note, diff, run or graph opens beside what you're reading: in a pane of its own while both stay wide enough, or as a tab. A chat's diff, files and browser always get one pane beside the chat."
+          resetAction={
+            settings.paneOpenBeside !== DEFAULT_UNIFIED_SETTINGS.paneOpenBeside ? (
+              <SettingResetButton
+                label="open beside"
+                onClick={() =>
+                  updateSettings({ paneOpenBeside: DEFAULT_UNIFIED_SETTINGS.paneOpenBeside })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Select
+              value={settings.paneOpenBeside}
+              onValueChange={(value) => {
+                if (value === "when-room" || value === "as-tab") {
+                  updateSettings({ paneOpenBeside: value });
+                }
+              }}
+            >
+              <SelectTrigger size="sm" className="w-full sm:w-40" aria-label="Open beside">
+                <SelectValue>{PANE_OPEN_BESIDE_LABELS[settings.paneOpenBeside]}</SelectValue>
+              </SelectTrigger>
+              <SelectPopup align="end" alignItemWithTrigger={false}>
+                <SelectItem hideIndicator value="when-room">
+                  {PANE_OPEN_BESIDE_LABELS["when-room"]}
+                </SelectItem>
+                <SelectItem hideIndicator value="as-tab">
+                  {PANE_OPEN_BESIDE_LABELS["as-tab"]}
                 </SelectItem>
               </SelectPopup>
             </Select>

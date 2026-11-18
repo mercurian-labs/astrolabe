@@ -750,6 +750,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["timestamp clock locale system browser os 12 hour 24 hour"],
   },
   {
+    id: "pane-open-beside",
+    title: "Open beside",
+    to: "/settings/general",
+    searchTerms: ["panes split splits columns tabs layout room width side pane placement"],
+  },
+  {
     id: "response-streaming",
     title: "Response streaming",
     to: "/settings/threads",

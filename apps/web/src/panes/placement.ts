@@ -1,3 +1,5 @@
+import type { PaneOpenBeside } from "@t3tools/contracts";
+
 import { parseChatTabKey } from "~/sectionTabs/sectionTabs";
 
 import { activateTab, openBeside, openTab, type Arrangement } from "./arrangement";
@@ -14,12 +16,18 @@ export const VIEW_ROOM_PX = 400;
 const roomOf = (key: string) => (parseChatTabKey(key) !== null ? CHAT_ROOM_PX : VIEW_ROOM_PX);
 
 let measuredWidthPx: number | null = null;
+let opensBeside: PaneOpenBeside = "when-room";
 
 /** The panes' width on screen, as their root last measured it; null before it mounts. */
 const panesWidthPx = () => measuredWidthPx;
 
 export function setPanesWidthPx(widthPx: number | null) {
   measuredWidthPx = widthPx;
+}
+
+/** Settings › General › Panes: "as-tab" never divides a pane for a view that can share it. */
+export function setPaneOpenBeside(setting: PaneOpenBeside) {
+  opensBeside = setting;
 }
 
 /** The width the tiling gives the pane `id` in a tree `widthPx` wide, or null without it. */
@@ -68,6 +76,8 @@ export interface OpenNearOptions {
   readonly widthPx?: number | null;
   /** It may not join the target's pane, as a chat's linked tab may not join the chat's. */
   readonly ownPane?: boolean;
+  /** Whether the panes may divide for room; the setting by default. */
+  readonly divides?: boolean;
 }
 
 /**
@@ -85,13 +95,14 @@ export function openNear(
     weight = 0.5,
     widthPx = panesWidthPx(),
     ownPane = false,
+    divides = opensBeside === "when-room",
   }: OpenNearOptions = {},
 ): Arrangement {
   const holder = leafWithTab(arrangement.root, key);
   if (holder && holder.id !== targetId) return activateTab(arrangement, key, focus);
   const sidePane = sidePaneOf(arrangement, targetId);
   if (sidePane) return openTab(arrangement, key, sidePane.id, focus);
-  if (ownPane || hasRoomBeside(arrangement, targetId, key, widthPx)) {
+  if (ownPane || (divides && hasRoomBeside(arrangement, targetId, key, widthPx))) {
     return openBeside(arrangement, key, targetId, side, { focus, weight });
   }
   return holder ? activateTab(arrangement, key, focus) : openTab(arrangement, key, targetId, focus);
