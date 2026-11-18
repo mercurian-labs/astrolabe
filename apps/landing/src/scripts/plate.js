@@ -149,6 +149,10 @@ import Twilight from "./twilight.js";
       // an ivory stipple, thicker the more it faces the sky, over a body no darker than the paper.
       float moon = snow * u_moon;
       light = max(light, moon * (0.3 + 0.4 * sky));
+      // Dark rock falls under the threshold above and would print as holes; moonlit, it keeps a thin
+      // stipple, thicker on faces toward the moon and the sky, and always fainter than the snow's.
+      float bare = u_moon * (1.0 - smoothstep(0.3, 0.5, tone.b)) * (1.0 - 0.8 * tone.r);
+      light = max(light, bare * (0.05 + 0.12 * sky + 0.2 * lit) * (0.7 + 0.6 * tone.b));
       // The paper's tooth: even a face square to the sun keeps a few grains, as the Mercury prints do.
       dark = max(pow(dark, 1.15) * 0.8, u_y.y < paper ? 0.035 * (1.0 - snow) : 0.0);
 
