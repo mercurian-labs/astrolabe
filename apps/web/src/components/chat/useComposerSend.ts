@@ -140,7 +140,7 @@ import type { useQueuedRunEdit } from "./useQueuedRunEdit";
 import type { useTimelineFollow } from "./useTimelineFollow";
 import type { useUsageLimitsPanel } from "./useUsageLimitsPanel";
 import type { useWorktreeSetup } from "./useWorktreeSetup";
-import { omittedEditedBoards } from "../canvas/editedBoards";
+import { omittedEditedBoards, omittedEditedFiles } from "../canvas/editedBoards";
 
 const ENVIRONMENT_UNAVAILABLE_SEND_TOAST_TRAIL_SIZE = 3;
 
@@ -778,6 +778,9 @@ export function useComposerSend(input: ComposerSendInput) {
     const omittedEditedBoardsForSend = omittedEditedBoards(
       scopeThreadRef(environmentId, threadIdForSend),
     );
+    const omittedEditedFilesForSend = omittedEditedFiles(
+      scopeThreadRef(environmentId, threadIdForSend),
+    );
     const buildOutgoingMessageContext = (attachmentIds: ReadonlyArray<string>) =>
       buildMessageContext({
         terminalContexts: composerTerminalContextsSnapshot,
@@ -787,6 +790,7 @@ export function useComposerSend(input: ComposerSendInput) {
         wikiContexts: composerWikiNotesSnapshot,
         environmentContexts: composerEnvironmentContextsSnapshot,
         omitEditedBoards: omittedEditedBoardsForSend,
+        omitEditedFiles: omittedEditedFilesForSend,
         attachments: composerAttachmentsSnapshot.map((attachment, index) => ({
           attachment,
           attachmentId: attachmentIds[index] ?? attachment.id,

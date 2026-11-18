@@ -1,3 +1,4 @@
+import { history } from "@codemirror/commands";
 import { setDiagnostics } from "@codemirror/lint";
 import { EditorState, type Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
@@ -181,6 +182,8 @@ describe("the keyboard menu built from the menu rules", () => {
       ["ArrowRight l", "Focus right"],
       ["d", "Scroll down"],
       ["u", "Scroll up"],
+      ["z", "Undo"],
+      ["Z", "Redo"],
       ["g", "Go to"],
       ["t", "Tabs"],
       ["p", "Panes"],
@@ -190,12 +193,21 @@ describe("the keyboard menu built from the menu rules", () => {
       ["r", "Projects"],
       [",", "settings"],
     ]);
-    // Only the focus moves and the scrolls repeat, there and nowhere in the groups.
+    // Only the focus moves, the scrolls, and undo and redo repeat, there and nowhere in the groups.
     const repeatable = (group: WhichKeyGroup): string[] =>
       group.items.flatMap((item) =>
         item.group ? repeatable(item.group) : item.repeatable ? [item.keys[0]] : [],
       );
-    expect(repeatable(root)).toEqual(["ArrowLeft", "ArrowDown", "ArrowUp", "ArrowRight", "d", "u"]);
+    expect(repeatable(root)).toEqual([
+      "ArrowLeft",
+      "ArrowDown",
+      "ArrowUp",
+      "ArrowRight",
+      "d",
+      "u",
+      "z",
+      "Z",
+    ]);
     // Each focus move's row reads its arrow, then its letter.
     expect(
       keyLabels(
@@ -721,6 +733,26 @@ describe("a code file's editing commands", () => {
     });
     press(root, ["e", "."]);
     await vi.waitFor(() => expect(view.state.selection.main.from).toBe(19));
+  });
+
+  it("undoes and redoes in the editor the menu came from, faint with nothing that way", async () => {
+    using _cleanup = cleanup();
+    const view = editor("pear", [history(), codeEditing()]);
+    view.focus();
+    const from = () => context().actingFrom(keyIn(view));
+    expect(appCommand("edit.undo", from())).toMatchObject({ label: "Undo", disabled: true });
+    view.dispatch({ changes: { from: 4, insert: "s" } });
+    expect(appCommand("edit.redo", from()).disabled).toBe(true);
+
+    press(context({ origin: keyIn(view) }).root, ["z"]);
+    await vi.waitFor(() => expect(view.state.doc.toString()).toBe("pear"));
+    expect(appCommand("edit.undo", from()).disabled).toBe(true);
+    press(context({ origin: keyIn(view) }).root, ["Z"]);
+    await vi.waitFor(() => expect(view.state.doc.toString()).toBe("pears"));
+
+    // An editor that keeps no history of its own has nothing for these.
+    const plain = editor("a note", [history()]);
+    expect(appCommand("edit.undo", context().actingFrom(keyIn(plain))).disabled).toBe(true);
   });
 
   it("is faint outside a code file, and for edits in one that cannot be edited", () => {

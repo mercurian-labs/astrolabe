@@ -12,9 +12,13 @@ import {
   indentWithTab,
   moveLineDown,
   moveLineUp,
+  redo,
+  redoDepth,
   redoSelection,
   selectParentSyntax,
   toggleComment,
+  undo,
+  undoDepth,
   undoSelection,
 } from "@codemirror/commands";
 import {
@@ -31,6 +35,7 @@ import {
   Compartment,
   EditorSelection,
   EditorState,
+  Facet,
   type ChangeSpec,
   type Extension,
   type SelectionRange,
@@ -45,6 +50,12 @@ import {
 } from "@codemirror/view";
 
 import { drawnSelection } from "../drawnSelection.ts";
+import {
+  editorHistory,
+  editorHistoryBindings,
+  type EditorHistory,
+  type EditorHistoryKeys,
+} from "../history.ts";
 
 /**
  * Core editing for a repository file: several selections, column selection with Alt-drag,
@@ -307,6 +318,26 @@ export function setSoftWrap(view: EditorView, on: boolean): boolean {
 
 const toggleSoftWrap: Command = (view) => setSoftWrap(view, !softWrapOn(view.state));
 
+/** How an editor that hides lines of its own (an excerpt) shows them for Unfold and Unfold all. */
+export interface HiddenLinesUnfold {
+  readonly unfold: Command;
+  readonly unfoldAll: Command;
+}
+
+export const hiddenLinesUnfold = Facet.define<HiddenLinesUnfold, HiddenLinesUnfold | null>({
+  combine: (values) => values[0] ?? null,
+});
+
+// A fold at the cursor opens before the editor's hidden lines do.
+const unfold: Command = (view) =>
+  unfoldCode(view) || (view.state.facet(hiddenLinesUnfold)?.unfold(view) ?? false);
+
+const unfoldEverything: Command = (view) => {
+  const folds = unfoldAll(view);
+  const hidden = view.state.facet(hiddenLinesUnfold)?.unfoldAll(view) ?? false;
+  return folds || hidden;
+};
+
 /** The named commands a host binds keys to (and runs from a menu through `runCodeEditing`). */
 export const CODE_EDITING_COMMANDS = {
   selectNextOccurrence,
@@ -329,9 +360,9 @@ export const CODE_EDITING_COMMANDS = {
   lowerCase: convertCase((text) => text.toLowerCase()),
   duplicateSelection,
   fold: foldCode,
-  unfold: unfoldCode,
+  unfold,
   foldAll,
-  unfoldAll,
+  unfoldAll: unfoldEverything,
   toggleSoftWrap,
 } satisfies Record<string, Command>;
 
@@ -342,6 +373,8 @@ export type CodeEditingKeys = Partial<Record<CodeEditingCommand, readonly string
 
 export interface CodeEditingOptions {
   readonly keys?: CodeEditingKeys;
+  /** Undo and redo's keys; CodeMirror's own when not given. */
+  readonly historyKeys?: EditorHistoryKeys;
   /** Whether long lines wrap at first (see `setSoftWrap`). */
   readonly softWrap?: boolean;
 }
@@ -355,9 +388,17 @@ const otherDefaultKeys = defaultKeymap.filter(
 );
 
 // Undo and redo, without selection undo: its mod+u stays the app's (Usage).
-const historyKeys = historyKeymap.filter(
+const defaultHistoryKeys = historyKeymap.filter(
   (binding) => binding.run !== undoSelection && binding.run !== redoSelection,
 );
+
+/** The CodeMirror history a code editor's host installs. */
+const codeHistory: EditorHistory = {
+  undo,
+  redo,
+  canUndo: (state) => undoDepth(state) > 0,
+  canRedo: (state) => redoDepth(state) > 0,
+};
 
 /** The attribute that marks a code-editing editor (the app's `codeEditorFocus` reads it). */
 export const CODE_EDITING_ATTRIBUTE = "data-code-editing";
@@ -411,9 +452,14 @@ const theme = EditorView.theme({
  * Core editing for a code editor (see above). Every command it names takes its keys from `keys`;
  * a host lists this ahead of other keymaps whose keys should give way to these.
  */
-export function codeEditing({ keys = {}, softWrap = false }: CodeEditingOptions = {}): Extension {
+export function codeEditing({
+  keys = {},
+  historyKeys,
+  softWrap = false,
+}: CodeEditingOptions = {}): Extension {
   return [
     marker,
+    editorHistory.of(codeHistory),
     EditorState.allowMultipleSelections.of(true),
     drawnSelection,
     rectangularSelection(),
@@ -428,7 +474,7 @@ export function codeEditing({ keys = {}, softWrap = false }: CodeEditingOptions 
       ...namedBindings(keys),
       ...closeBracketsKeymap,
       ...otherDefaultKeys,
-      ...historyKeys,
+      ...(historyKeys ? editorHistoryBindings(codeHistory, historyKeys) : defaultHistoryKeys),
       indentWithTab,
     ]),
     theme,

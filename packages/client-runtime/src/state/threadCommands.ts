@@ -40,6 +40,7 @@ import {
   respondToThreadUserInput,
   dismissThreadUserInput,
   editThreadCanvas,
+  recordThreadFileEdit,
   revertThreadCheckpoint,
   setThreadInteractionMode,
   setThreadRuntimeMode,
@@ -299,6 +300,12 @@ export function createThreadEnvironmentAtoms<R, E>(
     editCanvas: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:edit-canvas",
       execute: editThreadCanvas,
+      scheduler,
+      concurrency,
+    }),
+    recordFileEdit: createEnvironmentCommand(runtime, {
+      label: "environment-data:commands:thread:record-file-edit",
+      execute: recordThreadFileEdit,
       scheduler,
       concurrency,
     }),

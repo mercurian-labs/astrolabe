@@ -70,8 +70,8 @@ button searches again.
 
 - Arrow keys move from one excerpt into the next. `f7` and `shift+f7` jump to the next and
   previous file, `shift+enter` shows five more lines around an excerpt (or click **more lines**
-  above or below it; excerpts that meet merge), and `alt+enter` opens the excerpt's file at the
-  cursor. Each excerpt has its own undo, which takes back only what you typed there.
+  above or below it, or Unfold; excerpts that meet merge), Unfold all shows the whole file, and
+  `alt+enter` opens the excerpt's file at the cursor. Each excerpt has its own undo, which takes back only what you typed there.
 - **Replace all** replaces every match in the results' files. With more than ten files it asks
   first. A file open in another tab takes the replacement there, where undo takes it back; the
   rest are changed and saved for you. **Undo replace-all** takes the whole replacement back, also
@@ -135,9 +135,27 @@ opens your branch's, from the **⋯** menu on a worktree's header. To compare wi
 branch, pick it from the branch name in the changes tab's title. Comment on lines to send them to the thread working in that copy, or to the
 project's new thread.
 
-In a thread, the **Files** and **Diff** tabs offer **Open in Projects** from their tab menu. A file
-shown in **Files** opens in Projects from its **Open** button too; your other editors are in the
-menu beside it.
+In a thread, the **Files** and **Diff** tabs offer **Open in Projects** from their tab menu.
+
+## Edit a thread's files
+
+A file a thread links to opens read only in its own tab beside the chat, where you can comment on
+lines. **Edit file** in the tab's header opens it in the [editor](#edit), in the same tab; the same
+button, now **Preview file**, goes back, and your edits are already saved. Space `t` `e` and
+**Edit file** in the Command Palette do the same for the tab in front. Images, PDFs, documents
+and other files that aren't text have no **Edit**, and neither do files outside the thread's copy.
+To open a file in another app or show it in its folder, right-click it in the file tree.
+
+The composer then shows an **Edited** pill for each file you changed: with your next message the
+agent sees what you changed since its last turn. Click a pill to open the file, or remove it (×)
+to keep those edits from the agent; editing the file again brings the pill back. Only edits made
+in a thread's file tab count, not ones in a Projects tab. On the phone, a thread's files stay read
+only.
+
+To throw your changes to a file away, use the pill's revert button (↺), **Revert to agent's
+version**. It first shows what goes, including any changes made outside the editor, and the revert
+is one edit: undo in the editor or **Undo** in the notice brings your changes back. It waits while
+the agent is working, and leaves a file you committed since the agent's last turn to git.
 
 ## Manage projects
 

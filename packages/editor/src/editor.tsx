@@ -8,6 +8,7 @@ import type { Awareness } from "y-protocols/awareness";
 import { livePreview } from "./markdown/livePreview.ts";
 import type { LivePreviewOptions } from "./markdown/config.ts";
 import { agentChanges } from "./collab/agentChanges.ts";
+import { editorHistory, editorHistoryBindings, type EditorHistoryKeys } from "./history.ts";
 import { inFileSearch } from "./search.ts";
 import { vimMode, type VimHistory } from "./vim.ts";
 
@@ -40,6 +41,11 @@ export interface AtlasEditorProps {
    * stable; a new one remounts.
    */
   findKeys?: readonly string[];
+  /**
+   * Undo and redo's keys; Yjs's own (`yUndoManagerKeymap`) when not given. Keep the object
+   * stable; a new one remounts.
+   */
+  historyKeys?: EditorHistoryKeys;
   className?: string;
 }
 
@@ -119,6 +125,7 @@ export function AtlasEditor({
   locked = false,
   readOnly = false,
   findKeys,
+  historyKeys,
 }: AtlasEditorProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   // The mounted editor, its Vim compartment, and the undo history Vim runs.
@@ -154,6 +161,18 @@ export function AtlasEditor({
         undoManager.captureTimeout = on ? Number.POSITIVE_INFINITY : CAPTURE_TIMEOUT;
       },
     };
+    const yHistory = {
+      undo: () => {
+        undoManager.undo();
+        return true;
+      },
+      redo: () => {
+        undoManager.redo();
+        return true;
+      },
+      canUndo: () => undoManager.canUndo(),
+      canRedo: () => undoManager.canRedo(),
+    };
     const vimSlot = new Compartment();
     const readOnlySlot = new Compartment();
     const view = new EditorView({
@@ -165,7 +184,12 @@ export function AtlasEditor({
           // Prec.high so a host's history keymap cannot shadow it, and yCollab handles the
           // browser's historyUndo/historyRedo input events.
           yCollab(text, awareness, { undoManager }),
-          Prec.high(keymap.of(yUndoManagerKeymap)),
+          Prec.high(
+            keymap.of(
+              historyKeys ? editorHistoryBindings(yHistory, historyKeys) : yUndoManagerKeymap,
+            ),
+          ),
+          editorHistory.of(yHistory),
           isolatedUndoSteps(undoManager),
           // Ahead of the default keymap, so a find key it also binds opens the bar.
           inFileSearch(findKeys ? { keys: findKeys } : {}),
@@ -192,7 +216,7 @@ export function AtlasEditor({
       view.destroy();
       undoManager.destroy();
     };
-  }, [text, awareness, extensions, livePreviewOptions, locked, findKeys]);
+  }, [text, awareness, extensions, livePreviewOptions, locked, findKeys, historyKeys]);
 
   // Vim on or off without remounting: the compartment is reconfigured in place.
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- turns Vim mode on or off in the CodeMirror view without remounting

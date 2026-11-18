@@ -206,6 +206,11 @@ export function createOrchestrationEnvironmentAtoms<R, E>(
       label: "environment-data:orchestration:force-stop-thread",
       tag: ORCHESTRATION_V2_WS_METHODS.forceStopThread,
     }),
+    // Astrolabe: read each time the revert dialog opens, guarded as the file write it leads to.
+    previewFileRevert: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:orchestration:preview-file-revert",
+      tag: ORCHESTRATION_V2_WS_METHODS.previewFileRevert,
+    }),
     turnItem: (target: {
       readonly environmentId: EnvironmentId;
       readonly input: OrchestrationV2GetTurnItemInput;

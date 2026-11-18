@@ -1037,7 +1037,6 @@ function samePanelDrawing(before: PanelProps, next: PanelProps) {
     before.previewSessions === next.previewSessions &&
     before.desktopByTabId === next.desktopByTabId &&
     before.terminalLabelsById === next.terminalLabelsById &&
-    before.pendingSurfaceIds === next.pendingSurfaceIds &&
     before.pullRequestStatusSeeds === next.pullRequestStatusSeeds &&
     before.browserAvailable === next.browserAvailable &&
     before.terminalAvailable === next.terminalAvailable &&

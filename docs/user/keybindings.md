@@ -129,6 +129,7 @@ you need.
 | `f`                     | Find a file in the current project                                                                                                                                                                                                                                 |
 | Arrows, `h` `j` `k` `l` | [Move focus](#moving-focus) left, down, up, or right                                                                                                                                                                                                               |
 | `d` `u`                 | [Scroll](#scrolling) down or up half a page                                                                                                                                                                                                                        |
+| `z` `Z`                 | [Undo or redo](#undo-and-redo) in the code file or note you're in                                                                                                                                                                                                  |
 | `g`                     | Go to Agents, Wikis, Projects, Changes, Usage, or Settings                                                                                                                                                                                                         |
 | `t`                     | Tabs: next, previous, close, reopen, back, forward, link                                                                                                                                                                                                           |
 | `p`                     | Panes: split, close, maximize, full screen, right panel                                                                                                                                                                                                            |
@@ -194,6 +195,14 @@ faint when there is nowhere further to go. `Ctrl+D` and `Ctrl+U` work while you
 are not typing; in the composer and notes they stay Vim's. On Windows and Linux
 they stay the diff toggle and Usage, so use Space `d` and `u` there, or bind
 **Scroll Down** and **Scroll Up** to other keys.
+
+### Undo and redo
+
+`mod+z` undoes in a code file or note, and `mod+shift+z` or `Ctrl+Y` redoes. Space `z` and `Z`
+do the same from the keyboard menu, and more `z` and `Z` keep going for the repeat window; the
+Command Palette lists **Undo** and **Redo** too. They show faint when there is nothing to undo or
+redo. In a note, undo takes back only your own changes, never an agent's. Change the keys under
+**Editors** in **Settings → Keybindings**.
 
 ### The sidebar's list
 
@@ -505,10 +514,11 @@ the language servers already running there, and the code index when none is or t
 answer.
 
 Rename Symbol opens a box below the name: type the new name and press Enter, or Escape to
-cancel. The rename reaches every file that uses the name, open or not, and they are saved. Then
-every changed place opens in one editor of excerpts, with **Undo rename** at the top. It is not in
-the file's own undo: use that button, or run Undo Rename, to put every file back. Edits made since
-are kept. Closing the tab keeps the rename.
+cancel. The rename reaches every file that uses the name, open or not, and they are saved. A
+rename within the file shows a notice with **Undo**; one across several files opens every changed
+place beside the file in one editor of excerpts, titled Rename results, with **Undo rename** at the
+top. It is not in the file's own undo: use that button, or run Undo Rename, to put every file back.
+Edits made since are kept. Closing the tab keeps the rename.
 
 Format Document reformats the file with its language server, Ruff for Python, as one step you can
 undo. Repository files save themselves as you type; `mod+s` (`:w` in Vim) also saves now, and
@@ -727,7 +737,8 @@ to where you were first. In a code file those keys indent, so use `ctrl+-` and `
 Space `p` `f` takes the focused pane full screen: it fills the panes. Press it
 again to restore it. Space `p` `r` hides the
 [linked tabs](./thread-sidebar.md#linked-tabs) of the chat in front, or brings them back; Space `t` `n` opens a new linked tab for the focused chat, and Space
-`t` `k` links the focused tab to the chat in front, or unlinks it.
+`t` `k` links the focused tab to the chat in front, or unlinks it. Space `t` `e` switches a
+thread's file tab between its preview and the editor.
 
 `chat.new` may ask you to choose a project when there is more than one.
 `chat.newLocal` skips that chooser. Both use your

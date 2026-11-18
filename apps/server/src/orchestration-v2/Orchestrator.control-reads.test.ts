@@ -1880,6 +1880,85 @@ it.effect("dispatch records the command outcome and its duration", () =>
   }).pipe(Effect.provide(layerTest)),
 );
 
+it.effect("keeps the files the user edited in a thread, newest first, by their latest edit", () =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const threadId = ThreadId.make("thread:file-edit");
+    yield* orchestrator.dispatch({
+      type: "thread.create",
+      commandId: CommandId.make("create-file-edit"),
+      threadId,
+      projectId: ProjectId.make("project:file-edit"),
+      title: "File edits",
+      modelSelection,
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      createdBy: "user",
+      creationSource: "web",
+    });
+    const before = (yield* projections.getThreadRecords(threadId, [])).thread.updatedAt;
+    const record = (id: string, path: string) =>
+      orchestrator.dispatch({
+        type: "thread.file-edit.record",
+        commandId: CommandId.make(`file-edit:${id}`),
+        threadId,
+        path,
+      });
+    yield* record("a", "src/a.ts");
+    yield* record("b", "src/b.ts");
+    yield* record("a-again", "src/a.ts");
+    const { thread } = yield* projections.getThreadRecords(threadId, []);
+    assert.deepStrictEqual(
+      thread.editedFiles?.map((file) => file.path),
+      ["src/a.ts", "src/b.ts"],
+    );
+    // An edit is not activity: the thread keeps its place in the sidebar.
+    assert.isTrue(DateTime.Equivalence(thread.updatedAt, before));
+    const refused = yield* record("outside", "../outside.ts").pipe(Effect.flip);
+    assert.instanceOf(refused, Orchestrator.OrchestratorDispatchError);
+
+    // Each edit asks for a check of the file it saved, at that edit.
+    const outbox = yield* EffectOutbox.EffectOutboxV2;
+    assert.deepStrictEqual(
+      (yield* outbox.listByCommandId(CommandId.make("file-edit:a-again"))).map(
+        (effect) => effect.request,
+      ),
+      [
+        {
+          type: "thread.file-edit.check",
+          path: "src/a.ts",
+          editedAt: thread.editedFiles![0]!.editedAt,
+        },
+      ],
+    );
+    const clear = (id: string, path: string, editedAt: DateTime.Utc) =>
+      orchestrator.dispatch({
+        type: "thread.file-edit.clear",
+        commandId: CommandId.make(`file-edit-clear:${id}`),
+        threadId,
+        path,
+        editedAt,
+      });
+    const [a, b] = thread.editedFiles!;
+    // A clear for an edit a newer one replaced leaves the newer edit.
+    yield* clear("stale", "src/b.ts", DateTime.subtract(b!.editedAt, { seconds: 1 }));
+    assert.deepStrictEqual(
+      (yield* projections.getThreadRecords(threadId, [])).thread.editedFiles,
+      thread.editedFiles,
+    );
+    yield* clear("a", "src/a.ts", a!.editedAt);
+    const cleared = (yield* projections.getThreadRecords(threadId, [])).thread;
+    assert.deepStrictEqual(
+      cleared.editedFiles?.map((file) => file.path),
+      ["src/b.ts"],
+    );
+    assert.isTrue(DateTime.Equivalence(cleared.updatedAt, before));
+  }).pipe(Effect.provide(layerTest)),
+);
+
 it.effect(
   "records a drawn board once, as the canvas item clients draw, and takes the user's edits",
   () =>

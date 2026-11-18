@@ -87,6 +87,10 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "f2", command: "lsp.rename", when: "codeEditorFocus" },
   { key: "mod+shift+i", command: "lsp.format", when: "codeEditorFocus" },
   { key: "mod+.", command: "lsp.codeActions", when: "codeEditorFocus" },
+  // Astrolabe: undo and redo in a code file or note, which each editor binds itself.
+  { key: "mod+z", command: "edit.undo", when: "editorFocus" },
+  { key: "mod+shift+z", command: "edit.redo", when: "editorFocus" },
+  { key: "ctrl+y", command: "edit.redo", when: "editorFocus" },
   // Astrolabe: a code file's save, which formats it first (format on save).
   { key: "mod+s", command: "file.save", when: "codeEditorFocus" },
   // Astrolabe: a multi-file view's excerpts, which each excerpt's editor binds itself; the project

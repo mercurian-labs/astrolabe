@@ -425,6 +425,44 @@ it.layer(layerTest)("Documents", (it) => {
         }),
       ),
     );
+
+    it.effect("tells a file edited only through its documents from one written elsewhere", () =>
+      withWorkspace("one\n", (workspace) =>
+        Effect.gen(function* () {
+          const documents = yield* Documents.Documents;
+          const onlyHere = (base: string) =>
+            documents.editedOnlyHere({ ...workspace.target, base });
+          // Never read by the service: nothing is known of how it got its text.
+          expect(yield* onlyHere("one\n")).toBe(false);
+
+          const a = yield* connect(workspace.target, "a");
+          a.edit({ from: 4, insert: "two\n" });
+          yield* a.push();
+          yield* TestClock.adjust(Documents.SAVE_DELAY);
+          yield* a.nextDisk;
+          a.edit({ from: 8, insert: "three\n" });
+          yield* a.push();
+          yield* TestClock.adjust(Documents.SAVE_DELAY);
+          yield* a.nextDisk;
+          expect(yield* onlyHere("one\n")).toBe(true);
+          expect(yield* onlyHere("one\ntwo\n")).toBe(true);
+          expect(yield* onlyHere("zero\n")).toBe(false);
+
+          // A formatter rewrites it; no watch event has arrived yet.
+          yield* workspace.writeDisk("one\ntwo\nthree\nfour\n");
+          expect(yield* onlyHere("one\n")).toBe(false);
+          expect(yield* onlyHere("one\ntwo\nthree\nfour\n")).toBe(true);
+
+          // Written while no document has it open: the next load starts over from disk.
+          yield* a.leave;
+          yield* TestClock.adjust(Documents.IDLE_TIMEOUT);
+          yield* workspace.writeDisk("five\n");
+          expect(yield* onlyHere("one\ntwo\nthree\nfour\n")).toBe(false);
+          yield* connect(workspace.target, "b");
+          expect(yield* onlyHere("five\n")).toBe(true);
+        }),
+      ),
+    );
   });
 
   describe("eviction", () => {

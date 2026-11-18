@@ -28,6 +28,7 @@ import {
 } from "@t3tools/shared/textReplace";
 import * as KeyedLock from "@t3tools/shared/KeyedLock";
 import * as Context from "effect/Context";
+import * as Digest from "effect/crypto/Digest";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -94,6 +95,13 @@ export class Documents extends Context.Service<
     readonly undoReplaceAll: (
       input: DocumentUndoReplaceAllInput,
     ) => Effect.Effect<DocumentUndoReplaceAllResult, DocumentError>;
+    /**
+     * Whether the file reached its text now from `base` through this service's writes alone, with
+     * nothing else writing it since it held `base`. False when that isn't known.
+     */
+    readonly editedOnlyHere: (
+      input: DocumentTarget & { readonly base: string },
+    ) => Effect.Effect<boolean, DocumentError>;
     /** The open documents of a checkout whose text differs from disk, for searching. */
     readonly unsavedTexts: (
       cwd: string,
@@ -152,6 +160,11 @@ const lineBreak = /\r\n?|\n/;
 
 const normalizeLineBreaks = (text: string) => text.split(lineBreak).join("\n");
 
+const encoder = new TextEncoder();
+// How many files' lineages are kept, and how many texts of each.
+const LINEAGE_FILES = 256;
+const LINEAGE_TEXTS = 32;
+
 /** The edits that turn `from` into `to`, as a change set over `from`. */
 const textChanges = (from: string, to: string): ChangeSet => {
   const specs: Array<{ from: number; to: number; insert: string }> = [];
@@ -197,6 +210,7 @@ const make = Effect.gen(function* () {
   const workspacePaths = yield* WorkspacePaths.WorkspacePaths;
   const knownWorkspaces = yield* KnownWorkspaces.KnownWorkspaces;
   const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
+  const digest = yield* Digest.Digest;
 
   const serviceScope = yield* Effect.acquireRelease(Scope.make(), (scope) =>
     Scope.close(scope, Exit.void),
@@ -207,6 +221,27 @@ const make = Effect.gen(function* () {
   const documents = new Map<string, LoadedDocument>();
   const writes = yield* Effect.acquireRelease(PubSub.unbounded<DocumentWrite>(), PubSub.shutdown);
   const isCurrent = (document: LoadedDocument) => documents.get(document.target.key) === document;
+  // Per file, the digests of the texts it held since something else last wrote it, oldest first.
+  const lineages = new Map<string, ReadonlyArray<string>>();
+  const remember = (key: string, texts: ReadonlyArray<string>) => {
+    lineages.delete(key);
+    lineages.set(key, texts.slice(-LINEAGE_TEXTS));
+    for (const oldest of lineages.keys()) {
+      if (lineages.size <= LINEAGE_FILES) break;
+      lineages.delete(oldest);
+    }
+  };
+  const textDigest = (text: string) => digest.digestHex(Digest.sha1, encoder.encode(text));
+  /** Disk read as `text`: the same lineage if that is the text last seen, else a new one. */
+  const lineageRead = (key: string, text: string) =>
+    Effect.map(textDigest(text), (read) => {
+      const known = lineages.get(key);
+      remember(key, known?.at(-1) === read ? known : [read]);
+    });
+  const lineageWrote = (key: string, text: string) =>
+    Effect.map(textDigest(text), (written) =>
+      remember(key, [...(lineages.get(key) ?? []), written]),
+    );
 
   const fail = (reason: DocumentError["reason"], relativePath: string, cause?: unknown) =>
     new DocumentError({ reason, relativePath, ...(cause === undefined ? {} : { cause }) });
@@ -276,6 +311,7 @@ const make = Effect.gen(function* () {
   const syncLocked = Effect.fn("Documents.sync")(function* (document: LoadedDocument) {
     const raw = yield* readDisk(document.target);
     if (raw === null) {
+      lineages.delete(document.target.key);
       if (document.missing) return;
       document.missing = true;
       return yield* publishDisk(document);
@@ -284,6 +320,7 @@ const make = Effect.gen(function* () {
     document.missing = false;
     document.lineSeparator = raw.includes("\r\n") ? "\r\n" : "\n";
     const text = normalizeLineBreaks(raw);
+    yield* lineageRead(document.target.key, text);
     if (text === document.diskText) {
       if (wasMissing) yield* publishDisk(document);
       return;
@@ -340,6 +377,7 @@ const make = Effect.gen(function* () {
       relativePath: document.target.relativePath,
       created: document.missing,
     });
+    yield* lineageWrote(document.target.key, text);
     document.diskText = text;
     document.unsaved = ChangeSet.empty(document.doc.length);
     document.savedVersion = document.updates.length;
@@ -445,6 +483,7 @@ const make = Effect.gen(function* () {
     const raw = yield* readDisk(target);
     if (raw === null) return yield* fail("not-found", target.relativePath);
     const text = normalizeLineBreaks(raw);
+    yield* lineageRead(target.key, text);
     const doc = Text.of(text.split("\n"));
     const document: LoadedDocument = {
       target,
@@ -763,6 +802,26 @@ const make = Effect.gen(function* () {
     return { files: undone, skipped };
   });
 
+  const editedOnlyHere: Documents["Service"]["editedOnlyHere"] = Effect.fn(
+    "Documents.editedOnlyHere",
+  )(function* (input) {
+    const target = yield* resolveTarget(input);
+    return yield* lock.withLock(
+      target.key,
+      Effect.gen(function* () {
+        // An open document first takes in a write its watcher hasn't reported yet.
+        const document = documents.get(target.key);
+        if (document !== undefined) yield* syncLocked(document);
+        const raw = yield* readDisk(target);
+        const known = lineages.get(target.key);
+        if (raw === null || known === undefined) return false;
+        const now = yield* textDigest(normalizeLineBreaks(raw));
+        const base = yield* textDigest(normalizeLineBreaks(input.base));
+        return known.at(-1) === now && known.includes(base);
+      }),
+    );
+  });
+
   const unsavedTexts: Documents["Service"]["unsavedTexts"] = (cwd) =>
     Effect.sync(() => {
       const root = path.resolve(cwd);
@@ -794,6 +853,7 @@ const make = Effect.gen(function* () {
     writes: Stream.fromPubSub(writes),
     replaceAll,
     undoReplaceAll,
+    editedOnlyHere,
     unsavedTexts,
   });
 });

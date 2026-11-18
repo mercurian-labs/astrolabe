@@ -31,7 +31,6 @@ vi.mock("~/state/presentation", () => ({
 
 const projectMocks = vi.hoisted(() => ({
   listEntries: vi.fn(),
-  optimisticFile: vi.fn(),
   readFile: vi.fn(),
 }));
 
@@ -132,18 +131,16 @@ describe("project query refresh", () => {
     );
     authorizationMocks.phase = "connected";
     projectMocks.listEntries.mockReset();
-    projectMocks.optimisticFile.mockReset();
     projectMocks.readFile.mockReset();
     reactHooks.reset();
   });
 
-  it("does not query or expose optimistic file contents without read permission", () => {
+  it("does not query or expose file contents without read permission", () => {
     authorizationMocks.sessionAtom = Atom.make(
       AsyncResult.success({ authenticated: true, scopes: [] }),
     );
     const registry = AtomRegistry.make();
     atomHooks.registry = registry;
-    projectMocks.optimisticFile.mockReturnValue(Atom.make({ data: file("cached contents") }));
     try {
       const query = useProjectFileQuery(environmentId, "/repo", "src/preview.ts");
       expect(projectMocks.readFile).not.toHaveBeenCalled();
@@ -202,7 +199,6 @@ describe("project query refresh", () => {
     const registry = AtomRegistry.make();
     const unmount = registry.mount(readAtom);
     projectMocks.readFile.mockReturnValue(readAtom);
-    projectMocks.optimisticFile.mockReturnValue(Atom.make(null));
     atomHooks.registry = registry;
     let renderedContents: string | null = null;
 
@@ -246,7 +242,7 @@ describe("project query refresh", () => {
   it("confirms files from reads and preserves that identity until a definitive folder result", () => {
     const contents = file("# readme");
     const success = AsyncResult.success(contents);
-    const failure = (kind: ProjectReadFileError["failure"], cached = false) =>
+    const failure = (kind: NonNullable<ProjectReadFileError["failure"]>, cached = false) =>
       AsyncResult.failure(
         Cause.fail(
           new ProjectReadFileError({ cwd: "/repo", relativePath: "src/preview.ts", failure: kind }),
@@ -268,7 +264,6 @@ describe("project query refresh", () => {
     const registry = AtomRegistry.make();
     const unmount = registry.mount(readAtom);
     projectMocks.readFile.mockReturnValue(readAtom);
-    projectMocks.optimisticFile.mockReturnValue(Atom.make(null));
     atomHooks.registry = registry;
 
     try {

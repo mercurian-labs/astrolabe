@@ -66,6 +66,8 @@ export type RightPanelSurface =
       attachment?: ChatFileAttachment;
       /** Deepest workspace path retained for navigating back down after moving up. */
       folderTrail?: string;
+      /** Astrolabe: the tab shows its file in our editor, not the read-only preview. */
+      editing?: true;
     }
   | {
       id: `pull-request:${string}`;
@@ -139,6 +141,8 @@ interface RightPanelStoreState {
   renameDevice: (ref: ScopedThreadRef, surfaceId: string, title: string) => void;
   openBrowser: (ref: ScopedThreadRef, tabId: string | null) => void;
   openFile: (ref: ScopedThreadRef, relativePath: string, line?: number) => void;
+  /** Astrolabe: switches a file tab between our editor and its read-only preview. */
+  setFileEditing: (ref: ScopedThreadRef, surfaceId: string, editing: boolean) => void;
   /** Moves in place; "" opens the root explorer. folderTrail keeps the return path; keepSource opens beside the source. */
   navigateFolder: (
     ref: ScopedThreadRef,
@@ -542,7 +546,15 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
                         surface.revealRequestId >= 0
                           ? surface.revealRequestId
                           : 0;
-                      return [{ ...surface, revealLine, revealRequestId }];
+                      const { editing, ...rest } = surface;
+                      return [
+                        {
+                          ...rest,
+                          revealLine,
+                          revealRequestId,
+                          ...(editing === true ? { editing } : {}),
+                        },
+                      ];
                     }
                     if (surface.kind === "pull-request") {
                       if (
@@ -846,11 +858,14 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
               (surface): surface is Extract<RightPanelSurface, { kind: "file" }> =>
                 surface.id === surfaceId && surface.kind === "file",
             );
-            const surface = fileSurface(
-              relativePath,
-              normalizeRevealLine(line),
-              (existing?.revealRequestId ?? 0) + 1,
-            );
+            const surface = {
+              ...fileSurface(
+                relativePath,
+                normalizeRevealLine(line),
+                (existing?.revealRequestId ?? 0) + 1,
+              ),
+              ...(existing?.editing ? { editing: true as const } : {}),
+            };
             return {
               ...current,
               isOpen: true,
@@ -862,6 +877,17 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
                 : [...withoutStandaloneExplorer, surface],
             };
           }),
+        ),
+      setFileEditing: (ref, surfaceId, editing) =>
+        set((state) =>
+          automaticUpdate(state, scopedThreadKey(ref), (current) => ({
+            ...current,
+            surfaces: current.surfaces.map((surface) => {
+              if (surface.id !== surfaceId || surface.kind !== "file") return surface;
+              const { editing: _was, ...rest } = surface;
+              return editing ? { ...rest, editing: true } : rest;
+            }),
+          })),
         ),
       navigateFolder: (ref, surfaceId, relativePath, folderTrail, keepSource = false) =>
         set((state) =>

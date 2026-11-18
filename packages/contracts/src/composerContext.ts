@@ -346,6 +346,10 @@ export const OrchestrationMessageContext = Schema.Struct({
    * means every board edited since the last prompt is told, as for clients that never send it.
    */
   omitEditedBoards: Schema.optional(Schema.Array(TurnItemId).check(Schema.isMaxLength(200))),
+  /** Astrolabe: the same for files the user edited, by their path in the thread's checkout. */
+  omitEditedFiles: Schema.optional(
+    Schema.Array(Schema.String.check(Schema.isMaxLength(4096))).check(Schema.isMaxLength(200)),
+  ),
   records: Schema.Array(Schema.Unknown)
     .check(
       Schema.isMaxLength(COMPOSER_CONTEXT_MAX_RECORDS),

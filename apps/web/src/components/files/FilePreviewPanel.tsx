@@ -3,14 +3,11 @@ import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { Spinner } from "~/components/ui/spinner";
 import {
   AuthPreviewOperateScope,
-  type EditorId,
   type EnvironmentId,
   type ProjectId,
-  type ResolvedKeybindingsConfig,
   type ScopedThreadRef,
 } from "@t3tools/contracts";
 import { filePreviewDelimiter } from "@t3tools/shared/delimitedPreview";
-import { AuthFilesystemWriteScope } from "@t3tools/contracts";
 import {
   isWorkspaceAudioPreviewPath,
   isWorkspaceImagePreviewPath,
@@ -19,25 +16,15 @@ import {
   officePreviewKind,
   binaryPreviewKind,
 } from "@t3tools/shared/filePreview";
-import { useAtomMount, useAtomValue } from "@effect/atom-react";
+import { useAtomMount } from "@effect/atom-react";
 import { Atom } from "effect/reactivity";
 import {
-  DEFAULT_TOKENIZE_MAX_LENGTH,
   VirtualizedFile,
-  getFiletypeFromFileName,
   type File as FileInstance,
-  type FileContents,
   type PostRenderPhase,
   type SelectedLineRange,
 } from "@pierre/diffs";
-import {
-  Editor,
-  type EditorChangeEvent,
-  type EditorFactory,
-  type EditorOptions,
-} from "@pierre/diffs/edit";
-import type { WorkerPoolManager } from "@pierre/diffs/worker";
-import { EditProvider, File, Virtualizer, useWorkerPool } from "@pierre/diffs/react";
+import { File, Virtualizer } from "@pierre/diffs/react";
 import { DiffWorkerPoolProvider } from "../DiffWorkerPoolProvider";
 import { useFilesystemReadAccess } from "~/state/filesystem";
 import {
@@ -45,17 +32,15 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { mediaFileReference } from "@t3tools/client-runtime/media-reference";
-import { FolderTree, Globe2, WrapTextIcon } from "lucide-react";
+import { FolderTree, Globe2, SquarePenIcon, WrapTextIcon } from "lucide-react";
 import * as Schema from "effect/Schema";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 
 import { isBrowserPreviewFile, openFileInPreview } from "~/browser/openFileInPreview";
 import { useAssetUrlRefresh, useAssetUrlState } from "~/assets/assetUrls";
-import { OpenInPicker } from "~/components/chat/OpenInPicker";
-import { useThreadFileOpen } from "~/components/repositories/openInRepositories";
+import { linkedFileEditorPath } from "~/components/repositories/fileView";
 import { MediaVideoPlayer } from "~/components/media/MediaVideoPlayer";
 import { MediaActions, type MediaActionSource } from "~/components/media/MediaActions";
-import { useRemoteOpenState } from "~/remoteOpen";
 import { useClientSettings } from "~/hooks/useSettings";
 import { useTheme } from "~/hooks/useTheme";
 import { getLocalStorageItem, setLocalStorageItem, useLocalStorage } from "~/hooks/useLocalStorage";
@@ -71,9 +56,8 @@ import { type DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { buildFileReviewComment } from "~/reviewCommentContext";
 import { assetEnvironment } from "~/state/assets";
 import { usePreviewAvailable } from "~/browser/previewRuntime";
-import { useEnvironmentHttpBaseUrl, usePrimaryEnvironmentId } from "~/state/environments";
+import { useEnvironmentHttpBaseUrl } from "~/state/environments";
 import { previewEnvironment } from "~/state/preview";
-import { serverEnvironment } from "~/state/server";
 import { useEnvironmentScope } from "~/state/session";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
@@ -95,9 +79,7 @@ import {
   formatFileCommentRange,
   nextFileCommentId,
   normalizeFileCommentRange,
-  remapFileCommentAnnotations,
 } from "./fileCommentAnnotations";
-import { installFileEditorDismissal } from "./fileEditorDismissal";
 import {
   FILE_LINK_REVEAL_ATTRIBUTE,
   FILE_LINK_REVEAL_UNSAFE_CSS,
@@ -117,16 +99,8 @@ import {
   shouldShowFileExplorer,
   workspaceAssetResource,
 } from "./filePreviewMode";
-import { setMarkdownTaskChecked } from "@t3tools/shared/markdownTaskList";
-import { changeFileSaveSession, useFileSaveSession } from "./fileSaveSessions";
 import { revisionedQuery } from "~/state/revisionedQuery";
-import {
-  getOptimisticProjectFileQueryData,
-  getProjectFileContents,
-  getProjectFileQueryAtom,
-  setProjectFileQueryData,
-  useProjectFileQuery,
-} from "./projectFilesQueryState";
+import { getProjectFileQueryAtom, useProjectFileQuery } from "./projectFilesQueryState";
 
 const NO_FILE_REVISION_ATOM = Atom.make(null);
 
@@ -139,17 +113,14 @@ interface FilePreviewPanelProps {
   attachment?: ChatFileAttachment;
   threadRef: ScopedThreadRef;
   composerDraftTarget: ScopedThreadRef | DraftId;
-  keybindings: ResolvedKeybindingsConfig;
-  availableEditors: ReadonlyArray<EditorId>;
-  openInShortcutEnabled: boolean;
   revealLine: number | null;
   revealRequestId: number;
   onOpenFile: (relativePath: string) => void;
   onNavigateFolder: (relativePath: string, folderTrail: string, keepSource: boolean) => void;
   /** Retained descendant breadcrumb path after navigating up; see navigateFolder. */
   folderTrail: string | undefined;
-  onPendingChange: (relativePath: string, pending: boolean) => void;
-  selectedFilePending: boolean;
+  /** Switches the tab to our editor; shown for a text file of the thread's checkout. */
+  onEdit: () => void;
   workspaceMutationId: string | null;
 }
 
@@ -593,74 +564,17 @@ function useFileLineReveal(
   };
 }
 
-const createFileEditor: EditorFactory<FileCommentAnnotationGroup, undefined> = (
-  editorType,
-  options,
-  editStateKey,
-) => new Editor(editorType, options, editStateKey);
-
-function editableFileContents(
-  environmentId: EnvironmentId,
-  cwd: string,
-  relativePath: string,
-  contents: string,
-): FileContents {
-  return {
-    name: relativePath,
-    contents,
-    cacheKey: `editor:${environmentId}:${projectFileCacheKey(cwd, relativePath, contents)}`,
-  };
-}
-
-function needsWorkerHighlight(workerPool: WorkerPoolManager | undefined, file: FileContents) {
-  if (workerPool?.isWorkingPool() !== true) return false;
-  if ((file.lang ?? getFiletypeFromFileName(file.name)) === "text") return false;
-  let lines = 1;
-  for (
-    let index = file.contents.indexOf("\n");
-    index !== -1;
-    index = file.contents.indexOf("\n", index + 1)
-  ) {
-    lines += 1;
-  }
-  return lines <= DEFAULT_TOKENIZE_MAX_LENGTH;
-}
-
-/** Enable editing only after worker highlighting renders; active edit sessions highlight on the main
- * thread. */
-function useEditableAfterHighlight(file: FileContents) {
-  const workerPool = useWorkerPool();
-  const [highlightedFile, setHighlightedFile] = useState<FileContents | null>(null);
-  const needsHighlight = needsWorkerHighlight(workerPool, file);
-  const ready = !needsHighlight || highlightedFile === file;
-
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- primes the worker pool's highlight cache for this file and falls back to plain text if it fails
-  useEffect(() => {
-    if (ready || workerPool === undefined) return;
-    workerPool.primeFileHighlightCache(file).catch(() => setHighlightedFile(file));
-  }, [file, ready, workerPool]);
-
-  const onPostRender = (renderedFile: FileContents | undefined, phase: PostRenderPhase) => {
-    if (ready || phase === "unmount" || renderedFile?.cacheKey !== file.cacheKey) return;
-    // Cache results arrive just before instance rendering; seeing the cache during render means rows are
-    // highlighted.
-    if (workerPool?.getFileResultCache(file) !== undefined) setHighlightedFile(file);
-  };
-  return { ready, onPostRender };
-}
-
-interface EditableFileSurfaceProps {
+interface CommentableFileSurfaceProps {
   environmentId: EnvironmentId;
   projectId?: ProjectId | undefined;
-  cwd: string;
   relativePath: string;
+  cacheKey: string;
   composerDraftTarget: ScopedThreadRef | DraftId;
   contents: string;
   resolvedTheme: "light" | "dark";
   revealRequestId: number;
   wordWrap: boolean;
   onPostRender: FilePostRender;
-  onPendingChange: (relativePath: string, pending: boolean) => void;
 }
 
 interface FileSelectionOverride {
@@ -668,19 +582,19 @@ interface FileSelectionOverride {
   range: SelectedLineRange | null;
 }
 
-function EditableFileSurface({
+/** A read-only file whose lines take review comments, which go to the composer. */
+function CommentableFileSurface({
   environmentId,
   projectId,
-  cwd,
   relativePath,
+  cacheKey,
   composerDraftTarget,
   contents,
   resolvedTheme,
   revealRequestId,
   wordWrap,
   onPostRender,
-  onPendingChange,
-}: EditableFileSurfaceProps) {
+}: CommentableFileSurfaceProps) {
   const addReviewComment = useComposerDraftStore((store) => store.addReviewComment);
   const removeReviewComment = useComposerDraftStore((store) => store.removeReviewComment);
   const [lineAnnotations, setLineAnnotations] = useState<FileCommentLineAnnotation[]>([]);
@@ -690,60 +604,7 @@ function EditableFileSurface({
   const setSelectedRange = (range: SelectedLineRange | null) => {
     setSelectionOverride({ revealRequestId, range });
   };
-  const surfaceRef = useRef<HTMLDivElement>(null);
   const selectionFrameRef = useRef<number | null>(null);
-  const saveTarget = { environmentId, cwd, relativePath };
-  useFileSaveSession(saveTarget, onPendingChange);
-  // Retain file identity for echoed editor changes; only external changes replace the editor's draft.
-  const [externalFile, setExternalFile] = useState(() =>
-    editableFileContents(environmentId, cwd, relativePath, contents),
-  );
-  const [editedContents, setEditedContents] = useState<string | null>(null);
-  if (contents !== (editedContents ?? externalFile.contents)) {
-    setExternalFile(editableFileContents(environmentId, cwd, relativePath, contents));
-    setEditedContents(null);
-  }
-  const { ready: editable, onPostRender: onEditablePostRender } =
-    useEditableAfterHighlight(externalFile);
-  const editorRef = useRef<Editor<"file", FileCommentAnnotationGroup, undefined> | null>(null);
-  const editorOptions: EditorOptions<"file", FileCommentAnnotationGroup, undefined> = {
-    onAttach: (editor) => {
-      editorRef.current = editor;
-    },
-    onComplete: () => {
-      editorRef.current = null;
-    },
-  };
-
-  const handleEditChange = ({
-    file,
-    lineAnnotations: nextLineAnnotations,
-  }: EditorChangeEvent<"file", FileCommentAnnotationGroup, undefined>) => {
-    if (file.contents === getProjectFileContents(environmentId, cwd, relativePath)) return;
-    setEditedContents(file.contents);
-    setProjectFileQueryData(environmentId, cwd, relativePath, file.contents);
-    changeFileSaveSession(saveTarget, file.contents);
-    if (!nextLineAnnotations) return;
-    const remapped = remapFileCommentAnnotations(nextLineAnnotations);
-    // The editor hands back the array it was given until an edit moves an annotation.
-    setLineAnnotations((current) => (current === nextLineAnnotations ? current : remapped));
-    for (const annotation of remapped) {
-      for (const entry of annotation.metadata.entries) {
-        if (entry.kind !== "comment") continue;
-        addReviewComment(
-          composerDraftTarget,
-          buildFileReviewComment({
-            id: entry.id,
-            filePath: relativePath,
-            startLine: entry.startLine,
-            endLine: entry.endLine,
-            text: entry.text,
-            contents: file.contents,
-          }),
-        );
-      }
-    }
-  };
 
   const removeAnnotationEntry = (entryId: string) => {
     setSelectedRange(null);
@@ -789,8 +650,6 @@ function EditableFileSurface({
   };
 
   const beginComment = (range: SelectedLineRange) => {
-    editorRef.current?.setSelections([]);
-    editorRef.current?.blur();
     const { startLine, endLine } = normalizeFileCommentRange(range);
     const draftEntry: FileCommentAnnotationEntry = {
       id: nextFileCommentId(),
@@ -829,17 +688,6 @@ function EditableFileSurface({
   const hasOpenCommentForm = lineAnnotations.some((annotation) =>
     annotation.metadata.entries.some((entry) => entry.kind === "draft"),
   );
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- installs selection dismissal listeners on the editor surface DOM node
-  useEffect(() => {
-    const root = surfaceRef.current;
-    if (!root) return;
-    return installFileEditorDismissal({
-      root,
-      editor: { setSelections: (selections) => editorRef.current?.setSelections(selections) },
-      isBlocked: () => hasOpenCommentForm,
-      onDismiss: () => setSelectedRange(null),
-    });
-  }, [hasOpenCommentForm, setSelectedRange]);
   const handleLineSelectionEnd = (range: SelectedLineRange | null) => {
     setSelectedRange(range);
     if (range) {
@@ -849,7 +697,6 @@ function EditableFileSurface({
 
   const handlePostRender: FilePostRender = (fileContainer, instance, phase) => {
     onPostRender(fileContainer, instance, phase);
-    onEditablePostRender(instance.file, phase);
 
     if (selectionFrameRef.current !== null) {
       cancelAnimationFrame(selectionFrameRef.current);
@@ -865,115 +712,57 @@ function EditableFileSurface({
   };
 
   return (
-    <EditProvider createEditor={createFileEditor}>
-      <div ref={surfaceRef} className="flex min-h-0 flex-1">
-        <Virtualizer
-          className="file-preview-virtualizer min-h-0 flex-1 overflow-auto"
-          config={{
-            overscrollSize: 600,
-            intersectionObserverMargin: 1200,
-          }}
-        >
-          <File<FileCommentAnnotationGroup>
-            file={externalFile}
-            edit={editable}
-            editorOptions={editorOptions}
-            onEditChange={handleEditChange}
-            options={{
-              disableFileHeader: true,
-              enableGutterUtility: !hasOpenCommentForm,
-              enableLineSelection: !hasOpenCommentForm,
-              onGutterUtilityClick: setSelectedRange,
-              onLineSelectionChange: setSelectedRange,
-              onLineSelectionEnd: handleLineSelectionEnd,
-              overflow: wordWrap ? "wrap" : "scroll",
-              theme: resolveDiffThemeName(resolvedTheme),
-              preferredHighlighter: PREFERRED_HIGHLIGHTER,
-              themeType: resolvedTheme,
-              unsafeCSS: FILE_LINK_REVEAL_UNSAFE_CSS,
-              onPostRender: handlePostRender,
-            }}
-            selectedLines={selectedRange}
-            lineAnnotations={lineAnnotations}
-            renderAnnotation={(annotation) => (
-              <div className="py-1">
-                {annotation.metadata.entries.map((entry) => (
-                  <DiffCommentAnnotation
-                    key={entry.id}
-                    environmentId={environmentId}
-                    projectId={projectId}
-                    ownerKey={JSON.stringify([
-                      environmentId,
-                      composerDraftTarget,
-                      relativePath,
-                      entry.id,
-                    ])}
-                    kind={entry.kind}
-                    rangeLabel={formatFileCommentRange(entry.startLine, entry.endLine)}
-                    text={entry.text}
-                    onCancel={() => removeAnnotationEntry(entry.id)}
-                    onComment={(text) => submitAnnotationEntry(entry.id, text)}
-                    onDelete={() => removeAnnotationEntry(entry.id)}
-                  />
-                ))}
-              </div>
-            )}
-            className="min-h-full"
-          />
-        </Virtualizer>
-      </div>
-    </EditProvider>
-  );
-}
-
-function RenderedMarkdownSurface({
-  environmentId,
-  cwd,
-  relativePath,
-  contents,
-  threadRef,
-  workspaceMutationId,
-  readOnly,
-  onPendingChange,
-}: Omit<
-  EditableFileSurfaceProps,
-  | "resolvedTheme"
-  | "composerDraftTarget"
-  | "revealLine"
-  | "revealRequestId"
-  | "wordWrap"
-  | "onPostRender"
-> & {
-  threadRef: ScopedThreadRef;
-  readOnly: boolean;
-  workspaceMutationId: string | null;
-}) {
-  const saveTarget = { environmentId, cwd, relativePath };
-  useFileSaveSession(saveTarget, onPendingChange);
-
-  return (
-    <ScrollArea className="min-h-0 flex-1">
-      <FileMarkdownPreview
-        text={contents}
-        cwd={cwd}
-        relativePath={relativePath}
-        threadRef={threadRef}
-        workspaceMutationId={workspaceMutationId}
-        onTaskListChange={
-          readOnly
-            ? undefined
-            : ({ markerOffset, checked }) => {
-                const currentContents =
-                  getOptimisticProjectFileQueryData(environmentId, cwd, relativePath)?.contents ??
-                  contents;
-                const nextContents = setMarkdownTaskChecked(currentContents, markerOffset, checked);
-                if (nextContents === currentContents) return;
-                setProjectFileQueryData(environmentId, cwd, relativePath, nextContents);
-                changeFileSaveSession(saveTarget, nextContents);
-              }
-        }
+    <Virtualizer
+      className="file-preview-virtualizer min-h-0 flex-1 overflow-auto"
+      config={{
+        overscrollSize: 600,
+        intersectionObserverMargin: 1200,
+      }}
+    >
+      <File<FileCommentAnnotationGroup>
+        file={{ name: relativePath, contents, cacheKey }}
+        options={{
+          disableFileHeader: true,
+          enableGutterUtility: !hasOpenCommentForm,
+          enableLineSelection: !hasOpenCommentForm,
+          onGutterUtilityClick: setSelectedRange,
+          onLineSelectionChange: setSelectedRange,
+          onLineSelectionEnd: handleLineSelectionEnd,
+          overflow: wordWrap ? "wrap" : "scroll",
+          theme: resolveDiffThemeName(resolvedTheme),
+          preferredHighlighter: PREFERRED_HIGHLIGHTER,
+          themeType: resolvedTheme,
+          unsafeCSS: FILE_LINK_REVEAL_UNSAFE_CSS,
+          onPostRender: handlePostRender,
+        }}
+        selectedLines={selectedRange}
+        lineAnnotations={lineAnnotations}
+        renderAnnotation={(annotation) => (
+          <div className="py-1">
+            {annotation.metadata.entries.map((entry) => (
+              <DiffCommentAnnotation
+                key={entry.id}
+                environmentId={environmentId}
+                projectId={projectId}
+                ownerKey={JSON.stringify([
+                  environmentId,
+                  composerDraftTarget,
+                  relativePath,
+                  entry.id,
+                ])}
+                kind={entry.kind}
+                rangeLabel={formatFileCommentRange(entry.startLine, entry.endLine)}
+                text={entry.text}
+                onCancel={() => removeAnnotationEntry(entry.id)}
+                onComment={(text) => submitAnnotationEntry(entry.id, text)}
+                onDelete={() => removeAnnotationEntry(entry.id)}
+              />
+            ))}
+          </div>
+        )}
+        className="min-h-full"
       />
-    </ScrollArea>
+    </Virtualizer>
   );
 }
 
@@ -1005,16 +794,12 @@ export default function FilePreviewPanel({
   attachment,
   threadRef,
   composerDraftTarget,
-  keybindings,
-  availableEditors,
-  openInShortcutEnabled,
   revealLine,
   revealRequestId,
   onOpenFile,
   onNavigateFolder,
   folderTrail,
-  onPendingChange,
-  selectedFilePending,
+  onEdit,
   workspaceMutationId,
 }: FilePreviewPanelProps) {
   const relativePath =
@@ -1025,9 +810,6 @@ export default function FilePreviewPanel({
   const [wordWrapOverride, setWordWrapOverride] = useState<boolean | null>(null);
   const wordWrap = wordWrapOverride ?? defaultWordWrap;
   const canOperatePreview = useEnvironmentScope(environmentId, AuthPreviewOperateScope);
-  const primaryEnvironmentId = usePrimaryEnvironmentId();
-  const remoteOpenState = useRemoteOpenState(environmentId);
-  const serverConfig = useAtomValue(serverEnvironment.configValueAtom(environmentId));
   const environmentHttpBaseUrl = useEnvironmentHttpBaseUrl(environmentId);
   const previewAvailable = usePreviewAvailable(environmentId);
   const createAssetUrl = useAtomQueryRunner(assetEnvironment.createUrl, {
@@ -1051,7 +833,6 @@ export default function FilePreviewPanel({
     attachment !== undefined || (relativePath !== null && isHostPath(relativePath));
   const fileAccess = useFilesystemReadAccess(environmentId);
   const { canReadFiles } = fileAccess;
-  const canWriteFiles = useEnvironmentScope(environmentId, AuthFilesystemWriteScope);
   const file = useProjectFileQuery(
     environmentId,
     cwd,
@@ -1072,12 +853,6 @@ export default function FilePreviewPanel({
     attachment === undefined &&
     (file.isNotFile || (folderTrail !== undefined && file.data === null && file.error === null));
   const hostFolderPath = isFolder && isHostFile ? relativePath : null;
-  // A chat-linked folder reads as a file until its read settles, and revealing a
-  // folder selects it in its parent instead of opening it, so reveal waits.
-  const revealsInFileManager =
-    !isFolder &&
-    (file.data !== null || file.error !== null) &&
-    serverConfig?.shellRevealInFileManager === true;
   // Everything preview-related keys off previewPath; a folder has no preview.
   const previewPath = isFolder ? null : relativePath;
   const [explorerOpen, setExplorerOpen] = useState(initialExplorerOpen);
@@ -1176,8 +951,12 @@ export default function FilePreviewPanel({
       : relativePath && attachment === undefined
         ? resolvePathLinkTarget(relativePath, cwd)
         : null;
-  // Astrolabe: the open-in picker's primary action opens a checkout's file in a Projects tab.
-  const builtin = useThreadFileOpen(threadRef, draft, cwd, absolutePath, file.isFile, revealLine);
+  // Astrolabe: a text file of the thread's checkout opens in our editor, in this tab.
+  const editable =
+    attachment === undefined &&
+    file.data !== null &&
+    !file.data.truncated &&
+    linkedFileEditorPath(draft, cwd, absolutePath) !== null;
   const onFilePostRender = useFileLineReveal(relativePath, revealLine, revealRequestId);
   // Mounting the file read under the workspace mutation id refetches it after each mutation.
   useAtomMount(
@@ -1185,8 +964,7 @@ export default function FilePreviewPanel({
       attachment === undefined &&
       relativePath !== null &&
       // Skip mutation reads for media and documents; folders still detect conversion to files.
-      (isFolder || (!isMedia && !isPdf && !isDocument)) &&
-      !selectedFilePending
+      (isFolder || (!isMedia && !isPdf && !isDocument))
       ? revisionedQuery(
           getProjectFileQueryAtom(environmentId, cwd, relativePath),
           workspaceMutationId,
@@ -1283,19 +1061,10 @@ export default function FilePreviewPanel({
               />
             </div>
           </ScrollArea>
-          {absolutePath &&
-          (environmentId === primaryEnvironmentId || remoteOpenState.mode !== "local-exec") ? (
-            <OpenInPicker
-              environmentId={environmentId}
-              keybindings={keybindings}
-              availableEditors={availableEditors}
-              enableShortcut={openInShortcutEnabled}
-              openInCwd={absolutePath}
-              openInCwdIsFile={file.isFile}
-              compact
-              revealFileManager={revealsInFileManager}
-              builtinOpen={builtin}
-            />
+          {editable ? (
+            <FileSurfaceAction label="Edit file" onPress={onEdit}>
+              <SquarePenIcon className="size-3.5" />
+            </FileSurfaceAction>
           ) : null}
           {canToggleRendered && renderedMode ? (
             <FileSurfaceAction
@@ -1343,11 +1112,6 @@ export default function FilePreviewPanel({
               <FolderTree className="size-3.5" />
             </FileSurfaceAction>
           ) : null}
-        </div>
-      ) : null}
-      {relativePath && !attachment && !isHostFile && !canWriteFiles && !fileAccess.isPending ? (
-        <div className="shrink-0 border-b px-3 py-1.5 text-2xs text-muted-foreground">
-          Read-only connection. Unsaved edits are kept until write access returns.
         </div>
       ) : null}
       {previewPath &&
@@ -1498,17 +1262,15 @@ export default function FilePreviewPanel({
                 <MermaidFilePreview text={file.data.contents} />
               </Suspense>
             ) : isMarkdown && renderMarkdown ? (
-              <RenderedMarkdownSurface
-                key={relativePath}
-                environmentId={environmentId}
-                cwd={cwd}
-                relativePath={relativePath}
-                threadRef={threadRef}
-                contents={file.data.contents}
-                workspaceMutationId={workspaceMutationId}
-                readOnly={file.data.truncated || isHostFile || !canWriteFiles}
-                onPendingChange={onPendingChange}
-              />
+              <ScrollArea key={relativePath} className="min-h-0 flex-1">
+                <FileMarkdownPreview
+                  text={file.data.contents}
+                  cwd={cwd}
+                  relativePath={relativePath}
+                  threadRef={threadRef}
+                  workspaceMutationId={workspaceMutationId}
+                />
+              </ScrollArea>
             ) : tableDelimiter && renderTable ? (
               <DelimitedTablePreview
                 key={relativePath}
@@ -1516,7 +1278,7 @@ export default function FilePreviewPanel({
                 text={file.data.contents}
                 delimiter={tableDelimiter}
               />
-            ) : file.data.truncated || isHostFile || !canWriteFiles ? (
+            ) : file.data.truncated || isHostFile ? (
               <SourceFilePreview
                 name={relativePath}
                 text={file.data.contents}
@@ -1526,19 +1288,18 @@ export default function FilePreviewPanel({
               />
             ) : (
               <DiffWorkerPoolProvider>
-                <EditableFileSurface
+                <CommentableFileSurface
                   key={`${relativePath}:${resolvedTheme}`}
                   environmentId={environmentId}
                   projectId={projectId}
-                  cwd={cwd}
                   relativePath={relativePath}
+                  cacheKey={projectFileCacheKey(cwd, relativePath, file.data.contents)}
                   composerDraftTarget={composerDraftTarget}
                   contents={file.data.contents}
                   resolvedTheme={resolvedTheme}
                   revealRequestId={revealRequestId}
                   wordWrap={wordWrap}
                   onPostRender={onFilePostRender}
-                  onPendingChange={onPendingChange}
                 />
               </DiffWorkerPoolProvider>
             )

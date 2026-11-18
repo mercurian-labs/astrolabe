@@ -34,21 +34,3 @@ export function normalizeFileCommentRange(range: SelectedLineRange): {
 export function formatFileCommentRange(startLine: number, endLine: number): string {
   return startLine === endLine ? `L${startLine}` : `L${startLine} to L${endLine}`;
 }
-
-export function remapFileCommentAnnotations(
-  annotations: ReadonlyArray<FileCommentLineAnnotation>,
-): FileCommentLineAnnotation[] {
-  return annotations.map((annotation) => ({
-    ...annotation,
-    metadata: {
-      entries: annotation.metadata.entries.map((entry) => {
-        const lineCount = entry.endLine - entry.startLine;
-        return {
-          ...entry,
-          endLine: annotation.lineNumber,
-          startLine: Math.max(1, annotation.lineNumber - lineCount),
-        };
-      }),
-    },
-  }));
-}

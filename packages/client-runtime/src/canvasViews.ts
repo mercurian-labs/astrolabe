@@ -88,19 +88,33 @@ export interface EditedBoard {
   readonly dismissed: boolean;
 }
 
-interface EditedBoardsThread {
+interface PromptedThread {
   readonly runs: ReadonlyArray<{
     readonly userMessageId: string;
     readonly requestedAt: DateTime.Utc;
     readonly startedAt: DateTime.Utc | null;
   }>;
   readonly messages: ReadonlyArray<{ readonly id: string; readonly text: string }>;
+}
+
+interface EditedBoardsThread extends PromptedThread {
   readonly turnItems: ReadonlyArray<{
     readonly id: string;
     readonly type: string;
     readonly title?: string | null | undefined;
     readonly editedAt?: DateTime.Utc | undefined;
   }>;
+}
+
+/** When the latest prompt started, which a slash command is not; null before any. */
+function lastPromptAt(thread: PromptedThread): DateTime.Utc | null {
+  const lastPrompt = thread.runs.findLast(
+    (run) =>
+      !(thread.messages.find((message) => message.id === run.userMessageId)?.text ?? "")
+        .trimStart()
+        .startsWith("/"),
+  );
+  return lastPrompt === undefined ? null : (lastPrompt.startedAt ?? lastPrompt.requestedAt);
 }
 
 /**
@@ -112,14 +126,8 @@ export function editedBoardsSinceLastPrompt(
   thread: EditedBoardsThread,
   dismissed: Readonly<Record<string, string>>,
 ): ReadonlyArray<EditedBoard> {
-  const lastPrompt = thread.runs.findLast(
-    (run) =>
-      !(thread.messages.find((message) => message.id === run.userMessageId)?.text ?? "")
-        .trimStart()
-        .startsWith("/"),
-  );
-  if (lastPrompt === undefined) return [];
-  const since = lastPrompt.startedAt ?? lastPrompt.requestedAt;
+  const since = lastPromptAt(thread);
+  if (since === null) return [];
   return thread.turnItems.flatMap((item) => {
     if (item.type !== "canvas" || item.editedAt === undefined) return [];
     if (!DateTime.isGreaterThan(item.editedAt, since)) return [];
@@ -132,5 +140,39 @@ export function editedBoardsSinceLastPrompt(
         dismissed: dismissed[item.id] === editedAt,
       },
     ];
+  });
+}
+
+/** Astrolabe: a file the user edited in the thread's linked file tabs since the last prompt. */
+export interface EditedFile {
+  /** Its path in the thread's checkout. */
+  readonly path: string;
+  readonly editedAt: string;
+  /** The user left this edit out of their next message; a later edit brings the file back. */
+  readonly dismissed: boolean;
+}
+
+interface EditedFilesThread extends PromptedThread {
+  readonly thread: {
+    readonly editedFiles?:
+      | ReadonlyArray<{ readonly path: string; readonly editedAt: DateTime.Utc }>
+      | undefined;
+  };
+}
+
+/**
+ * The files the agent's next turn is told about, by the server's `editedFilesSince` rule, newest
+ * first; as `editedBoardsSinceLastPrompt`, `dismissed` maps a file's path to the edit left out.
+ */
+export function editedFilesSinceLastPrompt(
+  thread: EditedFilesThread,
+  dismissed: Readonly<Record<string, string>>,
+): ReadonlyArray<EditedFile> {
+  const since = lastPromptAt(thread);
+  if (since === null) return [];
+  return (thread.thread.editedFiles ?? []).flatMap((file) => {
+    if (!DateTime.isGreaterThan(file.editedAt, since)) return [];
+    const editedAt = DateTime.formatIso(file.editedAt);
+    return [{ path: file.path, editedAt, dismissed: dismissed[file.path] === editedAt }];
   });
 }

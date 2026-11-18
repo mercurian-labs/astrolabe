@@ -12,6 +12,10 @@
       "types": "./src/vim.ts",
       "default": "./src/vim.ts"
     },
+    "./history": {
+      "types": "./src/history.ts",
+      "default": "./src/history.ts"
+    },
     "./search": {
       "types": "./src/search.ts",
       "default": "./src/search.ts"

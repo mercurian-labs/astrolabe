@@ -70,6 +70,7 @@ import * as DocumentText from "./provider/DocumentText.ts";
 import * as AcpRegistrySupport from "@t3tools/provider-acp-registry/server/AcpRegistrySupport";
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as NativeChildWorkQuery from "./orchestration-v2/NativeChildWorkQuery.ts";
+import * as EditedFileRevert from "./orchestration-v2/EditedFileRevert.ts";
 import * as CheckpointStore from "./checkpointing/CheckpointStore.ts";
 import * as SourceControlBuiltInDrivers from "./sourceControl/builtInDrivers.ts";
 import * as SourceControlSignIn from "./sourceControl/SourceControlSignIn.ts";
@@ -726,6 +727,8 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   VcsBaseText.layer,
   // Astrolabe: tells language servers of the files the checkout's signals show changed.
   WorkspaceChangeSignals.layer,
+  // Astrolabe: what reverting a file the user edited to the agent's version would throw away.
+  EditedFileRevert.layer,
   Layer.effectDiscard(ProjectSettingsOverrideSweep.sweep),
 ).pipe(
   Layer.provideMerge(layerOrchestrationApplication),

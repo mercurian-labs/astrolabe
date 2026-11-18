@@ -76,10 +76,12 @@ import {
   ThreadId,
   TurnItemId,
   TrimmedNonEmptyString,
+  THREAD_EDITED_FILES_MAX,
   managedRuntimeModeCeilingMessage,
 } from "@t3tools/contracts";
 import { modelSelectionsEqual } from "@t3tools/shared/model";
 import { modelSwitchSince } from "./modelSwitch.ts";
+import { isCheckoutRelativePath } from "./EditedFilesNote.ts";
 import { recordThreadOpen } from "@t3tools/shared/paletteSearch";
 import {
   backgroundWorkHoldsCompletion,
@@ -637,6 +639,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "runtime-request.delivery.fail":
     case "thread.user-input.dismiss":
     case "canvas.edit":
+    case "thread.file-edit.record":
     case "checkpoint.rollback":
     case "checkpoint.rollback.fail":
     case "thread.background-work.settle":
@@ -656,6 +659,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "secret_request.record":
     case "link_request.record":
     case "canvas.record":
+    case "thread.file-edit.clear":
       return command.threadId;
     case "thread.fork":
     case "thread.merge_back":
@@ -9536,6 +9540,96 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     });
   });
 
+  /**
+   * The file moves to the front of the thread's edited files, at this edit; then a check drops it
+   * if the edits net out to nothing.
+   */
+  const dispatchThreadFileEdit = Effect.fn("orchestrationV2.dispatch.threadFileEdit")(function* (
+    command: Extract<OrchestrationV2Command, { readonly type: "thread.file-edit.record" }>,
+    events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
+    effects: Ref.Ref<Array<PendingOrchestrationEffectV2>>,
+  ) {
+    const thread = yield* projectionStore
+      .getThread(command.threadId)
+      .pipe(
+        Effect.mapError(
+          (cause) => new OrchestratorProjectionError({ threadId: command.threadId, cause }),
+        ),
+      );
+    if (thread.deletedAt !== null || !isCheckoutRelativePath(command.path)) {
+      return yield* new OrchestratorDispatchError({
+        commandId: command.commandId,
+        commandType: command.type,
+        cause:
+          thread.deletedAt !== null
+            ? `Thread ${command.threadId} is deleted.`
+            : `${command.path} is not a path in the thread's checkout.`,
+      });
+    }
+    const occurredAt = yield* DateTime.now;
+    const others = (thread.editedFiles ?? []).filter((file) => file.path !== command.path);
+    yield* emit(
+      events,
+      command,
+    )({
+      type: "thread.file-edited",
+      threadId: command.threadId,
+      providerInstanceId: thread.providerInstanceId,
+      occurredAt,
+      payload: {
+        ...thread,
+        editedFiles: [{ path: command.path, editedAt: occurredAt }, ...others].slice(
+          0,
+          THREAD_EDITED_FILES_MAX,
+        ),
+      },
+    });
+    yield* Ref.update(effects, (existing) => [
+      ...existing,
+      {
+        id: `effect:${command.commandId}:thread.file-edit.check`,
+        commandId: command.commandId,
+        threadId: command.threadId,
+        request: { type: "thread.file-edit.check", path: command.path, editedAt: occurredAt },
+      } satisfies PendingOrchestrationEffectV2,
+    ]);
+  });
+
+  /** Drops the file's edit, unless a newer edit replaced the one the check compared. */
+  const dispatchThreadFileEditClear = Effect.fn("orchestrationV2.dispatch.threadFileEditClear")(
+    function* (
+      command: Extract<OrchestrationV2InternalCommand, { readonly type: "thread.file-edit.clear" }>,
+      events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
+    ) {
+      const thread = yield* projectionStore
+        .getThread(command.threadId)
+        .pipe(
+          Effect.mapError(
+            (cause) => new OrchestratorProjectionError({ threadId: command.threadId, cause }),
+          ),
+        );
+      const editedFiles = thread.editedFiles ?? [];
+      const edit = editedFiles.find((file) => file.path === command.path);
+      if (
+        thread.deletedAt !== null ||
+        edit === undefined ||
+        !DateTime.Equivalence(edit.editedAt, command.editedAt)
+      ) {
+        return;
+      }
+      yield* emit(
+        events,
+        command,
+      )({
+        type: "thread.file-edit-cleared",
+        threadId: command.threadId,
+        providerInstanceId: thread.providerInstanceId,
+        occurredAt: yield* DateTime.now,
+        payload: { ...thread, editedFiles: editedFiles.filter((file) => file !== edit) },
+      });
+    },
+  );
+
   /** The user's edits, replayed on the board as it is now, so a save sent twice lands once. */
   const dispatchCanvasEdit = Effect.fn("orchestrationV2.dispatch.canvasEdit")(function* (
     command: Extract<OrchestrationV2Command, { readonly type: "canvas.edit" }>,
@@ -10699,12 +10793,19 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         ...editedAttachments,
         ...(command.context
           ? {
-              // Editing a queued message changes its text, not which edited boards it leaves out.
-              context:
-                command.context.omitEditedBoards === undefined &&
+              // Editing a queued message changes its text, not which edited boards and files it
+              // leaves out.
+              context: {
+                ...command.context,
+                ...(command.context.omitEditedBoards === undefined &&
                 queuedMessage.context?.omitEditedBoards !== undefined
-                  ? { ...command.context, omitEditedBoards: queuedMessage.context.omitEditedBoards }
-                  : command.context,
+                  ? { omitEditedBoards: queuedMessage.context.omitEditedBoards }
+                  : {}),
+                ...(command.context.omitEditedFiles === undefined &&
+                queuedMessage.context?.omitEditedFiles !== undefined
+                  ? { omitEditedFiles: queuedMessage.context.omitEditedFiles }
+                  : {}),
+              },
             }
           : {}),
         updatedAt: now,
@@ -13949,6 +14050,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       case "thread.user-input.dismiss":
         yield* dispatchThreadUserInputDismiss(command, events, effects);
         break;
+      case "thread.file-edit.record":
+        yield* dispatchThreadFileEdit(command, events, effects);
+        break;
       case "canvas.edit":
         yield* dispatchCanvasEdit(command, events);
         break;
@@ -14132,6 +14236,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       case "secret_request.record":
         yield* dispatchSecretRequestRecord(command, events);
         break;
+      case "thread.file-edit.clear":
+        yield* dispatchThreadFileEditClear(command, events);
+        break;
       case "canvas.record":
         yield* dispatchCanvasRecord(command, events);
         break;
@@ -14248,6 +14355,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           command.type === "subagent.stop" ||
           // Closing a share again, or after it ended, is not an error.
           command.type === "thread.guest-share.close" ||
+          // A newer edit replaced the one the check compared, so it stands.
+          command.type === "thread.file-edit.clear" ||
           (command.type === "thread.delete" && command.onlyIfUnused === true),
         (_planned) =>
           new OrchestratorDispatchError({

@@ -7,15 +7,12 @@ import {
   T3_PROJECT_FILE_NAME,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
-import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { AsyncResult, Atom } from "effect/reactivity";
 
-import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { useFilesystemReadAccess } from "~/state/filesystem";
 import { projectEnvironment } from "~/state/projects";
 import { useProjectPathSearch } from "~/state/queries";
-import { executeAtomQuery } from "@t3tools/client-runtime/state/runtime";
 import { revisionedQuery } from "~/state/revisionedQuery";
 
 const EMPTY_PROJECT_FILE_PATH = "";
@@ -25,23 +22,6 @@ const EMPTY_PROJECT_ENTRIES_QUERY_ATOM = Atom.make(
 const EMPTY_PROJECT_FILE_QUERY_ATOM = Atom.make(
   AsyncResult.initial<ProjectReadFileResult, never>(false),
 ).pipe(Atom.withLabel("project-file-query:empty"));
-export function optimisticFileAtom(
-  environmentId: EnvironmentId,
-  cwd: string,
-  relativePath: string,
-) {
-  return projectEnvironment.optimisticFile({ environmentId, cwd, relativePath });
-}
-
-// Dirty contents must survive a closed preview, including failed or unauthorized saves.
-const unsavedFileMounts = new Map<ReturnType<typeof optimisticFileAtom>, () => void>();
-
-function releaseUnsavedFile(atom: ReturnType<typeof optimisticFileAtom>): void {
-  const unmount = unsavedFileMounts.get(atom);
-  unsavedFileMounts.delete(atom);
-  unmount?.();
-}
-
 interface ProjectQueryState<A> {
   readonly data: A | null;
   readonly error: string | null;
@@ -79,105 +59,6 @@ export function getProjectFileQueryAtom(
       ...(relativePath === T3_PROJECT_FILE_NAME ? { allowMissing: true } : {}),
     },
   });
-}
-
-export function setProjectFileQueryData(
-  environmentId: EnvironmentId,
-  cwd: string,
-  relativePath: string,
-  contents: string,
-): void {
-  const atom = optimisticFileAtom(environmentId, cwd, relativePath);
-  if (!unsavedFileMounts.has(atom)) {
-    unsavedFileMounts.set(atom, appAtomRegistry.mount(atom));
-  }
-  appAtomRegistry.set(atom, {
-    confirmedAgainst: undefined,
-    data: {
-      relativePath,
-      contents,
-      byteLength: new TextEncoder().encode(contents).byteLength,
-      truncated: false,
-    },
-  });
-}
-
-export function getOptimisticProjectFileQueryData(
-  environmentId: EnvironmentId,
-  cwd: string,
-  relativePath: string,
-): ProjectReadFileResult | null {
-  return appAtomRegistry.get(optimisticFileAtom(environmentId, cwd, relativePath))?.data ?? null;
-}
-
-export function getProjectFileContents(
-  environmentId: EnvironmentId,
-  cwd: string,
-  relativePath: string,
-): string | undefined {
-  const optimistic = getOptimisticProjectFileQueryData(environmentId, cwd, relativePath);
-  if (optimistic) return optimistic.contents;
-  const result = appAtomRegistry.get(getProjectFileQueryAtom(environmentId, cwd, relativePath));
-  const data = Option.getOrUndefined(AsyncResult.value(result));
-  return data?.exists === false ? undefined : data?.contents;
-}
-
-export function getUnsavedProjectFileQueryData(
-  environmentId: EnvironmentId,
-  cwd: string,
-  relativePath: string,
-): ProjectReadFileResult | null {
-  const optimistic = appAtomRegistry.get(optimisticFileAtom(environmentId, cwd, relativePath));
-  return optimistic?.confirmedAgainst === undefined ? (optimistic?.data ?? null) : null;
-}
-
-export function confirmProjectFileQueryData(
-  environmentId: EnvironmentId,
-  cwd: string,
-  relativePath: string,
-  contents: string,
-): boolean {
-  const atom = optimisticFileAtom(environmentId, cwd, relativePath);
-  const optimisticFile = appAtomRegistry.get(atom);
-  if (optimisticFile?.data.contents !== contents) return false;
-
-  const queryAtom = getProjectFileQueryAtom(environmentId, cwd, relativePath);
-  const confirmed = {
-    ...optimisticFile,
-    confirmedAgainst: appAtomRegistry.get(queryAtom),
-  };
-  appAtomRegistry.set(atom, confirmed);
-  releaseUnsavedFile(atom);
-  appAtomRegistry.refresh(queryAtom);
-  void executeAtomQuery(appAtomRegistry, queryAtom, {
-    reportDefect: false,
-    reportFailure: false,
-  }).then((result) => {
-    if (result._tag === "Success" && appAtomRegistry.get(atom) === confirmed) {
-      appAtomRegistry.set(atom, null);
-    }
-  });
-  return true;
-}
-
-export function resolveProjectFileQueryData(
-  environmentId: EnvironmentId,
-  cwd: string,
-  relativePath: string | null,
-  data: ProjectReadFileResult | null,
-): ProjectReadFileResult | null {
-  if (relativePath === null) return data;
-  return appAtomRegistry.get(optimisticFileAtom(environmentId, cwd, relativePath))?.data ?? data;
-}
-
-export function clearProjectFileQueryData(
-  environmentId: EnvironmentId,
-  cwd: string,
-  relativePath: string,
-): void {
-  const atom = optimisticFileAtom(environmentId, cwd, relativePath);
-  appAtomRegistry.set(atom, null);
-  releaseUnsavedFile(atom);
 }
 
 function failureCause<A>(result: AsyncResult.AsyncResult<A, unknown>): unknown {
@@ -265,13 +146,9 @@ export function useProjectFileQuery(
   const refresh = () => refreshAtom();
   const readData = AsyncResult.getOrElse(result, () => null);
   const isMissing = readData?.exists === false;
-  const optimisticResult = useAtomValue(
-    optimisticFileAtom(environmentId, cwd, relativePath ?? EMPTY_PROJECT_FILE_PATH),
-  );
-  const optimisticFile = relativePath === null ? null : optimisticResult;
   const cause = failureCause(result);
   const readError = isProjectReadFileError(cause) ? cause : null;
-  const data = canReadFiles ? (optimisticFile?.data ?? (isMissing ? null : readData)) : null;
+  const data = canReadFiles && !isMissing ? readData : null;
   const isNotFile = readError?.failure === "path_not_file";
 
   return {
@@ -280,7 +157,7 @@ export function useProjectFileQuery(
       !isQueryEnabled || fileAccess.isPending
         ? null
         : canReadFiles
-          ? isMissing && !optimisticFile
+          ? isMissing
             ? `'${relativePath}' does not exist.`
             : errorMessage(cause)
           : (fileAccess.error ?? "This connection cannot read host files."),
