@@ -72,6 +72,13 @@ selected in the sidebar is the one whose chat (or one of its linked tabs) has fo
 document, a file or a pull request in focus, none is. Drag a tab to a pane's edge to split it, or
 onto another pane's tabs to move it there.
 
+What opens beside the tab you're reading (a note or change group from a chat, a run or graph
+beside its file, a chat's diff) joins the pane next to it as a tab when there is one that isn't
+showing a chat. Otherwise the pane splits while both halves stay wide enough, and the view opens
+as a tab in the same pane when they wouldn't, so a narrow window keeps one pane and a wide one
+keeps two. Set **Settings → General → Panes → Open beside** to **As a tab** to never split for
+these; a chat's linked tabs still get one pane beside it. **Open to the right** always splits.
+
 The **+** at the end of a pane's tabs, or `mod+t` in the focused pane, opens a New tab, as a
 browser does. It offers a new chat, a document, a project's file or changes, and a change
 group, each with a letter key; what you pick takes the New tab's place.
