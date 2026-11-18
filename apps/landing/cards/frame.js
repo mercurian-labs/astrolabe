@@ -38,9 +38,9 @@ export function fit(el, width, max) {
 }
 
 // Sets the line either side of the picture, each half on two lines. It splits at the first full
-// stop, or at the space nearest the middle when the line is one sentence.
+// stop or comma, or at the space nearest the middle when there is neither.
 export function wings(line) {
-  const stop = line.indexOf(". ");
+  const stop = line.search(/[.,] /);
   const at = stop >= 0 ? stop + 1 : breakAt(line);
   for (const [el, half] of [
     [document.querySelector(".wing--left"), line.slice(0, at).trim()],
