@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import type { Arrangement } from "./arrangement";
-import { CHAT_ROOM_PX, openNear, paneWidthPx, VIEW_ROOM_PX } from "./placement";
+import { CHAT_ROOM_PX, openNear, paneWidthPx } from "./placement";
 import { leaves, type SplitNode } from "./tree";
 
 const chat = "chat:e:a";
@@ -25,13 +25,18 @@ const row = (children: SplitNode[], weights = children.map(() => 1)): SplitNode 
 const arranged = (root: SplitNode, focused = "p1"): Arrangement => ({ root, focused, seq: 10 });
 const tabsOf = (arrangement: Arrangement) => leaves(arrangement.root).map((pane) => pane.tabs);
 
-const wide = CHAT_ROOM_PX + VIEW_ROOM_PX;
+// An even split gives the chat half: it needs its room twice over.
+const wide = 2 * CHAT_ROOM_PX;
 
 describe("opening a view near the pane you are reading", () => {
   it("divides the pane while both halves keep their room, and opens a tab once they would not", () => {
     const alone = arranged(leaf("p1", [chat]));
     expect(tabsOf(openNear(alone, note, "p1", { widthPx: wide }))).toEqual([[chat], [note]]);
     expect(tabsOf(openNear(alone, note, "p1", { widthPx: wide - 1 }))).toEqual([[chat, note]]);
+    // The new pane's share counts: 40% of a pane wide enough for two halves is too narrow.
+    expect(tabsOf(openNear(alone, note, "p1", { widthPx: wide, weight: 0.4 }))).toEqual([
+      [chat, note],
+    ]);
     // Settings › General › Panes › Open beside: As a tab.
     expect(tabsOf(openNear(alone, note, "p1", { widthPx: wide, divides: false }))).toEqual([
       [chat, note],

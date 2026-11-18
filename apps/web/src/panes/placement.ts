@@ -11,7 +11,7 @@ import { findLeaf, leafWithTab, leaves, type Leaf, type Side, type SplitNode } f
  * both halves stay usable, so a narrow window keeps one pane and a wide one keeps two.
  */
 export const CHAT_ROOM_PX = 480;
-export const VIEW_ROOM_PX = 400;
+const VIEW_ROOM_PX = 400;
 
 const roomOf = (key: string) => (parseChatTabKey(key) !== null ? CHAT_ROOM_PX : VIEW_ROOM_PX);
 
@@ -54,17 +54,22 @@ function sidePaneOf(arrangement: Arrangement, targetId: string): Leaf | undefine
   return all.slice(at + 1).find(takes) ?? all.slice(0, at).toReversed().find(takes);
 }
 
-/** Whether dividing `targetId` for `key` leaves both panes room enough. Unmeasured, it does. */
+/**
+ * Whether dividing `targetId` for `key`, which takes `weight` of it, leaves both panes room
+ * enough. Unmeasured, it does.
+ */
 function hasRoomBeside(
   arrangement: Arrangement,
   targetId: string,
   key: string,
+  weight: number,
   widthPx: number | null,
 ): boolean {
   const target = findLeaf(arrangement.root, targetId);
   if (!target || widthPx === null) return true;
   const width = paneWidthPx(arrangement.root, targetId, widthPx);
-  return width === null || width >= roomOf(target.active) + roomOf(key);
+  if (width === null) return true;
+  return width * weight >= roomOf(key) && width * (1 - weight) >= roomOf(target.active);
 }
 
 export interface OpenNearOptions {
@@ -102,7 +107,7 @@ export function openNear(
   if (holder && holder.id !== targetId) return activateTab(arrangement, key, focus);
   const sidePane = sidePaneOf(arrangement, targetId);
   if (sidePane) return openTab(arrangement, key, sidePane.id, focus);
-  if (ownPane || (divides && hasRoomBeside(arrangement, targetId, key, widthPx))) {
+  if (ownPane || (divides && hasRoomBeside(arrangement, targetId, key, weight, widthPx))) {
     return openBeside(arrangement, key, targetId, side, { focus, weight });
   }
   return holder ? activateTab(arrangement, key, focus) : openTab(arrangement, key, targetId, focus);

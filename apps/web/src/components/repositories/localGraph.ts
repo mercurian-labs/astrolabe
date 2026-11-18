@@ -97,7 +97,12 @@ export function openLocalGraph(arrangement: Arrangement, file: ProjectFileTab): 
   if (graphPane !== undefined && graphPane.id !== filePane.id) {
     return activateTab(next, graphKey, false);
   }
-  return openNear(next, graphKey, filePane.id, { focus: false, weight: GRAPH_WEIGHT });
+  // A graph shows the file in front beside it, so it never shares that file's pane.
+  return openNear(next, graphKey, filePane.id, {
+    focus: false,
+    weight: GRAPH_WEIGHT,
+    ownPane: true,
+  });
 }
 
 /**
