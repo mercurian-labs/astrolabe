@@ -26,8 +26,8 @@ import Twilight from "./twilight.js";
 
   const fallback = () => section.classList.add("relight--static");
 
-  /* ─────────── The page's palette follows the sun whether or not the ground can be drawn. While the
-     instrument sweeps in on arrival the page keeps the real sky (`nowAlt`), so it never flickers
+  /* ─────────── The page's theme follows the sun whether or not the ground can be drawn. While the
+     instrument sweeps in on arrival the page keeps the real sky (`nowAlt`), so it never flips
      through the three hours the sweep winds back. */
 
   document.addEventListener("astrolabe:time", (event) => {

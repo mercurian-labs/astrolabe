@@ -32,10 +32,9 @@
 
 /* ───────────────────────────────────────── Tokens
 
-   The page's palette is the day's. With script, twilight.js resets it on the root from the sun at
-   the working astrolabe's moment: the paper, the inks and rules follow it down through twilight,
-   and below the flip (data-theme="dark") the inks turn ivory. The two inks themselves, the rust and
-   the ink on rust never change. */
+   The page is light. With script, twilight.js sets data-theme="dark" on the root while the working
+   astrolabe's sun is below the horizon: the paper turns to night and the inks to ivory. The two inks
+   themselves, the rust and the ink on rust never change. */
 
 :root {
   --paper: #fbf9f4;
@@ -101,9 +100,21 @@
   --syn-d: #325cc0;
 }
 
-/* After the flip the drawn app wears its dark Mercurian theme (packages/shared/src/mercurianTheme.ts,
-   the dark variant; diff colours from apps/web, syntax from Alabaster Dark). */
+/* After sunset the page is the night band's ink on a paper a shade above it, and the drawn app wears
+   its dark Mercurian theme (packages/shared/src/mercurianTheme.ts, the dark variant; diff colours from
+   apps/web, syntax from Alabaster Dark). */
 :root[data-theme="dark"] {
+  --paper: #24211e;
+  --ink: #eaddc7;
+  --ink-2: #bdb29f;
+  --ink-3: #958c7c;
+  --ink-4: #5d574e;
+  --rule: #45403a;
+  --rule-soft: #2e2b27;
+  --olive: #8d8455;
+  --rust-text: #bb7a5d;
+  --night: 1;
+
   --app-canvas: oklch(0.185441 0.009432 208.772);
   --app-sidebar: oklch(0.168126 0.008165 211.135);
   --app-surface: oklch(0.214607 0.011919 205.732);
@@ -135,8 +146,7 @@
   --syn-d: #71ade7;
 }
 
-/* Crossing the flip, the palette crossfades (twilight.js turns the class on for a moment). Every
-   other step lands at once: they are a degree apart and read as one continuous dusk. */
+/* Crossing the horizon, the palette crossfades (twilight.js turns the class on for a moment). */
 @property --paper {
   syntax: "<color>";
   inherits: true;
@@ -617,7 +627,7 @@ section {
 :root[data-theme="dark"] .mast__mark--night {
   display: block;
 }
-/* The sky glyph: the sun up, setting, or the moon, as the instrument's sun stands; a link to it. */
+/* The sky glyph: the sun or the moon, as the instrument's sun stands; a link to it. */
 .mast__sky {
   display: none;
   place-items: center;
@@ -626,7 +636,7 @@ section {
   color: var(--ink-2);
   transition: color 0.2s;
 }
-:root[data-twilight] .mast__sky {
+:root[data-theme] .mast__sky {
   display: grid;
 }
 .mast__sky:hover {
@@ -644,9 +654,8 @@ section {
 .mast__sky g {
   display: none;
 }
-:root[data-twilight="day"] .mast__day,
-:root:is([data-twilight="civil"], [data-twilight="nautical"]) .mast__dusk,
-:root:is([data-twilight="astronomical"], [data-twilight="night"]) .mast__night {
+:root[data-theme="light"] .mast__day,
+:root[data-theme="dark"] .mast__night {
   display: inline;
 }
 /* The bar's right end: the sky glyph and GitHub as square cells, then Download. */
@@ -4661,11 +4670,10 @@ hidden, leaves the sticky stage working). */
 .plate:not(.plate--live) .plate__canvas {
   visibility: hidden;
 }
-/* The drawn edges: full ink by day. At dusk the ones inside the building sink into its darkened body
-   and only the outline holds; after dark both come back as faint ivory. */
+/* The drawn edges: full ink by day, faint ivory after dark. */
 .plate__lines {
   background: var(--ink);
-  opacity: calc((0.92 - 0.5 * var(--night, 0)) * (1 - 0.85 * var(--plate-dusk, 0)));
+  opacity: calc(0.92 - 0.5 * var(--night, 0));
 }
 .plate__outline {
   background: var(--ink);
@@ -5870,7 +5878,7 @@ html:not(.js) .hover-only {
 /* ───────────────────────────────────────── [02] Value · the ground under the instrument's sun
 
    relight.js prints the ground of the instrument's field, a close crop of Mercury, under the sun at
-   the instrument's represented moment (twilight.js sets the page's palette from the same sun). The
+   the instrument's represented moment (twilight.js sets the page's theme from the same sun). The
    ground is a plate set into the field below a ruled edge at --ground-top, the instrument standing
    on it. Without WebGL, or without JavaScript, a static print shows instead: shadow ink by day, a
    little lit grain at night. */
@@ -6000,7 +6008,7 @@ html:not(.js) .relight__static,
   color: var(--rust-text);
 }
 /* At night the rete shows which of its stars are up: the others' pointers dim, and a hairline ring
-   finds each risen star. By day (--night is 0) the rete is as made. */
+   finds each risen star. By day (no --night) the rete is as made. */
 .model .m-rete [data-p]:not(.is-up):not(.r-halo) {
   opacity: calc(1 - 0.6 * var(--night, 0));
 }

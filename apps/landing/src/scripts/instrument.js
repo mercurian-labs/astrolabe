@@ -473,9 +473,9 @@ import Sky from "./sky.js";
     // The represented moment, for anything on the page that follows this sky (relight.js).
     field.dispatchEvent(new CustomEvent("astrolabe:time", { bubbles: true, detail: state }));
     if (nowButton) nowButton.disabled = Math.abs(offset) < 30000;
-    // Day and Night read as pressed while the page shows full day or full night (twilight.js).
+    // Day and Night read as pressed while the page shows that theme (twilight.js).
     for (const b of jumpButtons) {
-      const on = b.dataset.jump === "day" ? state.sunAlt > 0 : state.sunAlt < -18;
+      const on = b.dataset.jump === "day" ? state.sunAlt > 0 : state.sunAlt <= 0;
       b.setAttribute("aria-pressed", String(on));
     }
     if (tipStar !== null) placeTip();
