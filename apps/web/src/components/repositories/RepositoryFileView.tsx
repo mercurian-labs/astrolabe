@@ -543,9 +543,12 @@ function RepositoryFile({
     <div className="@container/file flex min-h-0 flex-1 flex-col">
       <TabHeader.Root>
         <FileBreadcrumbs path={path} trail={trail} />
-        <TabHeader.Status className="font-mono @max-[36rem]/file:hidden">
-          <GitBranchIcon className="size-3.5" />
-          {tab.checkoutName}
+        <TabHeader.Status
+          className="max-w-48 min-w-0 shrink font-mono @max-[36rem]/file:hidden"
+          title={tab.checkoutName}
+        >
+          <GitBranchIcon className="size-3.5 shrink-0" />
+          <span className="truncate">{tab.checkoutName}</span>
         </TabHeader.Status>
         {turnAvailable && whole === null ? (
           <ToggleGroup
@@ -571,7 +574,7 @@ function RepositoryFile({
             An agent is working in this checkout
           </TabHeader.Status>
         ) : null}
-        <span className="contents @max-[48rem]/file:hidden">{serverStatus}</span>
+        <span className="contents @max-[64rem]/file:hidden">{serverStatus}</span>
         <TabHeader.Status>
           {whole !== null || readOnly ? "Read only" : documentStatusLabel(state)}
         </TabHeader.Status>
@@ -609,7 +612,7 @@ function RepositoryFile({
         </TabHeader.Actions>
       </TabHeader.Root>
       {/* Too wide for a narrow pane's header, where it would push the actions out of view. */}
-      <div className="hidden shrink-0 px-(--workspace-gutter-start) pb-1 *:shrink *:flex-wrap @max-[48rem]/file:not-empty:flex">
+      <div className="hidden shrink-0 px-(--workspace-gutter-start) pb-1 *:shrink *:flex-wrap @max-[64rem]/file:not-empty:flex">
         {serverStatus}
       </div>
       {!canWrite && state.unsent ? (
