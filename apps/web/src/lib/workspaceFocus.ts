@@ -280,7 +280,8 @@ export function createWorkspaceFocusController(doc: Document) {
   const recover = (event: FocusEvent) => {
     const lost = event.target;
     if (!(lost instanceof HTMLElement) || event.relatedTarget) return;
-    const areaName = workspaceArea(lost)?.dataset.workspaceArea;
+    const ownArea = workspaceArea(lost);
+    const areaName = ownArea?.dataset.workspaceArea;
     const recoveryArea = areaName === "conversation" ? "composer" : areaName;
     const label = lost.getAttribute("aria-label");
     requestAnimationFrame(() => {
@@ -290,7 +291,11 @@ export function createWorkspaceFocusController(doc: Document) {
         (isWorkspaceElementVisible(lost) && !lost.matches(":disabled"))
       )
         return;
-      const remounted = Array.from(doc.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).find(
+      // Astrolabe: a control hidden in place has not remounted; split panes repeat the same
+      // labels, and taking another pane's would move the panes' focus there.
+      const home = lost.isConnected && ownArea?.isConnected ? ownArea : undefined;
+      const scope = home ?? doc;
+      const remounted = Array.from(scope.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).find(
         (element) =>
           element.tagName === lost.tagName &&
           ((lost.id && element.id === lost.id) ||
@@ -298,8 +303,13 @@ export function createWorkspaceFocusController(doc: Document) {
           isWorkspaceElementVisible(element) &&
           !element.matches(":disabled"),
       );
-      if (remounted) remounted.focus({ preventScroll: true });
-      else if (!recoveryArea || !focus(recoveryArea)) focus("content");
+      if (remounted) {
+        remounted.focus({ preventScroll: true });
+        return;
+      }
+      const stays = home && areaName !== "conversation" && isWorkspaceElementVisible(home);
+      if (stays && focusArea(home)) return;
+      if (!recoveryArea || !focus(recoveryArea)) focus("content");
     });
   };
   doc.addEventListener("focusout", recover);

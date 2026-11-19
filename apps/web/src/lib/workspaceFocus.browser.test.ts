@@ -318,6 +318,23 @@ describe("workspace area focus", () => {
     await vi.waitFor(() => expect(document.activeElement).toBe(moved));
   });
 
+  it("keeps focus in a split pane whose control hides, not on its twin in the other pane", async () => {
+    using fixture = setup();
+    const panes = ["left", "right"].map((side) => {
+      const pane = fixture.area("pane", 4);
+      pane.element.dataset.workspaceFocusKey = `pane:${side}`;
+      const graph = document.createElement("button");
+      graph.setAttribute("aria-label", "Open local graph");
+      pane.element.append(graph);
+      return { ...pane, graph };
+    });
+    const [left, right] = panes;
+    left!.graph.focus();
+    left!.graph.hidden = true;
+    await vi.waitFor(() => expect(left!.element.contains(document.activeElement)).toBe(true));
+    expect(document.activeElement).not.toBe(right!.graph);
+  });
+
   it("keeps moving while a hover popup without focus is open", () => {
     using fixture = setup();
     const composer = fixture.area("composer", 2);
