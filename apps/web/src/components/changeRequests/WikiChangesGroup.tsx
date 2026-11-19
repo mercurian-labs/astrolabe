@@ -11,7 +11,7 @@ import {
   useRowSelectionStore,
 } from "~/sidebarRowSelection";
 import { rowClickIntent, type RowClick } from "~/tabNavigation.logic";
-import { useWorkspaceFocusedKey } from "~/panes/workspace";
+import { useWorkspaceFocusedKey, workspace } from "~/panes/workspace";
 import { placeChangeRequestTabs, showChangeRequestTab } from "../pullRequest/pullRequestWorkspace";
 import { Button } from "../ui/button";
 import { CountedSectionHeader } from "./CountedSectionHeader";
@@ -137,6 +137,7 @@ export function WikiChangesGroup({
     openAll: (tab) => {
       for (const key of actedOn(tab)) showChangeRequestTab(key, "new-tab");
     },
+    openBeside: (tab) => workspace.open(wikiTabKey(tab), "beside"),
     count: (tab) => actedOn(tab).length,
   };
 

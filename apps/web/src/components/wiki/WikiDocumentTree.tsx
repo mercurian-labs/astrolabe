@@ -5,7 +5,6 @@ import { useEffect, useRef, type CSSProperties, type MouseEvent as ReactMouseEve
 
 import { useStableCallback } from "~/hooks/useStableCallback";
 import { useTheme } from "~/hooks/useTheme";
-import { isMacPlatform } from "~/lib/utils";
 import { readLocalApi } from "~/localApi";
 import { endDrag } from "~/panes/drag";
 import { T3_PIERRE_ICONS } from "~/pierre-icons";
@@ -78,6 +77,8 @@ export interface WikiTreeActions {
   /** How many rows an action on `file` takes: the selection, when it's in it. */
   readonly selection: (file: string) => number;
   readonly openAll: (file: string) => void;
+  /** Opens `file` in a new pane beside the focused one. */
+  readonly openBeside: (file: string) => void;
   /** Hands the rows to the panes, to open or to land on a board. */
   readonly carry: (file: string) => void;
   /** Hands a folder to whatever board it lands on, for all it holds. */
@@ -148,10 +149,7 @@ export function WikiDocumentTree({
         if (picked === "create" || picked === "create-folder") actions.create(path);
         if (picked === "all") actions.openAll(path);
         if (picked === "new-tab") actions.open(path, NEW_TAB_CLICK);
-        if (picked === "beside") {
-          const mac = isMacPlatform(navigator.platform);
-          actions.open(path, { ...NEW_TAB_CLICK, altKey: false, metaKey: mac, ctrlKey: !mac });
-        }
+        if (picked === "beside") actions.openBeside(path);
         if (picked === "rename") tree.current?.startRenaming(item.path);
         if (picked === "move") actions.moveTo(path, folder);
       });
