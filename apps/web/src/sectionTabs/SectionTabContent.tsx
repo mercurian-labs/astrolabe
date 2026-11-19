@@ -41,7 +41,6 @@ import { isTerminalFocused } from "~/lib/terminalFocus";
 import {
   activateTab,
   focusedPane,
-  openBeside,
   openTab,
   placeTabs,
   replaceTab,
@@ -174,14 +173,12 @@ export function SectionTabContent({
             if (pane && pane.id !== groupPane?.id && pane.tabs.length === 1) {
               return activateTab(arrangement, key);
             }
-            const beside = openBeside(
-              arrangement,
-              key,
-              groupPane?.id ?? arrangement.focused,
-              "right",
-            );
-            // A new chat opens in front of the group first; moving it out leaves the group in front.
-            return activateTab(beside, tabKey, false);
+            const beside = openNear(arrangement, key, groupPane?.id ?? arrangement.focused);
+            // A new chat opens in front of the group first; moving it out leaves the group in
+            // front, and with no room it stays in front of the group.
+            const together =
+              leafWithTab(beside.root, key)?.id === leafWithTab(beside.root, tabKey)?.id;
+            return together ? beside : activateTab(beside, tabKey, false);
           })
         }
         openAll={

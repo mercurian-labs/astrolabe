@@ -63,11 +63,8 @@ export function PaneTree({
   useEffect(() => {
     const element = root.current;
     if (background || !element) return;
-    const stop = observeResize(element, () => setPanesWidthPx(element.clientWidth));
-    return () => {
-      stop();
-      setPanesWidthPx(null);
-    };
+    // The last width stays while the panes are away (Settings), for placements still pending.
+    return observeResize(element, () => setPanesWidthPx(element.clientWidth));
   }, [background]);
   const openBeside = useClientSettings((settings) => settings.paneOpenBeside);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- hands the setting to the placement rule, which runs outside React

@@ -69,7 +69,11 @@ function hasRoomBeside(
   if (!target || widthPx === null) return true;
   const width = paneWidthPx(arrangement.root, targetId, widthPx);
   if (width === null) return true;
-  return width * weight >= roomOf(key) && width * (1 - weight) >= roomOf(target.active);
+  // Moving `key` out puts its neighbour in front, as `removeTab` does.
+  const at = target.tabs.indexOf(key);
+  const left =
+    target.active === key ? (target.tabs[at + 1] ?? target.tabs[at - 1] ?? "") : target.active;
+  return width * weight >= roomOf(key) && width * (1 - weight) >= roomOf(left);
 }
 
 export interface OpenNearOptions {
@@ -81,6 +85,8 @@ export interface OpenNearOptions {
   readonly widthPx?: number | null;
   /** It may not join the target's pane, as a chat's linked tab may not join the chat's. */
   readonly ownPane?: boolean;
+  /** It may join a side pane; a local graph may not, as it would cover the files it opens. */
+  readonly joins?: boolean;
   /** Whether the panes may divide for room; the setting by default. */
   readonly divides?: boolean;
 }
@@ -100,12 +106,13 @@ export function openNear(
     weight = 0.5,
     widthPx = panesWidthPx(),
     ownPane = false,
+    joins = true,
     divides = opensBeside === "when-room",
   }: OpenNearOptions = {},
 ): Arrangement {
   const holder = leafWithTab(arrangement.root, key);
   if (holder && holder.id !== targetId) return activateTab(arrangement, key, focus);
-  const sidePane = sidePaneOf(arrangement, targetId);
+  const sidePane = joins ? sidePaneOf(arrangement, targetId) : undefined;
   if (sidePane) return openTab(arrangement, key, sidePane.id, focus);
   if (ownPane || (divides && hasRoomBeside(arrangement, targetId, key, weight, widthPx))) {
     return openBeside(arrangement, key, targetId, side, { focus, weight });

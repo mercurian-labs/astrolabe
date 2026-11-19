@@ -184,6 +184,10 @@ describe("placeRunTab", () => {
     expect(leafWithTab(arrangement.root, repositoryTabKey(run("rounds")))?.tabs).toContain(
       repositoryTabKey(run("adds")),
     );
+    // A chat in front of that pane stays in front.
+    const covered = openTab(split, "chat:env:thread");
+    const beside = placeRunTab(covered, run("rounds"), FILE);
+    expect(leafWithTab(beside.root, "chat:env:thread")?.active).toBe("chat:env:thread");
   });
 });
 

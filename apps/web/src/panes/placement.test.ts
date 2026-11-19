@@ -67,6 +67,19 @@ describe("opening a view near the pane you are reading", () => {
     ]);
   });
 
+  it("moves the tab in front out only while the tab it uncovers keeps its room", () => {
+    const covered = arranged(leaf("p1", [note, chat], note));
+    expect(tabsOf(openNear(covered, note, "p1", { widthPx: 820 }))).toEqual([[note, chat]]);
+    expect(tabsOf(openNear(covered, note, "p1", { widthPx: wide }))).toEqual([[chat], [note]]);
+  });
+
+  it("splits rather than join a side pane, for a view that opens files there", () => {
+    const two = arranged(row([leaf("p1", [note]), leaf("p2", [diff])]));
+    expect(
+      tabsOf(openNear(two, "graph", "p1", { widthPx: 300, ownPane: true, joins: false })),
+    ).toEqual([[note], ["graph"], [diff]]);
+  });
+
   it("brings one open elsewhere to the front where it is", () => {
     const two = arranged(row([leaf("p1", [chat]), leaf("p2", [note, diff], diff)]));
     const opened = openNear(two, note, "p1", { widthPx: 300 });

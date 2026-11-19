@@ -11,13 +11,16 @@ import { readChangeGroups } from "~/state/changeGroups";
 import { readProjects, readThreadShell } from "~/state/entities";
 import { changeGroupTabKey, type ChangeGroupTab } from "./changeGroupTabs";
 
-/** Astrolabe: a change group's tab, beside the chat, or in front where it is already open. */
-export function showChangeGroupTab(group: ChangeGroupTab) {
+/**
+ * Astrolabe: a change group's tab, beside the chat, or in front where it is already open.
+ * `ownPane` keeps it out of the focused pane, for a chat about to come to the front there.
+ */
+export function showChangeGroupTab(group: ChangeGroupTab, { ownPane = false } = {}) {
   const key = changeGroupTabKey(group);
   workspace.update((arrangement) =>
     leafWithTab(arrangement.root, key)
       ? activateTab(arrangement, key)
-      : openNear(arrangement, key, arrangement.focused),
+      : openNear(arrangement, key, arrangement.focused, { ownPane }),
   );
 }
 
@@ -25,7 +28,10 @@ export function showChangeGroupTab(group: ChangeGroupTab) {
  * Astrolabe: opens a thread's change requests (`threadChangeRequestsTarget`): its change group's
  * tab, or its one pull request. False when it has neither.
  */
-export function openThreadChangeRequests(threadRef: ScopedThreadRef): boolean {
+export function openThreadChangeRequests(
+  threadRef: ScopedThreadRef,
+  options: { readonly ownPane?: boolean } = {},
+): boolean {
   const thread = readThreadShell(threadRef);
   if (thread === null) return false;
   const target = threadChangeRequestsTarget({
@@ -36,7 +42,7 @@ export function openThreadChangeRequests(threadRef: ScopedThreadRef): boolean {
   });
   if (target === null) return false;
   if (target.kind === "group") {
-    showChangeGroupTab(target.group);
+    showChangeGroupTab(target.group, options);
     return true;
   }
   openThreadPullRequest(threadRef, target.link);

@@ -1085,8 +1085,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     ? resolveThreadPullRequestBadge(thread.pullRequests)
     : null;
   const handlePrListClick = () => {
-    // Astrolabe: the thread's change group, or its one pull request.
-    openThreadChangeRequests(threadRef);
+    // Astrolabe: the thread's change group, or its one pull request. Another thread's chat comes
+    // to the front after it, so the group keeps a pane of its own.
+    openThreadChangeRequests(threadRef, { ownPane: !props.isRouteThread });
     if (!props.isRouteThread) onThreadActivate(threadRef);
   };
   const prBadge =
