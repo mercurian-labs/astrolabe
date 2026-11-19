@@ -63,7 +63,7 @@ import {
   type LinkedTab,
 } from "./linkedTabs";
 import type { PanelProps } from "./panesController";
-import { openNear } from "./placement";
+import { openNear, sidePaneOf } from "./placement";
 import type { PaneArrangementSnapshot, PaneArrangementStore } from "./panesHost";
 import {
   arrangementStorageKey,
@@ -688,9 +688,9 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
 
   /**
    * Shows `key` as a sidebar row's click does: in the focused pane's tab in front (or `paneId`'s,
-   * which takes focus), which remembers what it showed. One open already comes to the front; an
-   * empty tab, a chat, results, or one with unsaved edits makes way for a new tab, and a linked
-   * tab is left to its owner.
+   * which takes focus), which remembers what it showed. One open already comes to the front; a
+   * chat in front sends it beside the chat; an empty tab, results, or one with unsaved edits makes
+   * way for a new tab, and a linked tab is left to its owner.
    */
   const show = (key: string, paneId?: string) => {
     const linked = current();
@@ -699,6 +699,18 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
       (paneId === undefined ? undefined : findLeaf(arrangement.root, paneId)) ??
       focusedPane(arrangement);
     const active = pane.active;
+    // Astrolabe: a chat in front stays in view. What its pane's click would show goes to the pane
+    // beside it, else divides the pane while there is room (Panes › Where does an opened tab go?).
+    if (
+      paneId === undefined &&
+      parseChatTabKey(active) !== null &&
+      !leafWithTab(arrangement.root, key)
+    ) {
+      const side = sidePaneOf(arrangement, pane.id);
+      if (side) show(key, side.id);
+      else open(key, "near", pane.id);
+      return;
+    }
     const keep =
       leafWithTab(arrangement.root, key) !== undefined ||
       isEmptyTab(active) ||

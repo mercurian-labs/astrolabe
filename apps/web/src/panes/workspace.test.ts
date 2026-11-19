@@ -15,6 +15,7 @@ import { repositoryFileReveal } from "../components/repositories/repositoryFileR
 import { activateTab, focusedPane, focusPane, newTab, splitTab, surfaceKey } from "./arrangement";
 import { recordJump, trackJumpCursor } from "./jumpHistory";
 import type { StorageLike } from "./persistence";
+import { setPanesWidthPx } from "./placement";
 import { leaves } from "./tree";
 import { linkTab } from "./linkedTabs";
 import {
@@ -738,6 +739,35 @@ describe("a thread's surface on its own", () => {
   it("is nothing for a surface that means nothing without its thread", () => {
     expect(standaloneKeyOf({ id: "graph", kind: "graph" }, checkout)).toBeNull();
     expect(standaloneKeyOf({ id: "files", kind: "files" }, checkout)).toBeNull();
+  });
+});
+
+describe("a sidebar click with a chat in front", () => {
+  const file = (path: string) =>
+    repositoryTabKey({
+      kind: "file",
+      environmentId: "env-1" as EnvironmentId,
+      projectId: ProjectId.make("project-1"),
+      checkout: { cwd: "/repo" },
+      path,
+    });
+
+  it("shows beside the chat: in the pane beside it, else a split with room, else a tab", () => {
+    using _width = { [Symbol.dispose]: () => setPanesWidthPx(null) };
+    const wide = createWorkspace(() => memoryStorage());
+    wide.openChat(chatA);
+    setPanesWidthPx(1200);
+    wide.show(file("a.ts"));
+    expect(panes(wide)).toEqual([[chatA], [file("a.ts")]]);
+    wide.update((arrangement) => focusPane(arrangement, leaves(arrangement.root)[0]!.id));
+    wide.show(file("b.ts"));
+    expect(panes(wide)).toEqual([[chatA], [file("b.ts")]]);
+
+    const narrow = createWorkspace(() => memoryStorage());
+    narrow.openChat(chatA);
+    setPanesWidthPx(700);
+    narrow.show(file("a.ts"));
+    expect(panes(narrow)).toEqual([[chatA, file("a.ts")]]);
   });
 });
 

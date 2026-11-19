@@ -46,7 +46,7 @@ export function paneWidthPx(node: SplitNode, id: string, widthPx: number): numbe
  * The pane beside `targetId` that can take another tab: not showing a chat, which a tab in front
  * would cover. The nearest after it in reading order, else the nearest before it.
  */
-function sidePaneOf(arrangement: Arrangement, targetId: string): Leaf | undefined {
+export function sidePaneOf(arrangement: Arrangement, targetId: string): Leaf | undefined {
   const all = leaves(arrangement.root);
   const at = all.findIndex((leaf) => leaf.id === targetId);
   if (at === -1) return undefined;

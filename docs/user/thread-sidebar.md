@@ -78,7 +78,9 @@ showing a chat. Otherwise the pane splits while both halves stay wide enough, an
 as a tab in the same pane when they wouldn't, so a narrow window keeps one pane and a wide one
 keeps two. Set **Settings → General → Panes → Open beside** to **As a tab** to never split for
 these; a chat's linked tabs and a file's local graph still get one pane beside it. **Open to
-the right** always splits.
+the right** always splits. Clicking a document or file in the sidebar shows it in the focused
+tab, except over a chat: then it goes beside the chat the same way, showing in place of what
+the pane next to it was showing.
 
 The **+** at the end of a pane's tabs, or `mod+t` in the focused pane, opens a New tab, as a
 browser does. It offers a new chat, a document, a project's file or changes, and a change

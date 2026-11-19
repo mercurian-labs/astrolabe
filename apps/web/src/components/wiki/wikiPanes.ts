@@ -100,14 +100,19 @@ export function replaceWikiTab(from: string, next: WikiTab, { rekey = false } = 
 }
 
 /**
- * Shows a document as a click on its sidebar row does, in place of the focused pane's tab in
- * front whatever it shows, as `workspace.show` does for files: that tab remembers what it showed
- * (see `replaceWikiTab`). One open already comes to the front where it is; an empty tab is
- * filled, and a chat, a linked tab or one with unsaved edits makes way for a new tab.
+ * Shows a document as its sidebar row's click does, in place of the focused tab in front, which
+ * remembers what it showed (`replaceWikiTab`). One open comes to the front; a chat sends it
+ * beside the chat (`workspace.show`); an empty, linked or unsaved tab makes way for a new tab.
  */
 export function showWikiTab(tab: WikiTab) {
   const linked = workspace.linked();
-  const active = focusedPane(linked.arrangement).active;
+  const focused = focusedPane(linked.arrangement);
+  // Astrolabe: a chat in front stays in view; the document goes beside it (`workspace.show`).
+  if (openKeyFor(linked.arrangement, tab) === null && parseChatTabKey(focused.active) !== null) {
+    workspace.show(wikiTabKey(tab));
+    return;
+  }
+  const active = focused.active;
   if (
     openKeyFor(linked.arrangement, tab) !== null ||
     isEmptyTab(active) ||
