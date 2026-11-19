@@ -137,6 +137,8 @@ describe("opening a local graph", () => {
       [FOLLOWING],
       [key("b.ts")],
     ]);
+    expect(focusedPane(after).id).toBe("p1");
+    expect(followedPath(after, checkout, null)).toBe("a.ts");
   });
 });
 
