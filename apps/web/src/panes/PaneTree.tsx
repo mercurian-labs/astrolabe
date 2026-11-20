@@ -167,6 +167,7 @@ function PaneNode({
           </div>
           {index < node.children.length - 1 ? (
             <Divider
+              index={index}
               branchId={node.id}
               direction={node.direction}
               weights={node.weights}
@@ -196,11 +197,13 @@ function PaneNode({
  * the branch's new weights; focused, the arrow keys along it move it by a twentieth.
  */
 function Divider({
+  index,
   branchId,
   direction,
   weights,
   resize,
 }: {
+  index: number;
   branchId: string;
   direction: Direction;
   weights: readonly number[];
@@ -219,7 +222,8 @@ function Divider({
     const branch = element.parentElement?.parentElement?.getBoundingClientRect();
     return branch ? (row ? branch.width : branch.height) : 0;
   };
-  const total = weights.reduce((sum, weight) => sum + weight, 0) || 1;
+  // Its place between the two panes it divides, as their first one's share of them.
+  const pair = (weights[index] ?? 0) + (weights[index + 1] ?? 0) || 1;
   return (
     <div className={row ? "relative w-px shrink-0 bg-border" : "relative h-px shrink-0 bg-border"}>
       <div
@@ -229,7 +233,7 @@ function Divider({
         aria-orientation={row ? "vertical" : "horizontal"}
         aria-valuemin={0}
         aria-valuemax={100}
-        aria-valuenow={Math.round(((weights[0] ?? 0) / total) * 100)}
+        aria-valuenow={Math.round(((weights[index] ?? 0) / pair) * 100)}
         data-active={active || undefined}
         className={
           row

@@ -490,8 +490,9 @@ export function createWorkspace(
       }
       if (standing) {
         // Hiding it hands focus to the chat; its last shell ending takes focus only from itself.
+        const shown = focusedPane(next.arrangement);
         const handsFocus =
-          terminals.terminalIds.length > 0 || focusedPane(next.arrangement).id === standing.id;
+          terminals.terminalIds.length > 0 || (shown.id === standing.id && shown.active === key);
         out = { ...out, arrangement: activateTab(out.arrangement, front, handsFocus) };
         if (handsFocus) handFocusTo = front;
       }
@@ -651,11 +652,14 @@ export function createWorkspace(
   // Astrolabe: where tabs that left the panes stood, newest last, so a reopened one can go back.
   const leftPlaces = new Map<string, ClosedPlace>();
   const noteLeft = (before: Arrangement, after: Arrangement) => {
+    const remaining = new Set(allTabs(after));
     for (const leaf of leaves(before.root)) {
       leaf.tabs.forEach((key, index) => {
-        if (leafWithTab(after.root, key)) return;
+        if (remaining.has(key)) return;
+        // A neighbour that stayed tells the same pane from a later one given its id.
+        const beside = leaf.tabs.find((other) => other !== key && remaining.has(other));
         leftPlaces.delete(key);
-        leftPlaces.set(key, { paneId: leaf.id, index });
+        leftPlaces.set(key, { paneId: leaf.id, index, ...(beside ? { beside } : {}) });
       });
     }
     for (const key of [...leftPlaces.keys()].slice(0, Math.max(0, leftPlaces.size - 40))) {
@@ -1049,8 +1053,11 @@ export function createWorkspace(
   const revealChat = (key: string) => {
     const linked = current();
     const pane = leafWithTab(linked.arrangement.root, key);
-    if (focusedChatOf(linked) !== key || !pane || pane.active === key) return;
-    update((arrangement) => activateTab(arrangement, key));
+    if (focusedChatOf(linked) !== key || !pane) return;
+    // A pane maximized over it, as its own terminal's, gives the room back.
+    const { maximized, restore } = useMaximizedPaneStore.getState();
+    if (maximized?.layoutKey === WORKSPACE_LAYOUT_KEY && maximized.paneId !== pane.id) restore();
+    if (pane.active !== key) update((arrangement) => activateTab(arrangement, key));
   };
 
   /** Opens chats as tabs after the chat in front, which stays in front. */

@@ -29,6 +29,8 @@ export type ClosedView =
 export interface ClosedPlace {
   readonly paneId: string;
   readonly index: number;
+  /** A tab that stayed in that pane, so a later pane reusing its id is not taken for it. */
+  readonly beside?: string;
 }
 
 export type ClosedViewEntry = ClosedView & { id: string; place?: ClosedPlace };

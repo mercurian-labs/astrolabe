@@ -394,9 +394,13 @@ export function settleLinks(state: LinkedArrangement, context: LinkContext): Lin
   const bringBack = (key: string, place: ParkedTab) => {
     delete parked[key];
     changed = true;
-    const standing = findLeaf(arrangement.root, place.pane);
     const owner = owners[key];
     const alone = context.standsAlone?.(key) === true;
+    // A pane that came to hold a terminal (a pane move swaps tabs) is no longer this tab's place.
+    const standing = ((leaf) =>
+      leaf && !alone && leaf.tabs.some((other) => context.standsAlone?.(other) === true)
+        ? undefined
+        : leaf)(findLeaf(arrangement.root, place.pane));
     const joins = context.joinsOwner?.(key) === true;
     const ownPane =
       !joins &&
@@ -411,12 +415,12 @@ export function settleLinks(state: LinkedArrangement, context: LinkContext): Lin
       ? gatherSpan(arrangement.root, beside.tabs, `p${arrangement.seq}`)
       : null;
     const target =
-      joins && ownerPane !== undefined
+      joins && alone && ownerPane !== undefined
         ? ownerPane
         : standing && !ownPane
           ? place.pane
           : joins
-            ? null
+            ? (ownerPane ?? null)
             : beside && (gathered || ownerPane !== undefined)
               ? null
               : alone

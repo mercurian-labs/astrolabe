@@ -38,6 +38,7 @@ import { previewEnvironment } from "../state/preview";
 import { primaryServerKeybindingsAtom } from "../state/server";
 import { environmentShell } from "../state/shell";
 import { useAtomCommand } from "../state/use-atom-command";
+import { knownTerminalSessionsAtom } from "../state/terminalSessions";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
 import {
   buildDraftThreadRouteParams,
@@ -56,13 +57,21 @@ const PREVIEW_FORWARDED_COMMANDS = [
   "terminal.toggle",
 ] as const;
 
-/** Whether the thread's terminal shows, and whether any of its sessions is still there. */
+/**
+ * Whether the thread's terminal shows, and whether any of its sessions is still there: one the
+ * environment still lists, or before it says, one the device remembers.
+ */
 function terminalStateOf(ref: ScopedThreadRef) {
   const terminal = selectThreadTerminalUiState(
     useTerminalUiStateStore.getState().terminalUiStateByThreadKey,
     ref,
   );
-  return { terminalOpen: terminal.terminalOpen, terminalSessions: terminal.terminalIds.length > 0 };
+  const known = appAtomRegistry.get(knownTerminalSessionsAtom(ref.environmentId, ref.threadId));
+  const terminalSessions =
+    known === null
+      ? terminal.terminalIds.length > 0
+      : known.some((session) => terminal.terminalIds.includes(session.target.terminalId));
+  return { terminalOpen: terminal.terminalOpen, terminalSessions };
 }
 
 const isGlobalPullRequests = (ref: ScopedThreadRef) =>

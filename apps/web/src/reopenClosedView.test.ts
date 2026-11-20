@@ -211,9 +211,17 @@ describe("reopenClosedView", () => {
     const tabsOf = () => leaves(workspace.arrangement().root).map((leaf) => leaf.tabs);
 
     const closed = close(two);
-    expect(closed.place).toEqual({ paneId: "p1", index: 1 });
+    expect(closed.place).toEqual({ paneId: "p1", index: 1, beside: one });
     await reopenClosedView(closed, { openPreview: vi.fn(), workspaceAvailable: true });
     expect(tabsOf()).toEqual([[one, two, three], [four]]);
+
+    // A pane holding none of the tabs that stood beside it is a later one given the id.
+    const elsewhere = close(two);
+    await reopenClosedView(
+      { ...elsewhere, place: { paneId: "p2", index: 0, beside: three } },
+      { openPreview: vi.fn(), workspaceAvailable: true },
+    );
+    expect(leaves(workspace.arrangement().root)[1]?.tabs).toEqual([four]);
 
     // Its pane gone, it opens as any chat would, never into a pane that isn't there.
     const again = close(two);

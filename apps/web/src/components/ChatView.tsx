@@ -2811,8 +2811,15 @@ export default function ChatView(props: ChatViewProps) {
       if (!takesPanelShortcut(chatOwner)) return;
       if (action === "rightPanel.toggle") toggleRightPanelStable();
       else if (action === "rightPanel.toggleMaximized") toggleRightPanelMaximizedStable();
+      else if (action === "terminal.toggle") toggleTerminalVisibilityStable();
     });
-  }, [chatOwner, embedded, toggleRightPanelStable, toggleRightPanelMaximizedStable]);
+  }, [
+    chatOwner,
+    embedded,
+    toggleRightPanelStable,
+    toggleRightPanelMaximizedStable,
+    toggleTerminalVisibilityStable,
+  ]);
 
   usePasteToFocusComposer(embedded ? null : activeThreadId, composerRef);
   // A delegated task is a remote thread's subagent.

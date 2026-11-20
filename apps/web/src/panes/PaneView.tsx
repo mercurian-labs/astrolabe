@@ -625,14 +625,16 @@ function dropTargetAt(
   clientX: number,
   clientY: number,
   keptFromPane: PaneTabs["keptFromPane"],
+  columns: number,
 ): DropTarget | null {
-  // Every tab of a pane dragged over that pane has nowhere to go.
-  if (leaf.tabs.every((key) => item.keys.includes(key))) return null;
-  // Nor does what opens no tab, as a wiki's folder on its way to a board.
+  // What opens no tab has nowhere to go, as a wiki's folder on its way to a board.
   if (item.keys.length === 0 && item.place === undefined) return null;
   const rect = pane.getBoundingClientRect();
-  const column = item.place === undefined ? columnTargetAt(pane, rect, clientX) : null;
+  // A pane's own tabs may still leave for a new column at the panes' edge.
+  const column = item.place === undefined ? columnTargetAt(pane, rect, clientX, columns) : null;
   if (column) return column;
+  // Every tab of a pane dragged over that pane has nowhere else to go.
+  if (leaf.tabs.every((key) => item.keys.includes(key))) return null;
   const stripSize = pane.querySelector("[data-pane-strip]")?.getBoundingClientRect().height ?? 0;
   const zone = paneDropZone(
     clientX - rect.left,
@@ -674,7 +676,12 @@ const COLUMN_EDGE_PX = 24;
  * Astrolabe: a new column at the panes' left or right edge, for a pointer within
  * `COLUMN_EDGE_PX` of it over a pane that touches it.
  */
-function columnTargetAt(pane: HTMLElement, rect: DOMRect, clientX: number): DropTarget | null {
+function columnTargetAt(
+  pane: HTMLElement,
+  rect: DOMRect,
+  clientX: number,
+  columns: number,
+): DropTarget | null {
   const root = pane.closest("[data-panes-root]")?.getBoundingClientRect();
   if (!root) return null;
   const side =
@@ -684,7 +691,8 @@ function columnTargetAt(pane: HTMLElement, rect: DOMRect, clientX: number): Drop
         ? "right"
         : null;
   if (side === null) return null;
-  const width = Math.round(root.width / 3);
+  // The share the column takes (`columnWithTabs`).
+  const width = Math.round(root.width / (columns + 1));
   return {
     zone: side,
     column: side,
@@ -843,6 +851,11 @@ export const PaneView = memo(function PaneView({
       item.keys.length === 0 &&
       event.target instanceof Element &&
       event.target.closest("[data-takes-documents]") !== null;
+    // Columns side by side at the panes' root, which a new edge column joins as one more.
+    const rootColumns = () => {
+      const root = controller.getSnapshot()?.arrangement.root;
+      return root?.type === "branch" && root.direction === "row" ? root.children.length : 1;
+    };
     const onDragEnter = (event: globalThis.DragEvent) => {
       const item = currentDrag();
       if (item && !forBoard(event, item)) event.stopPropagation();
@@ -862,6 +875,7 @@ export const PaneView = memo(function PaneView({
         event.clientX,
         event.clientY,
         tabs.keptFromPane,
+        rootColumns(),
       );
       if (!next) {
         if (latest.current.target) setTarget(null);
@@ -886,6 +900,7 @@ export const PaneView = memo(function PaneView({
         event.clientX,
         event.clientY,
         tabs.keptFromPane,
+        rootColumns(),
       );
       setTarget(null);
       if (!drop) return;

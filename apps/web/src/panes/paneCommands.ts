@@ -1,7 +1,15 @@
 import { focusPane, focusedPane, isEmptyTab, resizePanes, splitTab } from "./arrangement";
 import { useMaximizedPaneStore } from "./maximize";
 import type { PaneArrangementStore, PaneTabs } from "./panesHost";
-import { leaves, neighbourLeaf, parentOf, swapLeafTabs, type Leaf, type Side } from "./tree";
+import {
+  leaves,
+  MIN_SPLIT_PX,
+  neighbourLeaf,
+  parentOf,
+  swapLeafTabs,
+  type Leaf,
+  type Side,
+} from "./tree";
 
 /**
  * What acts on a whole pane, shared by its strip's controls and the keyboard menu: splitting the
@@ -79,8 +87,13 @@ export function paneToward(controller: PaneArrangementStore, leaf: Leaf, side: S
   return snapshot ? neighbourLeaf(snapshot.arrangement.root, leaf.id, side) : null;
 }
 
-/** Trades the pane's tabs with its neighbour's on `side`; focus moves with them. */
-export function movePane(controller: PaneArrangementStore, leaf: Leaf, side: Side) {
+/** Trades the pane's tabs with its neighbour's on `side`; focus, and maximizing, move with them. */
+export function movePane(
+  controller: PaneArrangementStore,
+  layoutKey: string | null,
+  leaf: Leaf,
+  side: Side,
+) {
   const target = paneToward(controller, leaf, side);
   if (!target) return;
   controller.update((arrangement) =>
@@ -89,15 +102,13 @@ export function movePane(controller: PaneArrangementStore, leaf: Leaf, side: Sid
       target.id,
     ),
   );
+  if (layoutKey !== null && isPaneMaximized(layoutKey, leaf.id)) {
+    useMaximizedPaneStore.getState().toggle(layoutKey, target.id);
+  }
 }
 
 /** The shares a pane steps through, as T3 Code's column width presets do. */
 const SIZE_STEPS = [1 / 3, 1 / 2, 2 / 3];
-
-/** The pane's next share of the room it divides with its siblings: ⅓, ½, ⅔, then ⅓ again. */
-function nextShare(share: number) {
-  return SIZE_STEPS.find((step) => step > share + 0.01) ?? SIZE_STEPS[0]!;
-}
 
 /** Whether the pane divides room with another, so it has a size to change. */
 export function canResizePane(controller: PaneArrangementStore, leaf: Leaf) {
@@ -105,13 +116,29 @@ export function canResizePane(controller: PaneArrangementStore, leaf: Leaf) {
   return snapshot ? parentOf(snapshot.arrangement.root, leaf.id) !== null : false;
 }
 
-/** Weights giving child `index` its next share (`nextShare`), the rest keeping their proportions. */
-export function cycledWeights(weights: readonly number[], index: number): number[] {
+/**
+ * Weights giving child `index` its next share (a third, a half, two thirds, then a third again),
+ * the rest keeping their proportions, skipping one that leaves a pane under `MIN_SPLIT_PX` of
+ * `extentPx`. The weights as they were when none fits.
+ */
+export function cycledWeights(
+  weights: readonly number[],
+  index: number,
+  extentPx = Number.POSITIVE_INFINITY,
+): readonly number[] {
   const total = weights.reduce((sum, weight) => sum + weight, 0) || 1;
   const own = weights[index] ?? 0;
-  const share = nextShare(own / total);
   const others = total - own || 1;
-  return weights.map((weight, at) => (at === index ? share : ((1 - share) * weight) / others));
+  const next = SIZE_STEPS.findIndex((step) => step > own / total + 0.01);
+  const start = next === -1 ? 0 : next;
+  const order = [...SIZE_STEPS.slice(start), ...SIZE_STEPS.slice(0, start)];
+  for (const share of order) {
+    const sized = weights.map((weight, at) =>
+      at === index ? share : ((1 - share) * weight) / others,
+    );
+    if (sized.every((weight) => weight * extentPx >= MIN_SPLIT_PX)) return sized;
+  }
+  return weights;
 }
 
 /** Steps the pane's share of the room it divides with its siblings. */
@@ -119,10 +146,16 @@ export function cyclePaneSize(controller: PaneArrangementStore, leaf: Leaf) {
   controller.update((arrangement) => {
     const parent = parentOf(arrangement.root, leaf.id);
     if (!parent) return arrangement;
-    return resizePanes(
-      arrangement,
-      parent.branch.id,
-      cycledWeights(parent.branch.weights, parent.index),
-    );
+    const { branch, index } = parent;
+    // The room the branch divides: the pane's size on screen over its share of it.
+    const box =
+      typeof document === "undefined"
+        ? null
+        : document.querySelector(`[data-pane-id="${leaf.id}"]`)?.getBoundingClientRect();
+    const total = branch.weights.reduce((sum, weight) => sum + weight, 0) || 1;
+    const share = (branch.weights[index] ?? 0) / total;
+    const size = box ? (branch.direction === "row" ? box.width : box.height) : 0;
+    const extent = size > 0 && share > 0 ? size / share : Number.POSITIVE_INFINITY;
+    return resizePanes(arrangement, branch.id, cycledWeights(branch.weights, index, extent));
   });
 }

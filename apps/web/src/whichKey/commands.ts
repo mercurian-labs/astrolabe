@@ -474,7 +474,7 @@ function astrolabeCommand(
       const can = !!panes && !!focused && paneToward(panes.controller, focused.leaf, side) !== null;
       return repeatableEntry(
         MOVE_LABELS[side],
-        onPane(can, (handle, leaf) => movePane(handle.controller, leaf, side)),
+        onPane(can, (handle, leaf) => movePane(handle.controller, handle.layoutKey, leaf, side)),
       );
     }
     case "pane.cycleSize":
