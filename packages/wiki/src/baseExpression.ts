@@ -14,6 +14,7 @@ import {
   member,
   METHODS,
   noteProperty,
+  codeFacts,
   type BaseScope,
 } from "./baseFunctions.ts";
 import { BaseError, equals, order, tagged, truthy, isList, type BaseValue } from "./baseValues.ts";
@@ -643,6 +644,8 @@ export function evaluate(expr: Expr, scope: BaseScope, source: string): BaseValu
             return { kind: "file", doc: here.row };
           case "note":
             return { kind: "object", entries: here.row.properties };
+          case "code":
+            return codeFacts(here.row);
           case "this":
             if (!here.self) {
               throw new BaseError(

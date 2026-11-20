@@ -1,10 +1,9 @@
 /**
- * Every file in a wiki's repository as a base sees it, the way an Obsidian vault does: notes in
- * any folder, bases, canvases and attachments. Notes give properties, tags and links; canvases
- * give links; anything else only its file fields. Dot-folders, such as `.git` and `.obsidian`,
- * are left out, as Obsidian leaves them out.
+ * Every file in a wiki's repository as a base sees it, as an Obsidian vault does, dot-folders left
+ * out. Notes give properties, tags and links; canvases give links; a code file the code index read
+ * gives its facts, and its imports as links; anything else only its file fields.
  */
-import { type BaseDoc, type LinkValue } from "./baseValues.ts";
+import { type BaseDoc, type CodeFile, type LinkValue } from "./baseValues.ts";
 import { isCanvasFile, parseCanvas } from "./canvas.ts";
 import { key, links as findLinks, typedLinks } from "./links.ts";
 import { noteProperties, noteTags } from "./properties.ts";
@@ -16,6 +15,8 @@ export interface BaseFile {
   readonly source?: string;
   /** Bytes; measured from `source` when absent. */
   readonly size?: number;
+  /** What the code index read of it; ignored on a note or a canvas. */
+  readonly code?: CodeFile;
 }
 
 export interface BaseFileTimes {
@@ -96,8 +97,25 @@ function docOf(entry: BaseFile, times: BaseFileTimes): BaseDoc {
       typedLinks: typedLinks(source),
     };
   }
-  const links = isCanvasFile(entry.file) ? canvasLinkValues(source, entry.file) : [];
-  return { ...base, properties: {}, tags: [], links, embeds: [], typedLinks: [] };
+  if (isCanvasFile(entry.file)) {
+    const links = canvasLinkValues(source, entry.file);
+    return { ...base, properties: {}, tags: [], links, embeds: [], typedLinks: [] };
+  }
+  const code = entry.code;
+  if (code === undefined) {
+    return { ...base, properties: {}, tags: [], links: [], embeds: [], typedLinks: [] };
+  }
+  // A leading `/` makes each a whole path, which no file of the same name elsewhere can take.
+  const typed = code.links.map((link) => ({ target: `/${link.target}`, types: link.types }));
+  return {
+    ...base,
+    properties: {},
+    tags: [],
+    links: typed.map((link): LinkValue => ({ kind: "link", path: link.target, from: entry.file })),
+    embeds: [],
+    typedLinks: typed,
+    code,
+  };
 }
 
 const collate = (a: string, b: string) =>
@@ -153,11 +171,11 @@ export function corpusWithChanges(
     if (doc.mtime !== undefined) modified.set(doc.file, doc.mtime);
     if (doc.ctime !== undefined) created.set(doc.file, doc.ctime);
     if (doc.file in changes) continue;
-    // Only notes and canvases carry text; any other file is its size.
+    // Only notes and canvases carry text; any other file is its size, and a code file its facts.
     files.push(
       /\.(md|canvas)$/i.test(doc.file)
         ? { file: doc.file, source: doc.source }
-        : { file: doc.file, size: doc.size },
+        : { file: doc.file, size: doc.size, ...(doc.code ? { code: doc.code } : {}) },
     );
   }
   for (const [file, content] of Object.entries(changes)) {

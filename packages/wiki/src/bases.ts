@@ -21,6 +21,7 @@ import {
   type Expr,
 } from "./baseExpression.ts";
 import {
+  codeProperty,
   docName,
   FILE_FIELDS,
   FILE_METHODS,
@@ -313,6 +314,7 @@ function matches(filter: Filter, scope: BaseScope): boolean {
 type PropertyRef =
   | { readonly kind: "file"; readonly field: string }
   | { readonly kind: "note"; readonly name: string }
+  | { readonly kind: "code"; readonly name: string }
   | { readonly kind: "formula"; readonly name: string };
 
 /** A property id as Obsidian keys it: `note.status` for a bare `status`. */
@@ -331,6 +333,9 @@ function propertyRef(id: string, where: string, context: CompileContext): Proper
     return { kind: "formula", name };
   }
   if (id.startsWith("this.")) throw unsupported(id, where);
+  if (id.startsWith("code.") && id.length > "code.".length) {
+    return { kind: "code", name: id.slice("code.".length) };
+  }
   return { kind: "note", name: id.startsWith("note.") ? id.slice("note.".length) : id };
 }
 
@@ -339,13 +344,17 @@ const propertyValue = (ref: PropertyRef, scope: BaseScope): BaseValue =>
     ? fileField(scope.row, ref.field, scope)
     : ref.kind === "formula"
       ? scope.formula(ref.name)
-      : noteProperty(scope.row, ref.name);
+      : ref.kind === "code"
+        ? codeProperty(scope.row, ref.name)
+        : noteProperty(scope.row, ref.name);
 
 /** A column's heading: its `displayName`, keyed as `note.x` (a bare `x` is ignored, as in Obsidian). */
 function label(base: WikiBase, ref: PropertyRef): string {
   const configured = base.properties[canonical(ref)]?.displayName;
   if (configured) return configured;
-  return ref.kind === "file" ? (FILE_FIELDS.get(ref.field) ?? canonical(ref)) : ref.name;
+  if (ref.kind === "file") return FILE_FIELDS.get(ref.field) ?? canonical(ref);
+  // `code.language`, as Obsidian labels a note property of that name.
+  return ref.kind === "code" ? canonical(ref) : ref.name;
 }
 
 export const BASE_VIEW_TYPES = ["table", "cards", "list", "kanban", "map"] as const;
@@ -880,12 +889,17 @@ function availableProperties(
   docs: ReadonlyArray<BaseDoc>,
 ): ReadonlyArray<{ readonly id: string; readonly label: string }> {
   const notes = new Set<string>();
-  for (const doc of docs) for (const name of Object.keys(doc.properties)) notes.add(name);
+  const code = new Set<string>();
+  for (const doc of docs) {
+    for (const name of Object.keys(doc.properties)) notes.add(name);
+    for (const name of Object.keys(doc.code?.properties ?? {})) code.add(name);
+  }
   const refs: PropertyRef[] = [
     ...[...notes].toSorted(collate).map((name): PropertyRef => ({ kind: "note", name })),
+    ...[...code].map((name): PropertyRef => ({ kind: "code", name })),
     ...Object.keys(base.formulas).map((name): PropertyRef => ({ kind: "formula", name })),
     ...[...FILE_FIELDS.keys()]
-      .filter((field) => field !== "properties" && field !== "file")
+      .filter((field) => field !== "properties" && field !== "file" && field !== "code")
       .map((field): PropertyRef => ({ kind: "file", field })),
   ];
   return refs.map((ref) => ({ id: canonical(ref), label: label(base, ref) }));

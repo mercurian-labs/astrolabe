@@ -63,6 +63,8 @@ export const FILE_FIELDS: ReadonlyMap<string, string> = new Map([
   ["embeds", "file embeds"],
   ["properties", "file properties"],
   ["file", "file"],
+  // Astrolabe: a code file's facts, for reading them through a link: `value.asFile().code`.
+  ["code", "code"],
 ]);
 
 export const GLOBALS: ReadonlySet<string> = new Set([
@@ -193,6 +195,8 @@ export function fileField(doc: BaseDoc, field: string, scope: BaseScope): BaseVa
       return { kind: "object", entries: doc.properties };
     case "file":
       return { kind: "file", doc };
+    case "code":
+      return doc.code === undefined ? null : { kind: "object", entries: doc.code.properties };
     default:
       return null;
   }
@@ -200,6 +204,18 @@ export function fileField(doc: BaseDoc, field: string, scope: BaseScope): BaseVa
 
 export const noteProperty = (doc: BaseDoc, name: string): BaseValue =>
   fromProperty(doc.properties[name], doc.file);
+
+/** `code` on a code file: what the code index read of it. Elsewhere, a note's own `code`. */
+export const codeFacts = (doc: BaseDoc): BaseValue =>
+  doc.code === undefined
+    ? noteProperty(doc, "code")
+    : { kind: "object", entries: doc.code.properties };
+
+/** A code file's `code.<name>`; on any other file, the note property Obsidian reads by that id. */
+export const codeProperty = (doc: BaseDoc, name: string): BaseValue =>
+  doc.code === undefined
+    ? noteProperty(doc, `code.${name}`)
+    : fromProperty(doc.code.properties[name], doc.file);
 
 const DATE_FIELDS = new Set(["year", "month", "day", "hour", "minute", "second", "millisecond"]);
 
