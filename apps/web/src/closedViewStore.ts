@@ -25,7 +25,28 @@ export type ClosedView =
   // Astrolabe: a chat's terminal tab, set aside with its sessions running.
   | { kind: "terminal-tab"; threadRef: ScopedThreadRef };
 
-export type ClosedViewEntry = ClosedView & { id: string };
+/** Astrolabe: where a closed tab stood, so reopening it puts it back while its pane is open. */
+export interface ClosedPlace {
+  readonly paneId: string;
+  readonly index: number;
+}
+
+export type ClosedViewEntry = ClosedView & { id: string; place?: ClosedPlace };
+
+let placeOf: (view: ClosedView) => ClosedPlace | null = () => null;
+
+/** Astrolabe: how the shared panes say where a view's tab stood when it closed. */
+export function setClosedViewPlaces(resolve: (view: ClosedView) => ClosedPlace | null) {
+  placeOf = resolve;
+}
+
+/** The place an entry recorded, when it is well formed. */
+export function closedPlaceOf(entry: ClosedViewEntry): ClosedPlace | null {
+  const place = entry.place;
+  return place && typeof place.paneId === "string" && Number.isSafeInteger(place.index)
+    ? place
+    : null;
+}
 
 interface ClosedViewStoreState {
   entries: ClosedViewEntry[];
@@ -117,9 +138,10 @@ export const useClosedViewStore = create<ClosedViewStoreState>()(
       entries: [],
       remember: (view) => {
         const id = randomUUID();
+        const place = placeOf(view);
         set((state) => ({
           entries: [
-            { ...view, id },
+            { ...view, id, ...(place ? { place } : {}) },
             ...state.entries.filter((entry) => !sameTarget(entry, view)),
           ].slice(0, 20),
         }));

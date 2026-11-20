@@ -1,9 +1,10 @@
 import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
 
 import type { OpenPreviewMutation } from "./browser/openFileInPreview";
-import type { ClosedView, ClosedViewEntry } from "./closedViewStore";
+import { closedPlaceOf, type ClosedView, type ClosedViewEntry } from "./closedViewStore";
 import type { PullRequestListPreferences } from "./components/pullRequest/pullRequestListPreferences";
 import { openPreviewSession } from "./components/preview/openPreviewSession";
+import { findLeaf, leafWithTab } from "./panes/tree";
 import { workspace } from "./panes/workspace";
 import {
   rightPanelHostRef,
@@ -104,7 +105,7 @@ export function pullRequestsSearchForRestore<S extends PullRequestsSearchLike>(
 }
 
 export async function reopenClosedView(
-  view: ClosedView,
+  view: ClosedView | ClosedViewEntry,
   options: {
     openPreview: OpenPreviewMutation;
     workspaceAvailable: boolean;
@@ -112,9 +113,16 @@ export async function reopenClosedView(
 ): Promise<boolean> {
   const panels = useRightPanelStore.getState();
   const ref = view.threadRef;
+  // Astrolabe: back where it stood, while that pane is still open.
+  const recorded = "id" in view ? closedPlaceOf(view) : null;
+  const place =
+    recorded && findLeaf(workspace.arrangement().root, recorded.paneId) ? recorded : null;
 
   if (view.kind === "chat-tab") {
-    workspace.openChat(chatTabKey(ref));
+    const key = chatTabKey(ref);
+    if (place && !leafWithTab(workspace.arrangement().root, key)) {
+      workspace.place([key], key, place.paneId, { side: null, index: place.index });
+    } else workspace.openChat(key);
     return true;
   }
   if (view.kind === "terminal-tab") {
@@ -137,6 +145,7 @@ export async function reopenClosedView(
     return true;
   }
   const surface = view.surface;
+  if (place) workspace.targetPane(place.paneId);
   if (
     !options.workspaceAvailable &&
     (surface.kind === "files" || (surface.kind === "file" && !surface.attachment))

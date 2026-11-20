@@ -26,7 +26,7 @@ import {
 import { repositoryFileReveal } from "~/components/repositories/repositoryFileReveal";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "~/terminalUiStateStore";
 import { subscribeTerminalFocusWaiting, waitingTerminalFocus } from "~/lib/terminalFocus";
-import { useClosedViewStore } from "~/closedViewStore";
+import { type ClosedPlace, setClosedViewPlaces, useClosedViewStore } from "~/closedViewStore";
 import {
   dropHistoryTarget,
   historyTarget,
@@ -645,6 +645,28 @@ export function createWorkspace(
     for (const listener of listeners) listener();
   };
 
+  // Astrolabe: where tabs that left the panes stood, newest last, so a reopened one can go back.
+  const leftPlaces = new Map<string, ClosedPlace>();
+  const noteLeft = (before: Arrangement, after: Arrangement) => {
+    for (const leaf of leaves(before.root)) {
+      leaf.tabs.forEach((key, index) => {
+        if (leafWithTab(after.root, key)) return;
+        leftPlaces.delete(key);
+        leftPlaces.set(key, { paneId: leaf.id, index });
+      });
+    }
+    for (const key of [...leftPlaces.keys()].slice(0, Math.max(0, leftPlaces.size - 40))) {
+      leftPlaces.delete(key);
+    }
+  };
+  /** Where `key` stands, or stood when it last left the panes. */
+  const placeOf = (key: string): ClosedPlace | null => {
+    const leaf = leafWithTab(current().arrangement.root, key);
+    return leaf
+      ? { paneId: leaf.id, index: leaf.tabs.indexOf(key) }
+      : (leftPlaces.get(key) ?? null);
+  };
+
   /** Applies a change, the links and the front chat's record following; `history` too. */
   const apply = (
     change: (linked: LinkedArrangement) => LinkedArrangement,
@@ -672,6 +694,7 @@ export function createWorkspace(
       allTabs(next.arrangement),
     );
     if (next !== before || nextHistories !== histories) {
+      if (next.arrangement !== before.arrangement) noteLeft(before.arrangement, next.arrangement);
       state = next;
       histories = nextHistories;
       pending ??= setTimeout(flush, PERSIST_DELAY_MS);
@@ -1195,6 +1218,7 @@ export function createWorkspace(
     updateWithHistory,
     openChat,
     openChatsBesideFront,
+    placeOf,
     openLinked: openLinkedTab,
     unlink,
     newLinkedTab,
@@ -1312,6 +1336,14 @@ export function focusedChatOf(linked: LinkedArrangement): string | null {
 
 /** The device's shared panes. */
 export const workspace = createWorkspace();
+
+setClosedViewPlaces((view) => {
+  const chat = chatTabKey(view.threadRef);
+  if (view.kind === "chat-tab") return workspace.placeOf(chat);
+  if (view.kind === "terminal-tab") return workspace.placeOf(chatTerminalKey(chat));
+  if (view.kind === "panel-tab") return workspace.placeOf(chatSurfaceKey(chat, view.surface.id));
+  return null;
+});
 
 /**
  * Whether the chat tab `owner` is the focused pane's tab in front, so its ChatView may move focus
