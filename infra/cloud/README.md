@@ -1,6 +1,6 @@
 # Mercurian cloud infrastructure
 
-The Alchemy stack for the Mercurian cloud: Postgres, Electric, the cloud API, the migration task, and the SES sender. Only local development runs so far; AWS deploys come next.
+The Alchemy stack for the Mercurian cloud: Postgres, Electric, the cloud API, the migration task, and the SES sender. It runs locally under `alchemy dev`, and deploys to AWS as stage `prod` (see [Deploying](#deploying)).
 
 ## Running it locally
 
@@ -50,6 +50,30 @@ With this stack running, `vp run dev` in `infra/relay` starts the relay at http:
 ## Migrations
 
 [`src/migrate.ts`](src/migrate.ts) runs as a plain Node task, bundled into `dist/migrate` (Alchemy writes the API's bundle into `dist/`). It applies each migration folder with its own ledger table in the `drizzle` schema. The relay's folder is copied from [`infra/relay/migrations/postgres`](../relay/migrations/postgres) unchanged, so upstream relay migrations keep merging cleanly.
+
+## Deploying
+
+`.github/workflows/deploy-cloud.yml` deploys stage `prod` to us-east-1 on pushes to `main` that touch the cloud, and on demand. It skips itself until the repository variable `AWS_DEPLOY_ROLE_ARN` is set. A deployed stage gets:
+
+- **Its own VPC** across two zones. Tasks run in the public subnets with public addresses, so they reach Docker Hub, ECR and SES without a NAT gateway. One security group admits only traffic from inside the VPC; the API's load balancer has its own, open on 443.
+- **RDS Postgres 17** in the private subnets, with logical replication for Electric. It doesn't require TLS: the traffic stays in the VPC, and not every client can take RDS's certificate authority. `prod` has deletion protection and a final snapshot.
+- **Electric** behind an internal load balancer, reachable only by the API.
+- **The API** behind an HTTPS load balancer on `CLOUD_ORIGIN_DOMAIN`, with an ACM certificate validated through Cloudflare and a DNS-only CNAME to it. The listener answers 404 unless a request carries `x-astrolabe-origin-secret`, so only the `app.astrolabe.sh` router ([`apps/web/cloudflare/router.ts`](../../apps/web/cloudflare/router.ts)) reaches it. The router forwards the sign-in pages, `/api/auth/*` and `/api/workspaces/*`, and passes the visitor's address in `x-astrolabe-client-ip` for rate limits.
+- **The SES domain identity** for `CLOUD_MAIL_DOMAIN`, adopted rather than created, because it is set up and DKIM-verified by hand. The stack keeps it if the stage is destroyed.
+
+State lives in the Cloudflare state store, next to the relay's. [`src/deployment.ts`](src/deployment.ts) reads the settings.
+
+### One-time setup
+
+1. **AWS:** create a GitHub OIDC identity provider and a role that `repo:mercurian-labs/astrolabe:environment:production` can assume, with rights to manage VPC, ECS, ECR, ELB, ACM, RDS, SES, IAM roles and CloudWatch Logs. Set its ARN as the repository variable `AWS_DEPLOY_ROLE_ARN`, not an environment one: the workflow's guard runs before the job enters `production`.
+2. **SES:** verify the domain identity with Easy DKIM (RSA 2048) and MAIL FROM `mail.<domain>`, and request production access. The stack declares the same settings.
+3. **GitHub `production` environment:**
+   - Variables: `CLOUD_APP_URL` (`https://app.astrolabe.sh`), `CLOUD_ORIGIN_DOMAIN` (`cloud.astrolabe.sh`), `CLOUD_MAIL_DOMAIN` (`astrolabe.sh`), `CLOUD_RELAY_URL` (`https://relay.astrolabe.sh`). `CLOUDFLARE_ACCOUNT_ID` is shared with the relay.
+   - Secrets: `CLOUD_ORIGIN_SECRET`, a long random string. `CLOUDFLARE_API_TOKEN` is shared with the relay and needs DNS edit on the `astrolabe.sh` zone.
+   - Sign-in providers, each only when it's turned on: `GOOGLE_CLIENT_ID` (variable) and `GOOGLE_CLIENT_SECRET` (secret), likewise `MICROSOFT_*`, `CLOUD_GITHUB_CLIENT_ID` and `CLOUD_GITHUB_CLIENT_SECRET` (GitHub reserves the `GITHUB_` prefix), `APPLE_CLIENT_ID`, `APPLE_KEY_ID` and `APPLE_PRIVATE_KEY`, and `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY`.
+4. **The router:** give the `astrolabe-app` Worker the same secret with `vp dlx wrangler@4.151.3 secret put CLOUD_ORIGIN_SECRET -c cloudflare/router.wrangler.jsonc` from `apps/web`. Until it has one, the router sends these paths to the app as before.
+
+Then run **Deploy cloud** from `main`. The first deploy takes about 20 minutes, mostly RDS. Check `https://app.astrolabe.sh/api/auth/ok` afterwards.
 
 ## Traps
 

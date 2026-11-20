@@ -10,7 +10,7 @@ import { makeCloudApp } from "@mercurian/cloud/app";
 import * as AWS from "@alchemy.run/aws";
 import * as Drizzle from "@alchemy.run/drizzle/Postgres";
 import * as Output from "alchemy/Output";
-import { ALCHEMY_PHASE } from "alchemy/Phase";
+import { ALCHEMY_DEV, ALCHEMY_PHASE } from "alchemy/Phase";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as HttpClient from "effect/http/HttpClient";
@@ -18,24 +18,41 @@ import { HttpServerRequest } from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import * as Redacted from "effect/Redacted";
 
+import { CLIENT_IP_HEADER, Deployment } from "./deployment.ts";
 import {
   ApiIngress,
+  ApiRouting,
   ARM64,
   BetterAuthSecret,
   Cluster,
   DatabaseUrl,
   Electric,
-  MailIdentity,
+  Mail,
   Migrations,
+  ServiceNetwork,
 } from "./resources.ts";
 
 export class Api extends AWS.ECS.Service<Api>()("Api") {}
 
+/** The relay, passkeys and rate limiting: dev runs on localhost; a deployed stage on its domains. */
+const DeployedSettings = Effect.gen(function* () {
+  // The local relay (infra/relay `vp run dev`); relay tokens name it as audience.
+  if (yield* ALCHEMY_DEV) return { RELAY_URL: "http://localhost:8787" };
+  const { appUrl, relayUrl, optional } = yield* Deployment;
+  return {
+    RELAY_URL: relayUrl,
+    PASSKEY_RP_ID: new URL(appUrl).hostname,
+    AUTH_IP_HEADERS: CLIENT_IP_HEADER,
+    ...optional,
+  };
+});
+
 export default Api.make(
   Effect.gen(function* () {
     const electric = yield* Electric;
-    const mail = yield* MailIdentity;
+    const mail = yield* Mail;
     const ingress = yield* ApiIngress;
+    const rules = yield* ApiRouting;
     return {
       cluster: yield* Cluster,
       main: import.meta.url,
@@ -43,8 +60,10 @@ export default Api.make(
       port: 4310,
       desiredCount: 1,
       runtimePlatform: ARM64,
+      ...(yield* ServiceNetwork),
       loadBalancer: {
         listener: ingress.listener,
+        ...(rules ? { rules } : {}),
         health: { "4310/http": { path: "/health" } },
       },
       env: {
@@ -52,18 +71,17 @@ export default Api.make(
         // Unwrapped: env values are written as JSON, where a Redacted reads "<redacted>".
         BETTER_AUTH_SECRET: Output.map((yield* BetterAuthSecret).text, Redacted.value),
         ELECTRIC_URL: electric.url,
-        MAIL_FROM: Output.map(mail.emailIdentity, (address) => `Astrolabe <${address}>`),
-        AUTH_URL: ingress.url,
-        AUTH_TRUSTED_ORIGINS: ingress.url,
-        // The local relay (infra/relay `vp run dev`); relay tokens name it as audience.
-        RELAY_URL: "http://localhost:8787",
+        MAIL_FROM: mail.from,
+        AUTH_URL: ingress.publicUrl,
+        AUTH_TRUSTED_ORIGINS: ingress.publicUrl,
+        ...(yield* DeployedSettings),
         // Starts only after migrations succeed.
         MIGRATED: yield* Migrations,
       },
     };
   }),
   Effect.gen(function* () {
-    const sendEmail = yield* AWS.SES.SendEmail(yield* MailIdentity);
+    const sendEmail = yield* AWS.SES.SendEmail((yield* Mail).identity);
     // Read once at startup; at plan time the container's environment isn't there.
     const mailFrom =
       (yield* ALCHEMY_PHASE) === "runtime"
