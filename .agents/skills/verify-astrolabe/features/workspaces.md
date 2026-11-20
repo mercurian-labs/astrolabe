@@ -15,8 +15,9 @@ account; signed out it offers **Sign in**. A build without cloud addresses hides
 it: the settings nav and search leave Workspaces out, and `/settings/workspaces` (and so
 `/w/<short name>`) redirects to `/settings/general`.
 
-The rail's head (`[data-app-rail-switcher]`, named `Workspace: <name>` or `Workspaces`) is the
-switcher: its menu lists your workspaces as radio items plus **No workspace**, then **Invite
+The rail's head (`[data-app-rail-switcher]`, named `Workspace: <name>`, or `Workspace: Personal` with the
+person glyph when none is chosen) is the switcher: its menu lists your workspaces as radio items
+plus **Personal**, then **Invite
 people** (only where your role may invite), **Workspace settings** and **Create workspace** (on
 New workspace's terms), each opening Settings › Workspaces. Signed out it offers **Sign in**.
 The choice is client state in local storage, `astrolabe:selected-workspace:<user id>`, never

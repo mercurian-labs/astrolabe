@@ -1,4 +1,4 @@
-import { UsersIcon } from "lucide-react";
+import { UserRoundIcon, UsersIcon } from "lucide-react";
 
 import {
   ADDON_ICON_CLASS,
@@ -30,10 +30,10 @@ export function useCommandPaletteWorkspaceItem(): CommandPaletteSubmenuItem | nu
   }));
   items.push({
     kind: "action",
-    value: "workspace:none",
-    title: "No workspace",
-    searchTerms: ["no workspace", "none", "clear"],
-    icon: <UsersIcon className={ITEM_ICON_CLASS} />,
+    value: "workspace:personal",
+    title: "Personal",
+    searchTerms: ["personal", "no workspace", "none"],
+    icon: <UserRoundIcon className={ITEM_ICON_CLASS} />,
     titleTrailingContent: selectedId === null ? CURRENT : undefined,
     run: async () => state.select(null),
   });

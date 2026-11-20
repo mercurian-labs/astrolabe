@@ -27,8 +27,8 @@ spelling live in
 - The page title reads "Astrolabe (Beta)" while booting and "Astrolabe (Dev)" once loaded in dev
   (a server version can set another stage label). A Nightly hosted build reads "Astrolabe
   (Nightly)", and Latest drops the label (`branding.ts`, `branding.logic.ts`). Brand marks and the
-  wordmark appear on the boot screen and the welcome wizard, and the monogram heads the icon rail.
-  The monogram also replaces T3's glyph in the chat timeline: on the plain "Created thread" row
+  wordmark appear on the boot screen and the welcome wizard. The icon rail is headed by the Personal or workspace tile, not the
+  monogram (workspaces.md). The monogram replaces T3's glyph in the chat timeline: on the plain "Created thread" row
   (`components/chat/V2LifecycleRow.tsx`) and as the `t3-code` work-log icon for thread-create
   tools and system notifications (`WorkEntryIcon` in `components/chat/TimelineToolActivityIcon.tsx`).
 - **Visible names**: client, server and provider text says Astrolabe, and the
@@ -51,10 +51,9 @@ Mercurian, then T3 Code, and leave out Iris. Focus bar color: Appearance →
 **Create theme** (or a card's **Duplicate**) opens the theme editor → turn on
 **Advanced** if it is off → Brand & content → **Focus bar**.
 
-Branding: the wordmark on the boot screen and the welcome wizard, then the
-monogram tile heading the icon rail (`[data-app-rail-mark]`). The sidebar's
-title-bar row holds no wordmark, and narrow windows (under 768px) have no rail,
-so their chrome shows no mark.
+Branding: the wordmark on the boot screen and the welcome wizard. The app's
+chrome shows no mark: the icon rail is headed by the Personal or workspace tile
+and the sidebar's title-bar row holds no wordmark.
 
 ## Driving it with the Browser panel
 
@@ -88,12 +87,6 @@ returns that button, its `backgroundColor` is not transparent, and its
 `--brand-rust` `#a0492a`). Reading `--pivot` alone does not prove the dot
 paints, so save a screenshot of the button.
 
-The rail monogram is aria-hidden mask spans, absent from the accessibility
-snapshot. On a window 768px or wider, `elementFromPoint` at the centre of
-`nav[aria-label="Sections"] [data-app-rail-mark]` lands inside it, and its rust
-layer (`[data-app-rail-mark] > span > span:last-child`) has a `backgroundColor`
-of `rgb(160, 73, 42)` and a `maskImage` (in dev Vite inlines the small rust layer as a
-`data:image/svg+xml` URI, so don't match on its file name).
 `document.title` contains "Astrolabe".
 On Settings → Connections and the account dialog,
 `/T3 Connect|T3 Code settings/.test(document.body.innerText)` is `false`.

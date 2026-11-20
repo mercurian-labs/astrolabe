@@ -26,7 +26,7 @@ in Settings.
 
 On web and desktop, the tile at the top of the icon rail shows the workspace
 you've chosen and opens a menu to switch, invite people, open its settings or
-start a workspace. Choose **No workspace** to go back to the Astrolabe mark.
+start a workspace. Choose **Personal** to work outside any workspace.
 Search offers **Switch workspace** too. Your choice is kept on this device.
 
 ## Roles

@@ -61,32 +61,32 @@ async function choose(current: string, option: string) {
 }
 
 describe("WorkspaceSwitcher", () => {
-  it("keeps the chosen workspace across a remount, and goes back to none", async () => {
+  it("keeps the chosen workspace across a remount, and goes back to Personal", async () => {
     setup();
     {
       await using _screen = await render(<WorkspaceSwitcher />);
-      await choose("Workspaces", "Beta");
+      await choose("Workspace: Personal", "Beta");
       await expect.element(tile("Workspace: Beta")).toBeVisible();
     }
     await using _screen = await render(<WorkspaceSwitcher />);
     await expect.element(tile("Workspace: Beta")).toBeVisible();
-    await choose("Workspace: Beta", "No workspace");
-    await expect.element(tile("Workspaces")).toBeVisible();
+    await choose("Workspace: Beta", "Personal");
+    await expect.element(tile("Workspace: Personal")).toBeVisible();
   });
 
-  it("falls back to none when you leave the selected workspace", async () => {
+  it("falls back to Personal when you leave the selected workspace", async () => {
     const { members } = setup();
     await using _screen = await render(<WorkspaceSwitcher />);
-    await choose("Workspaces", "Acme");
+    await choose("Workspace: Personal", "Acme");
     await expect.element(tile("Workspace: Acme")).toBeVisible();
     await act(() => members.delete("m-acme"));
-    await expect.element(tile("Workspaces")).toBeVisible();
+    await expect.element(tile("Workspace: Personal")).toBeVisible();
   });
 
   it("offers Invite people only where your role may invite", async () => {
     setup();
     await using _screen = await render(<WorkspaceSwitcher />);
-    await choose("Workspaces", "Acme");
+    await choose("Workspace: Personal", "Acme");
     await userEvent.click(tile("Workspace: Acme"));
     await expect.element(page.getByRole("menuitem", { name: "Invite people" })).toBeVisible();
     await userEvent.click(page.getByRole("menuitemradio", { name: "Beta" }));

@@ -1,9 +1,8 @@
 import { canInvite } from "@t3tools/client-runtime/workspaces";
 import { useNavigate } from "@tanstack/react-router";
-import { LogInIcon, PlusIcon, SettingsIcon, UserPlusIcon } from "lucide-react";
+import { LogInIcon, PlusIcon, SettingsIcon, UserPlusIcon, UserRoundIcon } from "lucide-react";
 
 import { startCloudSignIn } from "../../cloud/account";
-import { AstrolabeMarkSmall } from "../brand/AstrolabeMarks";
 import {
   Menu,
   MenuGroup,
@@ -20,30 +19,33 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useSelectedWorkspace } from "../workspaces/useSelectedWorkspace";
 import { WorkspaceTile } from "../workspaces/WorkspaceTile";
 
-// The radio value for "no workspace"; workspace ids are never empty.
-const NO_WORKSPACE = "";
+// The radio value for Personal; workspace ids are never empty.
+const PERSONAL = "";
 
-/** The rail's mark, on a tile as large as a rail button's square, so it heads their column. */
-export function RailMarkTile() {
+/**
+ * Personal (no workspace) on a tile as large as a rail button's square. A plain person glyph, not
+ * the avatar, which the account menu at the rail's foot already shows.
+ */
+export function PersonalTile() {
   return (
     <span
-      data-app-rail-mark=""
-      className="flex size-8 items-center justify-center rounded-md border border-border bg-background shadow-xs/5"
+      data-app-rail-personal=""
+      className="flex size-8 items-center justify-center rounded-md border border-border bg-background text-muted-foreground shadow-xs/5"
     >
-      <AstrolabeMarkSmall className="h-5" />
+      <UserRoundIcon className="size-4" />
     </span>
   );
 }
 
 /**
- * The rail's head where sign-in is set up: the selected workspace's tile, or the mark when none
+ * The rail's head where sign-in is set up: the selected workspace's tile, or Personal when none
  * is, opening a menu to switch. Render it only when `hasCloudPublicConfig()`.
  */
 export function WorkspaceSwitcher() {
   const navigate = useNavigate();
   const state = useSelectedWorkspace();
   const selected = state.status === "ready" ? state.selected : null;
-  const name = selected?.workspace.name;
+  const name = selected?.workspace.name ?? "Personal";
 
   const openSettings = (hash?: string) =>
     void navigate({
@@ -62,20 +64,20 @@ export function WorkspaceSwitcher() {
                 <button
                   type="button"
                   data-app-rail-switcher=""
-                  aria-label={name ? `Workspace: ${name}` : "Workspaces"}
+                  aria-label={`Workspace: ${name}`}
                   className="flex size-8 cursor-pointer items-center justify-center rounded-md outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
                 >
                   {selected ? (
                     <WorkspaceTile workspace={selected.workspace} className="size-8" />
                   ) : (
-                    <RailMarkTile />
+                    <PersonalTile />
                   )}
                 </button>
               }
             />
           }
         />
-        <TooltipPopup side="right">{name ?? "Workspaces"}</TooltipPopup>
+        <TooltipPopup side="right">{name}</TooltipPopup>
       </Tooltip>
       <MenuPopup side="right" align="start" className="min-w-56">
         {state.status === "signedOut" ? (
@@ -90,9 +92,9 @@ export function WorkspaceSwitcher() {
             <MenuGroup>
               <MenuGroupLabel>Workspaces</MenuGroupLabel>
               <MenuRadioGroup
-                value={selected?.workspace.id ?? NO_WORKSPACE}
+                value={selected?.workspace.id ?? PERSONAL}
                 onValueChange={(id) => {
-                  if (typeof id === "string") state.select(id === NO_WORKSPACE ? null : id);
+                  if (typeof id === "string") state.select(id === PERSONAL ? null : id);
                 }}
               >
                 {state.memberships.map(({ workspace }) => (
@@ -104,9 +106,10 @@ export function WorkspaceSwitcher() {
                     </span>
                   </MenuRadioItem>
                 ))}
-                <MenuRadioItem value={NO_WORKSPACE} closeOnClick>
+                <MenuRadioItem value={PERSONAL} closeOnClick>
                   <span className="flex min-w-0 items-center gap-2">
-                    <span className="min-w-0 flex-1 truncate">No workspace</span>
+                    <UserRoundIcon className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1 truncate">Personal</span>
                     <MenuRadioItemIndicator />
                   </span>
                 </MenuRadioItem>
