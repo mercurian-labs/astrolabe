@@ -97,21 +97,11 @@ import Twilight from "./twilight.js";
       // The olive plate, off register: a pixel and a half down and one to the right.
       vec2 shift = vec2(-1.0, -1.5) * u_dpr / u_res;
       vec4 g2 = texture2D(u_geo, uv + shift);
-      // At night the print closes the small holes in the ground's cutout, which would read as blotches.
-      float fill = g.a;
-      if (u_body.a > 0.0) {
-        vec2 t = 7.0 / u_size;
-        float near = texture2D(u_geo, uv + vec2(t.x, 0.0)).a + texture2D(u_geo, uv - vec2(t.x, 0.0)).a
-          + texture2D(u_geo, uv + vec2(0.0, t.y)).a + texture2D(u_geo, uv - vec2(0.0, t.y)).a
-          + texture2D(u_geo, uv + 2.0 * t).a + texture2D(u_geo, uv - 2.0 * t).a
-          + texture2D(u_geo, uv + vec2(2.0 * t.x, -2.0 * t.y)).a + texture2D(u_geo, uv - vec2(2.0 * t.x, -2.0 * t.y)).a;
-        fill = max(g.a, smoothstep(0.3, 0.65, (near + g.a) / 9.0));
-      }
-      if (fill < 0.004 && g2.a < 0.004) {
+      if (g.a < 0.004 && g2.a < 0.004) {
         gl_FragColor = vec4(0.0);
         return;
       }
-      vec3 n = g.a < 0.004 ? vec3(0.0, 0.0, 1.0) : normalOf(g); // a closed hole has no normal of its own
+      vec3 n = normalOf(g);
       vec3 tone = texture2D(u_tone, uv).rgb;
 
       // The sun: Lambert, with the shadows the building casts on itself.
@@ -187,11 +177,11 @@ import Twilight from "./twilight.js";
         }
       }
       float k = 1.0 / (u_sub * u_sub);
-      float aDark = inkDark * k * u_alpha.x * fill;
-      float aLight = inkLight * k * u_alpha.y * fill;
+      float aDark = inkDark * k * u_alpha.x * g.a;
+      float aLight = inkLight * k * u_alpha.y * g.a;
       float aOlive = oliveCover * k * u_alpha.z * g2.a * (1.0 - aDark - aLight);
       vec4 grain = vec4(u_dark * aDark + u_ivory * aLight + u_olive * aOlive, aDark + aLight + aOlive);
-      gl_FragColor = grain + u_body * fill * (1.0 - moon) * (1.0 - grain.a);
+      gl_FragColor = grain + u_body * g.a * (1.0 - moon) * (1.0 - grain.a);
 
       // The eyepiece: inside the aperture the photograph in continuous tone. Its edge is decided grain
       // by grain over about a CSS px, so it is as crisp as the print and has the print's tooth.
