@@ -148,8 +148,10 @@ import {
   parseTreeListing,
   EDIT_TIMES_DEPTH,
   EDIT_TIMES_FORMAT,
+  advanceFileTimes,
   parseFileListing,
   parseFileTimes,
+  parseTreeChanges,
   withRecordedMoves,
   type WikiFileTimes,
   parseMergeTree,
@@ -3304,6 +3306,24 @@ const make = Effect.gen(function* () {
   ) {
     const cached = editTimes.get(commit);
     if (cached !== undefined) return cached;
+    // A draft's every save is a commit: from its parent's times, it costs only what it changed.
+    const parent = yield* onlyParent(wiki, commit);
+    const before = parent === null ? undefined : editTimes.get(parent);
+    if (before !== undefined) {
+      const step = yield* runGit("editTimesStep", wiki.root, [
+        "log",
+        "-1",
+        "--find-renames",
+        `--format=${EDIT_TIMES_FORMAT}`,
+        "--name-status",
+        "-z",
+        commit,
+        "--",
+      ]);
+      const times = advanceFileTimes(before, step.stdout);
+      editTimes.set(commit, times);
+      return times;
+    }
     const log = yield* runGit("editTimes", wiki.root, [
       "log",
       "--find-renames",
@@ -3319,6 +3339,55 @@ const make = Effect.gen(function* () {
     return times;
   });
 
+  /** A commit's one parent; null for a root or a merge. */
+  const onlyParent = Effect.fn("WikiService.onlyParent")(function* (
+    wiki: WikiRecord,
+    commit: string,
+  ) {
+    const line = yield* gitOut("parents", wiki.root, ["rev-list", "--parents", "-n", "1", commit]);
+    const parents = line.trim().split(" ");
+    return parents.length === 2 ? (parents[1] ?? null) : null;
+  });
+
+  /** The files at `commit`, from its parent's listing and what the commit changed. */
+  const listingFrom = Effect.fn("WikiService.listingFrom")(function* (
+    wiki: WikiRecord,
+    before: FileListing,
+    parent: string,
+    commit: string,
+  ) {
+    const changes = parseTreeChanges(
+      yield* gitOut("diffTree", wiki.root, [
+        "diff-tree",
+        "-r",
+        "-z",
+        "--no-renames",
+        "--no-commit-id",
+        parent,
+        commit,
+      ]),
+    );
+    const added = changes.filter(
+      (change) => change.oid !== null && (change.mode === "100644" || change.mode === "100755"),
+    );
+    const sizes =
+      added.length === 0
+        ? []
+        : (yield* gitOut("catFileSizes", wiki.root, ["cat-file", "--batch-check=%(objectsize)"], {
+            stdin: `${added.map((change) => change.oid).join("\n")}\n`,
+          })).split("\n");
+    const changed = new Set(changes.map((change) => change.file));
+    const entries = before.entries.filter((entry) => !changed.has(entry.file));
+    added.forEach((change, position) => {
+      const size = Number(sizes[position]);
+      if (change.oid !== null && Number.isFinite(size)) {
+        entries.push({ file: change.file, oid: change.oid, size });
+      }
+    });
+    // As `ls-tree -r` lists them.
+    return entries.toSorted((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
+  });
+
   /** Every file at `commit`, at any depth. */
   const fileListingAt = Effect.fn("WikiService.fileListingAt")(function* (
     wiki: WikiRecord,
@@ -3326,9 +3395,14 @@ const make = Effect.gen(function* () {
   ) {
     const cached = fileListings.get(commit);
     if (cached !== undefined) return cached;
-    const entries = parseFileListing(
-      (yield* runGit("lsTreeAll", wiki.root, ["ls-tree", "-r", "-l", "-z", commit])).stdout,
-    );
+    const parent = yield* onlyParent(wiki, commit);
+    const before = parent === null ? undefined : fileListings.get(parent);
+    const entries =
+      parent !== null && before !== undefined
+        ? yield* listingFrom(wiki, before, parent, commit)
+        : parseFileListing(
+            (yield* runGit("lsTreeAll", wiki.root, ["ls-tree", "-r", "-l", "-z", commit])).stdout,
+          );
     const listing: FileListing = {
       entries,
       byFile: new Map(entries.map((entry) => [entry.file, entry])),

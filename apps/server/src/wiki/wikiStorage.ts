@@ -285,6 +285,39 @@ export const parseFileTimes = (output: string): WikiFileTimes => {
   return { modified, created };
 };
 
+/**
+ * The times at a one-parent commit, from the parent's and that commit's own `git log -1` in the
+ * same format: what it touched changed then, and a moved file keeps when its old path began.
+ */
+export const advanceFileTimes = (before: WikiFileTimes, output: string): WikiFileTimes => {
+  const modified = new Map(before.modified);
+  const created = new Map(before.created);
+  for (const record of output.split("\x1e").slice(1)) {
+    const [at, ...fields] = record.split("\0");
+    if (!at) continue;
+    for (const { file, movedFrom } of nameStatuses(fields)) {
+      modified.set(file, at);
+      created.set(file, before.created.get(movedFrom ?? file) ?? at);
+    }
+  }
+  return { modified, created };
+};
+
+/** `git diff-tree -r -z --no-renames`: each changed file's new blob and mode, null when deleted. */
+export const parseTreeChanges = (
+  output: string,
+): ReadonlyArray<{ readonly file: string; readonly oid: string | null; readonly mode: string }> => {
+  const fields = output.split("\0");
+  const changes: Array<{ file: string; oid: string | null; mode: string }> = [];
+  for (let at = 0; at + 1 < fields.length; at += 2) {
+    const [, mode = "", , oid = "", status = ""] = (fields[at] ?? "").replace(/^:/, "").split(" ");
+    const file = fields[at + 1] ?? "";
+    if (file === "") continue;
+    changes.push({ file, oid: status.startsWith("D") ? null : oid, mode });
+  }
+  return changes;
+};
+
 /** `git ls-tree -r -l -z`: every file at a commit, with its blob and size, for bases to list. */
 export const parseFileListing = (
   output: string,
