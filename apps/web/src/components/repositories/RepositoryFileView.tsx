@@ -128,7 +128,7 @@ import { repositoryTabKey, type CheckedOutRepositoryTab } from "./repositoryTabs
 
 type FileTab = Extract<CheckedOutRepositoryTab, { kind: "file" }>;
 import { projectSettingsKey, registerLanguageServerFile } from "./languageServerFile";
-import { LanguageServerStatusEntry } from "./LanguageServerStatus";
+import { LanguageServerStatusEntry, LanguageServerTrustBar } from "./LanguageServerStatus";
 import { lastRunStarter, startRun } from "./runTabs";
 import { useLanguageServer } from "./useLanguageServer";
 import { useRepositoryDocument } from "./useRepositoryDocument";
@@ -612,6 +612,13 @@ function RepositoryFile({
       <div className="hidden shrink-0 px-(--workspace-gutter-start) pb-1 *:shrink *:flex-wrap @max-[48rem]/file:not-empty:flex">
         {serverStatus}
       </div>
+      {fromDisk || whole !== null ? null : (
+        <LanguageServerTrustBar
+          file={languageServer.file}
+          status={languageServer.status}
+          servers={languageServer.servers}
+        />
+      )}
       {!canWrite && state.unsent ? (
         <NoticeBar message="Read-only connection. Your unsaved edits are kept until write access returns." />
       ) : fromDisk || readOnly || whole !== null ? null : (

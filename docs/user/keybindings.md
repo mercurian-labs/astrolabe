@@ -392,7 +392,9 @@ stops a few minutes after you close its tab.
 Language servers can run a project's code, so each project starts out untrusted, once per machine.
 An untrusted project runs only the servers that never run project code and are already on the
 machine or downloaded, marked restricted in the header; the others wait, and agents' code tools
-say so unless it is only ESLint or Tailwind waiting. Click **Trust project** in the header to run them, downloads included. A worktree shares
+say so unless it is only ESLint or Tailwind waiting. A file in an untrusted project asks under its
+header: click **Trust project** to run them, downloads included, or **Not now** to hide the
+question; the server menu in the header still offers **Trust project**. A worktree shares
 its repository's trust. To take it back, go to **Settings → Projects → Language servers** and
 click **Revoke**: the project's servers restart restricted. A restricted server fetches nothing a
 file names, so JSON, YAML and TOML schemas at a URL load once the project is trusted.
