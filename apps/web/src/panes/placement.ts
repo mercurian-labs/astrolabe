@@ -1,6 +1,6 @@
 import type { PaneOpenBeside } from "@t3tools/contracts";
 
-import { parseChatTabKey } from "~/sectionTabs/sectionTabs";
+import { parseChatTabKey, parseChatTerminalKey } from "~/sectionTabs/sectionTabs";
 
 import { activateTab, openBeside, openTab, type Arrangement } from "./arrangement";
 import { findLeaf, leafWithTab, leaves, type Leaf, type Side, type SplitNode } from "./tree";
@@ -44,13 +44,15 @@ export function paneWidthPx(node: SplitNode, id: string, widthPx: number): numbe
 
 /**
  * The pane beside `targetId` that can take another tab: not showing a chat, which a tab in front
- * would cover. The nearest after it in reading order, else the nearest before it.
+ * would cover, nor a chat's terminal, which stands alone below it. The nearest after it in reading
+ * order, else the nearest before it.
  */
 export function sidePaneOf(arrangement: Arrangement, targetId: string): Leaf | undefined {
   const all = leaves(arrangement.root);
   const at = all.findIndex((leaf) => leaf.id === targetId);
   if (at === -1) return undefined;
-  const takes = (leaf: Leaf) => parseChatTabKey(leaf.active) === null;
+  const takes = (leaf: Leaf) =>
+    parseChatTabKey(leaf.active) === null && parseChatTerminalKey(leaf.active) === null;
   return all.slice(at + 1).find(takes) ?? all.slice(0, at).toReversed().find(takes);
 }
 

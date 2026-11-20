@@ -59,7 +59,7 @@ import { openOutlinePicker } from "~/components/outline/OutlinePicker";
 import { projectSymbolsOpener } from "~/components/outline/ProjectSymbolPicker";
 import { isEmptyTab } from "~/panes/arrangement";
 import { focusedChatOf, workspace } from "~/panes/workspace";
-import { parseChatTabKey } from "~/sectionTabs/sectionTabs";
+import { parseChatTabKey, parseChatTerminalKey } from "~/sectionTabs/sectionTabs";
 import {
   canClosePane,
   canSplitPane,
@@ -713,9 +713,16 @@ function upstreamCommand(command: KeybindingCommand, context: AppCommandContext)
   if (command === "rightPanel.toggle" && context.chatTabs === null) {
     return entry(UPSTREAM_LABELS[command] ?? commandLabel(command), null);
   }
-  // The terminal drawer is the focused chat tab's: with anything else in focus there is none.
+  // The terminal is the focused chat's, a tab linked to it in focus included, or stands behind
+  // the focused tab: with anything else in focus there is none.
   const focusedTab = context.chatTabs?.activeKey ?? null;
-  if (command === "terminal.toggle" && (focusedTab === null || !parseChatTabKey(focusedTab))) {
+  if (
+    command === "terminal.toggle" &&
+    (focusedTab === null ||
+      (parseChatTabKey(focusedTab) === null && parseChatTerminalKey(focusedTab) === null)) &&
+    focusedChatOf(workspace.linked()) === null &&
+    workspace.terminalBehindFocusedTab() === null
+  ) {
     return entry(UPSTREAM_LABELS[command] ?? commandLabel(command), null);
   }
   const label = UPSTREAM_LABELS[command] ?? commandLabel(command);

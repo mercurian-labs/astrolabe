@@ -132,6 +132,7 @@ describe("reopenClosedView", () => {
           shellLive: true,
           panel: before,
           chatOpen: false,
+          terminalOpen: false,
         }));
         expect(plan.restore).toBe(entry);
         const openPreview = vi.fn();
@@ -253,6 +254,7 @@ describe("planNextReopen", () => {
     shellLive: true,
     panel: { isOpen: false, activeSurfaceId: null, surfaces: [] },
     chatOpen: false,
+    terminalOpen: false,
   };
   const openDiff: ThreadRightPanelState = {
     isOpen: true,

@@ -502,6 +502,30 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/appearance",
   },
   {
+    id: "terminal-placement",
+    title: "Terminal placement",
+    to: "/settings/general",
+    searchTerms: ["panes split below chat tab cmd+j layout"],
+  },
+  {
+    id: "side-pane-placement",
+    title: "Side pane placement",
+    to: "/settings/general",
+    searchTerms: ["panes linked tabs beside chat tab right panel layout"],
+  },
+  {
+    id: "side-pane-opens-on",
+    title: "Side pane opens on",
+    to: "/settings/general",
+    searchTerms: ["panes last used diff files browser pull request default layout"],
+  },
+  {
+    id: "new-tab-position",
+    title: "New tab position",
+    to: "/settings/general",
+    searchTerms: ["panes tabs after current end order layout"],
+  },
+  {
     id: "project-grouping",
     title: "Project grouping",
     to: "/settings/general",

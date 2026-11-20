@@ -357,12 +357,17 @@ import { useOrchestrationCommand } from "../state/use-orchestration-command";
 import { useAtomQueryRunner } from "../state/use-atom-query-runner";
 import { observeResize } from "~/lib/observeResize";
 import { ThreadVisitWatermark } from "./chat/ThreadVisitWatermark";
-import { ChatTerminalDrawers } from "./chat/ChatTerminalDrawers";
 import { ChatRightPanel } from "./chat/ChatRightPanel";
+import { lendChat } from "../panes/chatBridge";
 import { setReadingTurn } from "./lineage/readingTurn";
 import { PaneChatHeader } from "../panes/PaneChatHeader";
 import { useChatOwner } from "../panes/PaneSurfaceHost";
-import { isFocusedChatTab, takesPanelShortcut, useLiveSurfaceKeys } from "../panes/workspace";
+import {
+  isFocusedChatTab,
+  isTerminalTabFocused,
+  takesPanelShortcut,
+  useLiveSurfaceKeys,
+} from "../panes/workspace";
 import { chatSurfaceKey } from "../sectionTabs/sectionTabs";
 import { keepsListFocus } from "../keyboardNav/placeLists";
 import { useDraftEnvironmentRouting } from "./chat/useDraftEnvironmentRouting";
@@ -1879,6 +1884,7 @@ export default function ChatView(props: ChatViewProps) {
     addTerminalContextToDraftStable,
     addTerminalSurfaceStable,
     closePanelTerminalStable,
+    endTerminalsStable,
     lastInvokedScriptByProjectId,
     runProjectScriptStable,
     runShellCommandStable,
@@ -2140,9 +2146,9 @@ export default function ChatView(props: ChatViewProps) {
   };
   const reportReadingTurnStable = useStableCallback(reportReadingTurn);
 
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- schedules a frame to focus the composer DOM element when a thread opens with the terminal closed
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- schedules a frame to focus the composer DOM element when a thread opens
   useEffect(() => {
-    if (embedded || !activeThread?.id || terminalUiState.terminalOpen) return;
+    if (embedded || !activeThread?.id) return;
     const frame = window.requestAnimationFrame(() => {
       // Astrolabe: a thread opened by Enter in the sidebar's list leaves focus in the list, and
       // a chat beside the focused one never takes focus.
@@ -2152,11 +2158,11 @@ export default function ChatView(props: ChatViewProps) {
     return () => {
       window.cancelAnimationFrame(frame);
     };
-  }, [activeThread?.id, chatOwner, embedded, focusComposerStable, terminalUiState.terminalOpen]);
+  }, [activeThread?.id, chatOwner, embedded, focusComposerStable]);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- window focus listener that refocuses the composer after the window regains focus
   useEffect(() => {
-    if (embedded || !activeThread?.id || terminalUiState.terminalOpen || isMobileViewport) return;
+    if (embedded || !activeThread?.id || isMobileViewport) return;
     let frame: number | null = null;
     const onWindowFocus = () => {
       if (frame !== null) window.cancelAnimationFrame(frame);
@@ -2180,14 +2186,7 @@ export default function ChatView(props: ChatViewProps) {
       window.removeEventListener("focus", onWindowFocus);
       if (frame !== null) window.cancelAnimationFrame(frame);
     };
-  }, [
-    activeThread?.id,
-    chatOwner,
-    embedded,
-    focusComposerStable,
-    isMobileViewport,
-    terminalUiState.terminalOpen,
-  ]);
+  }, [activeThread?.id, chatOwner, embedded, focusComposerStable, isMobileViewport]);
 
   // Promotion drops draftId while a send may still be dispatching, so key by thread.
   const [localDispatchThreadId, setLocalDispatchThreadId] = useState(threadId);
@@ -2261,7 +2260,7 @@ export default function ChatView(props: ChatViewProps) {
       composerTimelineInsetRef.current = nextHeight;
       setComposerTimelineInset(nextHeight);
     }
-    // Reserve the expanded composer height for the terminal drawer and empty placeholder.
+    // Reserve the expanded composer height for the empty placeholder.
     // Keep it while the mobile strip collapses, but allow growth from approvals or tasks.
     // A hero overlay fills the pane, so reserve only its stack.
     const stack = composerOverlayElement?.querySelector<HTMLElement>(
@@ -2382,6 +2381,7 @@ export default function ChatView(props: ChatViewProps) {
     openFileSurfaceStable,
     toggleRightPanelMaximizedStable,
     toggleRightPanelStable,
+    openSidePaneDefaultStable,
     toggleThreadPanelStable,
     shortcuts: rightPanelShortcuts,
   } = useRightPanelActions({
@@ -2688,13 +2688,37 @@ export default function ChatView(props: ChatViewProps) {
     setTerminalUiLaunchContext(null);
   }
 
-  // Entering a thread with its drawer open focuses the drawer terminal; opening
-  // it from a handler requests focus there. A closed drawer leaves focus to the
-  // composer effect above.
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- focuses the open drawer terminal when entering a thread
+  // Astrolabe: a thread comes back with focus where it was left, so its terminal takes focus on
+  // entering only as the focused tab; anything else leaves it to the composer effect above.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- focuses the terminal tab left in focus when entering a thread
   useEffect(() => {
-    if (activeThreadRef && !embedded) return focusTerminalOnThreadEnter(activeThreadRef);
-  }, [activeThreadRef, embedded]);
+    if (activeThreadRef && !embedded) {
+      return focusTerminalOnThreadEnter(activeThreadRef, isTerminalTabFocused(chatOwner));
+    }
+  }, [activeThreadRef, chatOwner, embedded]);
+
+  const focusComposerIfFocusedStable = useStableCallback(() => {
+    if (isFocusedChatTab(chatOwner)) focusComposerStable();
+  });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- lends the terminal tab and the panes, which live outside this view, what only the chat can reach
+  useLayoutEffect(() => {
+    if (chatOwner === null || embedded) return;
+    return lendChat(chatOwner, {
+      launchContext: activeTerminalLaunchContext ?? null,
+      addTerminalContext: addTerminalContextToDraftStable,
+      endTerminals: endTerminalsStable,
+      openSidePane: openSidePaneDefaultStable,
+      focusComposer: focusComposerIfFocusedStable,
+    });
+  }, [
+    activeTerminalLaunchContext,
+    addTerminalContextToDraftStable,
+    chatOwner,
+    embedded,
+    endTerminalsStable,
+    focusComposerIfFocusedStable,
+    openSidePaneDefaultStable,
+  ]);
 
   const getShortcutContext = (eventTarget: EventTarget | null = document.activeElement) => ({
     terminalFocus: getTerminalFocusOwner() !== null,
@@ -2811,7 +2835,7 @@ export default function ChatView(props: ChatViewProps) {
       if (activeThread) setThreadError(activeThread.id, message);
     },
   });
-  // A maximized panel covers the terminal drawer the command runs in.
+  // A maximized panel covers the terminal tab the command runs in.
   const runSideChatShellCommandStable = useStableCallback((command: string) => {
     if (activeThreadRef) useRightPanelStore.getState().setMaximized(activeThreadRef, false);
     runShellCommandStable(command);
@@ -3941,21 +3965,6 @@ export default function ChatView(props: ChatViewProps) {
             )}
           </ThreadFindCanvas>
         </div>
-
-        {embedded ? null : (
-          <ChatTerminalDrawers
-            activeThreadKey={activeThreadKey}
-            activeTerminalOpen={Boolean(terminalUiState.terminalOpen)}
-            composerHeight={composerReservedHeight}
-            launchContext={activeTerminalLaunchContext ?? null}
-            splitShortcutLabel={splitTerminalShortcutLabel ?? undefined}
-            splitVerticalShortcutLabel={splitTerminalVerticalShortcutLabel ?? undefined}
-            newShortcutLabel={newTerminalShortcutLabel ?? undefined}
-            closeShortcutLabel={closeTerminalShortcutLabel ?? undefined}
-            keybindings={keybindings}
-            onAddTerminalContext={addTerminalContextToDraftStable}
-          />
-        )}
       </div>
 
       {rightPanelPresent && activeThreadRef && !embedded ? (

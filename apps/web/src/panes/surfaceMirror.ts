@@ -9,6 +9,7 @@ import {
   surfaceIdOf,
   surfaceKey,
   type Arrangement,
+  type TabPosition,
 } from "./arrangement";
 import { openNear } from "./placement";
 import { findLeaf, leafWithTab, leaves } from "./tree";
@@ -28,13 +29,16 @@ export interface PanelRecord {
 /**
  * How a set of panes names a record's surfaces as tabs: `surface:<id>` by default. Astrolabe's
  * shared panes name each thread's own (`chatSurfaceKey`), count its other linked tabs as part of
- * its panel (`linked`), and open its first surface in a new pane beside `splitFrom`.
+ * its panel (`linked`), and open its first surface in a new pane beside `splitFrom`, or as a tab
+ * of `home`, at `position`.
  */
 export interface SurfaceKeys {
   readonly key: (surfaceId: string) => string;
   readonly id: (key: string) => string | null;
   readonly linked?: (key: string) => boolean;
   readonly splitFrom?: string | null;
+  readonly home?: string | null;
+  readonly position?: TabPosition;
 }
 
 const PANEL_KEYS: SurfaceKeys = { key: surfaceKey, id: surfaceIdOf };
@@ -62,6 +66,7 @@ function surfacePane(
     leaf.tabs.some((key) => keys.id(key) !== null || keys.linked?.(key) === true),
   );
   if (holding) return holding.id;
+  if (keys.home != null && findLeaf(arrangement.root, keys.home)) return keys.home;
   const splitFrom = keys.splitFrom ?? null;
   return splitFrom !== null && findLeaf(arrangement.root, splitFrom)
     ? null
@@ -121,7 +126,7 @@ export function followRecord(
             weight: SPLIT_WEIGHT,
             ownPane: true,
           })
-        : openTab(arrangement, surfaceKey(id), home, asked);
+        : openTab(arrangement, surfaceKey(id), home, asked, keys.position);
     consumedTarget ||= asked;
   }
 

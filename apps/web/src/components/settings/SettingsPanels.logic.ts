@@ -84,6 +84,21 @@ type TypographySettings = Pick<
   | "fontSizeTerminal"
 >;
 
+const PANE_SETTING_LABELS: Readonly<Record<keyof UnifiedSettings["layout"], string>> = {
+  terminalPlacement: "Terminal placement",
+  sidePanePlacement: "Side pane placement",
+  sidePaneOpensOn: "Side pane opens on",
+  newTabPosition: "New tab position",
+};
+
+export function getChangedPaneSettingLabels(settings: Pick<UnifiedSettings, "layout">): string[] {
+  const defaults = DEFAULT_UNIFIED_SETTINGS.layout;
+  return Object.entries(PANE_SETTING_LABELS).flatMap(([key, label]) => {
+    const setting = key as keyof typeof PANE_SETTING_LABELS;
+    return settings.layout[setting] === defaults[setting] ? [] : [label];
+  });
+}
+
 export function getChangedTypographySettingLabels(settings: TypographySettings): string[] {
   return [
     ...(settings.fontFamilySans !== DEFAULT_UNIFIED_SETTINGS.fontFamilySans ||

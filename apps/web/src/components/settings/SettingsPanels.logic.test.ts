@@ -4,8 +4,21 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   backgroundActivitySharedPolicySettings,
   getChangedBrowserSettingLabels,
+  getChangedPaneSettingLabels,
   hasChangedBackgroundActivitySettings,
 } from "./SettingsPanels.logic";
+
+describe("getChangedPaneSettingLabels", () => {
+  it("names each pane setting off its default, so Restore defaults covers them", () => {
+    const { layout } = DEFAULT_UNIFIED_SETTINGS;
+    expect(getChangedPaneSettingLabels({ layout })).toEqual([]);
+    expect(
+      getChangedPaneSettingLabels({
+        layout: { ...layout, terminalPlacement: "new-tab", newTabPosition: "after-current" },
+      }),
+    ).toEqual(["Terminal placement", "New tab position"]);
+  });
+});
 
 describe("background activity settings restore", () => {
   it("detects legacy interval values even when the structured setting is at its default", () => {

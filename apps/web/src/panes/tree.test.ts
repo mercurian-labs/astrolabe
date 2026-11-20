@@ -3,7 +3,13 @@ import {
   MIN_SPLIT_PX,
   insertBeside,
   minWidthPx,
+  gatherSpan,
+  insertAround,
+  leaves,
+  paneBelow,
+  placeBeside,
   removeLeaf,
+  spanOf,
   resizeTiled,
   type Branch,
   type Leaf,
@@ -175,5 +181,126 @@ describe("size arithmetic", () => {
     expect(minWidthPx(branch("r", "row", [stack, leaf("c")], [1, 1]), plain)).toBe(
       2 * MIN_SPLIT_PX,
     );
+  });
+});
+
+describe("the pane below", () => {
+  it("is the next pane stacked under it, and none at the bottom", () => {
+    const root = branch("b", "column", [leaf("a"), leaf("z")], [1, 1]);
+    expect(paneBelow(root, "a")?.id).toBe("z");
+    expect(paneBelow(root, "z")).toBeNull();
+    expect(paneBelow(leaf("a"), "a")).toBeNull();
+  });
+
+  it("is never a pane beside it", () => {
+    expect(paneBelow(branch("b", "row", [leaf("a"), leaf("z")], [1, 1]), "a")).toBeNull();
+  });
+
+  it("reaches past the column it stands in when it is at that column's foot", () => {
+    const root = branch(
+      "b",
+      "column",
+      [branch("r", "row", [leaf("a"), leaf("x")], [1, 1]), leaf("z")],
+      [1, 1],
+    );
+    expect(paneBelow(root, "a")?.id).toBe("z");
+    expect(paneBelow(root, "x")?.id).toBe("z");
+  });
+
+  it("is the one sharing most of its foot where several start there", () => {
+    const root = branch(
+      "b",
+      "column",
+      [leaf("a"), branch("r", "row", [leaf("x"), leaf("y")], [1, 3])],
+      [1, 1],
+    );
+    expect(paneBelow(root, "a")?.id).toBe("y");
+  });
+
+  it("ignores a pane whose top only lines up in another column", () => {
+    const root = branch(
+      "b",
+      "row",
+      [
+        branch("l", "column", [leaf("a"), leaf("x")], [1, 1]),
+        branch("r", "column", [leaf("c"), leaf("d")], [1, 1]),
+      ],
+      [1, 1],
+    );
+    expect(paneBelow(root, "a")?.id).toBe("x");
+    expect(paneBelow(root, "c")?.id).toBe("d");
+  });
+});
+
+describe("a pane's place beside its neighbour", () => {
+  it("names the neighbour that takes its room, the side and its share", () => {
+    const start = branch("b", "column", [leaf("a"), leaf("z")], [1, 1]);
+    expect(placeBeside({ ...start, weights: [3, 1] }, "z")).toEqual({
+      tabs: ["a"],
+      side: "bottom",
+      weight: 0.25,
+    });
+    expect(placeBeside(start, "a")?.side).toBe("top");
+  });
+
+  it("names the tabs of a neighbour that is a branch, what it spanned, its heir's first", () => {
+    const row = branch("r", "row", [leaf("x"), leaf("a")], [1, 1]);
+    const root = branch("b", "column", [row, split("z", "a")], [1, 1]);
+    expect(placeBeside(root, "z")).toEqual({
+      tabs: ["a", "x"],
+      side: "bottom",
+      weight: 0.5,
+    });
+  });
+
+  it("names only the tabs asked for", () => {
+    const root = branch("b", "column", [leaf("a"), leaf("z")], [1, 1]);
+    expect(placeBeside(root, "z", () => ["only"])?.tabs).toEqual(["only"]);
+  });
+
+  it("is nothing for a lone pane", () => {
+    expect(placeBeside(leaf("a"), "a")).toBeNull();
+  });
+});
+
+describe("what a pane spanned", () => {
+  const row = branch("r", "row", [leaf("a"), leaf("x")], [1, 1]);
+
+  it("is the smallest part of the tree holding the panes still standing", () => {
+    const root = branch("b", "column", [row, leaf("z")], [1, 1]);
+    expect(spanOf(root, ["a", "x"])?.id).toBe("r");
+    expect(spanOf(root, ["a", "gone"])?.id).toBe("a");
+    expect(spanOf(root, ["gone"])).toBeNull();
+  });
+
+  it("gathers a run of a branch's children, the others outside it", () => {
+    const start = branch("r", "row", [leaf("a"), leaf("x"), leaf("other")], [1, 2, 3]);
+    const gathered = gatherSpan(start, ["a", "x"], "g");
+    expect(gathered?.target).toMatchObject({ id: "g", direction: "row", weights: [1, 2] });
+    expect(gathered?.root).toMatchObject({ id: "r", weights: [3, 3] });
+    expect(leaves(gathered?.root ?? start).map((pane) => pane.id)).toEqual(["a", "x", "other"]);
+  });
+
+  it("gathers nothing with another pane among them", () => {
+    const start = branch("r", "row", [leaf("a"), leaf("other"), leaf("x")], [1, 1, 1]);
+    expect(gatherSpan(start, ["a", "x"], "g")).toBeNull();
+    const nested = branch("n", "column", [leaf("a"), leaf("other")], [1, 1]);
+    const inner = branch("r", "row", [nested, leaf("x"), leaf("y")], [1, 1, 1]);
+    expect(gatherSpan(inner, ["a", "x"], "g")).toBeNull();
+  });
+
+  it("divides whole, the new pane running along all of it", () => {
+    const root = insertAround(row, row, leaf("t"), "bottom", "b", 0.25) as Branch;
+    expect(root.direction).toBe("column");
+    expect(root.children.map((child) => child.id)).toEqual(["r", "t"]);
+    expect(root.weights).toEqual([0.75, 0.25]);
+  });
+
+  it("folds into a parent running the same way, the others keeping their shares", () => {
+    const start = branch("b", "column", [leaf("top"), row], [1, 1]);
+    const root = insertAround(start, row, leaf("t"), "bottom", "n", 0.5) as Branch;
+    expect(root.id).toBe("b");
+    expect(root.children.map((child) => child.id)).toEqual(["top", "r", "t"]);
+    expect(root.weights).toEqual([1, 0.5, 0.5]);
   });
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  activateTab,
   closeTab,
   moveTabs,
   newTab,
@@ -56,6 +57,22 @@ describe("opening tabs", () => {
     const split = splitTab(openTab(startingArrangement(), diff, "p0"), diff, "right");
     expect(panes(split)).toEqual([["empty/1"], [diff]]);
     expect(panes(openTab(split, browser, "p0"))).toEqual([[browser], [diff]]);
+  });
+});
+
+describe("where a pane adds a tab", () => {
+  const three = () => activateTab(openTab(openTab(startingArrangement(), "a"), "b"), "a");
+
+  it("is after the tab it shows, or at the end of its strip as asked", () => {
+    expect(leaves(openTab(three(), "c").root)[0]?.tabs).toEqual(["a", "c", "b"]);
+    expect(leaves(openTab(three(), "c", "p0", true, "end").root)[0]?.tabs).toEqual(["a", "b", "c"]);
+  });
+
+  it("is the same for a New tab", () => {
+    const after = newTab(three(), "p0", "after-current");
+    expect(leaves(after.root)[0]?.tabs.indexOf("b")).toBe(2);
+    expect(leaves(newTab(three(), "p0", "end").root)[0]?.tabs.at(0)).toBe("a");
+    expect(leaves(newTab(three(), "p0", "end").root)[0]?.tabs.indexOf("b")).toBe(1);
   });
 });
 

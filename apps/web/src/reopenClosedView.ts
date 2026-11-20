@@ -13,6 +13,8 @@ import {
   useRightPanelStore,
 } from "./rightPanelStore";
 import { chatTabKey } from "./sectionTabs/sectionTabs";
+import { focusActiveDrawerTerminal } from "./lib/terminalFocus";
+import { useTerminalUiStateStore } from "./terminalUiStateStore";
 
 export interface ReopenOwnerState {
   environmentKnown: boolean;
@@ -24,6 +26,8 @@ export interface ReopenOwnerState {
   panel: ThreadRightPanelState;
   /** Whether the shared panes hold the thread's chat tab. */
   chatOpen: boolean;
+  /** Whether the thread's terminal shows with its chat. */
+  terminalOpen: boolean;
 }
 
 export function planNextReopen(
@@ -45,11 +49,13 @@ export function planNextReopen(
     const alreadyOpen =
       entry.kind === "chat-tab"
         ? owner.chatOpen
-        : entry.kind === "panel-tab"
-          ? owner.panel.isOpen && owner.panel.surfaces.some((s) => s.id === entry.surface.id)
-          : owner.panel.surfaces.some(
-              (s) => s.kind === "preview" && s.resourceId === entry.snapshot.tabId,
-            );
+        : entry.kind === "terminal-tab"
+          ? owner.terminalOpen
+          : entry.kind === "panel-tab"
+            ? owner.panel.isOpen && owner.panel.surfaces.some((s) => s.id === entry.surface.id)
+            : owner.panel.surfaces.some(
+                (s) => s.kind === "preview" && s.resourceId === entry.snapshot.tabId,
+              );
     if (alreadyOpen) {
       drop.push(entry);
       continue;
@@ -109,6 +115,12 @@ export async function reopenClosedView(
 
   if (view.kind === "chat-tab") {
     workspace.openChat(chatTabKey(ref));
+    return true;
+  }
+  if (view.kind === "terminal-tab") {
+    workspace.openChat(chatTabKey(ref));
+    useTerminalUiStateStore.getState().setTerminalOpen(ref, true);
+    focusActiveDrawerTerminal(ref);
     return true;
   }
   if (view.kind === "browser") {

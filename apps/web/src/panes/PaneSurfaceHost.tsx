@@ -8,8 +8,11 @@ import type { PanesHost } from "./panesHost";
  */
 export interface WorkspaceHost extends PanesHost {
   readonly containerFor: (key: string) => HTMLDivElement;
-  /** Drops the containers of tabs no longer open. */
-  readonly prune: (open: ReadonlySet<string>) => void;
+  /**
+   * Drops the containers of tabs no longer open, but for those `held`: out of the page, still
+   * rendered into, as a terminal set aside keeps its screen.
+   */
+  readonly prune: (open: ReadonlySet<string>, held: ReadonlySet<string>) => void;
 }
 
 export const WorkspaceHostContext = createContext<WorkspaceHost | null>(null);

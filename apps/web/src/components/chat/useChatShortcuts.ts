@@ -23,14 +23,19 @@ type ChatShortcutHandler = (context: {
   readonly terminalFocusOwner: TerminalFocusOwner | null;
 }) => boolean | void;
 
-// Astrolabe: commands for a chat's right panel, which several chats on screen would otherwise
-// race for (`takesPanelShortcut`).
+// Astrolabe: commands for a chat's right panel and terminal, which several chats on screen would
+// otherwise race for (`takesPanelShortcut`).
 const PANEL_COMMANDS: ReadonlySet<KeybindingCommand> = new Set([
   "rightPanel.toggle",
   "rightPanel.toggleMaximized",
   "rightPanel.close",
   "threadPanel.toggle",
   "diff.toggle",
+  "terminal.toggle",
+  "terminal.split",
+  "terminal.splitVertical",
+  "terminal.new",
+  "terminal.close",
 ]);
 
 export type ChatShortcutCommands = Partial<Record<KeybindingCommand, ChatShortcutHandler>>;
@@ -102,9 +107,8 @@ export function useChatShortcuts(input: ChatShortcutsInput) {
       context: shortcutContext,
     });
     if (!command) return;
-    // Astrolabe: in the shared panes only the focused chat tab toggles its drawer.
-    if (command === "terminal.toggle" && !takesTerminalToggle(owner)) return;
-    if (PANEL_COMMANDS.has(command) && !takesPanelShortcut(owner)) return;
+    const takes = command === "terminal.toggle" ? takesTerminalToggle : takesPanelShortcut;
+    if (PANEL_COMMANDS.has(command) && !takes(owner)) return;
     // Astrolabe: in the shared panes, the panes close the focused tab, the chat's own included.
     if (command === "rightPanel.close" && owner !== null) return;
     const run =

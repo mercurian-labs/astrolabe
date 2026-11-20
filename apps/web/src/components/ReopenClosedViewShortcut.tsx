@@ -100,6 +100,7 @@ export function ReopenClosedViewShortcut() {
           shellLive: true,
           panel,
           chatOpen: false,
+          terminalOpen: false,
         };
       }
       return {
@@ -114,6 +115,10 @@ export function ReopenClosedViewShortcut() {
           appAtomRegistry.get(environmentShell.stateValueAtom(ref.environmentId)).status === "live",
         panel,
         chatOpen: openTabs.has(chatTabKey(ref)),
+        terminalOpen: selectThreadTerminalUiState(
+          useTerminalUiStateStore.getState().terminalUiStateByThreadKey,
+          ref,
+        ).terminalOpen,
       };
     });
     for (const entry of drop) useClosedViewStore.getState().remove(entry.id);

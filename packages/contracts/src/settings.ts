@@ -415,8 +415,46 @@ export const VoiceTranscriptionDestination = Schema.Union([
   }),
 ]);
 export type VoiceTranscriptionDestination = typeof VoiceTranscriptionDestination.Type;
+/** Where cmd+J opens the terminal. */
+export const LayoutTerminalPlacement = Schema.Literals(["attached-below", "new-tab"]);
+export type LayoutTerminalPlacement = typeof LayoutTerminalPlacement.Type;
+/** Where a chat's side pane (diffs, files, the browser, PRs) opens. */
+export const LayoutSidePanePlacement = Schema.Literals(["beside-chat", "new-tab"]);
+export type LayoutSidePanePlacement = typeof LayoutSidePanePlacement.Type;
+/** What the side pane opens on when its thread has nothing in it yet. */
+export const LayoutSidePaneOpensOn = Schema.Literals([
+  "last-used",
+  "diff",
+  "files",
+  "browser",
+  "pull-request",
+]);
+export type LayoutSidePaneOpensOn = typeof LayoutSidePaneOpensOn.Type;
+/** Where a pane's + and the new tab shortcut add a tab, and a new linked tab. */
+export const LayoutNewTabPosition = Schema.Literals(["after-current", "end"]);
+export type LayoutNewTabPosition = typeof LayoutNewTabPosition.Type;
+
+/** Device-local pane behavior (Settings › General › Panes). */
+export const LayoutSettings = Schema.Struct({
+  terminalPlacement: LayoutTerminalPlacement.pipe(
+    Schema.withDecodingDefault(Effect.succeed("attached-below" as const)),
+  ),
+  sidePanePlacement: LayoutSidePanePlacement.pipe(
+    Schema.withDecodingDefault(Effect.succeed("beside-chat" as const)),
+  ),
+  sidePaneOpensOn: LayoutSidePaneOpensOn.pipe(
+    Schema.withDecodingDefault(Effect.succeed("last-used" as const)),
+  ),
+  newTabPosition: LayoutNewTabPosition.pipe(
+    Schema.withDecodingDefault(Effect.succeed("end" as const)),
+  ),
+});
+export type LayoutSettings = typeof LayoutSettings.Type;
+
+export const DEFAULT_LAYOUT_SETTINGS: LayoutSettings = Schema.decodeSync(LayoutSettings)({});
 
 export const ClientSettingsSchema = Schema.Struct({
+  layout: LayoutSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   notificationMode: NotificationMode.pipe(
     Schema.withDecodingDefault(Effect.succeed("off" as const)),
   ),
@@ -2104,6 +2142,7 @@ export function requiredScopesForProjectMutation(
 }
 
 export const ClientSettingsPatch = Schema.Struct({
+  layout: Schema.optionalKey(LayoutSettings),
   notificationMode: Schema.optionalKey(NotificationMode),
   inAppNotificationsEnabled: Schema.optionalKey(Schema.Boolean),
   diffColorScheme: Schema.optionalKey(DiffColorScheme),

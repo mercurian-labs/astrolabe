@@ -2,6 +2,8 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { Arrangement } from "./arrangement";
 import { CHAT_ROOM_PX, openNear, paneWidthPx } from "./placement";
+import { chatTerminalKey } from "~/sectionTabs/sectionTabs";
+
 import { leaves, type SplitNode } from "./tree";
 
 const chat = "chat:e:a";
@@ -50,12 +52,19 @@ describe("opening a view near the pane you are reading", () => {
     expect(leaves(opened.root)[1]?.active).toBe(note);
   });
 
-  it("never covers another chat, taking the nearest pane that shows none", () => {
+  it("never covers another chat, or a chat's terminal, taking the nearest pane that shows none", () => {
     const panes = arranged(row([leaf("p0", [diff]), leaf("p1", [chat]), leaf("p2", [otherChat])]));
     expect(tabsOf(openNear(panes, note, "p1", { widthPx: 4000 }))).toEqual([
       [diff, note],
       [chat],
       [otherChat],
+    ]);
+    const terminal = chatTerminalKey(chat);
+    const below = arranged(row([leaf("p1", [chat]), leaf("p2", [terminal])]));
+    expect(tabsOf(openNear(below, note, "p1", { widthPx: 4000 }))).toEqual([
+      [chat],
+      [note],
+      [terminal],
     ]);
   });
 

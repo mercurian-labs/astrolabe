@@ -43,6 +43,20 @@ const encodeServerSettings = Schema.encodeSync(ServerSettings);
 const encodeServerSettingsPatch = Schema.encodeSync(ServerSettingsPatch);
 const decodeClaudeSettings = Schema.decodeUnknownSync(ClaudeSettings);
 
+describe("layout settings", () => {
+  it("default for stored settings older than them, and keep what was chosen", () => {
+    expect(decodeClientSettings({}).layout).toEqual({
+      terminalPlacement: "attached-below",
+      sidePanePlacement: "beside-chat",
+      sidePaneOpensOn: "last-used",
+      newTabPosition: "end",
+    });
+    const chosen = decodeClientSettings({ layout: { terminalPlacement: "new-tab" } });
+    expect(chosen.layout.terminalPlacement).toBe("new-tab");
+    expect(chosen.layout.newTabPosition).toBe("end");
+  });
+});
+
 describe("storage cleanup settings", () => {
   it("keeps cleanup disabled for existing installations", () => {
     expect(decodeServerSettings({}).worktreeCleanup).toBeNull();
