@@ -362,7 +362,7 @@ jobs:
           # No daemon: nothing should hold the sticky disk open when it is committed.
           printf 'org.gradle.caching=true\norg.gradle.daemon=false\n' > "$GRADLE_USER_HOME/gradle.properties"
           sudo sed -i 's|http://|https://|g' /etc/apt/blacksmith-ubuntu-mirrors.txt /etc/apt/sources.list.d/ubuntu.sources
-          sudo apt-get update -qq && sudo apt-get install -y -qq ccache
+          sudo apt-get update -qq -o Acquire::AllowReleaseInfoChange::Label=true && sudo apt-get install -y -qq ccache
           ccache --zero-stats
 
       - name: Setup Node
