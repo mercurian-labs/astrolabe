@@ -627,13 +627,17 @@ section {
 :root[data-theme="dark"] .mast__mark--night {
   display: block;
 }
-/* The sky glyph: the sun or the moon, as the instrument's sun stands; a link to it. */
+/* The theme switch: the sun or the moon, as the page shows. */
 .mast__sky {
   display: none;
   place-items: center;
   width: var(--head);
+  padding: 0;
+  border: 0;
   border-left: 1px solid var(--rule);
+  background: none;
   color: var(--ink-2);
+  cursor: pointer;
   transition: color 0.2s;
 }
 :root[data-theme] .mast__sky {

@@ -3,6 +3,8 @@
 // thread figure, header). Reduced motion shows every finished state at once with interaction intact;
 // without this script the page reads as a document.
 
+import Twilight from "./twilight.js";
+
 const root = document.documentElement;
 const reducedQuery = matchMedia("(prefers-reduced-motion: reduce)");
 let motion = !reducedQuery.matches;
@@ -60,6 +62,19 @@ jobs.push(() => {
   lastY = y;
 });
 mast.addEventListener("focusin", () => mast.classList.remove("is-hidden"));
+
+/* The theme switch: flips the page between light and dark and remembers it (twilight.js). */
+
+const skySwitch = $(".mast__sky");
+const showTheme = () => {
+  const dark = document.documentElement.dataset.theme === "dark";
+  skySwitch.setAttribute("aria-pressed", String(dark));
+};
+showTheme();
+document.addEventListener("twilight:change", showTheme);
+skySwitch.addEventListener("click", () =>
+  Twilight.choose(document.documentElement.dataset.theme === "dark" ? "light" : "dark"),
+);
 
 function setMenu(open) {
   menuButton.setAttribute("aria-expanded", String(open));

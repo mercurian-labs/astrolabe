@@ -37,6 +37,13 @@ import Twilight from "./twilight.js";
       plate.paint();
     }
   });
+  // The header's switch changes the inks and the light without moving the sun.
+  document.addEventListener("twilight:change", () => {
+    for (const plate of plates) {
+      plate.dirty = true;
+      plate.paint();
+    }
+  });
   document.addEventListener("visibilitychange", () => {
     for (const plate of plates) plate.paint();
   });
@@ -416,7 +423,8 @@ import Twilight from "./twilight.js";
     }
 
     function render() {
-      const { alt, az, south } = sun;
+      const { south } = sun;
+      const [alt, az] = Twilight.lit(sun.alt, sun.az, south);
       const palette = Twilight.current() || Twilight.at(alt);
       gl.viewport(0, 0, canvas.width, canvas.height);
       gl.uniform2f(u.u_res, canvas.width, canvas.height);

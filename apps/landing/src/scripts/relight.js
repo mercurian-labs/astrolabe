@@ -46,6 +46,11 @@ import Twilight from "./twilight.js";
     draw();
   }
 
+  // The header's switch changes the inks and the light without moving the sun.
+  document.addEventListener("twilight:change", () => {
+    dirty = true;
+    paint();
+  });
   document.addEventListener("visibilitychange", paint);
 
   if (!canvas) return;
@@ -382,7 +387,7 @@ import Twilight from "./twilight.js";
   }
 
   function render(meta) {
-    const { alt, az } = sun;
+    const [alt, az] = Twilight.lit(sun.alt, sun.az, south);
     // The grain prints on the paper the page shows, which holds the real sky through the arrival.
     const palette = Twilight.current() || Twilight.at(alt);
     gl.viewport(0, 0, canvas.width, canvas.height);
