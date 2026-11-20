@@ -22,7 +22,6 @@ import { PREFERRED_HIGHLIGHTER } from "~/lib/syntaxHighlighting";
 import { useEnvironmentQuery } from "~/state/query";
 import { reviewEnvironment } from "~/state/review";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
-import { DiffStatLabel } from "../chat/DiffStatLabel";
 import { AnnotatableCodeView } from "../diffs/AnnotatableCodeView";
 import { DiffFileLoadingBoundary } from "../diffs/DiffFileLoadingBoundary";
 import { StyledDiffCodeView } from "../diffs/StyledDiffCodeView";
@@ -165,20 +164,14 @@ export function GitClientDiff({
       themeType: resolvedTheme,
       stickyHeaders: true,
     };
+    // The diff's own header already counts the lines; this adds only what it can't know.
     const renderHeaderMetadata = (fileDiff: FileDiffMetadata): ReactNode => {
-      const path = resolveFileDiffPath(fileDiff);
-      const changed = byPath.get(path);
-      const stat = source?.files?.find((file) => file.path === path);
-      return (
-        <span className="flex items-center gap-2">
-          {changed ? (
-            <span className="text-2xs text-muted-foreground">
-              {STAGE_LABEL[stageState(changed)]}
-            </span>
-          ) : null}
-          {stat ? <DiffStatLabel additions={stat.additions} deletions={stat.deletions} /> : null}
+      const changed = byPath.get(resolveFileDiffPath(fileDiff));
+      return changed ? (
+        <span className="shrink-0 text-2xs whitespace-nowrap text-muted-foreground">
+          {STAGE_LABEL[stageState(changed)]}
         </span>
-      );
+      ) : null;
     };
     const renderHeaderPrefix = (
       _fileDiff: FileDiffMetadata,

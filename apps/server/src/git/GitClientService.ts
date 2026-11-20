@@ -121,6 +121,12 @@ const gitSaid = (stderr: string) => {
   return said.length > 400 ? `${said.slice(0, 399)}…` : said;
 };
 
+/** "Codex CLI command failed" of a text generation error that goes on to quote the whole prompt. */
+const generationFailure = (message: string) => {
+  const reason = message.replace(/^Text generation failed in \w+: /, "").split(/: |\n/, 1)[0]!;
+  return reason.length > 100 ? `${reason.slice(0, 99)}…` : reason;
+};
+
 const undoLabel = (entry: UndoEntry) => {
   switch (entry.kind) {
     case "stage":
@@ -266,12 +272,19 @@ const make = Effect.gen(function* () {
     );
   });
 
-  const pushUndo = (cwd: string, entry: UndoEntry) => {
+  /** An entry falling off the stack can no longer be undone, so its kept copy goes too. */
+  const pushUndo = Effect.fn("GitClientService.pushUndo")(function* (
+    cwd: string,
+    entry: UndoEntry,
+  ) {
     const stack = undoStacks.get(cwd) ?? [];
     stack.push(entry);
-    if (stack.length > UNDO_DEPTH) stack.shift();
     undoStacks.set(cwd, stack);
-  };
+    const dropped = stack.length > UNDO_DEPTH ? stack.shift() : undefined;
+    if (dropped?.kind === "discard") {
+      yield* run("forgetKeptCopy", cwd, ["update-ref", "-d", dropped.ref]);
+    }
+  });
 
   const readStatus = Effect.fn("GitClientService.readStatus")(function* (cwd: string) {
     const [status, gitDir] = yield* Effect.all(
@@ -498,7 +511,7 @@ const make = Effect.gen(function* () {
           const before = yield* indexEntries(input.cwd, input.paths);
           yield* runOk("Could not stage", input.cwd, ["add", "-A", "--", ...input.paths]);
           const after = yield* indexEntries(input.cwd, input.paths);
-          pushUndo(cwd, { kind: "stage", paths: input.paths, before, after });
+          yield* pushUndo(cwd, { kind: "stage", paths: input.paths, before, after });
         }),
       );
     },
@@ -523,7 +536,7 @@ const make = Effect.gen(function* () {
                 ...input.paths,
               ]);
           const after = yield* indexEntries(input.cwd, input.paths);
-          pushUndo(cwd, { kind: "unstage", paths: input.paths, before, after });
+          yield* pushUndo(cwd, { kind: "unstage", paths: input.paths, before, after });
         }),
       );
     },
@@ -596,7 +609,13 @@ const make = Effect.gen(function* () {
               ...untracked,
             ]);
           }
-          pushUndo(cwd, { kind: "discard", paths, ref, head: read.parsed.head, indexBefore });
+          yield* pushUndo(cwd, {
+            kind: "discard",
+            paths,
+            ref,
+            head: read.parsed.head,
+            indexBefore,
+          });
           return { message: `Discarded ${files(selected.length)}` };
         }),
       );
@@ -613,7 +632,14 @@ const make = Effect.gen(function* () {
         // Partly staged files are described whole; the commit takes only what is staged.
         ...(staged.length > 0 ? { filePaths: staged } : {}),
       })
-      .pipe(Effect.mapError((cause) => fail(`Could not write a commit message: ${cause.message}`)));
+      .pipe(
+        // The cause carries the whole prompt and the provider's log: say why in a line.
+        Effect.mapError((cause) =>
+          fail(
+            `No commit message could be written (${generationFailure(cause.message)}). Write one yourself, or change the text generation model in Settings.`,
+          ),
+        ),
+      );
     if (suggestion === null) return yield* fail("There is nothing to commit.");
     const body = suggestion.body.trim();
     return body.length > 0 ? `${suggestion.subject}\n\n${body}` : suggestion.subject;
@@ -682,7 +708,7 @@ const make = Effect.gen(function* () {
             `${sha}^`,
           ]);
           if (parent.exitCode === 0) {
-            pushUndo(cwd, {
+            yield* pushUndo(cwd, {
               kind: "commit",
               sha,
               parent: parent.stdout.trim(),

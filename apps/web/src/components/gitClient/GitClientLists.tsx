@@ -139,7 +139,17 @@ function ListHeading({
   );
 }
 
-function GroupHeader({ group }: { readonly group: ChangeGroup }) {
+/** A thread still named after its first message would say that message twice. */
+const repeatsTitle = (title: string, request: string) =>
+  request.startsWith(title.replace(/(\.{3}|…)$/, "").trimEnd());
+
+function GroupHeader({
+  group,
+  ownTitle,
+}: {
+  readonly group: ChangeGroup;
+  readonly ownTitle: string;
+}) {
   if (group.kind === "turn") {
     const { turn } = group;
     return (
@@ -152,7 +162,7 @@ function GroupHeader({ group }: { readonly group: ChangeGroup }) {
             {turn.completedAt === null ? "working" : formatRelativeTimeLabel(turn.completedAt)}
           </span>
         </span>
-        {turn.request.length > 0 ? (
+        {turn.request.length > 0 && !repeatsTitle(turn.threadTitle, turn.request) ? (
           <span className="truncate text-2xs text-muted-foreground">{turn.request}</span>
         ) : null}
       </span>
@@ -161,7 +171,7 @@ function GroupHeader({ group }: { readonly group: ChangeGroup }) {
   return (
     <span className="flex min-w-0 flex-1 items-center gap-2">
       <span className="min-w-0 flex-1 truncate font-medium text-foreground">
-        {group.kind === "conflicts" ? "Conflicts" : "Not from a turn"}
+        {group.kind === "conflicts" ? "Conflicts" : ownTitle}
       </span>
       <span className="shrink-0 text-2xs text-muted-foreground">{group.files.length}</span>
     </span>
@@ -180,14 +190,15 @@ function FileRow({ file }: { readonly file: GitClientFile }) {
         theme={resolvedTheme}
         className="size-3.5"
       />
-      <span className="flex min-w-0 flex-1 items-baseline gap-1.5 truncate">
-        <span className="shrink-0 text-foreground">{name}</span>
-        <span className="truncate text-2xs text-muted-foreground">
+      <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+        <span className="min-w-8 shrink truncate text-foreground">{name}</span>
+        <span className="min-w-0 flex-1 basis-0 truncate text-2xs text-muted-foreground">
           {file.originalPath === null ? folder : `from ${file.originalPath}`}
         </span>
       </span>
+      {/* The first thing to go in a narrow column: the name matters more. */}
       {file.earlierTurns > 0 ? (
-        <span className="shrink-0 text-2xs text-muted-foreground">
+        <span className="hidden shrink-0 text-2xs text-muted-foreground @[22rem]/git-lists:inline">
           {`+${file.earlierTurns} earlier ${file.earlierTurns === 1 ? "turn" : "turns"}`}
         </span>
       ) : null}
@@ -247,6 +258,7 @@ export function ChangesList({
   focused,
   listRef,
   blocked,
+  ownTitle,
   confirmingDiscard,
   onSelect,
   onKeyDown,
@@ -261,6 +273,8 @@ export function ChangesList({
   readonly focused: boolean;
   readonly listRef: RefObject<HTMLDivElement | null>;
   readonly blocked: Blocked;
+  /** What the group of files no turn made is called. */
+  readonly ownTitle: string;
   readonly confirmingDiscard: number | null;
   readonly onSelect: (key: string) => void;
   readonly onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
@@ -326,7 +340,7 @@ export function ChangesList({
               >
                 <StageMark state={state} blocked={blocked} onToggle={() => onToggle(row)} />
                 {row.kind === "group" ? (
-                  <GroupHeader group={row.group} />
+                  <GroupHeader group={row.group} ownTitle={ownTitle} />
                 ) : (
                   <FileRow file={row.file} />
                 )}
@@ -364,7 +378,7 @@ export function CommitsList({
   return (
     <section
       aria-label="Commits"
-      className="flex min-h-0 flex-1 flex-col border-t border-border/60"
+      className="flex max-h-[40%] min-h-24 shrink-0 flex-col border-t border-border/60"
     >
       <ListHeading>Commits</ListHeading>
       <div

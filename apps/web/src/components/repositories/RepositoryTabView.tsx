@@ -259,7 +259,10 @@ export function useRepositoryTabLabel(tabKey: string): PaneTabLabel | null {
   const holder = listed ? holderOf(listed.worktrees, tab.checkout) : null;
   const label =
     tab.kind === "git"
-      ? { title: "Git", icon: <GitCommitHorizontalIcon className="size-3.5 shrink-0" /> }
+      ? {
+          title: `Git · ${checkoutName(tab.checkout, holder)}`,
+          icon: <GitCommitHorizontalIcon className="size-3.5 shrink-0" />,
+        }
       : tab.kind === "graph"
         ? {
             title: tab.path === null ? "Local graph" : `Local graph · ${fileName(tab.path)}`,

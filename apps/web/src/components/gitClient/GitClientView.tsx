@@ -121,12 +121,12 @@ function soon(key: string, run: (() => void) | null) {
   );
 }
 
-const groupTitle = (group: ChangeGroup) =>
+const groupTitle = (group: ChangeGroup, ownTitle: string) =>
   group.kind === "turn"
     ? `Turn ${group.turn.turnNumber} · ${group.turn.threadTitle || "Untitled thread"}`
     : group.kind === "conflicts"
       ? "Conflicts"
-      : "Not from a turn";
+      : ownTitle;
 
 /**
  * Astrolabe: a checkout's Git client, as a tab beside its chats. Uncommitted changes are grouped
@@ -236,6 +236,8 @@ export function GitClientView({ tabKey, tab }: { readonly tabKey: string; readon
       ? `An agent is working here (turn ${running.turnNumber} of “${running.threadTitle || "Untitled thread"}”). Changes wait for its turn to end.`
       : null;
 
+  // A working turn's files have no checkpoint yet, so they sit with the person's own until it ends.
+  const ownTitle = running === null ? "Not from a turn" : "Not from a finished turn";
   const rows = status.data ? changeRows(groupChanges(status.data)) : [];
   const rowKeys = rows.map((row) => row.key);
   const selectedChange = keepSelection(rowKeys, changeSelection.key, changeSelection.index);
@@ -259,7 +261,9 @@ export function GitClientView({ tabKey, tab }: { readonly tabKey: string; readon
         : {
             kind: "files",
             title:
-              selectedRow.kind === "file" ? selectedRow.file.path : groupTitle(selectedRow.group),
+              selectedRow.kind === "file"
+                ? selectedRow.file.path
+                : groupTitle(selectedRow.group, ownTitle),
             files: rowFiles(selectedRow),
           };
   const agentSubject: AgentSubject | null =
@@ -759,71 +763,75 @@ export function GitClientView({ tabKey, tab }: { readonly tabKey: string; readon
           {`A ${operation} is in progress. Resolve the conflicts, stage them and commit, or ask the agent to.`}
         </div>
       )}
-      <div className="flex min-h-0 flex-1 border-t border-border/60">
-        <div className="flex w-[min(26rem,44%)] min-w-64 shrink-0 flex-col border-e border-border/60">
-          <CommitBox
-            textareaRef={messageRef}
-            message={message}
-            scope={{ label: commitScopeLabel(scope), empty: scope.mode === "none" }}
-            blocked={blocked}
-            generating={generating}
-            committing={committing}
-            onChange={setMessage}
-            onGenerate={() => void runGenerate()}
-            onCommit={() => void runCommit()}
-            onLeave={() => focusListNamed("changes")}
-          />
-          <ChangesList
-            rows={rows}
-            selected={selectedChange}
-            focused={focusList === "changes"}
-            listRef={changesRef}
-            blocked={blocked}
-            confirmingDiscard={confirming === null ? null : confirming.length}
-            onSelect={selectChange}
-            onKeyDown={onListKeyDown("changes")}
-            onFocus={() => setFocusList("changes")}
-            onToggle={(row: ChangeRow) => void toggleFiles(rowFiles(row))}
-            onOpen={(row: ChangeRow) => {
-              if (row.kind === "file" && row.file.workingTree !== "deleted")
-                openFile(row.file.path);
-            }}
-            onConfirmDiscard={() => void confirmDiscard()}
-            onCancelDiscard={() => {
-              setConfirming(null);
-              changesRef.current?.focus();
-            }}
-          />
-          {log.data === null && log.error !== null ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-2 border-t border-border/60 p-4 text-center text-xs text-muted-foreground">
-              <p role="alert">{`Couldn't read the commits. ${log.error}`}</p>
-              <Button size="xs" variant="outline" onClick={log.refresh}>
-                Try again
-              </Button>
-            </div>
-          ) : (
-            <CommitsList
-              commits={commits}
-              selected={selectedCommitSha}
-              focused={focusList === "commits"}
-              listRef={commitsRef}
-              hasMore={log.data?.hasMore === true}
-              onSelect={selectCommit}
-              onKeyDown={onListKeyDown("commits")}
-              onFocus={() => setFocusList("commits")}
-              onMore={() => setLogLimit((limit) => limit + LOG_PAGE)}
+      {/* A narrow pane stacks the lists over the diff instead of squeezing both. */}
+      <div className="@container/git flex min-h-0 flex-1 border-t border-border/60">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col @[40rem]/git:flex-row">
+          <div className="@container/git-lists flex h-3/5 min-h-0 shrink-0 flex-col border-b border-border/60 @[40rem]/git:h-auto @[40rem]/git:w-[min(26rem,44%)] @[40rem]/git:min-w-64 @[40rem]/git:border-e @[40rem]/git:border-b-0">
+            <CommitBox
+              textareaRef={messageRef}
+              message={message}
+              scope={{ label: commitScopeLabel(scope), empty: scope.mode === "none" }}
+              blocked={blocked}
+              generating={generating}
+              committing={committing}
+              onChange={setMessage}
+              onGenerate={() => void runGenerate()}
+              onCommit={() => void runCommit()}
+              onLeave={() => focusListNamed("changes")}
             />
-          )}
-          <KeyHintBar list={focusList} helpOpen={helpOpen} onHelpOpenChange={setHelpOpen} />
+            <ChangesList
+              rows={rows}
+              selected={selectedChange}
+              focused={focusList === "changes"}
+              listRef={changesRef}
+              blocked={blocked}
+              ownTitle={ownTitle}
+              confirmingDiscard={confirming === null ? null : confirming.length}
+              onSelect={selectChange}
+              onKeyDown={onListKeyDown("changes")}
+              onFocus={() => setFocusList("changes")}
+              onToggle={(row: ChangeRow) => void toggleFiles(rowFiles(row))}
+              onOpen={(row: ChangeRow) => {
+                if (row.kind === "file" && row.file.workingTree !== "deleted")
+                  openFile(row.file.path);
+              }}
+              onConfirmDiscard={() => void confirmDiscard()}
+              onCancelDiscard={() => {
+                setConfirming(null);
+                changesRef.current?.focus();
+              }}
+            />
+            {log.data === null && log.error !== null ? (
+              <div className="flex flex-1 flex-col items-center justify-center gap-2 border-t border-border/60 p-4 text-center text-xs text-muted-foreground">
+                <p role="alert">{`Couldn't read the commits. ${log.error}`}</p>
+                <Button size="xs" variant="outline" onClick={log.refresh}>
+                  Try again
+                </Button>
+              </div>
+            ) : (
+              <CommitsList
+                commits={commits}
+                selected={selectedCommitSha}
+                focused={focusList === "commits"}
+                listRef={commitsRef}
+                hasMore={log.data?.hasMore === true}
+                onSelect={selectCommit}
+                onKeyDown={onListKeyDown("commits")}
+                onFocus={() => setFocusList("commits")}
+                onMore={() => setLogLimit((limit) => limit + LOG_PAGE)}
+              />
+            )}
+            <KeyHintBar list={focusList} helpOpen={helpOpen} onHelpOpenChange={setHelpOpen} />
+          </div>
+          <GitClientDiff
+            environmentId={environmentId}
+            projectId={projectId}
+            cwd={cwd}
+            subject={subject}
+            commentTarget={askRef}
+            onOpenFile={openFile}
+          />
         </div>
-        <GitClientDiff
-          environmentId={environmentId}
-          projectId={projectId}
-          cwd={cwd}
-          subject={subject}
-          commentTarget={askRef}
-          onOpenFile={openFile}
-        />
       </div>
     </>,
   );

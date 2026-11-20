@@ -225,20 +225,19 @@ export interface KeyHint {
   readonly label: string;
 }
 
-/** The hint bar's keys for the focused list. */
+/** The hint bar's keys for the focused list, the ones worth learning first; `?` lists them all. */
 export function keyHints(list: GitList): readonly KeyHint[] {
   return list === "changes"
     ? [
         { keys: "j/k", label: "move" },
         { keys: "space", label: "stage" },
-        { keys: "a", label: "stage all" },
         { keys: "c", label: "commit" },
-        { keys: "d", label: "discard" },
-        { keys: "z", label: "undo" },
         { keys: "s", label: "ask agent" },
         { keys: "t", label: "turn" },
+        { keys: "d", label: "discard" },
+        { keys: "z", label: "undo" },
+        { keys: "a", label: "stage all" },
         { keys: "tab", label: "commits" },
-        { keys: "?", label: "keys" },
       ]
     : [
         { keys: "j/k", label: "move" },
@@ -247,7 +246,6 @@ export function keyHints(list: GitList): readonly KeyHint[] {
         { keys: "p/P", label: "pull/push" },
         { keys: "f", label: "fetch" },
         { keys: "tab", label: "changes" },
-        { keys: "?", label: "keys" },
       ];
 }
 
