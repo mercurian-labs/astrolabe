@@ -58,6 +58,8 @@ describe("Repositories tab keys", () => {
         path: "AGENTS.md",
       },
       { kind: "graph", environmentId, projectId, checkout: { cwd: "/tmp/wt" }, path: null },
+      { kind: "git", environmentId, projectId, checkout: { branch: "feature/a:b" } },
+      { kind: "git", environmentId, projectId, checkout: { cwd: "/tmp/wt" } },
       {
         kind: "graph",
         environmentId,

@@ -43,6 +43,13 @@ export type RepositoryTab =
       /** The file it is pinned to; null while it follows the file in front (`followedPath`). */
       readonly path: string | null;
     }
+  // A checkout's Git client: its changes by turn, its commits, and what to do with them.
+  | {
+      readonly kind: "git";
+      readonly environmentId: EnvironmentId;
+      readonly projectId: ProjectId;
+      readonly checkout: RepositoryCheckout;
+    }
   // A project search's results as one editor, run again from the key after a reload.
   | {
       readonly kind: "search";
@@ -101,6 +108,7 @@ export type RepositoryFileTab = Extract<RepositoryTab, { kind: "file" }>;
 /** A project's file, the only kind with a local graph (the code index is a project's). */
 export type ProjectFileTab = Extract<RepositoryFileTab, { readonly projectId: ProjectId }>;
 export type RepositoryGraphTab = Extract<RepositoryTab, { kind: "graph" }>;
+export type RepositoryGitTab = Extract<RepositoryTab, { kind: "git" }>;
 export type RepositorySearchTab = Extract<RepositoryTab, { kind: "search" }>;
 export type RepositoryProblemsTab = Extract<RepositoryTab, { kind: "problems" }>;
 export type RepositoryLocationsTab = Extract<RepositoryTab, { kind: "locations" }>;
@@ -173,6 +181,7 @@ const WIKI_FILE_PREFIX = "wiki-file:";
 // A chosen base rides on the source part; git refuses `~` in a ref name, so it never collides.
 const BASE_SEPARATOR = "~";
 const GRAPH_PREFIX = "repo-graph:";
+const GIT_PREFIX = "repo-git:";
 const SEARCH_PREFIX = "repo-search:";
 const PROBLEMS_PREFIX = "repo-problems:";
 const LOCATIONS_PREFIX = "repo-locations:";
@@ -236,6 +245,10 @@ export function repositoryTabKey(tab: RepositoryTab): string {
           ...checkoutParts(tab.checkout),
           ...(tab.path === null ? [] : [tab.path]),
         ])
+      );
+    case "git":
+      return (
+        GIT_PREFIX + encode([tab.environmentId, tab.projectId, ...checkoutParts(tab.checkout)])
       );
     case "search":
       return (
@@ -357,6 +370,16 @@ export function parseRepositoryTabKey(key: string): RepositoryTab | null {
       projectId: ProjectId.make(projectId),
       checkout,
       path: tail[0] ?? null,
+    };
+  }
+  if (key.startsWith(GIT_PREFIX)) {
+    const parts = decode(key.slice(GIT_PREFIX.length));
+    if (parts === null || parts.tail.length > 0) return null;
+    return {
+      kind: "git",
+      environmentId: EnvironmentId.make(parts.environmentId),
+      projectId: ProjectId.make(parts.projectId),
+      checkout: parts.checkout,
     };
   }
   if (key.startsWith(SEARCH_PREFIX)) {
