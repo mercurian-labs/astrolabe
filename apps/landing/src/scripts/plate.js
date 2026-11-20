@@ -157,6 +157,9 @@ import Twilight from "./twilight.js";
       float pale = smoothstep(0.1, 0.55, tone.b);
       light = max(light, bare * pale * (0.04 + 0.14 * sky + 0.16 * lit));
       light = max(light, bare * u_ground * (0.15 + 0.18 * pale + 0.08 * sky + 0.1 * lit));
+      // On that plate the floor would flatten everything to one grey, so the ivory is shaped after it:
+      // faces toward the moon thicken, the rest thin to a sparse stipple that still reads as ground.
+      if (u_ground > 0.0 && u_moon > 0.5) light = max(0.12 * bare, 0.7 * smoothstep(0.16, 0.7, light));
       // The paper's tooth: even a face square to the sun keeps a few grains, as the Mercury prints do.
       dark = max(pow(dark, 1.15) * 0.8, u_y.y < paper ? 0.035 * (1.0 - snow) : 0.0);
 

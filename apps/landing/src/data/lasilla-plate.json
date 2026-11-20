@@ -1,5 +1,5 @@
 {
-  "comment": "Fig. 20 of astrolabe-site's observatory plates (lab/observatories/plates/plates.json, lasilla-p1, at da66af6), made by its scripts/observatories/ (plates_eso.py). The plate is a 1000-unit square; box is the art's x, y, width, height in it. The rock crown runs off both sides and fades along its foot, above the credit line.",
+  "comment": "Fig. 20 of astrolabe-site's observatory plates (lab/observatories/plates/plates.json, lasilla-p1, at fbdad68), made by its scripts/observatories/ (plates_eso.py). The plate is a 1000-unit square; box is the art's x, y, width, height in it. The rock crown runs off both sides and fades along its foot, above the credit line.",
   "assets": "/assets/art/lasilla",
   "size": [1024, 644],
   "relief": 170.67,
