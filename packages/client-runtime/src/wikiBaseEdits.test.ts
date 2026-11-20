@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { isEditableNote, newNoteProperties, withEdit, withUnsentEdit } from "./wikiBaseEdits.ts";
+import {
+  isEditableNote,
+  isNoteProperty,
+  newNoteProperties,
+  withEdit,
+  withUnsentEdit,
+} from "./wikiBaseEdits.ts";
 
 describe("withEdit", () => {
   it("leaves edits on their way to the server as they are", () => {
@@ -64,6 +70,9 @@ describe("newNoteProperties", () => {
       newNoteProperties({ or: ['status == "open"'] }, { property: "file.folder", value: "/" }),
     ).toEqual({});
     expect(newNoteProperties("priority > 2", undefined)).toEqual({});
+    expect(
+      newNoteProperties('code.language == "go"', { property: "code.package", value: "app" }),
+    ).toEqual({});
   });
 });
 
@@ -73,4 +82,8 @@ it("edits notes in any folder, but not skill maps or bases", () => {
   expect(isEditableNote("projects/README.md")).toBe(true);
   expect(isEditableNote("Product.skillmap.md")).toBe(false);
   expect(isEditableNote("Open.base")).toBe(false);
+  expect(isNoteProperty("status")).toBe(true);
+  expect(isNoteProperty("note.status")).toBe(true);
+  // What the code index read is nobody's to write.
+  expect(isNoteProperty("code.language")).toBe(false);
 });

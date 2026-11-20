@@ -125,7 +125,7 @@ const WikiLinksTool = Tool.make("astrolabe_wiki_links", {
 const WikiQueryTool = Tool.make("astrolabe_wiki_query", {
   ...shared,
   description:
-    "Run a base, a saved question over every file in a wiki's repository in Obsidian's Bases format: one view's matching files as rows of that view's properties (frontmatter values and formulas; links read [[Name]]), with its summaries. Name a .base file, or a note to run its first ```base block. Beyond Obsidian's language, file.linksOfType(\"depends_on\") and file.backlinksOfType(\"depends_on\") list a file's links by @ type; a filter using them shows nothing in Obsidian.",
+    "Run a base, a saved question over every file in a wiki's repository in Obsidian's Bases format: one view's matching files as rows of that view's properties (frontmatter values and formulas; links read [[Name]]), with its summaries. Name a .base file, or a note to run its first ```base block. Beyond Obsidian's language, file.linksOfType(\"depends_on\") and file.backlinksOfType(\"depends_on\") list a file's links by @ type; a filter using them shows nothing in Obsidian. In a wiki whose repository holds indexed code, each code file has code.language, code.lines, code.package, code.isTest, code.exports and code.definitions (\"function name\"), read through a link as value.asFile().code, and its imports are its links, typed imports, plus calls, extends and implements where an import binds the name.",
   parameters: Schema.Struct({
     wiki,
     base: Schema.NonEmptyString.annotate({
