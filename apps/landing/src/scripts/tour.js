@@ -6,7 +6,7 @@
 import { scenarios } from "./tour-scenes.js";
 
 const ATTRIBUTES = new Set(["section", "thread", "cpane", "edits", "merge"]);
-const SECTIONS = ["agents", "wikis", "changes"];
+const SECTIONS = ["agents", "wikis", "changes", "agents"];
 
 const tour = document.querySelector("[data-tour]");
 const app = document.querySelector("[data-tour-app]");

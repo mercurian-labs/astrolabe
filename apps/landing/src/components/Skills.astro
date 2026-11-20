@@ -1,0 +1,127 @@
+          <!-- ───────────────────────────────────────── [09] Skills -->
+          <section class="surfaces" id="skills" aria-labelledby="skills-title">
+            <div class="head">
+              <div class="head__main">
+                <p class="tag">[09] Skills</p>
+                <h2 id="skills-title" class="h2" data-reveal>Bring the skills you already have.</h2>
+              </div>
+              <p class="body head__aside" data-reveal>
+                A skill your agent already loads shows up in the composer and runs as it does anywhere
+                else. While it runs, it can use Astrolabe’s tools to read and amend a wiki, run a base,
+                draw a canvas and read the code index. The skill stays where your agent keeps it.
+              </p>
+            </div>
+
+            <article class="surface surface--flip" aria-labelledby="surface-skills">
+              <div class="surface__title">
+                <p class="tag">A worked example</p>
+                <h3 id="surface-skills" class="h3">The skill we use to check Astrolabe.</h3>
+              </div>
+              <div class="surface__ui">
+          <figure class="window">
+            <div class="app app--poster app--doc app--skill" role="img" aria-label="A chat in Astrolabe on the astrolabe repository. You run the skill verify-astrolabe on the canvas Keep flow. Claude loads the skill, reads the wiki note Canvas, reads the code changes on the branch, starts a dev server, runs the canvas tests, drives the app in the Browser panel and draws a canvas of the walk, then reports that Keep works. Below, the composer's skill menu is open on a dollar sign, listing the four skills in the repository.">
+              <div class="tb">
+                <div class="tb__cap">
+                  <span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
+                  <svg class="ico"><use href="#i-panel" /></svg>
+                  <span class="spacer"></span>
+                  <svg class="ico ico--sm"><use href="#i-left" /></svg>
+                  <svg class="ico ico--sm ico--faint"><use href="#i-right" /></svg>
+                </div>
+                <div class="tb__strip tb__strip--pane">
+                  <span class="lights lights--crop" aria-hidden="true"><i></i><i></i><i></i></span>
+                  <span class="tab is-front is-focus"><svg class="logo"><use href="#p-claude" /></svg><span class="tab__title">Check Keep on this branch</span><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
+                  <span class="tab tab--narrow-off"><svg class="ico ico--xs"><use href="#i-canvas" /></svg><span class="tab__title">Keep, step by step</span><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
+                  <svg class="ico ico--muted"><use href="#i-plus" /></svg>
+                  <span class="spacer"></span>
+                  <svg class="ico ico--muted"><use href="#i-panel-r" /></svg>
+                </div>
+              </div>
+              <div class="pb">
+                <nav class="rail" aria-hidden="true">
+                  <span class="rail__mark"><svg><use href="#b-monogram" /></svg></span>
+                  <span class="rail__item is-active"><svg class="ico"><use href="#i-msgs" /></svg></span>
+                  <span class="rail__item"><svg class="ico"><use href="#i-book" /></svg></span>
+                  <span class="rail__item"><svg class="ico"><use href="#i-repo" /></svg></span>
+                  <span class="rail__item"><svg class="ico"><use href="#i-pr" /></svg></span>
+                  <span class="rail__item"><svg class="ico"><use href="#i-usage" /></svg></span>
+                  <span class="rail__fill"></span>
+                  <span class="rail__item"><svg class="ico"><use href="#i-settings" /></svg></span>
+                </nav>
+                <i class="pb__corner" aria-hidden="true"></i>
+                <aside class="side">
+                  <div class="side__head">
+                    <span class="side__title">Agents</span>
+                    <span class="side__tools"><svg class="ico"><use href="#i-search" /></svg><svg class="ico"><use href="#i-filter" /></svg><svg class="ico"><use href="#i-new" /></svg></span>
+                  </div>
+                  <ul class="side__list">
+                    <li class="card is-on">
+                      <div class="card__head"><span class="tile">AS</span><span class="card__repo">astrolabe</span><span class="card__meta">now</span></div>
+                      <div class="card__title">Check Keep on this branch</div>
+                      <div class="card__foot"><span><svg class="ico ico--xs"><use href="#i-branch" /></svg>canvas-keep</span><span>Claude</span></div>
+                    </li>
+                    <li class="card">
+                      <div class="card__head"><span class="tile">AS</span><span class="card__repo">astrolabe</span><span class="card__meta">2h</span></div>
+                      <div class="card__title">Elbow arrows route around cards</div>
+                      <div class="card__foot"><span><svg class="ico ico--xs"><use href="#i-branch" /></svg>canvas-elbow</span><span>Codex</span></div>
+                    </li>
+                  </ul>
+                </aside>
+                <div class="pane pane--chat">
+                  <div class="chat">
+                    <div class="msg msg--user">
+                      <span class="skill__chip"><svg aria-hidden="true"><use href="#i-skill" /></svg>verify-astrolabe</span> the canvas Keep flow on this branch.
+                    </div>
+                    <ul class="worklog">
+                      <li><svg class="ico ico--xs"><use href="#i-skill" /></svg><span>Skill: verify-astrolabe</span></li>
+                      <li><svg class="ico ico--xs"><use href="#i-book" /></svg><span>Read a wiki note <code>Canvas</code></span></li>
+                      <li><svg class="ico ico--xs"><use href="#i-eye" /></svg><span>Read code changes <code>canvas-keep</code></span></li>
+                      <li><svg class="ico ico--xs"><use href="#i-terminal" /></svg><code>verify-astrolabe/scripts/start-dev.sh</code></li>
+                      <li><svg class="ico ico--xs"><use href="#i-terminal" /></svg><code>vp test run src/components/canvas</code></li>
+                      <li><svg class="ico ico--xs"><use href="#i-globe" /></svg><span>Used the preview browser</span></li>
+                      <li><svg class="ico ico--xs"><use href="#i-canvas" /></svg><span>Drew a canvas <code>Keep, step by step</code></span></li>
+                    </ul>
+                    <div class="msg msg--agent">
+                      <p>Keep works on this branch. The canvas tests pass, Place in wiki files the board in a pull request where the thread showed it, and closing that pull request leaves the thread’s board alone.</p>
+                    </div>
+                  </div>
+                  <div class="composer skill__composer">
+                    <div class="skmenu" aria-hidden="true">
+                      <p class="skmenu__label">Skills</p>
+                      <p class="skmenu__row is-active"><b>verify-astrolabe</b><span>Verify what Astrolabe adds on top of T3 Code</span><em><svg class="ico ico--xs"><use href="#i-folder" /></svg>Project Skill</em></p>
+                      <p class="skmenu__row"><b>test-t3-app</b><span>Test T3 Code's web and desktop UI through its built-in Browser panel</span><em><svg class="ico ico--xs"><use href="#i-folder" /></svg>Project Skill</em></p>
+                      <p class="skmenu__row"><b>test-t3-mobile</b><span>Test T3 Code's native iOS and Android app through its Device panel</span><em><svg class="ico ico--xs"><use href="#i-folder" /></svg>Project Skill</em></p>
+                      <p class="skmenu__row"><b>contribution-triage</b><span>Enforce T3 Code's PR contribution policy</span><em><svg class="ico ico--xs"><use href="#i-folder" /></svg>Project Skill</em></p>
+                    </div>
+                    <div class="composer__input"><span class="skill__typed">$</span><span class="skill__caret" aria-hidden="true"></span></div>
+                    <div class="composer__row">
+                      <span class="chip"><span class="chip__model"><svg class="logo"><use href="#p-claude" /></svg>Claude Opus 5.5</span><svg class="ico ico--xs ico--muted"><use href="#i-chevron" /></svg></span>
+                      <span class="chip chip--quiet"><svg class="ico ico--xs"><use href="#i-brain" /></svg>High</span>
+                      <span class="spacer"></span>
+                      <span class="send"><svg><use href="#c-send" /></svg></span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </figure>
+              </div>
+              <div class="surface__desc">
+                <p>
+                  We wrote <code>verify-astrolabe</code> to check our own work, and it lives in this
+                  repository with our other skills. It names the tests that cover each feature, starts a
+                  dev server on a clean home, and walks the feature in the app’s Browser panel.
+                </p>
+                <p>
+                  Type <code>$</code> in the composer to list the skills your agent loads, each marked with
+                  where it comes from. Pick one and send. The agent runs it as it would in its own command
+                  line, and Astrolabe’s wiki, canvas and code tools are there for it to call.
+                </p>
+                <p class="surface__note">
+                  Skills come from where each agent keeps them, such as <code>.claude/skills</code> for
+                  Claude Code, and Astrolabe lists them in the composer from there.
+                </p>
+                <a class="link" href="/download">Download Astrolabe<svg class="arw" aria-hidden="true"><use href="#i-arrow" /></svg></a>
+              </div>
+            </article>
+          </section>

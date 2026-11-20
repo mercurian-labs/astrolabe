@@ -118,7 +118,7 @@ const tabs = [
       <span class="rail__mark"><svg><use href="#b-monogram" /></svg></span>
       <span class="rail__item" data-go="agents" title="Agents"><svg class="ico"><use href="#i-msgs" /></svg></span>
       <span class="rail__item" data-go="wikis" title="Wikis"><svg class="ico"><use href="#i-book" /></svg></span>
-      <span class="rail__item" title="Repositories"><svg class="ico"><use href="#i-repo" /></svg></span>
+      <span class="rail__item" title="Projects"><svg class="ico"><use href="#i-repo" /></svg></span>
       <span class="rail__item" data-go="changes" title="Changes"><svg class="ico"><use href="#i-pr" /></svg></span>
       <span class="rail__item" title="Usage"><svg class="ico"><use href="#i-usage" /></svg></span>
       <span class="rail__fill"></span>
@@ -233,6 +233,17 @@ const tabs = [
           <div class="msg msg--agent" data-k="plan-reply-3">
             <p>The Payments page now covers Apple Pay. The edit waits in the pull request Add Apple Pay to checkout.</p>
           </div>
+          <!-- The team's own skill, from the composer's $ menu; its steps use Astrolabe's tools. -->
+          <div class="msg msg--user" data-k="plan-skill-ask" data-gone><span class="skill__chip"><svg><use href="#i-skill" /></svg>verify-checkout</span> the Apple Pay button in #513.</div>
+          <ul class="worklog" data-k="plan-skill-load" data-gone>
+            <li data-k="plan-skill-load" data-gone><svg class="ico ico--xs"><use href="#i-skill" /></svg><span>Skill: verify-checkout</span></li>
+            <li data-k="plan-skill-wiki" data-gone><svg class="ico ico--xs"><use href="#i-book" /></svg><span>Read a wiki note <code>engineering/Testing</code></span></li>
+            <li data-k="plan-skill-code" data-gone><svg class="ico ico--xs"><use href="#i-eye" /></svg><span>Found references <code>ApplePayButton</code></span></li>
+            <li data-k="plan-skill-run" data-gone><svg class="ico ico--xs"><use href="#i-terminal" /></svg><code>pnpm e2e checkout --browser webkit</code></li>
+          </ul>
+          <div class="msg msg--agent" data-k="plan-skill-reply" data-gone>
+            <p>All three checks in verify-checkout pass: the button shows with a card in Wallet, hides where Apple Pay can’t pay, and a declined payment returns to the card form.</p>
+          </div>
         </div>
 
         <!-- The subagents and the reviewer: each opens on its parent, then the task it was sent. -->
@@ -338,10 +349,11 @@ const tabs = [
       </div>
       <div class="composer">
         <div class="composer__input">
-          <span class="composer__hint" data-k="placeholder">Ask anything, @tag files/folders, $use skills, or / for commands</span>
+          <span class="composer__hint" data-k="placeholder">Ask anything. @ files, $ skills, / commands</span>
           <span data-k="draft-apple" data-gone>Add Apple Pay to checkout. Plan it, then hand the API and the button to two agents, each in a worktree of its own.</span>
           <span data-k="draft-flaky" data-gone>Fix the flaky login test, then have Claude review the fix.</span>
           <span data-k="draft-s3" data-gone>Move uploads to S3. Copy the old files over a batch a night.</span>
+          <span data-k="draft-skill" data-gone><span class="skill__chip"><svg><use href="#i-skill" /></svg>verify-checkout</span> the Apple Pay button in #513.</span>
         </div>
         <div class="composer__row">
           {
