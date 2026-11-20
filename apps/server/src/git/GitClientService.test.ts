@@ -275,50 +275,75 @@ it.effect("reads a rename, an untracked file and a conflict from one status", ()
   }).pipe(Effect.scoped, Effect.provide(layerServices)),
 );
 
-it.effect("gives a file to the latest turn that listed it and leaves the person's own alone", () =>
-  Effect.gen(function* () {
-    const repo = yield* repository;
-    const { client } = yield* service;
-    yield* repo.commit("start", { "x.ts": "x\n", "y.ts": "y\n", "z.ts": "z\n" });
-    yield* repo.write("x.ts", "x edited\n");
-    yield* repo.write("y.ts", "y edited\n");
-    yield* repo.write("z.ts", "z edited by hand\n");
-    yield* applyTurns(
-      ...threadIn("alpha", repo.cwd),
-      turn("alpha", 1, "completed"),
-      checkpoint("alpha", 1, 2, ["x.ts"]),
-      turn("alpha", 2, "completed"),
-      checkpoint("alpha", 2, 4, ["x.ts", "y.ts"]),
-      // A later turn in another thread in the same checkout took y.ts last.
-      ...threadIn("beta", repo.cwd),
-      turn("beta", 1, "completed"),
-      checkpoint("beta", 1, 6, ["y.ts"]),
-      // A turn elsewhere names the same path; it is not this checkout's.
-      ...threadIn("elsewhere", `${repo.cwd}-elsewhere`),
-      turn("elsewhere", 1, "completed"),
-      checkpoint("elsewhere", 1, 9, ["z.ts"]),
-    );
+it.effect(
+  "gives a file to the latest turn with uncommitted work in it and leaves the person's own alone",
+  () =>
+    Effect.gen(function* () {
+      const repo = yield* repository;
+      const { client } = yield* service;
+      yield* repo.commit("start", { "x.ts": "x\n", "y.ts": "y\n", "z.ts": "z\n", "w.ts": "w\n" });
+      // A turn's work on w.ts was committed: its checkpoint holds the file as HEAD does.
+      yield* repo.commit("the turn's w", { "w.ts": "w by the turn\n" });
+      yield* repo.git("update-ref", "refs/t3/test/gamma/1", "HEAD");
+      yield* repo.write("w.ts", "w edited by hand since\n");
+      // A later turn left v.ts uncommitted, and its checkpoint can be read.
+      yield* repo.write("v.ts", "v by the turn\n");
+      yield* repo.git("add", "-N", "v.ts");
+      yield* repo.git(
+        "update-ref",
+        "refs/t3/test/gamma/2",
+        (yield* repo.git("stash", "create")).trim(),
+      );
+      yield* repo.write("x.ts", "x edited\n");
+      yield* repo.write("y.ts", "y edited\n");
+      yield* repo.write("z.ts", "z edited by hand\n");
+      yield* applyTurns(
+        ...threadIn("alpha", repo.cwd),
+        turn("alpha", 1, "completed"),
+        checkpoint("alpha", 1, 2, ["x.ts"]),
+        turn("alpha", 2, "completed"),
+        checkpoint("alpha", 2, 4, ["x.ts", "y.ts"]),
+        // A later turn in another thread in the same checkout took y.ts last.
+        ...threadIn("beta", repo.cwd),
+        turn("beta", 1, "completed"),
+        checkpoint("beta", 1, 6, ["y.ts"]),
+        // A turn elsewhere names the same path; it is not this checkout's.
+        ...threadIn("elsewhere", `${repo.cwd}-elsewhere`),
+        turn("elsewhere", 1, "completed"),
+        checkpoint("elsewhere", 1, 9, ["z.ts"]),
+        ...threadIn("gamma", repo.cwd),
+        turn("gamma", 1, "completed"),
+        checkpoint("gamma", 1, 10, ["w.ts"]),
+        turn("gamma", 2, "completed"),
+        checkpoint("gamma", 2, 12, ["v.ts"]),
+      );
 
-    const status = yield* client.status({ cwd: repo.cwd });
-    const byPath = new Map(status.files.map((file) => [file.path, file]));
-    assert.deepInclude(byPath.get("x.ts"), {
-      turnRunId: RunId.make("run:alpha:2"),
-      earlierTurns: 1,
-    });
-    assert.deepInclude(byPath.get("y.ts"), {
-      turnRunId: RunId.make("run:beta:1"),
-      earlierTurns: 1,
-    });
-    assert.deepInclude(byPath.get("z.ts"), { turnRunId: null, earlierTurns: 0 });
-    assert.deepStrictEqual(
-      status.turns.map((described) => [described.threadTitle, described.turnNumber]),
-      [
-        ["Thread beta", 1],
-        ["Thread alpha", 2],
-      ],
-    );
-    assert.strictEqual(status.running, null);
-  }).pipe(Effect.scoped, Effect.provide(layerServices)),
+      const status = yield* client.status({ cwd: repo.cwd });
+      const byPath = new Map(status.files.map((file) => [file.path, file]));
+      assert.deepInclude(byPath.get("x.ts"), {
+        turnRunId: RunId.make("run:alpha:2"),
+        earlierTurns: 1,
+      });
+      assert.deepInclude(byPath.get("y.ts"), {
+        turnRunId: RunId.make("run:beta:1"),
+        earlierTurns: 1,
+      });
+      assert.deepInclude(byPath.get("z.ts"), { turnRunId: null, earlierTurns: 0 });
+      assert.deepInclude(byPath.get("w.ts"), { turnRunId: null, earlierTurns: 0 });
+      assert.deepInclude(byPath.get("v.ts"), {
+        turnRunId: RunId.make("run:gamma:2"),
+        earlierTurns: 0,
+      });
+      assert.deepStrictEqual(
+        status.turns.map((described) => [described.threadTitle, described.turnNumber]),
+        [
+          ["Thread gamma", 2],
+          ["Thread beta", 1],
+          ["Thread alpha", 2],
+        ],
+      );
+      assert.strictEqual(status.running, null);
+    }).pipe(Effect.scoped, Effect.provide(layerServices)),
 );
 
 it.effect("discards tracked and untracked files, and undo puts back every byte", () =>

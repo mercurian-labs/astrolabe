@@ -1,7 +1,8 @@
 # Git
 
-A checkout's Git client as a repository tab (`repo-git:<env>:<project>:<checkout>`), built around
-agent turns: uncommitted files grouped by the turn whose checkpoint lists them, commits marked
+A checkout's Git client as a repository tab (`repo-git:<env>:<project>:<checkout>`, titled "Git · <branch>"), built around
+agent turns: uncommitted files grouped by the latest turn whose checkpoint lists them and still
+differs from HEAD (a turn whose version of the file is committed made none of the change), commits marked
 "during turn N", a selection handed to the agent as an unsent draft, undo for stage, unstage,
 discard and commit, and mutations refused while a turn works in the checkout. Web and desktop
 only; the phone has no Git tab. User guide: `docs/user/projects.md` (Git).
@@ -34,13 +35,15 @@ only; the phone has no Git tab. User guide: `docs/user/projects.md` (Git).
 - **Running turn**: a banner names the thread with **Open chat**; stage marks, Commit, Undo and
   Pull read `aria-disabled` with the reason on hover; the server refuses them anyway
   (`GitClientError.runningThreadId`).
-- **States**: list-shaped skeletons, "No uncommitted changes…", not a git repository, read errors
+- **Narrow pane**: under 40rem the lists stack above the diff, and a row drops its earlier-turns hint
+  before its name. **States**: list-shaped skeletons, "No uncommitted changes…", not a git repository, read errors
   with **Try again**, a merge/rebase banner.
 
 ## Walk
 
 1. Seed a worktree where a thread has run two turns touching overlapping files, then edit one
-   other file by hand. Open Git from its `⋯` menu: two turn groups newest first, the shared file
+   other file by hand. (Later: commit everything, hand-edit a file a turn touched, and it sits
+   under **Not from a turn**.) Open Git from its `⋯` menu: two turn groups newest first, the shared file
    under the newer turn with "+1 earlier turn", the hand-edited file under **Not from a turn**.
 2. Space on a file, then on a group header: marks fill; `a` toggles all. Check `git status` in a
    terminal agrees (real index).

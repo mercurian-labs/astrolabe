@@ -31,21 +31,33 @@ export const checkoutThreads = Effect.fn("GitClientTurns.checkoutThreads")(funct
   };
 });
 
+export interface FileTurn {
+  readonly runId: RunId;
+  /** The checkpoint ending the turn: the working tree as the turn left it. */
+  readonly ref: string;
+}
+
 /**
- * For each of `paths`, the latest turn whose checkpoint in these scopes lists it, and how many
- * earlier turns did too; `order` holds those turns, the latest capture first.
+ * For each of `paths`, the turns whose checkpoint in these scopes lists it, the latest first and
+ * each turn once; `runs` holds every such turn, the latest capture first.
  */
 export const fileTurns = Effect.fn("GitClientTurns.fileTurns")(function* (
   scopeIds: ReadonlyArray<string>,
   paths: ReadonlyArray<string>,
 ) {
-  const byPath = new Map<string, { readonly runId: RunId; earlier: number }>();
-  const order: RunId[] = [];
-  if (scopeIds.length === 0 || paths.length === 0) return { byPath, order };
+  const byPath = new Map<string, FileTurn[]>();
+  const runs: RunId[] = [];
+  if (scopeIds.length === 0 || paths.length === 0) return { byPath, runs };
   const sql = yield* SqlClient.SqlClient;
   const pathsJson = yield* encodePaths(paths);
-  const rows = yield* sql<{ readonly run_id: string; readonly path: string }>`
-    SELECT checkpoint.run_id, json_extract(file.value, '$.path') AS path
+  const rows = yield* sql<{
+    readonly run_id: string;
+    readonly ref: string;
+    readonly path: string;
+  }>`
+    SELECT checkpoint.run_id,
+      json_extract(checkpoint.payload_json, '$.ref') AS ref,
+      json_extract(file.value, '$.path') AS path
     FROM orchestration_v2_projection_checkpoints AS checkpoint,
       json_each(checkpoint.payload_json, '$.files') AS file
     WHERE checkpoint.scope_id IN ${sql.in([...scopeIds])}
@@ -59,22 +71,14 @@ export const fileTurns = Effect.fn("GitClientTurns.fileTurns")(function* (
       )
     ORDER BY checkpoint.captured_at DESC
   `;
-  const seen = new Map<string, Set<string>>();
   for (const row of rows) {
-    const runs = seen.get(row.path) ?? new Set<string>();
-    seen.set(row.path, runs);
-    const latest = byPath.get(row.path);
-    if (latest === undefined) {
-      const runId = RunId.make(row.run_id);
-      byPath.set(row.path, { runId, earlier: 0 });
-      if (!order.includes(runId)) order.push(runId);
-      runs.add(row.run_id);
-    } else if (!runs.has(row.run_id)) {
-      runs.add(row.run_id);
-      latest.earlier += 1;
-    }
+    const runId = RunId.make(row.run_id);
+    if (!runs.includes(runId)) runs.push(runId);
+    const turns = byPath.get(row.path) ?? [];
+    byPath.set(row.path, turns);
+    if (!turns.some((turn) => turn.runId === runId)) turns.push({ runId, ref: row.ref });
   }
-  return { byPath, order };
+  return { byPath, runs };
 });
 
 export interface RunWindow {

@@ -145,8 +145,9 @@ in the Command Palette, or Space `r` `G`. From a chat, the palette and Space `r`
 tab of the worktree that thread works in. It is a tab like any other, so it can sit beside the chat.
 
 - **Changes** groups uncommitted files by the turn that made them, newest first, each headed
-  "Turn N · thread title" with the message that started it. Files no turn changed sit under **Not
-  from a turn**, and conflicts come first. Stage a file or a whole turn's files, commit what is
+  "Turn N · thread title" with the message that started it. Files no turn changed, and files you
+  changed after a turn's work on them was committed, sit under **Not from a turn**. Conflicts come
+  first. Stage a file or a whole turn's files, commit what is
   staged (or everything, with nothing staged), and leave the message empty to have one written.
 - **Commits** marks the ones not pushed yet, and "during turn N" when a turn was working in this
   worktree when the commit was made there. That is a guess from timing: you may have made it

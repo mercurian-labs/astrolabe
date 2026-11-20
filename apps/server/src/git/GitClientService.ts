@@ -82,6 +82,8 @@ const UNDO_DEPTH = 20;
 const COUNTED_UNTRACKED_FILES = 200;
 const COUNTED_UNTRACKED_BYTES = 1_000_000;
 const REFLOG_ENTRIES = 2_000;
+/** A path's turns compared with HEAD, the latest first; older ones are taken as uncommitted. */
+const COMPARED_TURNS = 12;
 const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
 type UndoEntry =
@@ -341,6 +343,55 @@ const make = Effect.gen(function* () {
     return byPath;
   });
 
+  /**
+   * Which of each path's turns still have work in its uncommitted change. Going back from the
+   * latest, the first turn that left the file as HEAD has it is committed, and so is every turn
+   * before it; a change made since is someone else's. A checkpoint that can't be read counts.
+   */
+  const uncommittedTurns = Effect.fn("GitClientService.uncommittedTurns")(function* (
+    cwd: string,
+    listed: ReadonlyMap<string, ReadonlyArray<GitClientTurns.FileTurn>>,
+  ) {
+    const byPath = new Map<string, { readonly runId: RunId; readonly earlier: number }>();
+    const credited = new Set<RunId>();
+    // One object per line: a path holding a newline can't be asked about, so its turns all count.
+    const asked = [...listed].filter(([file]) => !file.includes("\n"));
+    const queries = [
+      ...new Set(
+        asked.flatMap(([file, turns]) => [
+          `HEAD:${file}`,
+          ...turns.slice(0, COMPARED_TURNS).flatMap((turn) => [turn.ref, `${turn.ref}:${file}`]),
+        ]),
+      ),
+    ];
+    const objects = new Map<string, string | null>();
+    if (queries.length > 0) {
+      const read = yield* run("turnVersions", cwd, ["cat-file", "--batch-check"], {
+        stdin: `${queries.join("\n")}\n`,
+      });
+      const lines = read.exitCode === 0 ? read.stdout.split("\n") : [];
+      queries.forEach((query, index) => {
+        const line = lines[index];
+        if (line === undefined) return;
+        objects.set(query, line.endsWith(" missing") ? null : line.slice(0, line.indexOf(" ")));
+      });
+    }
+    for (const [file, turns] of listed) {
+      const head = objects.get(`HEAD:${file}`);
+      const uncommitted: GitClientTurns.FileTurn[] = [];
+      for (const turn of turns) {
+        const readable = head !== undefined && typeof objects.get(turn.ref) === "string";
+        if (readable && objects.get(`${turn.ref}:${file}`) === head) break;
+        uncommitted.push(turn);
+      }
+      const [latest, ...earlier] = uncommitted;
+      if (latest === undefined) continue;
+      byPath.set(file, { runId: latest.runId, earlier: earlier.length });
+      credited.add(latest.runId);
+    }
+    return { byPath, credited };
+  });
+
   const status: GitClientService["Service"]["status"] = Effect.fn("GitClientService.status")(
     function* (input) {
       const cwd = yield* boundCwd(input.cwd);
@@ -373,8 +424,10 @@ const make = Effect.gen(function* () {
         ],
         { concurrency: "unbounded" },
       );
-      const attribution = yield* withSql(GitClientTurns.fileTurns(working.threads.scopeIds, paths));
-      const turns = yield* withSql(GitClientTurns.describeTurns(attribution.order));
+      const listed = yield* withSql(GitClientTurns.fileTurns(working.threads.scopeIds, paths));
+      const attribution = yield* uncommittedTurns(input.cwd, listed.byPath);
+      const order = listed.runs.filter((runId) => attribution.credited.has(runId));
+      const turns = yield* withSql(GitClientTurns.describeTurns(order));
       const changed: GitClientFile[] = parsed.entries.map((entry) => {
         const count = lineCounts.get(entry.path);
         const turn = attribution.byPath.get(entry.path);
@@ -396,7 +449,7 @@ const make = Effect.gen(function* () {
         behind: parsed.behind,
         operation: operation satisfies GitClientOperation | null,
         files: changed,
-        turns: attribution.order.flatMap((runId) => turns.get(runId) ?? []),
+        turns: order.flatMap((runId) => turns.get(runId) ?? []),
         running: working.running,
         undo,
       };
