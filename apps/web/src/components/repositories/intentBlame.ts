@@ -1,3 +1,4 @@
+import type { EditorView } from "@codemirror/view";
 import type { IntentBlameOrigin, IntentBlameResult, IntentBlameSpan } from "@t3tools/contracts";
 
 /** What "Why is this here?" was asked of: the cursor's line and the item around it. */
@@ -10,6 +11,9 @@ export interface IntentBlameAsk {
     readonly startLine: number;
     readonly endLine: number;
   } | null;
+  /** The editor's text when asked; sent only when it was not saved yet. */
+  readonly text: string;
+  readonly unsaved: boolean;
 }
 
 export function spanAt(result: IntentBlameResult, line: number): IntentBlameSpan | null {
@@ -41,4 +45,35 @@ export function sharesIn(
   return [...byKey.values()].toSorted(
     (a, b) => Number(a.turn === null) - Number(b.turn === null) || b.lines - a.lines,
   );
+}
+
+const MARKUP_START = /^\s*(?:#{1,6}|[-*+>]|\d+[.)])\s+/;
+const PLAIN_RUN = /[\p{L}\p{N}][\p{L}\p{N} ,.;:()!?/-]{23,}/u;
+
+/**
+ * Words of a Markdown message that render as they are written, for a citation to find on the
+ * page: the first long run free of markup, quotes and dashes a renderer may change. Null when
+ * the message has none.
+ */
+export function plainQuote(markdown: string): string | null {
+  for (const line of markdown.split("\n")) {
+    const run = PLAIN_RUN.exec(line.replace(MARKUP_START, ""))?.[0];
+    if (!run || run.includes("--")) continue;
+    const words = run.slice(0, 160);
+    const cut = words.length < run.length ? words.slice(0, words.lastIndexOf(" ")) : words;
+    const quote = cut.trim();
+    if (quote.length >= 24) return quote;
+  }
+  return null;
+}
+
+/** The file editors that can be asked, for the keyboard menu. */
+const askers = new WeakMap<EditorView, () => void>();
+
+export function registerIntentBlameAsker(view: EditorView, ask: () => void): void {
+  askers.set(view, ask);
+}
+
+export function intentBlameAskerFor(view: EditorView): (() => void) | null {
+  return askers.get(view) ?? null;
 }

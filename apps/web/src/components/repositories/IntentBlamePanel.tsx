@@ -1,5 +1,6 @@
 import type { EnvironmentId, IntentBlameResult, IntentBlameTurn } from "@t3tools/contracts";
 import { XIcon } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { useEnvironmentQuery } from "~/state/query";
 import { vcsEnvironment } from "~/state/vcs";
@@ -9,13 +10,15 @@ import { type IntentBlameAsk, sharesIn, spanAt } from "./intentBlame";
 
 /**
  * Astrolabe: "Why is this here?" for the line under the cursor and the item around it: the turn
- * that last wrote it, with the person's request and the agent's own words, or that none did.
+ * that last changed it, with the person's request and the agent's own words, or that none did.
  */
 export function IntentBlamePanel({
   environmentId,
   cwd,
   path,
   ask,
+  stale,
+  onAskAgain,
   onOpenTurn,
   onClose,
 }: {
@@ -23,17 +26,28 @@ export function IntentBlamePanel({
   readonly cwd: string;
   readonly path: string;
   readonly ask: IntentBlameAsk;
+  /** The file changed after the question was asked. */
+  readonly stale: boolean;
+  readonly onAskAgain: () => void;
   readonly onOpenTurn: (turn: IntentBlameTurn) => void;
   readonly onClose: () => void;
 }) {
   const query = useEnvironmentQuery(
-    vcsEnvironment.intentBlame({ environmentId, input: { cwd, path } }),
+    vcsEnvironment.intentBlame({
+      environmentId,
+      input: ask.unsaved ? { cwd, path, contents: ask.text } : { cwd, path },
+    }),
   );
   const result = query.data;
   return (
     <section
       aria-label="Why is this here?"
       className="flex max-h-[45%] min-h-0 shrink-0 flex-col border-t border-border bg-background"
+      onKeyDown={(event) => {
+        if (event.key !== "Escape") return;
+        event.stopPropagation();
+        onClose();
+      }}
     >
       <header className="flex items-center gap-2 px-(--workspace-gutter-start) py-1.5 text-xs">
         <span className="font-medium text-foreground">Why is this here?</span>
@@ -44,6 +58,14 @@ export function IntentBlamePanel({
         </Button>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-(--workspace-gutter-start) pb-3 text-sm">
+        {stale ? (
+          <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="flex-1">The file changed after you asked.</span>
+            <Button size="xs" variant="outline" onClick={onAskAgain}>
+              Ask again
+            </Button>
+          </div>
+        ) : null}
         {query.error !== null ? (
           <p className="text-muted-foreground">{query.error}</p>
         ) : result === null ? (
@@ -56,6 +78,17 @@ export function IntentBlamePanel({
   );
 }
 
+const lines = (count: number) => `${count} ${count === 1 ? "line" : "lines"}`;
+const turns = (count: number) => `${count} recorded ${count === 1 ? "turn" : "turns"}`;
+
+const ORIGIN_TEXT = {
+  before:
+    "No recorded turn changed this line. It was there before the first recorded turn that changed this file.",
+  outside:
+    "This line last changed outside the recorded turns: by a person, a merge or pull, or a turn whose checkpoint is gone.",
+  unsaved: "This line is not saved yet.",
+} as const;
+
 function Answer({
   result,
   ask,
@@ -67,6 +100,26 @@ function Answer({
   readonly cwd: string;
   readonly onOpenTurn: (turn: IntentBlameTurn) => void;
 }) {
+  const missing =
+    result.missingCheckpoints > 0 ? (
+      <p className="text-xs text-muted-foreground">
+        {turns(result.missingCheckpoints)} that changed this file no longer{" "}
+        {result.missingCheckpoints === 1 ? "has its checkpoint" : "have their checkpoints"} in this
+        repository.
+      </p>
+    ) : null;
+  if (result.turns.length === 0) {
+    return (
+      <div className="flex flex-col gap-3">
+        <p className="text-muted-foreground">
+          {result.changedBy === 0
+            ? "No recorded turn changed this file."
+            : `${turns(result.changedBy)} changed this file. None of their lines remain.`}
+        </p>
+        {missing}
+      </div>
+    );
+  }
   const span = spanAt(result, ask.line);
   const lineTurn = span?.origin === "turn" && span.turn !== undefined ? span.turn : null;
   const item = ask.item;
@@ -75,39 +128,33 @@ function Answer({
   const untouched = shares
     .filter((share) => share.turn === null)
     .reduce((total, share) => total + share.lines, 0);
+  const fromTurns = shares.flatMap((share) =>
+    share.turn === null
+      ? []
+      : [`${lines(share.lines)} from turn ${result.turns[share.turn]!.turnNumber}`],
+  );
   return (
     <div className="flex flex-col gap-3">
-      {result.turns.length === 0 ? (
-        <p className="text-muted-foreground">No recorded turn changed this file.</p>
-      ) : lineTurn !== null ? (
+      {lineTurn !== null ? (
         <TurnCard
           turn={result.turns[lineTurn]!}
-          lead="This line was last written in"
+          lead="This line last changed in"
           cwd={cwd}
           onOpenTurn={onOpenTurn}
         />
       ) : (
         <p className="text-muted-foreground">
-          {span?.origin === "before"
-            ? "This line was not written in a recorded turn. It was there before the first recorded turn that changed this file."
-            : "This line was not written in a recorded turn. It changed outside them: by a person, a merge, or a turn whose checkpoint is gone."}
+          {span === null || span.origin === "turn" ? ORIGIN_TEXT.outside : ORIGIN_TEXT[span.origin]}
         </p>
       )}
-      {item && result.turns.length > 0 ? (
+      {item ? (
         <div className="flex flex-col gap-2">
           <p className="text-xs text-muted-foreground">
             <span className="font-mono text-foreground">{item.name}</span> ({item.kind}, lines{" "}
             {item.startLine}–{item.endLine}):{" "}
-            {shares
-              .map((share) =>
-                share.turn === null
-                  ? null
-                  : `${share.lines} ${share.lines === 1 ? "line" : "lines"} from turn ${result.turns[share.turn]!.turnNumber}`,
-              )
-              .filter((part) => part !== null)
-              .join(", ") || "no lines from a recorded turn"}
-            {untouched > 0
-              ? `; ${untouched} ${untouched === 1 ? "line" : "lines"} not from a recorded turn`
+            {fromTurns.join(", ") || "no lines from a recorded turn"}
+            {untouched > 0 && fromTurns.length > 0
+              ? `; ${lines(untouched)} not from a recorded turn`
               : ""}
             .
           </p>
@@ -115,7 +162,7 @@ function Answer({
             <TurnCard
               key={share.turn}
               turn={result.turns[share.turn!]!}
-              lead={`${share.lines} ${share.lines === 1 ? "line" : "lines"} here were written in`}
+              lead={`${lines(share.lines)} here last changed in`}
               cwd={cwd}
               onOpenTurn={onOpenTurn}
               compact
@@ -123,14 +170,7 @@ function Answer({
           ))}
         </div>
       ) : null}
-      {result.missingCheckpoints > 0 ? (
-        <p className="text-xs text-muted-foreground">
-          {result.missingCheckpoints}{" "}
-          {result.missingCheckpoints === 1 ? "turn that changed" : "turns that changed"} this file
-          no longer {result.missingCheckpoints === 1 ? "has a checkpoint" : "have checkpoints"} in
-          this repository.
-        </p>
-      ) : null}
+      {missing}
     </div>
   );
 }
@@ -149,6 +189,10 @@ function TurnCard({
   readonly compact?: boolean;
 }) {
   const closing = turn.closing !== turn.beforeChange ? turn.closing : null;
+  const canOpen =
+    turn.beforeChangeMessageId !== null ||
+    turn.closingMessageId !== null ||
+    turn.userMessageId !== null;
   return (
     <article className="flex flex-col gap-1.5 rounded-md border border-border p-2.5">
       <div className="flex items-baseline gap-2">
@@ -164,7 +208,7 @@ function TurnCard({
             </>
           ) : null}
         </p>
-        {turn.userMessageId !== null ? (
+        {canOpen ? (
           <Button size="xs" variant="outline" onClick={() => onOpenTurn(turn)}>
             Open turn
           </Button>
@@ -181,7 +225,14 @@ function TurnCard({
             />
           ) : null}
           {closing !== null ? (
-            <Quote label="The agent, at the end of the turn" text={closing} lines={3} />
+            <details className="group">
+              <summary className="cursor-default text-2xs uppercase tracking-wide text-muted-foreground">
+                The agent, at the end of the turn
+              </summary>
+              <p className="mt-0.5 whitespace-pre-wrap text-foreground">
+                <InlineMarkdown text={closing} />
+              </p>
+            </details>
           ) : null}
         </>
       )}
@@ -189,12 +240,12 @@ function TurnCard({
   );
 }
 
-const CLAMP = { 2: "line-clamp-2", 3: "line-clamp-3", 4: "line-clamp-4" } as const;
+const CLAMP = { 2: "line-clamp-2", 4: "line-clamp-4" } as const;
 
 function Quote({
   label,
   text,
-  lines,
+  lines: clamp,
 }: {
   readonly label: string;
   readonly text: string;
@@ -203,7 +254,32 @@ function Quote({
   return (
     <div className="flex flex-col gap-0.5">
       <span className="text-2xs uppercase tracking-wide text-muted-foreground">{label}</span>
-      <p className={`whitespace-pre-wrap text-foreground ${CLAMP[lines]}`}>{text}</p>
+      <p className={`whitespace-pre-wrap text-foreground ${CLAMP[clamp]}`}>
+        <InlineMarkdown text={text} />
+      </p>
     </div>
   );
+}
+
+/** Code spans as code, emphasis and link markup dropped: enough to read a message, no renderer. */
+function InlineMarkdown({ text }: { readonly text: string }) {
+  const parts: ReactNode[] = [];
+  let offset = 0;
+  for (const part of text.split(/(`[^`\n]+`)/)) {
+    if (part.startsWith("`") && part.endsWith("`") && part.length > 2) {
+      parts.push(
+        <code key={offset} className="font-mono">
+          {part.slice(1, -1)}
+        </code>,
+      );
+    } else if (part.length > 0) {
+      parts.push(
+        part
+          .replace(/\[([^\]\n]+)\]\([^)\n]*\)/g, "$1")
+          .replace(/(\*\*|__)(?=\S)([^\n]*?\S)\1/g, "$2"),
+      );
+    }
+    offset += part.length;
+  }
+  return parts;
 }

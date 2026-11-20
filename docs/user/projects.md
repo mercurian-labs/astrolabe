@@ -128,6 +128,19 @@ lays the graph out again.
 The graph reads the project's code index, set in **Settings → Projects**. While the index is
 first built, the files that import this one appear once it finishes.
 
+## Why is this here?
+
+To see which agent turn last changed a line, put the cursor on it and click the speech-bubble
+button in the file's header, choose **Why Is This Here?** from the editor's right-click menu, or
+press `e` `y` in the [keyboard menu](keybindings.md#keyboard-menu). A panel under the file names
+the thread and turn, quotes your request and what the agent said before it changed the file, and
+counts which turns changed the function or class around the cursor. **Open turn** opens the
+thread at the agent's words, highlighted. Escape closes the panel.
+
+Only turns this machine recorded are known, and only while their checkpoints remain in the
+repository. Lines a turn brought in with a merge, pull or rebase are not counted as its own. A file
+that was renamed or moved since loses its turns.
+
 ## Review changes
 
 **Review uncommitted changes** opens the changes not yet committed; **Changes against** a base

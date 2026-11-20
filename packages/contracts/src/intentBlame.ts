@@ -50,8 +50,10 @@ export const IntentBlameTurn = Schema.Struct({
   request: Schema.String,
   /** The agent's last words before it first changed this file in the turn, when they are known. */
   beforeChange: Schema.NullOr(Schema.String),
+  beforeChangeMessageId: Schema.NullOr(MessageId),
   /** The agent's last words in the turn. */
   closing: Schema.NullOr(Schema.String),
+  closingMessageId: Schema.NullOr(MessageId),
   /** When the turn's checkpoint was captured. */
   at: IsoDateTime,
   /** The checkout the turn ran in. */

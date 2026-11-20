@@ -561,8 +561,12 @@ const make = Effect.gen(function* () {
             FROM orchestration_v2_projection_messages
             WHERE message_id = ${row.user_message_id}
           `;
-    const said = yield* sql<{ readonly created_at: string; readonly text: string | null }>`
-      SELECT created_at, json_extract(payload_json, '$.text') AS text
+    const said = yield* sql<{
+      readonly message_id: string;
+      readonly created_at: string;
+      readonly text: string | null;
+    }>`
+      SELECT message_id, created_at, json_extract(payload_json, '$.text') AS text
       FROM orchestration_v2_projection_messages
       WHERE run_id = ${row.run_id} AND role = 'assistant'
       ORDER BY created_at ASC
@@ -577,14 +581,19 @@ const make = Effect.gen(function* () {
     const changedAt = firstChange?.at ?? null;
     const before =
       changedAt === null ? undefined : said.findLast((message) => message.created_at <= changedAt);
+    const beforeChange = clip(before?.text);
+    const last = said.at(-1);
+    const closing = clip(last?.text);
     return {
       threadId: ThreadId.make(row.thread_id),
       threadTitle: row.title,
       turnNumber: row.turn_number,
       userMessageId: row.user_message_id === null ? null : MessageId.make(row.user_message_id),
       request: clip(request?.text) ?? "",
-      beforeChange: clip(before?.text),
-      closing: clip(said.at(-1)?.text),
+      beforeChange,
+      beforeChangeMessageId: before && beforeChange ? MessageId.make(before.message_id) : null,
+      closing,
+      closingMessageId: last && closing ? MessageId.make(last.message_id) : null,
       at: row.captured_at,
       checkout: row.checkout,
     } satisfies IntentBlameTurn;

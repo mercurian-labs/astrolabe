@@ -70,6 +70,7 @@ import {
   toggleMaximizedPane,
 } from "~/panes/paneCommands";
 import { localGraphOpener } from "~/components/repositories/localGraph";
+import { intentBlameAskerFor } from "~/components/repositories/intentBlame";
 import { linkedFileEditToggle } from "~/components/files/linkedFileEditToggle";
 import { problemsOpener } from "~/components/repositories/multibuffer/openMultibuffer";
 import { focusRegion, regionToward } from "~/keyboardNav/regions";
@@ -635,6 +636,14 @@ function astrolabeCommand(
     }
     case "repository.localGraph":
       return entry("Open local graph", localGraphOpener(panes?.controller ?? null));
+    case "repository.whyIsThisHere": {
+      const view = editorFrom(context.origin, () => true);
+      const ask = view ? intentBlameAskerFor(view) : null;
+      return entry(
+        ask ? "Why is this here?" : "No project file here",
+        ask ? () => afterPalette(ask) : null,
+      );
+    }
     case "file.toggleEdit": {
       const toggle = linkedFileEditToggle(focused?.leaf.active ?? null);
       return entry(toggle?.label ?? "Edit file", toggle?.run ?? null);

@@ -138,6 +138,7 @@ export const ASTROLABE_KEYBINDING_COMMANDS = [
   "run.atCursor",
   "run.last",
   "repository.localGraph",
+  "repository.whyIsThisHere",
   "file.save",
   "file.toggleEdit",
   // Undo and redo in the code file or note the key came from, which each editor binds itself.
