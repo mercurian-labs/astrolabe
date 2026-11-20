@@ -19,7 +19,8 @@ invitation appears at the top of **Settings → Workspaces**, or open the link i
 the email. A workspace holds five people, its owner and four more, and a
 pending invitation holds a seat until it is accepted, declined or revoked.
 
-Each workspace has an address, `/w/` followed by its short name, that opens it
+Owners and admins can give a workspace a logo under **Logo**; without one it
+shows its initials. Each workspace has an address, `/w/` followed by its short name, that opens it
 in Settings.
 
 ## Switch workspaces

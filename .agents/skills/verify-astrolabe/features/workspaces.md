@@ -1,7 +1,7 @@
 # Workspaces
 
 Settings › Workspaces shows the workspaces you belong to, synced live from the
-cloud: their name, address and two policies; people with roles and pending
+cloud: their name, logo, address and two policies; people with roles and pending
 invitations; teams to join, leave, create and manage (rename, owners, delete);
 handing over, leaving and deleting. Invitations addressed to you appear above
 them. `/w/<short name>` opens a workspace there.
@@ -70,7 +70,10 @@ the workspace dialogs open beside it: scope to their own names. They are named b
 `aria-labelledby`, so `role=dialog[name="New workspace"]` finds one and CSS `[aria-label=…]`
 finds nothing. **New workspace** shows only
 for an approved account that owns no workspace yet; the cloud enforces the same rule. Rerun
-with a fresh `cloud-kit.sh person` or delete the workspace first. A new workspace starts with
+with a fresh `cloud-kit.sh person` or delete the workspace first. `#workspace-logo` shows the tile; owners and admins
+get **Upload** (a hidden file input, `Workspace logo file`, which `preview_act upload` fills),
+then **Change** and **Remove**. Any image becomes a 128px WebP data URL in `auth.organization.logo`;
+the cloud refuses links and SVG data URLs. A new workspace starts with
 a team of the same name, invite policy "Owner and admins" and team policy "Everyone"
 (`#workspace-invite-policy`, `#workspace-team-policy`, each combobox named by its row title).
 The **Workspace** picker shows only when you are in more than one. A person's remove button

@@ -154,9 +154,45 @@ describe("workspace writes", () => {
     expect(names.rows[0]!.name).toBe("Delta Design");
   });
 
+  it("sets and removes a workspace's logo", async () => {
+    const owner = await person("owner5@example.com");
+    const created = await write(owner.headers, {
+      write: "createWorkspace",
+      input: { name: "Epsilon", slug: "epsilon" },
+    });
+    const organizationId = (created.body as { result: { id: string } }).result.id;
+    const logoOf = async () =>
+      (
+        await client.query<{ logo: string | null }>(
+          `SELECT logo FROM auth.organization WHERE id = $1`,
+          [organizationId],
+        )
+      ).rows[0]!.logo;
+    const logo = "data:image/png;base64,iVBORw0KGgo=";
+    const set = await write(owner.headers, {
+      write: "updateWorkspace",
+      input: { organizationId, logo },
+    });
+    expect(set.status).toBe(200);
+    expect(await logoOf()).toBe(logo);
+    await write(owner.headers, { write: "updateWorkspace", input: { organizationId, logo: null } });
+    expect(await logoOf()).toBeNull();
+  });
+
   it("refuses unknown writes and malformed input before touching the database", async () => {
     const someone = await person("someone2@example.com");
     expect((await write(someone.headers, { write: "dropTables", input: {} })).status).toBe(400);
     expect((await write(someone.headers, { write: "createTeam", input: {} })).status).toBe(400);
+    for (const logo of [
+      "https://tracker.example/pixel.png",
+      "data:image/svg+xml;base64,PHN2Zz4=",
+      `data:image/png;base64,${"A".repeat(100_000)}`,
+    ]) {
+      const refused = await write(someone.headers, {
+        write: "updateWorkspace",
+        input: { organizationId: "any", logo },
+      });
+      expect(refused.status).toBe(400);
+    }
   });
 });
