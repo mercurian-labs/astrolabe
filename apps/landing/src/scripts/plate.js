@@ -81,6 +81,7 @@ import Twilight from "./twilight.js";
     uniform vec3 u_duoLight;
     uniform vec4 u_lamp;         // the lamps' rust, and how far they are up (0 by day)
     uniform float u_moon;        // 1 once the inks have turned over: the snow takes the moonlight
+    uniform float u_ground;      // the moonlit stipple's floor on bare rock (0 for most plates)
 
     const float DAY_Y = 0.947;   // the day paper's luminance; the building is measured against it
 
@@ -96,21 +97,21 @@ import Twilight from "./twilight.js";
       // The olive plate, off register: a pixel and a half down and one to the right.
       vec2 shift = vec2(-1.0, -1.5) * u_dpr / u_res;
       vec4 g2 = texture2D(u_geo, uv + shift);
-      // The silhouette closes the small holes in the ground's cutout, which would read as blotches.
+      // At night the print closes the small holes in the ground's cutout, which would read as blotches.
       float fill = g.a;
       if (u_body.a > 0.0) {
-        vec2 t = 3.0 / u_size;
+        vec2 t = 7.0 / u_size;
         float near = texture2D(u_geo, uv + vec2(t.x, 0.0)).a + texture2D(u_geo, uv - vec2(t.x, 0.0)).a
           + texture2D(u_geo, uv + vec2(0.0, t.y)).a + texture2D(u_geo, uv - vec2(0.0, t.y)).a
           + texture2D(u_geo, uv + 2.0 * t).a + texture2D(u_geo, uv - 2.0 * t).a
           + texture2D(u_geo, uv + vec2(2.0 * t.x, -2.0 * t.y)).a + texture2D(u_geo, uv - vec2(2.0 * t.x, -2.0 * t.y)).a;
         fill = max(g.a, smoothstep(0.3, 0.65, (near + g.a) / 9.0));
       }
-      if (g.a < 0.004 && g2.a < 0.004) {
-        gl_FragColor = u_body * fill;
+      if (fill < 0.004 && g2.a < 0.004) {
+        gl_FragColor = vec4(0.0);
         return;
       }
-      vec3 n = normalOf(g);
+      vec3 n = g.a < 0.004 ? vec3(0.0, 0.0, 1.0) : normalOf(g); // a closed hole has no normal of its own
       vec3 tone = texture2D(u_tone, uv).rgb;
 
       // The sun: Lambert, with the shadows the building casts on itself.
@@ -160,9 +161,12 @@ import Twilight from "./twilight.js";
       float moon = snow * u_moon;
       light = max(light, moon * (0.3 + 0.4 * sky));
       // Bare rock falls under that threshold. Moonlit, it keeps a stipple that follows its tone as the
-      // day print does, pale faces thickest and dark granite barely there, always fainter than snow.
-      float bare = u_moon * (1.0 - snow) * (1.0 - 0.8 * tone.r) * smoothstep(0.1, 0.55, tone.b);
-      light = max(light, bare * (0.04 + 0.14 * sky + 0.16 * lit));
+      // day print does, pale faces thickest, always fainter than the snow's. A plate whose building
+      // stands on dark rock (u_ground) keeps an even stipple over all of it, so the ground reads as solid.
+      float bare = u_moon * (1.0 - snow) * (1.0 - 0.8 * tone.r);
+      float pale = smoothstep(0.1, 0.55, tone.b);
+      light = max(light, bare * pale * (0.04 + 0.14 * sky + 0.16 * lit));
+      light = max(light, bare * u_ground * (0.15 + 0.18 * pale + 0.08 * sky + 0.1 * lit));
       // The paper's tooth: even a face square to the sun keeps a few grains, as the Mercury prints do.
       dark = max(pow(dark, 1.15) * 0.8, u_y.y < paper ? 0.035 * (1.0 - snow) : 0.0);
 
@@ -183,8 +187,8 @@ import Twilight from "./twilight.js";
         }
       }
       float k = 1.0 / (u_sub * u_sub);
-      float aDark = inkDark * k * u_alpha.x * g.a;
-      float aLight = inkLight * k * u_alpha.y * g.a;
+      float aDark = inkDark * k * u_alpha.x * fill;
+      float aLight = inkLight * k * u_alpha.y * fill;
       float aOlive = oliveCover * k * u_alpha.z * g2.a * (1.0 - aDark - aLight);
       vec4 grain = vec4(u_dark * aDark + u_ivory * aLight + u_olive * aOlive, aDark + aLight + aOlive);
       gl_FragColor = grain + u_body * fill * (1.0 - moon) * (1.0 - grain.a);
@@ -281,6 +285,7 @@ import Twilight from "./twilight.js";
     const relief = Number(figure.dataset.plateRelief);
     const moonlight = Number(figure.dataset.plateMoonlight || 0);
     const albedo = Number(figure.dataset.plateAlbedo || 1);
+    const ground = Number(figure.dataset.plateGround || 0);
     const plate = { figure, dirty: true, paint() {} };
     const fallback = () => figure.classList.add("plate--still");
     if (!("IntersectionObserver" in window)) {
@@ -455,6 +460,7 @@ import Twilight from "./twilight.js";
       // The lamps: up from just after sunset, full at −9°, a degree before the inks turn over.
       gl.uniform4f(u.u_lamp, ...palette.rust, 0.96 * smooth(-0.5, -9, alt));
       gl.uniform1f(u.u_moon, palette.inverted ? 1 : 0);
+      gl.uniform1f(u.u_ground, ground);
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
