@@ -137,6 +137,31 @@ project's new thread.
 
 In a thread, the **Files** and **Diff** tabs offer **Open in Projects** from their tab menu.
 
+## Git
+
+**Git** is a tab for one worktree's changes and commits, built around your agents' turns. Open it
+from **Open Git** in a worktree's **⋯** menu, by clicking its **N changed** count, with **Open Git**
+in the Command Palette, or Space `r` `G`. From a chat, the palette and Space `r` `G` open the Git
+tab of the worktree that thread works in. It is a tab like any other, so it can sit beside the chat.
+
+- **Changes** groups uncommitted files by the turn that made them, newest first, each headed
+  "Turn N · thread title" with the message that started it. Files no turn changed sit under **Not
+  from a turn**, and conflicts come first. Stage a file or a whole turn's files, commit what is
+  staged (or everything, with nothing staged), and leave the message empty to have one written.
+- **Commits** marks the ones not pushed yet, and "during turn N" when a turn was working in this
+  worktree when the commit was made there. That is a guess from timing: you may have made it
+  yourself meanwhile.
+- **Ask the agent** (the robot button, or `s`) puts an ask about the selection in the worktree's
+  thread, such as explaining a commit or resolving conflicts, with the files mentioned. It is
+  never sent: read it and send it yourself. With no thread there, it starts a new one.
+- **Undo** takes back the last stage, unstage, discard or commit made in the tab while nothing has
+  moved since. Discarding keeps a copy first, so undo brings back every file, new ones included.
+  A pushed commit can't be undone here.
+- While an agent is working in the worktree, staging, discarding, committing and pulling wait for
+  its turn to end; the banner names the thread.
+
+The tab works from the keyboard while one of its lists has focus; press `?` for its keys.
+
 ## Edit a thread's files
 
 A file a thread links to opens read only in its own tab beside the chat, where you can comment on
