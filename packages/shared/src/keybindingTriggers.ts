@@ -123,6 +123,8 @@ export const DEFAULT_TRIGGER_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "menu e [", command: "code.foldAll" },
   { key: "menu e ]", command: "code.unfoldAll" },
   { key: "menu r g", command: "repository.localGraph" },
+  // `g` is the local graph's, so Git takes its capital.
+  { key: "menu r G", command: "repository.git" },
   { key: "menu ,", command: "section.settings" },
   { key: ":q[uit]", command: "tab.close" },
   { key: ":w[rite]", command: "draft.write" },

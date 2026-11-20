@@ -6,6 +6,7 @@ import {
   FolderIcon,
   GitBranchIcon,
   GitBranchPlusIcon,
+  GitCommitHorizontalIcon,
   GitCompareArrowsIcon,
   ListIcon,
   ListTreeIcon,
@@ -37,6 +38,7 @@ import {
   SidebarPickerFooter,
 } from "../sidebar/SidebarThreadHeader";
 import { Badge } from "../ui/badge";
+import { InlineButton } from "../ui/button";
 import { CollapsibleSectionHeader } from "../ui/collapsible-section-header";
 import {
   Combobox,
@@ -80,6 +82,7 @@ export function WorktreeHeader({
   archived = false,
   folded = false,
   onCompare,
+  onOpenGit,
 }: {
   readonly repository: WorktreeOwner;
   readonly worktree: ProjectWorktree;
@@ -102,6 +105,8 @@ export function WorktreeHeader({
   readonly folded?: boolean;
   /** Opens its branch's changes against its base. */
   readonly onCompare?: () => void;
+  /** Opens its Git tab; its changed-files count opens it too. */
+  readonly onOpenGit?: () => void;
 }) {
   const label = labelProp ?? worktree.alias;
   const holds = worktree.holds.filter((hold) => hold.kind !== "main");
@@ -144,7 +149,7 @@ export function WorktreeHeader({
       {outsideFilter ? <OutsideFilterMark /> : null}
       {archived ? <ArchivedMark /> : null}
       {worktree.isMain && worktree.isRepository ? <span>main checkout</span> : null}
-      {changedFiles !== null && changedFiles > 0 ? (
+      {changedFiles !== null && changedFiles > 0 && !onOpenGit ? (
         <span className="tabular-nums">{`${changedFiles} changed`}</span>
       ) : null}
       {holds.length > 0 ? (
@@ -182,6 +187,17 @@ export function WorktreeHeader({
           {label}
         </span>
       </CollapsibleSectionHeader>
+      {onOpenGit && changedFiles !== null && changedFiles > 0 ? (
+        // Beside the header, not in it: the header is a button of its own.
+        <span className="shrink-0 text-3xs tabular-nums">
+          <Tooltip>
+            <TooltipTrigger render={<InlineButton tone="muted" onClick={onOpenGit} />}>
+              {`${changedFiles} changed`}
+            </TooltipTrigger>
+            <TooltipPopup side="top">Open in Git</TooltipPopup>
+          </Tooltip>
+        </span>
+      ) : null}
       {onToggleFiles ? (
         <Tooltip>
           <TooltipTrigger
@@ -202,8 +218,14 @@ export function WorktreeHeader({
           </TooltipPopup>
         </Tooltip>
       ) : null}
-      {worktree.isMain && !onCompare && menuItems === null ? null : (
+      {worktree.isMain && !onCompare && !onOpenGit && menuItems === null ? null : (
         <WorktreeMenu repository={repository} worktree={worktree} label={label}>
+          {onOpenGit ? (
+            <MenuItem onClick={onOpenGit}>
+              <GitCommitHorizontalIcon />
+              Open Git
+            </MenuItem>
+          ) : null}
           {onCompare ? (
             <MenuItem onClick={onCompare}>
               <GitCompareArrowsIcon />
