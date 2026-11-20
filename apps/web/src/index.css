@@ -2622,9 +2622,9 @@ html[data-theme-id="mercurian"] [data-app-sidebar] {
 
 /* A linked tab's chain mark stands where its minimize or ✕ would (`panes/PaneView.tsx`), which
    takes its place on hovering the tab, saving the tab's title the button's width. Without hover,
-   both show. */
+   both show. A chat's own mark opens its linked tabs menu, so it stays beside the chat's ✕. */
 @media (hover: hover) {
-  [data-tab-end]:has([data-link-mark]) > [data-tab-close] {
+  [data-tab-end]:has(> [data-link-mark]:not([data-link-owner])) > [data-tab-close] {
     position: absolute;
     inset: 0;
     margin: auto;
@@ -2634,8 +2634,10 @@ html[data-theme-id="mercurian"] [data-app-sidebar] {
   [data-tab-end] > [data-tab-close]:focus-visible {
     opacity: 1;
   }
-  [data-pane-tab]:hover [data-tab-end]:has([data-tab-close]) > [data-link-mark],
-  [data-tab-end]:has([data-tab-close]:focus-visible) > [data-link-mark] {
+  [data-pane-tab]:hover
+    [data-tab-end]:has([data-tab-close])
+    > [data-link-mark]:not([data-link-owner]),
+  [data-tab-end]:has([data-tab-close]:focus-visible) > [data-link-mark]:not([data-link-owner]) {
     opacity: 0;
   }
 }

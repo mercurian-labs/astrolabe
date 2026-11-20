@@ -1,5 +1,5 @@
 import { EyeIcon, EyeOffIcon, SquarePlus, Trash2Icon } from "lucide-react";
-import { useState, useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { ThreadsFilterCheckbox } from "~/components/projects/ThreadsFilterParts";
 import { SidebarPickerAction, SidebarPickerFooter } from "~/components/sidebar/SidebarThreadHeader";
@@ -12,6 +12,7 @@ import {
   ComboboxTrigger,
 } from "~/components/ui/combobox";
 import { Kbd } from "~/components/ui/kbd";
+import { shortcutLabelForCommand } from "~/keybindings";
 import { Toggle } from "~/components/ui/toggle";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { useRightPanelStore } from "~/rightPanelStore";
@@ -105,7 +106,14 @@ function TabsFilter({
   available,
   shortcutLabel,
   onToggle,
-}: LinkedTabsFilterProps & { readonly tabs: readonly LinkedTab[] }) {
+  trigger,
+  align = "end",
+}: LinkedTabsFilterProps & {
+  readonly tabs: readonly LinkedTab[];
+  /** What opens it, a `ComboboxTrigger` inside; the header's count by default. */
+  readonly trigger?: (label: string) => ReactNode;
+  readonly align?: "start" | "end";
+}) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const showing = tabs.filter((tab) => tab.shown);
@@ -144,35 +152,39 @@ function TabsFilter({
       }}
       filter={null}
     >
-      <Tooltip>
-        <TooltipTrigger render={<span className="flex shrink-0" />}>
-          <ComboboxTrigger
-            render={
-              <Toggle
-                className="relative shrink-0 [-webkit-app-region:no-drag]"
-                pressed={showing.length > 0}
-                aria-label={label}
-                data-right-panel-toggle
-                variant="ghost"
-                size="sm"
-                disabled={!available}
-              />
-            }
-          >
-            <TabCount count={tabs.length} />
-            {/* As a filter in force shows from its icon: some are not on screen. */}
-            {hiddenCount > 0 ? (
-              <span
-                aria-hidden
-                className="pointer-events-none absolute top-1 right-1 size-1.5 rounded-full bg-primary"
-              />
-            ) : null}
-          </ComboboxTrigger>
-        </TooltipTrigger>
-        <TooltipPopup side="bottom">{label}</TooltipPopup>
-      </Tooltip>
+      {trigger ? (
+        trigger(label)
+      ) : (
+        <Tooltip>
+          <TooltipTrigger render={<span className="flex shrink-0" />}>
+            <ComboboxTrigger
+              render={
+                <Toggle
+                  className="relative shrink-0 [-webkit-app-region:no-drag]"
+                  pressed={showing.length > 0}
+                  aria-label={label}
+                  data-right-panel-toggle
+                  variant="ghost"
+                  size="sm"
+                  disabled={!available}
+                />
+              }
+            >
+              <TabCount count={tabs.length} />
+              {/* As a filter in force shows from its icon: some are not on screen. */}
+              {hiddenCount > 0 ? (
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute top-1 right-1 size-1.5 rounded-full bg-primary"
+                />
+              ) : null}
+            </ComboboxTrigger>
+          </TooltipTrigger>
+          <TooltipPopup side="bottom">{label}</TooltipPopup>
+        </Tooltip>
+      )}
       <ComboboxPopup
-        align="end"
+        align={align}
         className="min-w-56 max-w-[min(18rem,var(--available-width))] overflow-hidden"
       >
         <ComboboxSearchInput
@@ -214,6 +226,35 @@ function TabsFilter({
         </SidebarPickerFooter>
       </ComboboxPopup>
     </Combobox>
+  );
+}
+
+/**
+ * The chat's linked tabs menu from the chain mark on its own tab, which stays on screen while a
+ * linked tab covers the chat (and its header's control) in the same pane. Only the chat in front
+ * shows linked tabs, so its panel props are the ones the panes hold.
+ */
+export function LinkedTabsMarkMenu({
+  owner,
+  children,
+}: {
+  readonly owner: string;
+  /** The mark: a `ComboboxTrigger` given the menu's label. */
+  readonly children: (label: string) => ReactNode;
+}) {
+  const tabs = useLinkedTabs(owner);
+  const panel = workspace.getPanel();
+  if (tabs.length === 0) return null;
+  return (
+    <TabsFilter
+      owner={owner}
+      tabs={tabs}
+      available
+      shortcutLabel={panel ? shortcutLabelForCommand(panel.keybindings, "rightPanel.toggle") : null}
+      onToggle={() => workspace.getPanel()?.onHide?.()}
+      trigger={children}
+      align="start"
+    />
   );
 }
 
