@@ -36,6 +36,7 @@ export * from "./git.ts";
 export * from "./vcs.ts";
 // Astrolabe
 export * from "./vcsBaseText.ts";
+export * from "./intentBlame.ts";
 export * from "./sourceControl.ts";
 export * from "./projectClone.ts";
 export * from "./speech.ts";

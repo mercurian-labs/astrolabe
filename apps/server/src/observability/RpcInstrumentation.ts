@@ -204,6 +204,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.reviewGetRecentFiles]: "review",
   [WS_METHODS.vcsReadBaseText]: "vcs",
   [WS_METHODS.subscribeVcsBaseText]: "vcs",
+  [WS_METHODS.vcsIntentBlame]: "vcs",
   [WS_METHODS.changeGroupsList]: "wiki",
   [WS_METHODS.changeGroupsUpdate]: "wiki",
   [WS_METHODS.worktreesList]: "vcs",

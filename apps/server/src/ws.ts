@@ -221,6 +221,7 @@ import { refreshPushedPullRequests } from "./git/refreshPushedPullRequests.ts";
 import { linkCreatedPullRequest } from "./git/linkCreatedPullRequest.ts";
 import * as ReviewService from "./review/ReviewService.ts";
 import * as VcsBaseText from "./vcs/VcsBaseText.ts";
+import * as IntentBlame from "./vcs/IntentBlame.ts";
 import * as ProjectEnrichmentService from "./project/ProjectEnrichmentService.ts";
 import * as ProjectService from "./project/ProjectService.ts";
 import { threadWorkspaceRoot } from "./project/threadWorkspaceRoot.ts";
@@ -1426,6 +1427,7 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
     const changeGroups = yield* ChangeGroupService.ChangeGroupService;
     const worktrees = yield* ProjectWorktreeService.ProjectWorktreeService;
     const baseTexts = yield* VcsBaseText.VcsBaseText;
+    const intentBlame = yield* IntentBlame.IntentBlame;
     const documents = yield* Documents.Documents;
     const codeIndex = yield* CodeIndex.CodeIndex;
     const languageServers = yield* LanguageServers.LanguageServers;
@@ -1448,6 +1450,7 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
       [WS_METHODS.reviewGetRecentFiles]: (input) => review.getRecentFiles(input),
       [WS_METHODS.vcsReadBaseText]: (input) => baseTexts.read(input),
       [WS_METHODS.subscribeVcsBaseText]: (input) => baseTexts.stream(input),
+      [WS_METHODS.vcsIntentBlame]: (input) => intentBlame.blame(input),
       [WS_METHODS.changeGroupsList]: () => changeGroups.list,
       [WS_METHODS.changeGroupsUpdate]: (input) => changeGroups.update(input),
       [WS_METHODS.serverUpsertVimMapping]: (input) => vimrc.upsertMapping(input),

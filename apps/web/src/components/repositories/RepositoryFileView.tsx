@@ -12,7 +12,7 @@ import {
 } from "@mercurian/editor/code/editing";
 import { gitChanges, setGitBase } from "@mercurian/editor/git";
 import { livePreview } from "@mercurian/editor/markdown";
-import { outline, type OutlineItem } from "@mercurian/editor/outline";
+import { outline, outlinePath, type OutlineItem } from "@mercurian/editor/outline";
 import { diagnosticsUi } from "@mercurian/editor/lsp/diagnostics";
 import { environmentCompletion } from "@mercurian/editor/lsp/completion";
 import { environmentHover } from "@mercurian/editor/lsp/hover";
@@ -58,7 +58,20 @@ import {
   type LanguageServerId,
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
-import { BotIcon, GitBranchIcon, SquarePenIcon, WaypointsIcon, WrapTextIcon } from "lucide-react";
+import {
+  BotIcon,
+  GitBranchIcon,
+  MessageSquareQuoteIcon,
+  SquarePenIcon,
+  WaypointsIcon,
+  WrapTextIcon,
+} from "lucide-react";
+import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import type { IntentBlameTurn } from "@t3tools/contracts";
+import { buildThreadRouteParams } from "~/threadRoutes";
+import { turnReveal } from "../chat/turnReveal";
+import { IntentBlamePanel } from "./IntentBlamePanel";
+import type { IntentBlameAsk } from "./intentBlame";
 import { useAtomMount } from "@effect/atom-react";
 import type {
   DocumentSession,
@@ -412,6 +425,32 @@ function RepositoryFile({
   const showGraph = useStableCallback(() => {
     if ("projectId" in tab) panes.update((arrangement) => openLocalGraph(arrangement, tab));
   });
+  const [why, setWhy] = useState<IntentBlameAsk | null>(null);
+  const askWhy = useStableCallback(() => {
+    const view = editorView.current;
+    if (!view) return;
+    const { doc } = view.state;
+    const head = view.state.selection.main.head;
+    const inner = outlinePath(view.state, head).at(-1);
+    appAtomRegistry.refresh(vcsEnvironment.intentBlame({ environmentId, input: { cwd, path } }));
+    setWhy({
+      id: (why?.id ?? 0) + 1,
+      line: doc.lineAt(head).number,
+      item: inner
+        ? {
+            name: inner.name,
+            kind: inner.kind,
+            startLine: doc.lineAt(inner.from).number,
+            endLine: doc.lineAt(Math.max(inner.from, inner.to - 1)).number,
+          }
+        : null,
+    });
+  });
+  const openTurn = useStableCallback((turn: IntentBlameTurn) => {
+    const ref = scopeThreadRef(environmentId, turn.threadId);
+    if (turn.userMessageId !== null) turnReveal.request(scopedThreadKey(ref), turn.userMessageId);
+    void navigate({ to: "/$environmentId/$threadId", params: buildThreadRouteParams(ref) });
+  });
   const [contextMenu] = useState<CodeContextMenuHost>(() => ({
     show: async (entries, at) => (await readLocalApi()?.contextMenu.show(entries, at)) ?? null,
     readClipboard: () => readTextFromClipboard(),
@@ -421,6 +460,7 @@ function RepositoryFile({
         label: "Copy Relative Path",
         run: () => void writeTextToClipboard(path).catch(() => undefined),
       },
+      { label: "Why Is This Here?", run: askWhy },
       // The code index, and so a local graph, is a project's.
       ...("projectId" in tab ? [{ label: "Open Local Graph", run: showGraph }] : []),
     ],
@@ -599,6 +639,11 @@ function RepositoryFile({
               <WrapTextIcon />
             </TabHeader.Action>
           )}
+          {isMarkdownPath(path) || whole !== null ? null : (
+            <TabHeader.Action label="Why is this here?" onClick={askWhy}>
+              <MessageSquareQuoteIcon />
+            </TabHeader.Action>
+          )}
           {"projectId" in tab ? (
             <span className="contents @max-[26rem]/file:hidden">
               <TabHeader.Action label="Open local graph" onClick={showGraph}>
@@ -661,6 +706,16 @@ function RepositoryFile({
           />
         </div>
       )}
+      {why !== null && whole === null && !renderedForm.shown ? (
+        <IntentBlamePanel
+          environmentId={environmentId}
+          cwd={cwd}
+          path={path}
+          ask={why}
+          onOpenTurn={openTurn}
+          onClose={() => setWhy(null)}
+        />
+      ) : null}
     </div>
   );
 }

@@ -114,7 +114,16 @@ import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { resolveThreadReferenceCopyTarget } from "@t3tools/client-runtime/thread-reference";
 import { resolveTerminalSessionLabel } from "@t3tools/shared/terminalLabels";
 import { useAtomValue } from "@effect/atom-react";
-import { type SetStateAction, use, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  type SetStateAction,
+  use,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import { turnReveal } from "./chat/turnReveal";
 import { BackgroundThreadContext } from "./chat/backgroundThread";
 import { WorkspaceMutationIdContext } from "./chat/ChatMarkdownMedia";
 import { useLocation, useNavigate } from "@tanstack/react-router";
@@ -2134,6 +2143,33 @@ export default function ChatView(props: ChatViewProps) {
       : list.scrollToIndex({ index, animated, viewOffset: 24 }));
   };
   const scrollTimelineToMessageStable = useStableCallback(scrollTimelineToMessage);
+  // A turn another view opened this thread at (intent blame): its history loads back to the turn.
+  const pendingTurn = useSyncExternalStore(turnReveal.subscribe, turnReveal.get);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- scrolls the list to the asked-for turn once its row is in it, loading earlier history until it is
+  useEffect(() => {
+    if (pendingTurn === null || pendingTurn.threadKey !== activeThreadKey) return;
+    const list = legendListRef.current;
+    if (list === null) return;
+    const index = list.getState().indexByKey(pendingTurn.messageId);
+    if (index !== undefined) {
+      scrollTimelineToMessageStable(pendingTurn.messageId);
+      turnReveal.done(pendingTurn.id);
+      return;
+    }
+    if (threadHistoryControls?.hasMoreHistory !== true) {
+      // All of the thread is loaded and the turn is not in it.
+      if (serverVisibleTurnItems.length > 0) turnReveal.done(pendingTurn.id);
+      return;
+    }
+    if (threadHistoryControls.loading || threadHistoryControls.error) return;
+    threadHistoryControls.onLoadEarlier(pendingTurn.messageId);
+  }, [
+    pendingTurn,
+    activeThreadKey,
+    serverVisibleTurnItems,
+    threadHistoryControls,
+    scrollTimelineToMessageStable,
+  ]);
   // And the turn being read moves the Lineage tab's mark, without re-rendering the chat.
   const reportReadingTurn = (messageId: string | null) => {
     if (activeThreadKey !== null) setReadingTurn(activeThreadKey, messageId);
