@@ -34,6 +34,7 @@ import { useMaximizedPaneId } from "./maximize";
 import { PanesHostContext, PanesLayoutKeyContext } from "./panesHost";
 import { ChatOwnerContext, PaneTabKeyContext, WorkspaceHostContext } from "./PaneSurfaceHost";
 import { PaneTree } from "./PaneTree";
+import { useBusyChats } from "./busyChats";
 import { recentChats } from "./recentChats";
 import { NO_TAB_SELECTION, useTabSelectionStore } from "./tabSelection";
 import { findLeaf, leaves } from "./tree";
@@ -301,7 +302,8 @@ function WorkspaceTabContents() {
     (key) => parseChatTabKey(key) !== null,
   );
   const [recent, setRecent] = useState<readonly string[]>([]);
-  const kept = recentChats(recent, onScreen, new Set(keys));
+  const busy = useBusyChats(recent);
+  const kept = recentChats(recent, onScreen, new Set(keys), undefined, busy);
   if (kept !== recent) setRecent(kept);
   // A terminal outlives its tab's being set aside, so what ran in it never starts over; beyond
   // `KEPT_TERMINALS` one set aside lets go of its screen and replays its output when shown.

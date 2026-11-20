@@ -29,6 +29,13 @@ describe("recentChats", () => {
     ]);
   });
 
+  it("keeps a chat with live work past the cap, in its place", () => {
+    const recent = ["e", "d", "c", "b", "a"];
+    expect(
+      recentChats(recent, ["f"], open("a", "b", "c", "d", "e", "f"), 5, new Set(["a"])),
+    ).toEqual(["f", "e", "d", "c", "b", "a"]);
+  });
+
   it("keeps every chat on screen, even past the cap", () => {
     expect(recentChats(["x"], ["a", "b", "c"], open("a", "b", "c", "x"), 2)).toEqual([
       "a",
