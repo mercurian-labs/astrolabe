@@ -15,6 +15,8 @@ import { Kbd } from "~/components/ui/kbd";
 import { Toggle } from "~/components/ui/toggle";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { useRightPanelStore } from "~/rightPanelStore";
+import { parseChatTerminalKey } from "~/sectionTabs/sectionTabs";
+import { endChatTerminals } from "./chatBridge";
 import type { LinkedTab } from "./linkedTabs";
 import { usePanesHost } from "./panesHost";
 import { workspace } from "./workspace";
@@ -64,7 +66,8 @@ export function LinkedTabsFilter({
   onToggle,
 }: LinkedTabsFilterProps) {
   const tabs = useLinkedTabs(owner);
-  if (tabs.length > 0) {
+  // A terminal hidden with mod+j is no reason to trade the one-click button for a filter.
+  if (tabs.some((tab) => tab.shown || parseChatTerminalKey(tab.key) === null)) {
     return (
       <TabsFilter
         owner={owner}
@@ -114,8 +117,13 @@ function TabsFilter({
   const toggle = (key: string) => {
     const shown = showing.some((tab) => tab.key === key);
     // The last one showing goes with its panel, which keeps it to bring back.
-    if (shown && showing.length === 1) onToggle();
+    if (shown && showing.length === 1 && parseChatTerminalKey(key) === null) onToggle();
     else workspace.setLinkedTabShown(owner, key, !shown);
+  };
+  const terminal = showing.find((tab) => parseChatTerminalKey(tab.key) !== null);
+  const hideAll = () => {
+    if (terminal) workspace.setLinkedTabShown(owner, terminal.key, false);
+    if (showing.length > (terminal ? 1 : 0)) onToggle();
   };
   return (
     <Combobox<string, true>
@@ -195,10 +203,11 @@ function TabsFilter({
             </SidebarPickerAction>
           ) : null}
           {showing.length > 0 ? (
-            <SidebarPickerAction icon={EyeOffIcon} onClick={onToggle}>
+            <SidebarPickerAction icon={EyeOffIcon} onClick={hideAll}>
               <span className="flex flex-1 items-center justify-between gap-2">
                 Hide all
-                {shortcutLabel ? <Kbd>{shortcutLabel}</Kbd> : null}
+                {/* The shortcut is the panel's: it leaves a terminal showing. */}
+                {shortcutLabel && !terminal ? <Kbd>{shortcutLabel}</Kbd> : null}
               </span>
             </SidebarPickerAction>
           ) : null}
@@ -228,7 +237,8 @@ function LinkedTabRow({ tab, query }: { readonly tab: LinkedTab; readonly query:
               onClick={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                tabs.close(tab.key);
+                if (parseChatTerminalKey(tab.key) !== null) endChatTerminals(tab.key);
+                else tabs.close(tab.key);
               }}
             >
               <Trash2Icon className="size-3.5" />

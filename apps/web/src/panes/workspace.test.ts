@@ -1,6 +1,6 @@
 import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { type EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
-import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { repositoryTabKey } from "../components/repositories/repositoryTabs";
 import {
@@ -8,19 +8,46 @@ import {
   selectThreadRightPanelState,
   useRightPanelStore,
 } from "../rightPanelStore";
-import { chatSurfaceKey, chatTabKey } from "../sectionTabs/sectionTabs";
+import { chatSurfaceKey, chatTabKey, chatTerminalKey } from "../sectionTabs/sectionTabs";
+import { useTerminalUiStateStore } from "../terminalUiStateStore";
+import { DEFAULT_THREAD_TERMINAL_ID } from "../types";
+import { useClosedViewStore } from "../closedViewStore";
+import {
+  DEFAULT_CLIENT_SETTINGS,
+  DEFAULT_LAYOUT_SETTINGS,
+  type LayoutSettings,
+} from "@t3tools/contracts/settings";
+import { __setClientSettingsForTests } from "../hooks/useSettings";
+import { focusTerminal } from "../lib/terminalFocus";
+import { lendChat, type ChatBridge } from "./chatBridge";
+import { settingsSettled, type LayoutBehavior } from "./layoutBehavior";
+import { useMaximizedPaneStore } from "./maximize";
 import type { ChatRoute } from "../chatTabs/chatTabLabel";
 import { agentsRoute } from "./agentsRoute";
 import { repositoryFileReveal } from "../components/repositories/repositoryFileReveal";
-import { activateTab, focusedPane, focusPane, newTab, splitTab, surfaceKey } from "./arrangement";
+import {
+  activateTab,
+  allTabs,
+  focusedPane,
+  focusPane,
+  moveTabs,
+  newTab,
+  openBeside,
+  openTab,
+  splitTab,
+  splitWithTabs,
+  surfaceKey,
+} from "./arrangement";
 import { recordJump, trackJumpCursor } from "./jumpHistory";
 import type { StorageLike } from "./persistence";
-import { leaves } from "./tree";
+import { setPanesWidthPx } from "./placement";
+import { leafWithTab, leaves, type Branch, type SplitNode } from "./tree";
 import { linkTab } from "./linkedTabs";
 import {
   createWorkspace,
   focusedChatOf,
   standaloneKeyOf,
+  WORKSPACE_LAYOUT_KEY,
   WORKSPACE_STORAGE_KEY,
 } from "./workspace";
 
@@ -64,7 +91,49 @@ beforeEach(() => {
     threadPanelVisibilityByThreadKey: {},
     userActionRevisionByThreadKey: {},
   });
+  useTerminalUiStateStore.setState({
+    terminalUiStateByThreadKey: {},
+    suppressedTerminalIdsByThreadKey: {},
+  });
+  useClosedViewStore.setState({ entries: [] });
+  useMaximizedPaneStore.getState().restore();
+  __setClientSettingsForTests(DEFAULT_CLIENT_SETTINGS);
+  // No page here: a frame is the very next thing.
+  vi.stubGlobal("requestAnimationFrame", (run: FrameRequestCallback) => run(0));
 });
+
+/** Client settings as these panes see them: `known` until told otherwise, changed by `set`. */
+function layoutSettings(known = true) {
+  let layout: LayoutSettings = DEFAULT_LAYOUT_SETTINGS;
+  let isKnown = known;
+  const listeners = new Set<() => void>();
+  const behavior: LayoutBehavior = {
+    read: () => layout,
+    known: () => isKnown,
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => void listeners.delete(listener);
+    },
+  };
+  const set = (next: Partial<LayoutSettings>) => {
+    layout = { ...DEFAULT_LAYOUT_SETTINGS, ...next };
+    isKnown = true;
+    for (const listener of listeners) listener();
+  };
+  return { behavior, set };
+}
+
+/** A ChatView's loan to the panes, its side pane opening nothing unless told to. */
+function chatBridge(overrides: Partial<ChatBridge> = {}): ChatBridge {
+  return {
+    launchContext: null,
+    addTerminalContext: () => {},
+    endTerminals: () => {},
+    openSidePane: () => false,
+    focusComposer: () => {},
+    ...overrides,
+  };
+}
 
 describe("the shared panes", () => {
   it("bring in the chat tabs and the sections' panes once, and drop thread panels", () => {
@@ -193,6 +262,14 @@ describe("the shared panes", () => {
     ]);
     expect(leaves(workspace.arrangement().root)[1]?.active).toBe(diff);
     expect(workspace.linkedTabsOf(chatA).every((tab) => tab.shown)).toBe(true);
+
+    // A new tab opening with them lands after the ones coming back.
+    useRightPanelStore.getState().close(refA);
+    useRightPanelStore.getState().open(refA, "graph");
+    expect(panes(workspace)).toEqual([
+      [chatA, chatB],
+      [diff, files, chatSurfaceKey(chatA, "graph")],
+    ]);
     stop();
   });
 
@@ -741,6 +818,35 @@ describe("a thread's surface on its own", () => {
   });
 });
 
+describe("a sidebar click with a chat in front", () => {
+  const file = (path: string) =>
+    repositoryTabKey({
+      kind: "file",
+      environmentId: "env-1" as EnvironmentId,
+      projectId: ProjectId.make("project-1"),
+      checkout: { cwd: "/repo" },
+      path,
+    });
+
+  it("shows beside the chat: in the pane beside it, else a split with room, else a tab", () => {
+    using _width = { [Symbol.dispose]: () => setPanesWidthPx(null) };
+    const wide = createWorkspace(() => memoryStorage());
+    wide.openChat(chatA);
+    setPanesWidthPx(1200);
+    wide.show(file("a.ts"));
+    expect(panes(wide)).toEqual([[chatA], [file("a.ts")]]);
+    wide.update((arrangement) => focusPane(arrangement, leaves(arrangement.root)[0]!.id));
+    wide.show(file("b.ts"));
+    expect(panes(wide)).toEqual([[chatA], [file("b.ts")]]);
+
+    const narrow = createWorkspace(() => memoryStorage());
+    narrow.openChat(chatA);
+    setPanesWidthPx(700);
+    narrow.show(file("a.ts"));
+    expect(panes(narrow)).toEqual([[chatA, file("a.ts")]]);
+  });
+});
+
 describe("results tabs", () => {
   const checkout = {
     environmentId: "env-1" as EnvironmentId,
@@ -795,5 +901,704 @@ describe("results tabs", () => {
     workspace.step("back");
     workspace.step("back");
     expect(focusedPane(workspace.arrangement()).active).toBe(file("before.ts"));
+  });
+});
+
+describe("a chat's terminal tab", () => {
+  const terminalA = chatTerminalKey(chatA);
+  const terminalB = chatTerminalKey(chatB);
+  const terminals = () => useTerminalUiStateStore.getState();
+
+  function withChats() {
+    const layout = layoutSettings();
+    const workspace = createWorkspace(() => chatTabsDevice(), layout.behavior);
+    const stop = workspace.follow();
+    return { workspace, stop, layout };
+  }
+
+  it("follows the thread's terminal record, whatever opened it", () => {
+    const { workspace, stop } = withChats();
+    terminals().setTerminalOpen(refA, true);
+    expect(panes(workspace)).toEqual([[chatA, chatB], [terminalA]]);
+    expect(workspace.linked().owners[terminalA]).toBe(chatA);
+    terminals().setTerminalOpen(refA, false);
+    expect(panes(workspace)).toEqual([[chatA, chatB]]);
+    expect(workspace.linked().parked[terminalA]?.hidden).toBe(true);
+    stop();
+  });
+
+  it("opens from a stored layout with none, for a thread already left open", () => {
+    terminals().setTerminalOpen(refA, true);
+    const workspace = createWorkspace(() => chatTabsDevice());
+    expect(panes(workspace)).toEqual([[chatA, chatB], [terminalA]]);
+  });
+
+  it("hides and comes back in the same pane, and hands focus to the chat", () => {
+    const { workspace, stop } = withChats();
+    terminals().setTerminalOpen(refA, true);
+    workspace.update((arrangement) => activateTab(arrangement, terminalA));
+    expect(focusedChatOf(workspace.linked())).toBe(chatA);
+    terminals().setTerminalOpen(refA, false);
+    expect(workspace.arrangement().focused).toBe(leaves(workspace.arrangement().root)[0]?.id);
+    expect(workspace.linked().front).toBe(chatA);
+    terminals().setTerminalOpen(refA, true);
+    expect(panes(workspace)).toEqual([[chatA, chatB], [terminalA]]);
+    stop();
+  });
+
+  it("parks with its chat, and comes back with it", () => {
+    const { workspace, stop } = withChats();
+    terminals().setTerminalOpen(refA, true);
+    workspace.update((arrangement) => activateTab(arrangement, chatB));
+    expect(panes(workspace)).toEqual([[chatA, chatB]]);
+    expect(workspace.linked().parked[terminalA]?.hidden).toBeUndefined();
+    workspace.update((arrangement) => activateTab(arrangement, chatA));
+    expect(panes(workspace)).toEqual([[chatA, chatB], [terminalA]]);
+    stop();
+  });
+
+  it("keeps each thread's own", () => {
+    const { workspace, stop } = withChats();
+    terminals().setTerminalOpen(refA, true);
+    workspace.update((arrangement) => activateTab(arrangement, chatB));
+    terminals().setTerminalOpen(refB, true);
+    expect(panes(workspace)).toEqual([[chatA, chatB], [terminalB]]);
+    stop();
+  });
+
+  it("stands apart from the panel: toggling either leaves the other", () => {
+    const { workspace, stop } = withChats();
+    useRightPanelStore.getState().open(refA, "diff");
+    terminals().setTerminalOpen(refA, true);
+    const diff = chatSurfaceKey(chatA, "diff");
+    // Below the chat's pane alone: the diff beside it keeps its full height.
+    expect(panes(workspace)).toEqual([[chatA, chatB], [terminalA], [diff]]);
+    useRightPanelStore.getState().close(refA);
+    expect(panes(workspace)).toEqual([[chatA, chatB], [terminalA]]);
+    useRightPanelStore.getState().show(refA);
+    terminals().setTerminalOpen(refA, false);
+    expect(panes(workspace)).toEqual([[chatA, chatB], [diff]]);
+    stop();
+  });
+
+  it("keeps the panel closing with its last side tab, the terminal aside", () => {
+    const { workspace, stop } = withChats();
+    terminals().setTerminalOpen(refA, true);
+    useRightPanelStore.getState().open(refA, "diff");
+    useRightPanelStore.getState().closeSurface(refA, "diff");
+    expect(
+      selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA).isOpen,
+    ).toBe(false);
+    expect(panes(workspace)).toEqual([[chatA, chatB], [terminalA]]);
+    stop();
+  });
+
+  it("is listed by the filter and answers it through the record", () => {
+    const { workspace, stop } = withChats();
+    terminals().setTerminalOpen(refA, true);
+    expect(workspace.linkedTabsOf(chatA)).toEqual([{ key: terminalA, shown: true }]);
+    workspace.setLinkedTabShown(chatA, terminalA, false);
+    expect(workspace.linkedTabsOf(chatA)).toEqual([{ key: terminalA, shown: false }]);
+    expect(terminals().terminalUiStateByThreadKey[scopedThreadKey(refA)]?.terminalOpen).toBe(false);
+    workspace.setLinkedTabShown(chatA, terminalA, true);
+    expect(panes(workspace)).toEqual([[chatA, chatB], [terminalA]]);
+    stop();
+  });
+
+  it("closes as hidden, its sessions running, and asks to be restored", () => {
+    const { workspace, stop } = withChats();
+    terminals().setTerminalOpen(refA, true);
+    workspace.closeTerminalTab(terminalA);
+    expect(panes(workspace)).toEqual([[chatA, chatB]]);
+    expect(useClosedViewStore.getState().entries.map((entry) => entry.kind)).toEqual([
+      "terminal-tab",
+    ]);
+    expect(
+      terminals().terminalUiStateByThreadKey[scopedThreadKey(refA)]?.terminalIds.length,
+    ).toBeGreaterThan(0);
+    stop();
+  });
+
+  it("goes for good with its last terminal", () => {
+    const { workspace, stop } = withChats();
+    terminals().ensureTerminal(refA, "term-1", { open: true, active: true });
+    terminals().closeTerminal(refA, "term-1");
+    expect(panes(workspace)).toEqual([[chatA, chatB]]);
+    expect(workspace.linked().parked[terminalA]).toBeUndefined();
+    expect(workspace.linked().owners[terminalA]).toBeUndefined();
+    stop();
+  });
+
+  it("comes back with its chat closed and reopened, as its sessions never ended", () => {
+    const { workspace, stop } = withChats();
+    terminals().setTerminalOpen(refA, true);
+    workspace.close(chatA);
+    expect(panes(workspace)).toEqual([[chatB]]);
+    workspace.openChat(chatA);
+    expect(workspace.linked().owners[terminalA]).toBe(chatA);
+    expect(panes(workspace).flat()).toContain(terminalA);
+    stop();
+  });
+
+  it("asked for by name comes to the front once, and from under a maximized pane", () => {
+    const { workspace, stop } = withChats();
+    terminals().ensureTerminal(refA, "term-1", { open: true, active: true });
+    const paneId = leaves(workspace.arrangement().root)[1]?.id ?? "";
+    workspace.update((arrangement) => openTab(arrangement, "wiki:e:note", paneId, false));
+    useMaximizedPaneStore.getState().toggle(WORKSPACE_LAYOUT_KEY, "p0");
+    focusTerminal(refA, "term-1");
+    expect(leaves(workspace.arrangement().root)[1]?.active).toBe(terminalA);
+    expect(useMaximizedPaneStore.getState().maximized).toBeNull();
+    // The request still waits (nothing is mounted here); moving on must not pull focus back.
+    workspace.update((arrangement) => activateTab(arrangement, chatA));
+    expect(focusedChatOf(workspace.linked())).toBe(chatA);
+    expect(workspace.arrangement().focused).toBe(leaves(workspace.arrangement().root)[0]?.id);
+    stop();
+  });
+
+  it("stands in the chat's pane as a tab, and moves below once the setting changes", () => {
+    const { workspace, stop, layout } = withChats();
+    layout.set({ terminalPlacement: "new-tab", newTabPosition: "after-current" });
+    terminals().setTerminalOpen(refA, true);
+    expect(panes(workspace)).toEqual([[chatA, terminalA, chatB]]);
+    layout.set({});
+    expect(panes(workspace)).toEqual([[chatA, chatB], [terminalA]]);
+    stop();
+  });
+
+  it("joins after the chat, behind it, when the setting changes and the thread comes back", () => {
+    const { workspace, stop, layout } = withChats();
+    terminals().setTerminalOpen(refA, true);
+    layout.set({ terminalPlacement: "new-tab" });
+    workspace.update((arrangement) => activateTab(arrangement, chatB));
+    workspace.update((arrangement) => activateTab(arrangement, chatA));
+    expect(panes(workspace)).toEqual([[chatA, chatB, terminalA]]);
+    expect(leaves(workspace.arrangement().root)[0]?.active).toBe(chatA);
+    stop();
+  });
+
+  it("joins after the chat, in front, shown on purpose once the setting changed", () => {
+    const { workspace, stop, layout } = withChats();
+    terminals().setTerminalOpen(refA, true);
+    layout.set({ terminalPlacement: "new-tab", newTabPosition: "after-current" });
+    terminals().setTerminalOpen(refA, false);
+    terminals().setTerminalOpen(refA, true);
+    expect(panes(workspace)).toEqual([[chatA, terminalA, chatB]]);
+    expect(leaves(workspace.arrangement().root)[0]?.active).toBe(terminalA);
+    stop();
+  });
+
+  it("hides from the panes on mod+j only while it can be seen", () => {
+    const { workspace, stop } = withChats();
+    terminals().ensureTerminal(refA, "term-1", { open: true, active: true });
+    const paneId = leaves(workspace.arrangement().root)[1]?.id ?? "";
+    expect(workspace.terminalOnScreen(chatA)).toBe(true);
+    expect(workspace.revealTerminal(chatA)).toBe(false);
+
+    // Behind another tab of its pane.
+    workspace.update((arrangement) => openTab(arrangement, "wiki:e:note", paneId, false));
+    expect(workspace.terminalOnScreen(chatA)).toBe(false);
+    expect(workspace.revealTerminal(chatA)).toBe(true);
+    expect(leaves(workspace.arrangement().root)[1]?.active).toBe(terminalA);
+    expect(workspace.arrangement().focused).toBe(paneId);
+
+    // Covered by a pane maximized over it.
+    useMaximizedPaneStore.getState().toggle(WORKSPACE_LAYOUT_KEY, "p0");
+    expect(workspace.terminalOnScreen(chatA)).toBe(false);
+    expect(workspace.revealTerminal(chatA)).toBe(true);
+    expect(useMaximizedPaneStore.getState().maximized).toBeNull();
+
+    // Its own pane maximized is on screen.
+    useMaximizedPaneStore.getState().toggle(WORKSPACE_LAYOUT_KEY, paneId);
+    expect(workspace.terminalOnScreen(chatA)).toBe(true);
+    stop();
+  });
+
+  it("hands focus to its chat as it hides, not as it opens or as another chat's parks", () => {
+    const { workspace, stop } = withChats();
+    let focused = 0;
+    using _lent = {
+      [Symbol.dispose]: lendChat(chatA, chatBridge({ focusComposer: () => void (focused += 1) })),
+    };
+    terminals().setTerminalOpen(refA, true);
+    expect(focused).toBe(0);
+    workspace.update((arrangement) => activateTab(arrangement, chatB));
+    workspace.update((arrangement) => activateTab(arrangement, chatA));
+    expect(focused).toBe(0);
+    terminals().setTerminalOpen(refA, false);
+    expect(focused).toBe(1);
+    // Its last shell ending hands focus over only from the terminal itself, never from elsewhere.
+    terminals().setTerminalOpen(refA, true);
+    terminals().closeTerminal(refA, DEFAULT_THREAD_TERMINAL_ID);
+    expect(focused).toBe(1);
+    terminals().setTerminalOpen(refA, true);
+    const terminalPane = leafWithTab(workspace.arrangement().root, chatTerminalKey(chatA))!.id;
+    workspace.update((arrangement) => focusPane(arrangement, terminalPane));
+    terminals().closeTerminal(refA, DEFAULT_THREAD_TERMINAL_ID);
+    expect(focused).toBe(2);
+    stop();
+  });
+
+  it("comes back to the side it was dragged to, its chat closed and reopened", () => {
+    const device = memoryStorage();
+    const workspace = createWorkspace(() => device, layoutSettings().behavior);
+    const stop = workspace.follow();
+    workspace.openChat(chatA);
+    terminals().setTerminalOpen(refA, true);
+    const chatPane = leaves(workspace.arrangement().root)[0]?.id ?? "";
+    workspace.update((arrangement) => splitWithTabs(arrangement, [terminalA], chatPane, "right"));
+    const direction = () => (workspace.arrangement().root as Branch).direction;
+    expect(direction()).toBe("row");
+
+    workspace.close(chatA);
+    expect(allTabs(workspace.arrangement())).not.toContain(terminalA);
+    workspace.openChat(chatA);
+    expect(allTabs(workspace.arrangement())).toEqual([chatA, terminalA]);
+    expect(direction()).toBe("row");
+    stop();
+  });
+
+  it("is forgotten, once its closed chat's thread has no terminals left", () => {
+    const { workspace, stop } = withChats();
+    terminals().ensureTerminal(refA, "term-1", { open: true, active: true });
+    workspace.close(chatA);
+    expect(workspace.linked().parked[terminalA]).toBeDefined();
+    terminals().closeTerminal(refA, "term-1");
+    expect(workspace.linked().parked[terminalA]).toBeUndefined();
+    expect(workspace.linked().owners[terminalA]).toBeUndefined();
+    stop();
+  });
+});
+
+describe("a chat's linked tabs across a switch", () => {
+  const terminalA = chatTerminalKey(chatA);
+  const terminalB = chatTerminalKey(chatB);
+  const diffA = chatSurfaceKey(chatA, "diff");
+  const terminals = () => useTerminalUiStateStore.getState();
+  const show = (workspace: ReturnType<typeof createWorkspace>, chat: string) =>
+    workspace.update((arrangement) => activateTab(arrangement, chat));
+  const shape = (node: SplitNode): unknown =>
+    node.type === "leaf" ? node.tabs : { [node.direction]: node.children.map(shape) };
+  /** A pane's share of the whole area. */
+  const areaOf = (node: SplitNode, id: string, room = 1): number | null => {
+    if (node.type === "leaf") return node.id === id ? room : null;
+    const total = node.weights.reduce((sum, weight) => sum + weight, 0);
+    for (const [index, child] of node.children.entries()) {
+      const area = areaOf(child, id, (room * (node.weights[index] ?? 1)) / total);
+      if (area !== null) return area;
+    }
+    return null;
+  };
+  const shareOf = (workspace: ReturnType<typeof createWorkspace>, key: string) => {
+    const { root } = workspace.arrangement();
+    return areaOf(root, leafWithTab(root, key)?.id ?? "");
+  };
+  function withChats(device = chatTabsDevice()) {
+    const workspace = createWorkspace(() => device, layoutSettings().behavior);
+    return { workspace, stop: workspace.follow() };
+  }
+
+  it("leave a terminal's size as it was over round trips between two chats with terminals", () => {
+    const { workspace, stop } = withChats();
+    terminals().setTerminalOpen(refA, true);
+    show(workspace, chatB);
+    terminals().setTerminalOpen(refB, true);
+    const shareA = shareOf(workspace, terminalB);
+    for (let trip = 0; trip < 4; trip += 1) {
+      show(workspace, chatA);
+      expect(shareOf(workspace, terminalA)).toBeCloseTo(shareA ?? 0);
+      show(workspace, chatB);
+      expect(shareOf(workspace, terminalB)).toBeCloseTo(shareA ?? 0);
+    }
+    stop();
+  });
+
+  it("keep a terminal spanning the chat and its side tab across thread switches", () => {
+    const { workspace, stop } = withChats();
+    terminals().setTerminalOpen(refA, true);
+    useRightPanelStore.getState().open(refA, "diff");
+    const arranged = { column: [{ row: [[chatA, chatB], [diffA]] }, [terminalA]] };
+    expect(shape(workspace.arrangement().root)).toEqual(arranged);
+    for (let trip = 0; trip < 3; trip += 1) {
+      show(workspace, chatB);
+      show(workspace, chatA);
+      expect(shape(workspace.arrangement().root)).toEqual(arranged);
+    }
+    stop();
+  });
+
+  it("keep a terminal below the chat alone, the side tab at full height, the same way", () => {
+    const { workspace, stop } = withChats();
+    useRightPanelStore.getState().open(refA, "diff");
+    terminals().setTerminalOpen(refA, true);
+    const arranged = { row: [{ column: [[chatA, chatB], [terminalA]] }, [diffA]] };
+    expect(shape(workspace.arrangement().root)).toEqual(arranged);
+    show(workspace, chatB);
+    show(workspace, chatA);
+    expect(shape(workspace.arrangement().root)).toEqual(arranged);
+    stop();
+  });
+
+  it("never widen a terminal over a pane it did not span, returning after a switch", () => {
+    const { workspace, stop } = withChats();
+    workspace.update((arrangement) => splitTab(arrangement, chatB, "right"));
+    workspace.update((arrangement) => activateTab(arrangement, chatA));
+    terminals().setTerminalOpen(refA, true);
+    useRightPanelStore.getState().open(refA, "diff");
+    const arranged = { row: [{ column: [{ row: [[chatA], [diffA]] }, [terminalA]] }, [chatB]] };
+    expect(shape(workspace.arrangement().root)).toEqual(arranged);
+    const shareOfTerminal = shareOf(workspace, terminalA);
+    const shareOfB = shareOf(workspace, chatB);
+    for (let trip = 0; trip < 3; trip += 1) {
+      show(workspace, chatB);
+      show(workspace, chatA);
+      expect(shape(workspace.arrangement().root)).toEqual(arranged);
+      expect(shareOf(workspace, terminalA)).toBeCloseTo(shareOfTerminal ?? 0);
+      expect(shareOf(workspace, chatB)).toBeCloseTo(shareOfB ?? 0);
+    }
+    stop();
+  });
+
+  it("never widen a terminal over a pane it did not span, hidden and shown", () => {
+    const note = "wiki:e:note";
+    const { workspace, stop } = withChats();
+    workspace.update((arrangement) => openBeside(arrangement, note, "p0", "right"));
+    workspace.update((arrangement) => activateTab(arrangement, chatA));
+    terminals().setTerminalOpen(refA, true);
+    useRightPanelStore.getState().open(refA, "diff");
+    const arranged = shape(workspace.arrangement().root);
+    terminals().setTerminalOpen(refA, false);
+    terminals().setTerminalOpen(refA, true);
+    expect(shape(workspace.arrangement().root)).toEqual(arranged);
+    stop();
+  });
+
+  it("fall back to below the chat alone when what it spanned no longer stands together", () => {
+    const [noteA, noteB] = ["wiki:e:a", "wiki:e:b"];
+    const { workspace, stop } = withChats(memoryStorage());
+    workspace.openChat(chatA);
+    terminals().setTerminalOpen(refA, true);
+    const chatPane = () => leafWithTab(workspace.arrangement().root, chatA)?.id ?? "";
+    workspace.update((arrangement) => openBeside(arrangement, noteA, chatPane(), "right"));
+    expect(shape(workspace.arrangement().root)).toEqual({
+      column: [{ row: [[chatA], [noteA]] }, [terminalA]],
+    });
+    workspace.update((arrangement) => activateTab(arrangement, chatA));
+    terminals().setTerminalOpen(refA, false);
+    // A pane now stands between the two it spanned.
+    workspace.update((arrangement) => openBeside(arrangement, noteB, chatPane(), "right"));
+    workspace.update((arrangement) => activateTab(arrangement, chatA));
+    terminals().setTerminalOpen(refA, true);
+    expect(shape(workspace.arrangement().root)).toEqual({
+      row: [{ column: [[chatA], [terminalA]] }, [noteB], [noteA]],
+    });
+    stop();
+  });
+
+  it("keep that arrangement with a sole chat closed and reopened", () => {
+    const { workspace, stop } = withChats(memoryStorage());
+    workspace.openChat(chatA);
+    terminals().setTerminalOpen(refA, true);
+    useRightPanelStore.getState().open(refA, "diff");
+    const arranged = { column: [{ row: [[chatA], [diffA]] }, [terminalA]] };
+    expect(shape(workspace.arrangement().root)).toEqual(arranged);
+    workspace.close(chatA);
+    workspace.openChat(chatA);
+    expect(shape(workspace.arrangement().root)).toEqual(arranged);
+    stop();
+  });
+
+  it("bring a terminal back below its chat, reopened in another pane", () => {
+    const note = "wiki:e:note";
+    const { workspace, stop } = withChats();
+    workspace.update((arrangement) => splitTab(arrangement, chatB, "right"));
+    workspace.update((arrangement) => openTab(arrangement, note, "p0", false));
+    workspace.update((arrangement) => activateTab(arrangement, chatA));
+    terminals().setTerminalOpen(refA, true);
+    workspace.close(chatA);
+    workspace.openChat(chatA);
+    expect(shape(workspace.arrangement().root)).toEqual({
+      row: [[note], { column: [[chatB, chatA], [terminalA]] }],
+    });
+    stop();
+  });
+
+  it("bring a hidden terminal back below its chat, dragged to another pane meanwhile", () => {
+    const note = "wiki:e:note";
+    const { workspace, stop } = withChats();
+    workspace.update((arrangement) => splitTab(arrangement, chatB, "right"));
+    workspace.update((arrangement) => openTab(arrangement, note, "p0", false));
+    workspace.update((arrangement) => activateTab(arrangement, chatA));
+    terminals().setTerminalOpen(refA, true);
+    terminals().setTerminalOpen(refA, false);
+    const right = leafWithTab(workspace.arrangement().root, chatB)?.id ?? "";
+    workspace.update((arrangement) => moveTabs(arrangement, [chatA], right));
+    terminals().setTerminalOpen(refA, true);
+    expect(shape(workspace.arrangement().root)).toEqual({
+      row: [[note], { column: [[chatB, chatA], [terminalA]] }],
+    });
+    stop();
+  });
+
+  it("bring back a terminal dragged below another pane where it stood, its chat elsewhere", () => {
+    const note = "wiki:e:note";
+    const { workspace, stop } = withChats();
+    workspace.update((arrangement) => openBeside(arrangement, note, "p0", "right"));
+    workspace.update((arrangement) => activateTab(arrangement, chatA));
+    terminals().setTerminalOpen(refA, true);
+    const notePane = leafWithTab(workspace.arrangement().root, note)?.id ?? "";
+    workspace.update((arrangement) => splitWithTabs(arrangement, [terminalA], notePane, "bottom"));
+    workspace.update((arrangement) => activateTab(arrangement, chatA));
+    const arranged = { row: [[chatA, chatB], { column: [[note], [terminalA]] }] };
+    expect(shape(workspace.arrangement().root)).toEqual(arranged);
+    terminals().setTerminalOpen(refA, false);
+    terminals().setTerminalOpen(refA, true);
+    expect(shape(workspace.arrangement().root)).toEqual(arranged);
+    stop();
+  });
+});
+
+describe("the side pane's setting on a thread with linked tabs", () => {
+  const note = "wiki:e:note";
+  function withBridge() {
+    const workspace = createWorkspace(() => chatTabsDevice(), layoutSettings().behavior);
+    const stop = workspace.follow();
+    let opened = 0;
+    const stopLending = lendChat(
+      chatA,
+      chatBridge({
+        openSidePane: () => {
+          opened += 1;
+          return true;
+        },
+      }),
+    );
+    return {
+      workspace,
+      opens: () => opened,
+      stop: () => {
+        stopLending();
+        stop();
+      },
+    };
+  }
+
+  it("leaves New linked tab a New tab beside a linked document", () => {
+    const { workspace, opens, stop } = withBridge();
+    workspace.openLinked(note, chatA);
+    workspace.newLinkedTab(chatA);
+    expect(opens()).toBe(0);
+    expect(workspace.sidePaneEmpty(chatA)).toBe(false);
+    expect(panes(workspace)[1]).toContain(note);
+    expect(panes(workspace)[1]?.at(-1)).toMatch(/^empty\//);
+    stop();
+  });
+
+  it("leaves New linked tab a New tab beside a terminal that shows", () => {
+    const { workspace, opens, stop } = withBridge();
+    useTerminalUiStateStore.getState().setTerminalOpen(refA, true);
+    workspace.newLinkedTab(chatA);
+    expect(opens()).toBe(0);
+    stop();
+  });
+
+  it("still applies with only a hidden terminal, where the header shows its one button", () => {
+    const { workspace, opens, stop } = withBridge();
+    useTerminalUiStateStore.getState().setTerminalOpen(refA, true);
+    useTerminalUiStateStore.getState().setTerminalOpen(refA, false);
+    expect(workspace.sidePaneEmpty(chatA)).toBe(true);
+    workspace.newLinkedTab(chatA);
+    expect(opens()).toBe(1);
+    stop();
+  });
+});
+
+describe("mod+j with a tab of no chat's in front of the terminal", () => {
+  it("answers from the pane holding the terminal, and from no other", () => {
+    const terminal = chatTerminalKey(chatA);
+    const workspace = createWorkspace(() => chatTabsDevice(), layoutSettings().behavior);
+    const stop = workspace.follow();
+    useTerminalUiStateStore.getState().setTerminalOpen(refA, true);
+    expect(workspace.terminalBehindFocusedTab()).toBeNull();
+    const pane = leafWithTab(workspace.arrangement().root, terminal)?.id ?? "";
+    workspace.update((arrangement) => focusPane(newTab(arrangement, pane), pane));
+    expect(workspace.terminalBehindFocusedTab()).toBe(chatA);
+    // An unrelated file in another pane holds no terminal to bring forward.
+    workspace.update((arrangement) => openBeside(arrangement, "wiki:e:note", "p0", "right"));
+    expect(workspace.terminalBehindFocusedTab()).toBeNull();
+    stop();
+  });
+});
+
+describe("the layout settings", () => {
+  it("open a thread's side tabs among the chat's, at the end when asked", () => {
+    const layout = layoutSettings();
+    const workspace = createWorkspace(() => chatTabsDevice(), layout.behavior);
+    const stop = workspace.follow();
+    layout.set({ sidePanePlacement: "new-tab", newTabPosition: "end" });
+    useRightPanelStore.getState().open(refA, "diff");
+    expect(panes(workspace)).toEqual([[chatA, chatB, chatSurfaceKey(chatA, "diff")]]);
+    stop();
+  });
+
+  it("leave a chat opening after the chat in front, whichever the new tab position", () => {
+    const refC = scopeThreadRef("env-1" as EnvironmentId, ThreadId.make("thread-C"));
+    for (const newTabPosition of ["end", "after-current"] as const) {
+      const layout = layoutSettings();
+      const workspace = createWorkspace(() => chatTabsDevice(), layout.behavior);
+      layout.set({ newTabPosition });
+      workspace.openChat(chatTabKey(refC));
+      expect(panes(workspace)).toEqual([[chatA, chatTabKey(refC), chatB]]);
+    }
+  });
+
+  it("put a new surface after an unlinked tab, as before they knew of tab positions", () => {
+    const file = "wiki:e:note";
+    const diff = chatSurfaceKey(chatA, "diff");
+    const workspace = createWorkspace(() => chatTabsDevice(), layoutSettings().behavior);
+    const stop = workspace.follow();
+    useRightPanelStore.getState().open(refA, "diff");
+    const pane = leafWithTab(workspace.arrangement().root, diff)?.id ?? "";
+    workspace.update((arrangement) => openTab(arrangement, file, pane, false));
+    useRightPanelStore.getState().close(refA);
+    expect(panes(workspace)).toEqual([[chatA, chatB], [file]]);
+    useRightPanelStore.getState().open(refA, "files");
+    expect(panes(workspace)[1]).toEqual([diff, file, chatSurfaceKey(chatA, "files")]);
+    stop();
+  });
+
+  it("put a new linked tab at the end by default, after the current one when asked", () => {
+    const layout = layoutSettings();
+    const workspace = createWorkspace(() => chatTabsDevice(), layout.behavior);
+    const stop = workspace.follow();
+    useRightPanelStore.getState().open(refA, "diff");
+    useRightPanelStore.getState().open(refA, "files");
+    const [diff, files] = [chatSurfaceKey(chatA, "diff"), chatSurfaceKey(chatA, "files")];
+    workspace.update((arrangement) => activateTab(arrangement, diff, false));
+    workspace.newLinkedTab(chatA);
+    expect(leaves(workspace.arrangement().root)[1]?.tabs).toEqual([
+      diff,
+      files,
+      expect.stringMatching(/^empty\//),
+    ]);
+    layout.set({ newTabPosition: "after-current" });
+    workspace.update((arrangement) => activateTab(arrangement, diff, false));
+    workspace.newLinkedTab(chatA);
+    expect(leaves(workspace.arrangement().root)[1]?.tabs.slice(0, 2)).toEqual([
+      diff,
+      expect.stringMatching(/^empty\//),
+    ]);
+    stop();
+  });
+
+  describe("across a reload", () => {
+    const diff = chatSurfaceKey(chatA, "diff");
+    const stored = () =>
+      memoryStorage({
+        [WORKSPACE_STORAGE_KEY]: JSON.stringify({
+          root: { type: "leaf", id: "p0", tabs: [chatA, diff], active: chatA },
+          focused: "p0",
+          seq: 2,
+          owners: { [diff]: chatA },
+          parked: {},
+          front: chatA,
+        }),
+      });
+
+    it("leave a tab in its chat's pane until the settings are read, then keep it there", () => {
+      useRightPanelStore.getState().open(refA, "diff");
+      const device = stored();
+      const layout = layoutSettings(false);
+      const workspace = createWorkspace(() => device, layout.behavior);
+      const stop = workspace.follow();
+      expect(panes(workspace)).toEqual([[chatA, diff]]);
+      layout.set({ sidePanePlacement: "new-tab" });
+      expect(panes(workspace)).toEqual([[chatA, diff]]);
+      stop();
+    });
+
+    it("place a surface the stored panes lack once the settings are read", () => {
+      useRightPanelStore.getState().open(refA, "diff");
+      const device = memoryStorage({
+        [WORKSPACE_STORAGE_KEY]: JSON.stringify({
+          root: { type: "leaf", id: "p0", tabs: [chatA], active: chatA },
+          focused: "p0",
+          seq: 1,
+          owners: {},
+          parked: {},
+          front: chatA,
+        }),
+      });
+      const layout = layoutSettings(false);
+      const workspace = createWorkspace(() => device, layout.behavior);
+      const stop = workspace.follow();
+      expect(panes(workspace)).toEqual([[chatA]]);
+      layout.set({ sidePanePlacement: "new-tab" });
+      expect(panes(workspace)).toEqual([[chatA, diff]]);
+      stop();
+    });
+
+    it("move it out once the settings turn out not to ask for it", () => {
+      useRightPanelStore.getState().open(refA, "diff");
+      const device = stored();
+      const layout = layoutSettings(false);
+      const workspace = createWorkspace(() => device, layout.behavior);
+      const stop = workspace.follow();
+      layout.set({});
+      expect(panes(workspace)).toEqual([[chatA], [diff]]);
+      stop();
+    });
+  });
+});
+
+describe("whether client settings are settled", () => {
+  it("stays so once a first read has ended, a retry included", () => {
+    expect(settingsSettled("pending")).toBe(false);
+    expect(settingsSettled("ready")).toBe(true);
+    expect(settingsSettled("failed")).toBe(true);
+    expect(settingsSettled("retrying")).toBe(true);
+  });
+});
+
+describe("the side pane's default", () => {
+  it("opens from the header's New linked tab, and a thread with none set gets the New tab", () => {
+    const workspace = createWorkspace(() => chatTabsDevice(), layoutSettings().behavior);
+    const stop = workspace.follow();
+    let opened = 0;
+    let opens = true;
+    using _lent = {
+      [Symbol.dispose]: lendChat(
+        chatA,
+        chatBridge({
+          openSidePane: () => {
+            opened += 1;
+            return opens;
+          },
+        }),
+      ),
+    };
+    workspace.newLinkedTab(chatA);
+    expect(opened).toBe(1);
+    expect(panes(workspace)).toEqual([[chatA, chatB]]);
+    opens = false;
+    workspace.newLinkedTab(chatA);
+    expect(panes(workspace)[1]).toEqual([expect.stringMatching(/^empty\//)]);
+    stop();
+  });
+});
+
+describe("Show all in the linked tabs filter", () => {
+  it("opens no side panel with only the terminal to show", () => {
+    const workspace = createWorkspace(() => chatTabsDevice(), layoutSettings().behavior);
+    const stop = workspace.follow();
+    const terminals = useTerminalUiStateStore.getState();
+    terminals.setTerminalOpen(refA, true);
+    terminals.setTerminalOpen(refA, false);
+    workspace.showAllLinkedTabs(chatA);
+    expect(panes(workspace)).toEqual([[chatA, chatB], [chatTerminalKey(chatA)]]);
+    expect(
+      selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA).isOpen,
+    ).toBe(false);
+    stop();
   });
 });

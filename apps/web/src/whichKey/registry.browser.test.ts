@@ -20,10 +20,17 @@ import { DEFAULT_RESOLVED_TRIGGERS } from "@t3tools/shared/keybindingTriggers";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { isOutlineEditorFocused } from "~/lib/editorFocus";
-import { focusPane, openBeside, startingArrangement, type Arrangement } from "~/panes/arrangement";
+import {
+  focusedPane,
+  focusPane,
+  openBeside,
+  startingArrangement,
+  type Arrangement,
+} from "~/panes/arrangement";
 import { useMaximizedPaneStore } from "~/panes/maximize";
 import type { PaneArrangementSnapshot, PaneTabs } from "~/panes/panesHost";
 import { leaves } from "~/panes/tree";
+import { workspace } from "~/panes/workspace";
 import { diffBaseControl, type FileDiffBase } from "~/components/repositories/fileDiffBase";
 import {
   languageServerFile,
@@ -33,7 +40,7 @@ import {
   trustLanguageServerProject,
   type LanguageServerFile,
 } from "~/components/repositories/languageServerFile";
-import { chatTabKey } from "~/sectionTabs/sectionTabs";
+import { chatTabKey, chatTerminalKey } from "~/sectionTabs/sectionTabs";
 import { appCommand, cycleKey, fullScreenState, type AppCommandContext } from "./commands";
 import type { PanesHandle } from "./handles";
 import {
@@ -193,7 +200,7 @@ describe("the keyboard menu built from the menu rules", () => {
       ["r", "Projects"],
       [",", "settings"],
     ]);
-    // Only the focus moves, the scrolls, and undo and redo repeat, there and nowhere in the groups.
+    // Only the focus moves, the scrolls, undo and redo, and moving or sizing a pane repeat.
     const repeatable = (group: WhichKeyGroup): string[] =>
       group.items.flatMap((item) =>
         item.group ? repeatable(item.group) : item.repeatable ? [item.keys[0]] : [],
@@ -207,6 +214,11 @@ describe("the keyboard menu built from the menu rules", () => {
       "u",
       "z",
       "Z",
+      "h",
+      "j",
+      "k",
+      "l",
+      "=",
     ]);
     // Each focus move's row reads its arrow, then its letter.
     expect(
@@ -386,7 +398,7 @@ describe("the keyboard menu built from the menu rules", () => {
     expect(pressed).toEqual(["rightPanel.toggle"]);
   });
 
-  it("toggles the terminal drawer only with a chat tab in focus", () => {
+  it("toggles the terminal only with its chat, a linked tab or its terminal in focus", () => {
     using _cleanup = cleanup();
     const pressed = pressedCommands();
     const select = vi.fn();
@@ -401,7 +413,21 @@ describe("the keyboard menu built from the menu rules", () => {
     expect(press(focused(null), ["o", "j"])).toBe(NOT_HERE);
     expect(press(focused("file"), ["o", "j"])).toBe(NOT_HERE);
     press(focused(chat), ["o", "j"]);
-    expect(pressed).toEqual(["terminal.toggle"]);
+    press(focused(chatTerminalKey(chat)), ["o", "j"]);
+    expect(pressed).toEqual(["terminal.toggle", "terminal.toggle"]);
+    // A New tab in front of the terminal, in the terminal's own pane.
+    const behind = vi.spyOn(workspace, "terminalBehindFocusedTab").mockReturnValue(chat);
+    press(focused("empty/1"), ["o", "j"]);
+    expect(pressed).toEqual(["terminal.toggle", "terminal.toggle", "terminal.toggle"]);
+    behind.mockRestore();
+    // A file linked to the chat, as the key answers there too.
+    const linked = workspace.linked();
+    const front = focusedPane(linked.arrangement).active;
+    using _linked = vi
+      .spyOn(workspace, "linked")
+      .mockReturnValue({ ...linked, owners: { ...linked.owners, [front]: chat } });
+    press(focused("file"), ["o", "j"]);
+    expect(pressed).toHaveLength(4);
   });
 });
 

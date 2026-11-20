@@ -1,10 +1,14 @@
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
 
 import type { OpenPreviewMutation } from "./browser/openFileInPreview";
-import type { ClosedView, ClosedViewEntry } from "./closedViewStore";
+import { closedPlaceOf, type ClosedView, type ClosedViewEntry } from "./closedViewStore";
 import type { PullRequestListPreferences } from "./components/pullRequest/pullRequestListPreferences";
 import { openPreviewSession } from "./components/preview/openPreviewSession";
-import { workspace } from "./panes/workspace";
+import { moveTabs } from "./panes/arrangement";
+import { useMaximizedPaneStore } from "./panes/maximize";
+import { findLeaf, leafWithTab } from "./panes/tree";
+import { workspace, WORKSPACE_LAYOUT_KEY } from "./panes/workspace";
 import {
   rightPanelHostRef,
   type RightPanelSurface,
@@ -12,7 +16,9 @@ import {
   type ThreadRightPanelState,
   useRightPanelStore,
 } from "./rightPanelStore";
-import { chatTabKey } from "./sectionTabs/sectionTabs";
+import { chatSurfaceKey, chatTabKey } from "./sectionTabs/sectionTabs";
+import { focusActiveDrawerTerminal } from "./lib/terminalFocus";
+import { useTerminalUiStateStore } from "./terminalUiStateStore";
 
 export interface ReopenOwnerState {
   environmentKnown: boolean;
@@ -24,6 +30,10 @@ export interface ReopenOwnerState {
   panel: ThreadRightPanelState;
   /** Whether the shared panes hold the thread's chat tab. */
   chatOpen: boolean;
+  /** Whether the thread's terminal shows with its chat. */
+  terminalOpen: boolean;
+  /** Whether the thread still has a terminal session; one that ended does not come back. */
+  terminalSessions: boolean;
 }
 
 export function planNextReopen(
@@ -45,11 +55,13 @@ export function planNextReopen(
     const alreadyOpen =
       entry.kind === "chat-tab"
         ? owner.chatOpen
-        : entry.kind === "panel-tab"
-          ? owner.panel.isOpen && owner.panel.surfaces.some((s) => s.id === entry.surface.id)
-          : owner.panel.surfaces.some(
-              (s) => s.kind === "preview" && s.resourceId === entry.snapshot.tabId,
-            );
+        : entry.kind === "terminal-tab"
+          ? owner.terminalOpen || !owner.terminalSessions
+          : entry.kind === "panel-tab"
+            ? owner.panel.isOpen && owner.panel.surfaces.some((s) => s.id === entry.surface.id)
+            : owner.panel.surfaces.some(
+                (s) => s.kind === "preview" && s.resourceId === entry.snapshot.tabId,
+              );
     if (alreadyOpen) {
       drop.push(entry);
       continue;
@@ -98,7 +110,7 @@ export function pullRequestsSearchForRestore<S extends PullRequestsSearchLike>(
 }
 
 export async function reopenClosedView(
-  view: ClosedView,
+  view: ClosedView | ClosedViewEntry,
   options: {
     openPreview: OpenPreviewMutation;
     workspaceAvailable: boolean;
@@ -106,9 +118,32 @@ export async function reopenClosedView(
 ): Promise<boolean> {
   const panels = useRightPanelStore.getState();
   const ref = view.threadRef;
+  // Astrolabe: back where it stood, while that pane is still open: the same pane, as a tab that
+  // stayed beside it shows, not a later one given its id.
+  const recorded = "id" in view ? closedPlaceOf(view) : null;
+  const standing = recorded ? findLeaf(workspace.arrangement().root, recorded.paneId) : undefined;
+  const place =
+    recorded && standing && recorded.beside !== undefined && standing.tabs.includes(recorded.beside)
+      ? recorded
+      : null;
+  // A pane maximized over it gives the room back.
+  const uncover = (paneId: string) => {
+    const { maximized, restore } = useMaximizedPaneStore.getState();
+    if (maximized?.layoutKey === WORKSPACE_LAYOUT_KEY && maximized.paneId !== paneId) restore();
+  };
 
   if (view.kind === "chat-tab") {
+    const key = chatTabKey(ref);
+    if (place && !leafWithTab(workspace.arrangement().root, key)) {
+      uncover(place.paneId);
+      workspace.place([key], key, place.paneId, { side: null, index: place.index });
+    } else workspace.openChat(key);
+    return true;
+  }
+  if (view.kind === "terminal-tab") {
     workspace.openChat(chatTabKey(ref));
+    useTerminalUiStateStore.getState().setTerminalOpen(ref, true);
+    focusActiveDrawerTerminal(ref);
     return true;
   }
   if (view.kind === "browser") {
@@ -130,6 +165,16 @@ export async function reopenClosedView(
     (surface.kind === "files" || (surface.kind === "file" && !surface.attachment))
   )
     return false;
+  // Only the chat in front places its views now; another's settle when it comes forward.
+  const front = workspace.frontRef();
+  const placing =
+    place !== null && front !== null && scopedThreadKey(front) === scopedThreadKey(ref)
+      ? place
+      : null;
+  if (placing) {
+    uncover(placing.paneId);
+    workspace.targetPane(placing.paneId);
+  }
   switch (surface.kind) {
     case "preview":
       if (surface.resourceId !== null) return false;
@@ -169,6 +214,15 @@ export async function reopenClosedView(
       break;
     default:
       panels.open(ref, surface.kind);
+  }
+  if (placing) {
+    // The panes followed the record at once: the tab goes back to its place in the pane.
+    const key = chatSurfaceKey(chatTabKey(ref), surface.id);
+    workspace.update((arrangement) =>
+      leafWithTab(arrangement.root, key)?.id === placing.paneId
+        ? moveTabs(arrangement, [key], placing.paneId, placing.index, key)
+        : arrangement,
+    );
   }
   return true;
 }

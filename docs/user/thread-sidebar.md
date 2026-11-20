@@ -70,7 +70,19 @@ and every tab splits. Switching sections from the icon rail, the keyboard menu o
 Palette changes what the sidebar lists, not the tabs or which one has focus. In Agents, the thread
 selected in the sidebar is the one whose chat (or one of its linked tabs) has focus; with a
 document, a file or a pull request in focus, none is. Drag a tab to a pane's edge to split it, or
-onto another pane's tabs to move it there.
+onto another pane's tabs to move it there; the highlight says which split you'll get. Dropping a
+tab right at the far left or right edge of the panes opens a new column the whole height of them.
+
+What opens beside the tab you're reading (a note or change group from a chat, a run beside its
+file, a chat's diff) joins the pane next to it as a tab when there is one that isn't
+showing a chat. Otherwise the pane splits while both halves stay wide enough, and the view opens
+as a tab in the same pane when they wouldn't, so a narrow window keeps one pane and a wide one
+keeps two. Set **Settings → General → Panes → Open beside** to **As a tab** to never split for
+these; a file's local graph still gets one pane beside it, and a chat's linked tabs follow
+the side pane setting below. **Open to
+the right** always splits. Clicking a document or file in the sidebar shows it in the focused
+tab, except over a chat: then it goes beside the chat the same way, showing in place of what
+the pane next to it was showing.
 
 The **+** at the end of a pane's tabs, or `mod+t` in the focused pane, opens a New tab, as a
 browser does. It offers a new chat, a document, a project's file or changes, and a change
@@ -88,8 +100,16 @@ and forward in that tab; `mod+[` and `mod+]`, or Space `t` `h` and `t` `l`, do t
 focused tab. A chat has no arrows: nothing ever takes a chat's place, so the terminal, browser
 and other tabs linked to it always stay with their chat.
 
-`mod+j` opens and closes the terminal drawer of the chat in the focused tab. With a file, a
-document or any other tab in focus it does nothing, even with a chat showing in another pane.
+`mod+j` opens and hides the terminal of the chat in focus, from the chat or from the terminal
+itself. It splits the chat's whole pane down, or joins the pane already below it as a tab, and
+takes focus; hiding it hands focus back to the composer, keeps its output, and `mod+j` brings it
+back where it stood. If it stands behind another tab or a maximized pane, `mod+j` brings it forward
+instead, even with a New tab or a document in front of it in its own pane. With a file, a document
+or any other tab in focus in another pane it does nothing, even with a chat showing there.
+
+**Settings → General → Panes** sets where the terminal and a chat's side tabs open, what the side
+pane opens on for a thread with nothing in it yet, and where a pane's **+**, the new tab shortcut
+and a new linked tab add a tab.
 
 ### Linked tabs
 
@@ -97,11 +117,14 @@ A thread's terminals, browsers, diff, files, pull request, Graph and Lineage are
 chat, and show only while that chat is in front: bring another chat to the front and the pane beside it shows
 that thread's tabs instead. With two chats in front in different panes, the linked tabs follow
 the one you clicked last. Linked tabs stay in their own pane beside the chat, so you can't drop
-one into the chat's tab bar. Closing a chat closes its linked tabs; the thread keeps its terminals and browsers for the next time you open it.
+one into the chat's tab bar unless **Settings → General → Panes** opens them as tabs. Closing a
+chat closes its linked tabs; the thread keeps its terminals and browsers for the next time you open
+it.
 
 The button at the end of the chat's header manages its linked tabs. With none, it adds one: a
 linked New tab offering the thread's surfaces (Browser, Terminal, Files, Diff, Pull request and
-the rest); the one you pick takes its place. Once a chat has linked tabs, the button shows how
+the rest), and the one you pick takes its place; **Side pane opens on** can open a fixed surface
+instead. A terminal you hid with `mod+j` leaves this button as it was. Once a chat has linked tabs, the button shows how
 many and opens a filter of them. Tick or untick a tab to show or hide it, use its trash icon to
 delete it, or use **Show all**, **Hide all** and **New linked tab** below the list. Space `t` `n`
 opens a linked New tab directly, and `mod+alt+b`, or Space `p` `r`, hides what's showing or
@@ -109,7 +132,9 @@ brings it back.
 
 Hiding sets a tab aside rather than closing it: it stays hidden until you tick it again or open
 it from the chat. Deleting closes it for good: a terminal closed this way ends, and the tab does
-not come back. A linked tab's ✕ does the same. A New tab opened with a pane's **+** stands on its
+not come back. A linked tab's ✕ does the same, except on the terminal `mod+j` opens: its ✕ hides
+it with its shells still running, and `mod+shift+t` brings it back with its output. Delete it from
+the filter to end them. A New tab opened with a pane's **+** stands on its
 own, even beside linked tabs, and stays where it is when another chat comes to the front.
 
 A linked tab and its owner carry the same chain mark; hover it to see what it belongs to.

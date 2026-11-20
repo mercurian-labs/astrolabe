@@ -33,6 +33,61 @@ function arranged() {
   );
 }
 
+describe("the shared panes kept before terminals became tabs", () => {
+  const isKey = (key: string) => key.startsWith("chat") || key.startsWith("empty/");
+
+  it("load unchanged, and a terminal set aside keeps where it stood", () => {
+    const root = { type: "leaf", id: "p0", tabs: ["chat:e:a"], active: "chat:e:a" };
+    const old = { root, focused: "p0", seq: 1, owners: {}, parked: {}, front: "chat:e:a" };
+    expect(parseLinkedArrangement(old, isKey)?.arrangement.root).toEqual(root);
+    const terminal = "chat-terminal:e:a";
+    const parked = parseLinkedArrangement(
+      {
+        ...old,
+        owners: { [terminal]: "chat:e:a" },
+        parked: {
+          [terminal]: {
+            pane: "p3",
+            index: 0,
+            active: false,
+            hidden: true,
+            beside: { tabs: ["chat:e:a"], side: "bottom", weight: 0.3 },
+          },
+        },
+      },
+      isKey,
+    );
+    expect(parked?.parked[terminal]?.beside).toEqual({
+      tabs: ["chat:e:a"],
+      side: "bottom",
+      weight: 0.3,
+    });
+  });
+
+  it("drop a place they cannot read, and keep the tab", () => {
+    const root = { type: "leaf", id: "p0", tabs: ["chat:e:a"], active: "chat:e:a" };
+    const terminal = "chat-terminal:e:a";
+    const parsed = parseLinkedArrangement(
+      {
+        root,
+        focused: "p0",
+        seq: 1,
+        owners: { [terminal]: "chat:e:a" },
+        parked: {
+          [terminal]: {
+            pane: "p3",
+            index: 0,
+            active: false,
+            beside: { tabs: ["chat:e:a"], side: "up" },
+          },
+        },
+      },
+      isKey,
+    );
+    expect(parsed?.parked[terminal]).toEqual({ pane: "p3", index: 0, active: false });
+  });
+});
+
 describe("a thread's arrangement on the device", () => {
   it("comes back as it was left", () => {
     const storage = memoryStorage();

@@ -1,12 +1,26 @@
 import {
+  activateTab,
   allTabs,
   focusedPane,
   isEmptyTab,
+  openAround,
   openBeside,
   paneLeaf,
   type Arrangement,
 } from "./arrangement";
-import { findLeaf, leafWithTab, leaves, mapLeaf, removeLeaf } from "./tree";
+import { openNear } from "./placement";
+import {
+  findLeaf,
+  leafWithTab,
+  leaves,
+  mapLeaf,
+  paneBelow,
+  gatherSpan,
+  placeBeside,
+  removeLeaf,
+  type Leaf,
+  type PanePlace,
+} from "./tree";
 
 /**
  * Astrolabe: linked tabs. A tab can belong to an owner tab (`owners`), as a thread's terminal
@@ -29,6 +43,8 @@ export interface ParkedTab {
   readonly active: boolean;
   /** Hidden from the chat's linked tabs filter: it stays aside while its owner shows the rest. */
   readonly hidden?: boolean;
+  /** Where a tab that stands alone (`standsAlone`) stood, when its pane closes behind it. */
+  readonly beside?: PanePlace;
 }
 
 /** One of a chat's linked tabs, and whether it shows when the chat is in front. */
@@ -49,10 +65,25 @@ export interface LinkContext {
    * order: they join it where its tabs come back, so they take the pane the last owner's left.
    */
   readonly arriving?: (front: string) => readonly string[];
+  /**
+   * A linked tab with a place of its own, as a chat's terminal: it shows whether or not its owner's
+   * panel does, stands in the pane below its owner's, and its pane takes no other linked tabs.
+   */
+  readonly standsAlone?: (key: string) => boolean;
+  /** Whether a linked tab may stand in its owner's own pane, as the settings can ask. */
+  readonly joinsOwner?: (key: string) => boolean;
+  /** The settings are not read yet: nothing is placed or evicted until they are. */
+  readonly placementUnknown?: () => boolean;
+  /** Where in a pane a tab new to it goes; the end by default. */
+  readonly newTabIndex?: (pane: Leaf) => number;
 }
 
 /** A linked pane's share of the room it divides with its owner's pane. */
 const LINKED_PANE_WEIGHT = 0.45;
+/** A pane split off below its owner for a tab that stands alone. */
+const ALONE_PANE_WEIGHT = 0.35;
+/** Where a tab no pane has held yet stands: wherever it is placed. */
+const NEW_TAB_INDEX = Number.MAX_SAFE_INTEGER;
 
 export function linkedArrangement(arrangement: Arrangement): LinkedArrangement {
   return { arrangement, owners: {}, parked: {}, front: null };
@@ -70,7 +101,11 @@ function frontOwner(
 ): string | null {
   const focused = focusedPane(arrangement).active;
   if (isOwner(focused)) return focused;
-  const fronts = leaves(arrangement.root).map((leaf) => leaf.active);
+  // A chat behind its own linked tab is in front through it.
+  const fronts = leaves(arrangement.root).flatMap((leaf) => {
+    const owner = owners[leaf.active];
+    return owner !== undefined && leaf.tabs.includes(owner) ? [leaf.active, owner] : [leaf.active];
+  });
   const ownerOfFocused = owners[focused];
   if (
     ownerOfFocused !== undefined &&
@@ -101,11 +136,15 @@ export function unlinkTab(state: LinkedArrangement, key: string): LinkedArrangem
  * The pane the front owner's linked tabs stand in, where another of its tabs opens: one holding
  * a tab it owns, else null (a new one splits off beside the owner, see `openLinked`).
  */
-function linkedPaneOf(state: LinkedArrangement, front: string | null): string | null {
+function linkedPaneOf(
+  state: LinkedArrangement,
+  front: string | null,
+  standsAlone: LinkContext["standsAlone"],
+): string | null {
   if (front === null) return null;
   return (
     leaves(state.arrangement.root).find((leaf) =>
-      leaf.tabs.some((key) => state.owners[key] === front),
+      leaf.tabs.some((key) => state.owners[key] === front && standsAlone?.(key) !== true),
     )?.id ?? null
   );
 }
@@ -117,13 +156,21 @@ function linkedPaneOf(state: LinkedArrangement, front: string | null): string | 
 export function openLinked(
   state: LinkedArrangement,
   key: string,
-  { focus = false }: { focus?: boolean } = {},
+  {
+    focus = false,
+    context,
+  }: {
+    focus?: boolean;
+    context?: Pick<LinkContext, "standsAlone" | "joinsOwner" | "newTabIndex">;
+  } = {},
 ): LinkedArrangement {
   const owner = state.front;
   if (owner === null) return state;
   const linked = linkTab(state, key, owner);
-  const pane = linkedPaneOf(linked, owner);
   const { arrangement } = linked;
+  const pane =
+    linkedPaneOf(linked, owner, context?.standsAlone) ??
+    (context?.joinsOwner?.(key) ? (leafWithTab(arrangement.root, owner)?.id ?? null) : null);
   if (leafWithTab(arrangement.root, key)) return linked;
   if (pane !== null) {
     const leaf = findLeaf(arrangement.root, pane);
@@ -132,11 +179,14 @@ export function openLinked(
       ...linked,
       arrangement: {
         ...arrangement,
-        root: mapLeaf(arrangement.root, pane, (each) => ({
-          ...each,
-          tabs: [...each.tabs, key],
-          active: key,
-        })),
+        root: mapLeaf(arrangement.root, pane, (each) => {
+          const at = context?.newTabIndex?.(each) ?? each.tabs.length;
+          return {
+            ...each,
+            tabs: [...each.tabs.slice(0, at), key, ...each.tabs.slice(at)],
+            active: key,
+          };
+        }),
         focused: focus ? pane : arrangement.focused,
       },
     };
@@ -144,9 +194,10 @@ export function openLinked(
   const beside = leafWithTab(arrangement.root, owner)?.id ?? arrangement.focused;
   return {
     ...linked,
-    arrangement: openBeside(arrangement, key, beside, "right", {
+    arrangement: openNear(arrangement, key, beside, {
       focus,
       weight: LINKED_PANE_WEIGHT,
+      ownPane: true,
     }),
   };
 }
@@ -168,6 +219,27 @@ const parkedInOrder = (parked: LinkedArrangement["parked"]) =>
   Object.entries(parked).toSorted(([, a], [, b]) => a.index - b.index);
 
 /**
+ * Where a tab of `owner` that stands alone stood, as the only tab of `leaf`, to come back there.
+ * In the owner's own pane only it and its linked tabs mark the place: they move with it, and what
+ * else shares the pane does not.
+ */
+function placeOf(
+  arrangement: Arrangement,
+  owners: LinkedArrangement["owners"],
+  leaf: Leaf,
+  owner: string,
+  alone: boolean,
+) {
+  if (!alone || leaf.tabs.length !== 1) return {};
+  const beside = placeBeside(arrangement.root, leaf.id, (pane) =>
+    pane.tabs.includes(owner)
+      ? pane.tabs.filter((key) => key === owner || owners[key] === owner)
+      : pane.tabs,
+  );
+  return beside ? { beside } : {};
+}
+
+/**
  * Sets one of `owner`'s linked tabs aside on its own: it stays hidden while the rest show. Its
  * index counts the tabs hidden before it, so tabs hidden one by one come back in order.
  */
@@ -175,6 +247,7 @@ export function hideLinkedTab(
   state: LinkedArrangement,
   key: string,
   owner: string,
+  standsAlone?: LinkContext["standsAlone"],
 ): LinkedArrangement {
   const place = state.parked[key];
   if (place) return { ...state, parked: { ...state.parked, [key]: { ...place, hidden: true } } };
@@ -191,8 +264,9 @@ export function hideLinkedTab(
             index: withParked(leaf.tabs, leaf.id, state.parked).indexOf(key),
             active: false,
             hidden: true,
+            ...placeOf(state.arrangement, state.owners, leaf, owner, standsAlone?.(key) === true),
           }
-        : { pane: "", index: Number.MAX_SAFE_INTEGER, active: false, hidden: true },
+        : { pane: "", index: NEW_TAB_INDEX, active: false, hidden: true },
     },
   };
 }
@@ -219,16 +293,18 @@ export function showLinkedTabs(
  * else beside the owner. Panes left empty close. The same object when nothing changed.
  */
 export function settleLinks(state: LinkedArrangement, context: LinkContext): LinkedArrangement {
-  let arrangement = keepLinkedTabsOutOfChatPanes(state.arrangement, state.owners, context.isOwner);
+  let arrangement = keepLinkedTabsOutOfChatPanes(state.arrangement, state.owners, context);
   const open = new Set(allTabs(arrangement));
   let owners: Record<string, string> = { ...state.owners };
   let parked: Record<string, ParkedTab> = { ...state.parked };
   let changed = false;
 
-  // An owner closed takes its tabs with it; a tab neither open nor set aside forgets its owner.
+  // An owner closed takes its tabs with it, but for one that stands alone, whose sessions outlive
+  // the chat: it waits aside for the chat to come back. A tab neither open nor set aside forgets
+  // its owner.
   const closing = new Set<string>();
   for (const [key, owner] of Object.entries(owners)) {
-    if (context.isOwner(owner) && !open.has(owner)) {
+    if (context.isOwner(owner) && !open.has(owner) && context.standsAlone?.(key) !== true) {
       closing.add(key);
       delete owners[key];
       delete parked[key];
@@ -252,6 +328,10 @@ export function settleLinks(state: LinkedArrangement, context: LinkContext): Lin
     context.isOwner,
   );
   if (front !== state.front) changed = true;
+  const showsWith = (key: string, owner: string) =>
+    front !== null &&
+    (context.open(front) || context.standsAlone?.(key) === true) &&
+    context.shows(owner, front);
   const shown = (owner: string) =>
     front !== null && context.open(front) && context.shows(owner, front);
   // Hidden with the front owner's panel, an empty tab holds nothing to bring back: it closes.
@@ -267,7 +347,7 @@ export function settleLinks(state: LinkedArrangement, context: LinkContext): Lin
     for (const key of context.arriving?.(front) ?? []) {
       if (key in owners || open.has(key)) continue;
       owners[key] = front;
-      parked[key] = { pane: "", index: Number.MAX_SAFE_INTEGER, active: false };
+      parked[key] = { pane: "", index: NEW_TAB_INDEX, active: false };
       changed = true;
     }
   }
@@ -277,86 +357,178 @@ export function settleLinks(state: LinkedArrangement, context: LinkContext): Lin
   for (const leaf of leaves(arrangement.root)) {
     leaf.tabs.forEach((key, index) => {
       const owner = owners[key];
-      if (owner === undefined || shown(owner)) return;
+      if (owner === undefined || showsWith(key, owner)) return;
       hiding.add(key);
       if (dropped(key, owner)) {
         delete owners[key];
         return;
       }
-      parked[key] = { pane: leaf.id, index, active: leaf.active === key };
+      parked[key] = {
+        pane: leaf.id,
+        index,
+        active: leaf.active === key,
+        ...placeOf(arrangement, owners, leaf, owner, context.standsAlone?.(key) === true),
+      };
     });
   }
   const removed = removeTabs(arrangement, hiding);
   arrangement = removed.arrangement;
   if (hiding.size > 0) changed = true;
 
-  // Bring back what shows, where it stood, else where the last owner's tabs stood.
-  const returning = Object.entries(parked)
+  // Bring back what shows, where it stood, else where the last owner's tabs stood. Nothing is
+  // placed before the settings are read: they say where it goes.
+  const returning = (context.placementUnknown?.() === true ? [] : Object.entries(parked))
     .filter(([key, place]) => {
       const owner = owners[key];
-      return owner !== undefined && shown(owner) && !hiding.has(key) && !place.hidden;
+      return owner !== undefined && showsWith(key, owner) && !hiding.has(key) && !place.hidden;
     })
     .toSorted(([, a], [, b]) => a.index - b.index);
+  // A pane a tab that stands alone left is its own, not a home for the next owner's side tabs.
+  const leftAlone = (id: string) =>
+    [...hiding].some((key) => context.standsAlone?.(key) === true && parked[key]?.pane === id);
   let home: string | null =
-    removed.vacated.find((id) => findLeaf(arrangement.root, id)) ?? linkedPaneIn(arrangement);
-  for (const [key, place] of returning) {
+    removed.vacated.find((id) => findLeaf(arrangement.root, id) && !leftAlone(id)) ??
+    linkedPaneIn(arrangement);
+  // Tabs arriving together keep their order: each goes after the one before it in its pane.
+  const arrived = new Map<string, number>();
+  const bringBack = (key: string, place: ParkedTab) => {
     delete parked[key];
     changed = true;
-    const standing = findLeaf(arrangement.root, place.pane);
     const owner = owners[key];
+    const alone = context.standsAlone?.(key) === true;
+    // A pane that came to hold a terminal (a pane move swaps tabs) is no longer this tab's place.
+    const standing = ((leaf) =>
+      leaf && !alone && leaf.tabs.some((other) => context.standsAlone?.(other) === true)
+        ? undefined
+        : leaf)(findLeaf(arrangement.root, place.pane));
+    const joins = context.joinsOwner?.(key) === true;
     const ownPane =
-      owner !== undefined && context.isOwner(owner) && standing?.tabs.includes(owner) === true;
-    const target = standing && !ownPane ? place.pane : home;
+      !joins &&
+      owner !== undefined &&
+      context.isOwner(owner) &&
+      standing?.tabs.includes(owner) === true;
+    const ownerPane =
+      (owner === undefined ? undefined : leafWithTab(arrangement.root, owner)?.id) ??
+      (front === null ? undefined : leafWithTab(arrangement.root, front)?.id);
+    const beside = alone && !joins ? place.beside : undefined;
+    const gathered = beside
+      ? gatherSpan(arrangement.root, beside.tabs, `p${arrangement.seq}`)
+      : null;
+    const target =
+      joins && alone && ownerPane !== undefined
+        ? ownerPane
+        : standing && !ownPane
+          ? place.pane
+          : joins
+            ? (ownerPane ?? null)
+            : beside && (gathered || ownerPane !== undefined)
+              ? null
+              : alone
+                ? ownerPane === undefined
+                  ? null
+                  : (paneBelow(arrangement.root, ownerPane)?.id ?? null)
+                : home;
+    // Entering its owner's pane from elsewhere, as the settings now ask: it joins as a new tab would.
+    const joined = joins && target !== null && target !== place.pane && place.pane !== "";
     if (target === null) {
-      const beside =
-        (front === null ? undefined : leafWithTab(arrangement.root, front)?.id) ??
-        arrangement.focused;
-      arrangement = openBeside(arrangement, key, beside, "right", {
-        focus: false,
-        weight: LINKED_PANE_WEIGHT,
-      });
-      home = leafWithTab(arrangement.root, key)?.id ?? null;
-      continue;
+      if (beside && gathered) {
+        const nearest = beside.tabs.find((tab) => leafWithTab(arrangement.root, tab));
+        const from = nearest === undefined ? undefined : leafWithTab(arrangement.root, nearest)?.id;
+        arrangement = openAround(
+          { ...arrangement, root: gathered.root, seq: arrangement.seq + 1 },
+          key,
+          gathered.target,
+          beside.side,
+          { weight: beside.weight, from },
+        );
+      } else if (!alone && !beside) {
+        // Astrolabe: the placement rule finds it room beside the owner (`openNear`).
+        // A pane emptied for a parked tab, as a terminal's, stays the one it returns to.
+        const kept = new Set(Object.values(parked).map((other) => other.pane));
+        arrangement = openNear(arrangement, key, ownerPane ?? arrangement.focused, {
+          focus: false,
+          weight: LINKED_PANE_WEIGHT,
+          ownPane: true,
+          avoid: (leaf) => kept.has(leaf.id) && leaf.tabs.every(isEmptyTab),
+        });
+      } else {
+        // What it stood beside is gone or apart: it keeps its side of the owner, and nothing wider.
+        arrangement = openBeside(
+          arrangement,
+          key,
+          ownerPane ?? arrangement.focused,
+          beside?.side ?? (alone ? "bottom" : "right"),
+          {
+            focus: false,
+            weight: beside?.weight ?? (alone ? ALONE_PANE_WEIGHT : LINKED_PANE_WEIGHT),
+          },
+        );
+      }
+      const pane = leafWithTab(arrangement.root, key)?.id;
+      if (pane !== undefined && place.index === NEW_TAB_INDEX) arrived.set(pane, 1);
+      if (!alone) home = pane ?? null;
+      if (place.active) arrangement = activateTab(arrangement, key, false);
+      return;
     }
-    home ??= target;
+    if (!alone) home ??= target;
     arrangement = {
       ...arrangement,
       root: mapLeaf(arrangement.root, target, (leaf) => {
-        const at = Math.min(place.index, leaf.tabs.length);
+        const fresh = place.index === NEW_TAB_INDEX || joined;
+        const at = fresh
+          ? (arrived.get(leaf.id) ?? context.newTabIndex?.(leaf) ?? leaf.tabs.length)
+          : Math.min(place.index, leaf.tabs.length);
+        if (fresh) arrived.set(leaf.id, at + 1);
         const tabs = [...leaf.tabs.slice(0, at), key, ...leaf.tabs.slice(at)];
-        return { ...leaf, tabs, active: place.active || leaf.active === "" ? key : leaf.active };
+        const inFront = (place.active && !joined) || leaf.active === "";
+        return { ...leaf, tabs, active: inFront ? key : leaf.active };
       }),
     };
-  }
+  };
 
+  // Side tabs first, so a tab that stands alone finds what it spanned. Empty panes close before it
+  // divides the room, or it takes its share of what a pane about to close still holds.
+  const isAlone = ([key]: (typeof returning)[number]) => context.standsAlone?.(key) === true;
+  for (const [key, place] of returning.filter((entry) => !isAlone(entry))) bringBack(key, place);
   arrangement = closeEmptyPanes(arrangement, front);
+  for (const [key, place] of returning.filter(isAlone)) bringBack(key, place);
+
   if (!changed && arrangement === state.arrangement) return state;
   return { arrangement, owners, parked, front };
 
   function linkedPaneIn(next: Arrangement): string | null {
     return (
       leaves(next.root).find((leaf) =>
-        leaf.tabs.some((key) => owners[key] !== undefined && owners[key] === front),
+        leaf.tabs.some(
+          (key) =>
+            owners[key] !== undefined &&
+            owners[key] === front &&
+            context.standsAlone?.(key) !== true,
+        ),
       )?.id ?? null
     );
   }
 }
 
 /**
- * A chat's linked tabs show with the chat, so they never share its pane, where picking one would
- * hide the chat. However they met, they go to the pane of its other linked tabs, else a new one
- * beside it, and the chat shows in their place. A change group's tabs stay with it.
+ * A chat's linked tabs never share its pane, where picking one would hide the chat, unless the
+ * settings ask for that (`joinsOwner`). They go to its other linked tabs, else beside it, or below
+ * for a tab that stands alone, the chat showing in their place. A change group's tabs stay with it.
+ * Nothing moves before the settings are read, or a tab they put there would go on every load.
  */
 function keepLinkedTabsOutOfChatPanes(
   start: Arrangement,
   owners: LinkedArrangement["owners"],
-  isOwner: LinkContext["isOwner"],
+  { isOwner, joinsOwner, placementUnknown, standsAlone }: LinkContext,
 ): Arrangement {
+  if (placementUnknown?.() === true) return start;
   let arrangement = start;
   for (const leaf of leaves(start.root)) {
     for (const key of leaf.tabs) {
       const owner = owners[key];
       if (owner === undefined || !isOwner(owner) || !leaf.tabs.includes(owner)) continue;
+      if (joinsOwner?.(key)) continue;
+      const alone = standsAlone?.(key) === true;
       const shown = findLeaf(arrangement.root, leaf.id)?.active === key;
       arrangement = removeTabs(arrangement, new Set([key])).arrangement;
       if (shown) {
@@ -365,9 +537,13 @@ function keepLinkedTabsOutOfChatPanes(
           root: mapLeaf(arrangement.root, leaf.id, (pane) => ({ ...pane, active: owner })),
         };
       }
-      const linkedPane = leaves(arrangement.root).find(
-        (pane) => !pane.tabs.includes(owner) && pane.tabs.some((other) => owners[other] === owner),
-      );
+      const linkedPane = alone
+        ? (paneBelow(arrangement.root, leaf.id) ?? undefined)
+        : leaves(arrangement.root).find(
+            (pane) =>
+              !pane.tabs.includes(owner) &&
+              pane.tabs.some((other) => owners[other] === owner && standsAlone?.(other) !== true),
+          );
       arrangement = linkedPane
         ? {
             ...arrangement,
@@ -377,9 +553,9 @@ function keepLinkedTabsOutOfChatPanes(
               active: shown ? key : pane.active,
             })),
           }
-        : openBeside(arrangement, key, leaf.id, "right", {
+        : openBeside(arrangement, key, leaf.id, alone ? "bottom" : "right", {
             focus: false,
-            weight: LINKED_PANE_WEIGHT,
+            weight: alone ? ALONE_PANE_WEIGHT : LINKED_PANE_WEIGHT,
           });
     }
   }
@@ -392,12 +568,18 @@ export function keptFromPane(
   keys: readonly string[],
   paneTabs: readonly string[],
   isOwner: LinkContext["isOwner"],
+  joinsOwner?: LinkContext["joinsOwner"],
 ): boolean {
   return (
     keys.length > 0 &&
     keys.every((key) => {
       const owner = owners[key];
-      return owner !== undefined && isOwner(owner) && paneTabs.includes(owner);
+      return (
+        owner !== undefined &&
+        isOwner(owner) &&
+        paneTabs.includes(owner) &&
+        joinsOwner?.(key) !== true
+      );
     })
   );
 }
@@ -437,7 +619,7 @@ export function linkedTabsOf(
   );
   return [...linked, ...arriving].map((key) => ({
     key,
-    shown: panelOpen && !state.parked[key]?.hidden,
+    shown: (panelOpen || context.standsAlone?.(key) === true) && !state.parked[key]?.hidden,
   }));
 }
 

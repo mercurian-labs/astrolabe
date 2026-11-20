@@ -41,6 +41,8 @@ import {
   focusTerminal,
 } from "../../lib/terminalFocus";
 import { useTerminalUiStateStore } from "../../terminalUiStateStore";
+import { workspace } from "../../panes/workspace";
+import { chatTabKey } from "../../sectionTabs/sectionTabs";
 import {
   LAST_INVOKED_SCRIPT_BY_PROJECT_KEY,
   LastInvokedScriptByProjectSchema,
@@ -142,6 +144,11 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
   const setTerminalOpenStable = useStableCallback(setTerminalOpen);
   const toggleTerminalVisibility = () => {
     if (!activeThreadRef) return;
+    // Hiding is for what can be seen: one behind a tab or a maximized pane comes forward instead.
+    if (terminalUiState.terminalOpen && workspace.revealTerminal(chatTabKey(activeThreadRef))) {
+      focusActiveDrawerTerminal(activeThreadRef);
+      return;
+    }
     const nextOpen = !terminalUiState.terminalOpen;
     if (
       nextOpen &&
@@ -383,6 +390,19 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
     focusActivePanelTerminal(target);
   };
   const closePanelTerminalStable = useStableCallback(closePanelTerminal);
+  const endTerminals = () => {
+    if (!hasTerminalWriteAccess()) return;
+    const ids = terminalUiState.terminalIds;
+    const [first, ...rest] = ids.map(
+      (id) => activeTerminalLabelsById.get(id) ?? getTerminalLabel(id),
+    );
+    if (first === undefined) return;
+    void confirmTerminalClose([first, ...rest]).then((confirmed) => {
+      if (!confirmed || !readEnvironmentScope(environmentId, AuthTerminalOperateScope)) return;
+      for (const id of ids) closeTerminal(id);
+    });
+  };
+  const endTerminalsStable = useStableCallback(endTerminals);
   const requestCloseTerminal = (terminalId: string) => {
     if (!hasTerminalWriteAccess()) return;
     const label = activeTerminalLabelsById.get(terminalId) ?? getTerminalLabel(terminalId);
@@ -451,6 +471,7 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
     addTerminalSurfaceStable,
     closePanelTerminalStable,
     createNewTerminalStable,
+    endTerminalsStable,
     lastInvokedScriptByProjectId,
     requestClosePanelTerminalStable,
     requestCloseTerminalStable,

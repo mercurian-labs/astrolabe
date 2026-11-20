@@ -56,6 +56,24 @@ export function parseChatSurfaceKey(
   return { chatKey, surfaceId: rest.slice(second + 1) };
 }
 
+const CHAT_TERMINAL_PREFIX = "chat-terminal:";
+
+/**
+ * Astrolabe: a thread's terminal as a tab of the shared panes, linked to its chat. It holds every
+ * terminal `mod+j` shows for the thread, and is no right-panel surface: it renders on its own
+ * (`WorkspaceView`) and shows whether or not the chat's panel does.
+ */
+export function chatTerminalKey(chatKey: string): string {
+  return `${CHAT_TERMINAL_PREFIX}${chatKey.slice(CHAT_PREFIX.length)}`;
+}
+
+/** The chat (by its tab key) whose terminal tab this names; null for any other key. */
+export function parseChatTerminalKey(key: string): string | null {
+  if (!key.startsWith(CHAT_TERMINAL_PREFIX)) return null;
+  const chatKey = `${CHAT_PREFIX}${key.slice(CHAT_TERMINAL_PREFIX.length)}`;
+  return parseChatTabKey(chatKey) === null ? null : chatKey;
+}
+
 /** Whether a key names a chat, wiki or repository tab, which any section's panes can hold. */
 export function isSectionTabKey(key: string): boolean {
   return (

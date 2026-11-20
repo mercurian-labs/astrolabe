@@ -132,7 +132,7 @@ you need.
 | `z` `Z`                 | [Undo or redo](#undo-and-redo) in the code file or note you're in                                                                                                                                                                                                  |
 | `g`                     | Go to Agents, Wikis, Projects, Changes, Usage, or Settings                                                                                                                                                                                                         |
 | `t`                     | Tabs: next, previous, close, reopen, back, forward, link                                                                                                                                                                                                           |
-| `p`                     | Panes: split, close, maximize, full screen, right panel                                                                                                                                                                                                            |
+| `p`                     | Panes: split, close, maximize, full screen, move, size, right panel                                                                                                                                                                                                |
 | `s` `s`                 | Show or hide the sidebar                                                                                                                                                                                                                                           |
 | `w`                     | Open Wikis, or find or create a document                                                                                                                                                                                                                           |
 | `e`                     | [Find](#find-in-a-file-or-note), [go to a symbol](#go-to-a-symbol), [edit code](#edit-code), step through [changes](#changes-in-a-code-file) and pick their base, [problems](#problems-in-a-code-file), and [language features](#language-features-in-a-code-file) |
@@ -195,6 +195,18 @@ faint when there is nowhere further to go. `Ctrl+D` and `Ctrl+U` work while you
 are not typing; in the composer and notes they stay Vim's. On Windows and Linux
 they stay the diff toggle and Usage, so use Space `d` and `u` there, or bind
 **Scroll Down** and **Scroll Up** to other keys.
+
+### Panes
+
+`mod+\` splits the tab in front into a new pane to the right and `mod+alt+\` into one below;
+`Ctrl+Tab` and `Ctrl+Shift+Tab` step through the focused pane's tabs; `mod+alt+f` maximizes the
+focused pane or puts the others back. `mod+alt+shift` and an arrow trades the focused pane's tabs
+with the pane that way, which keeps every pane's size, and `mod+alt+r` steps the focused pane
+through a third, a half and two thirds of the room it shares. In the keyboard menu these are
+Space `p` `v`, `p` `s`, `t` `]`, `t` `[`, `p` `m`, `p` `h` `j` `k` `l`, and `p` `=`; after a
+move or a size step, the same key keeps going for the repeat window. Tab to the line between
+two panes and the arrow keys along it move it. In a browser, `Ctrl+Tab` may switch the
+browser's own tabs; the desktop app keeps it.
 
 ### Undo and redo
 

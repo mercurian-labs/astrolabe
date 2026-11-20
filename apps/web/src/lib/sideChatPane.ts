@@ -10,7 +10,7 @@ export function isInSideChatPane(target: EventTarget | null): boolean {
 
 /**
  * Opens an embedded side chat's tool diffs in its parent's diff panel and runs its shell commands
- * in the parent's terminal drawer, since the embedded view hides its own. Other panel actions reach
+ * in the parent's terminal tab, since the embedded view hides its own. Other panel actions reach
  * the parent through `hostRightPanel`; diff selection and the drawer are not panel state.
  */
 export interface SideChatParentPanel {
