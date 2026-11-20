@@ -442,6 +442,32 @@ export function splitWithTabs(
 }
 
 /**
+ * Astrolabe: moves tabs into a new column the whole height of the panes, at their left or right
+ * edge, as dropping a tab on that edge does. Beside a row of columns it takes an equal share.
+ */
+export function columnWithTabs(
+  arrangement: Arrangement,
+  keys: readonly string[],
+  side: "left" | "right",
+  activeKey?: string,
+): Arrangement {
+  const moving = keys.filter((key) => leafWithTab(arrangement.root, key));
+  if (moving.length === 0) return arrangement;
+  const { root } = arrangement;
+  const columns = root.type === "branch" && root.direction === "row" ? root.children.length : 1;
+  const placeholder = emptyKey(arrangement.seq);
+  const opened = openAround({ ...arrangement, seq: arrangement.seq + 1 }, placeholder, root, side, {
+    weight: 1 / (columns + 1),
+    from: undefined,
+  });
+  const pane = leafWithTab(opened.root, placeholder);
+  if (!pane) return arrangement;
+  const moved = closeTab(moveTabs(opened, moving, pane.id, undefined, activeKey), placeholder);
+  const landed = leafWithTab(moved.root, moving[0]!);
+  return landed ? focusPane(moved, landed.id) : moved;
+}
+
+/**
  * Moves several tabs of one pane into a new pane beside it, as "Split right" and "Split down"
  * do for a selection. Taking every tab leaves an empty tab behind, so the pane stays.
  */

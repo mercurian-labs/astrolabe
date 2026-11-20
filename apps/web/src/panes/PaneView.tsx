@@ -25,6 +25,7 @@ import { workspaceAreaProps } from "~/lib/workspaceFocus";
 import { readLocalApi } from "~/localApi";
 import {
   activateTab,
+  columnWithTabs,
   focusPane,
   isEmptyTab,
   moveTabs,
@@ -582,6 +583,12 @@ function PaneMenu({ leaf, alone }: { leaf: Leaf; alone: boolean }) {
 
 interface DropTarget {
   readonly zone: DropZone;
+  /** Astrolabe: a new column the panes' whole height, at their edge (`columnWithTabs`). */
+  readonly column?: "left" | "right";
+  /** What dropping there does, written on the highlight; none on the strip's insertion line. */
+  readonly label?: string;
+  /** The highlight is in the window's coordinates, as a column's spans every pane. */
+  readonly fixed?: boolean;
   /** Where a tab joining this pane's strip goes. */
   readonly index: number;
   /** The highlighted region, or the insertion line joining the strip, in pixels within the pane. */
@@ -597,6 +604,7 @@ function sameTarget(a: DropTarget | null, b: DropTarget | null) {
     (a !== null &&
       b !== null &&
       a.zone === b.zone &&
+      a.column === b.column &&
       a.index === b.index &&
       a.top === b.top &&
       a.left === b.left &&
@@ -623,6 +631,8 @@ function dropTargetAt(
   // Nor does what opens no tab, as a wiki's folder on its way to a board.
   if (item.keys.length === 0 && item.place === undefined) return null;
   const rect = pane.getBoundingClientRect();
+  const column = item.place === undefined ? columnTargetAt(pane, rect, clientX) : null;
+  if (column) return column;
   const stripSize = pane.querySelector("[data-pane-strip]")?.getBoundingClientRect().height ?? 0;
   const zone = paneDropZone(
     clientX - rect.left,
@@ -641,11 +651,50 @@ function dropTargetAt(
   const halfHeight = Math.round(content / 2);
   return {
     zone,
+    label: SPLIT_LABELS[zone],
     index: leaf.tabs.length,
     top: zone === "bottom" ? stripSize + halfHeight : stripSize,
     left: zone === "right" ? halfWidth : 0,
     width: zone === "left" || zone === "right" ? halfWidth : rect.width,
     height: zone === "top" || zone === "bottom" ? halfHeight : content,
+  };
+}
+
+const SPLIT_LABELS = {
+  left: "Split left",
+  right: "Split right",
+  top: "Split up",
+  bottom: "Split down",
+} as const;
+
+/** How near the panes' outer edge a drop opens a new column there. */
+const COLUMN_EDGE_PX = 24;
+
+/**
+ * Astrolabe: a new column at the panes' left or right edge, for a pointer within
+ * `COLUMN_EDGE_PX` of it over a pane that touches it.
+ */
+function columnTargetAt(pane: HTMLElement, rect: DOMRect, clientX: number): DropTarget | null {
+  const root = pane.closest("[data-panes-root]")?.getBoundingClientRect();
+  if (!root) return null;
+  const side =
+    rect.left - root.left < 1 && clientX - root.left < COLUMN_EDGE_PX
+      ? "left"
+      : root.right - rect.right < 1 && root.right - clientX < COLUMN_EDGE_PX
+        ? "right"
+        : null;
+  if (side === null) return null;
+  const width = Math.round(root.width / 3);
+  return {
+    zone: side,
+    column: side,
+    label: "New column",
+    fixed: true,
+    index: 0,
+    top: Math.round(root.top),
+    left: Math.round(side === "left" ? root.left : root.right - width),
+    width,
+    height: Math.round(root.height),
   };
 }
 
@@ -850,6 +899,12 @@ export const PaneView = memo(function PaneView({
         });
         return;
       }
+      if (drop.column) {
+        const side = drop.column;
+        controller.update((arrangement) => columnWithTabs(arrangement, item.keys, side, item.key));
+        useTabSelectionStore.getState().change(() => NO_TAB_SELECTION);
+        return;
+      }
       // A tab group moved along its own strip leaves the tab in front as it was.
       const reordering =
         item.group !== undefined && item.keys.every((key) => current.tabs.includes(key));
@@ -912,14 +967,23 @@ export const PaneView = memo(function PaneView({
       {target ? (
         <div
           className={cn(
-            "pointer-events-none absolute z-50",
+            "pointer-events-none z-50",
+            target.fixed ? "fixed" : "absolute",
             target.zone === "center"
               ? "rounded-xs bg-primary"
               : "p-0.75 transition-[top,left,width,height] duration-100 ease-in-out",
           )}
           style={{ top: target.top, left: target.left, width: target.width, height: target.height }}
         >
-          {target.zone === "center" ? null : <div className="size-full rounded-md bg-primary/50" />}
+          {target.zone === "center" ? null : (
+            <div className="flex size-full items-center justify-center rounded-md bg-primary/50">
+              {target.label ? (
+                <span className="rounded-md bg-background/90 px-2 py-0.5 text-xs font-medium text-foreground shadow-sm">
+                  {target.label}
+                </span>
+              ) : null}
+            </div>
+          )}
         </div>
       ) : null}
     </section>

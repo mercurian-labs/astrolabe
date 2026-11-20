@@ -70,7 +70,8 @@ and every tab splits. Switching sections from the icon rail, the keyboard menu o
 Palette changes what the sidebar lists, not the tabs or which one has focus. In Agents, the thread
 selected in the sidebar is the one whose chat (or one of its linked tabs) has focus; with a
 document, a file or a pull request in focus, none is. Drag a tab to a pane's edge to split it, or
-onto another pane's tabs to move it there.
+onto another pane's tabs to move it there; the highlight says which split you'll get. Dropping a
+tab right at the far left or right edge of the panes opens a new column the whole height of them.
 
 What opens beside the tab you're reading (a note or change group from a chat, a run beside its
 file, a chat's diff) joins the pane next to it as a tab when there is one that isn't
