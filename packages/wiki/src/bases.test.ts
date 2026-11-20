@@ -244,16 +244,17 @@ describe("code files", () => {
     const result = queryBase(
       code,
       parseBase(
-        "views:\n  - type: table\n    order: [file.name, code.package, code.lines, code.definitions, code]\n",
+        "properties:\n  note.code.lines:\n    displayName: Lines\nviews:\n  - type: table\n    order: [file.name, code.package, code.lines, code.definitions, code, file.links]\n",
       ),
       { now: NOW },
     );
     expect(result.columns.map((column) => column.label)).toEqual([
       "file name",
       "code.package",
-      "code.lines",
+      "Lines",
       "code.definitions",
       "code",
+      "file links",
     ]);
     const byFile = new Map(result.rows.map((row) => [row.file, row.values]));
     expect(byFile.get("packages/contracts/src/wiki.ts")?.["code.package"]).toBe(
@@ -264,6 +265,10 @@ describe("code files", () => {
       "function query",
     ]);
     expect(byFile.get("Plan.md")?.code).toBe("written");
+    expect(byFile.get("packages/contracts/src/base.ts")?.code).toContain('"language":"typescript"');
+    expect(byFile.get("apps/server/src/wiki.test.ts")?.["file.links"]).toEqual([
+      "[[/apps/server/src/wiki.ts|wiki.ts]]",
+    ]);
     expect(byFile.get("logo.png")?.["code.lines"]).toBeNull();
     expect(result.properties?.map((property) => property.id)).toEqual(
       expect.arrayContaining(["note.code", "code.language", "code.isTest", "code.definitions"]),

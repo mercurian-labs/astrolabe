@@ -428,6 +428,13 @@ describe("amendments", () => {
     ]);
     const amended = planAmendment(files, { "B.md": "# B\n[[Gone]]\n" }, stamp());
     expect(amended.errors).toEqual([]);
+    // A file that is no note, such as code, is named by its path; an extension says as much.
+    const code = { ...base(), "Code.base": "filters: 'file.hasLink(link(\"src/a.ts\"))'\n" };
+    expect(indexFiles(code, ["src/a.ts"]).errors).toEqual([]);
+    expect(indexFiles(code).errors).toEqual([]);
+    expect(indexFiles(code, ["src/b.ts"]).errors).toEqual([
+      { file: "Code.base", error: "Names “src/a.ts”, but no note is called that or links to it." },
+    ]);
   });
 
   it("writes a base, keeping what it can't run as an index error rather than a refusal", () => {

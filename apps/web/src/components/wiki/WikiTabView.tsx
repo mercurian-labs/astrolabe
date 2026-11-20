@@ -32,6 +32,7 @@ import {
   documentTitleAmong,
   draftMovedTo,
   filesHoldDocument,
+  linkedFilePath,
   NO_NOTE_FROM_RELATIVE_LINK,
   wikiDocumentScope,
   wikiDraft,
@@ -158,11 +159,6 @@ function NoteTab({
     else nav.replace(tabKey, next);
   };
   const placement = useWikiPlacement(tab.environmentId);
-  const openLink = (target: string, from?: string) => {
-    const file = wikiLinkOpens(index.data, target, from ?? tab.file, placement);
-    if (file !== null) openDocument(file);
-    else toastManager.add({ type: "warning", title: NO_NOTE_FROM_RELATIVE_LINK });
-  };
   const parent =
     tab.changeRequestId === undefined
       ? "Main"
@@ -213,6 +209,17 @@ function NoteTab({
               path,
             }),
           );
+  const openLink = (target: string, from?: string) => {
+    // A code file's link is its whole path, and it opens as a file, never as a note to write.
+    const linked = linkedFilePath(target);
+    if (linked !== null && openFile !== undefined) {
+      openFile(linked);
+      return;
+    }
+    const file = wikiLinkOpens(index.data, target, from ?? tab.file, placement);
+    if (file !== null) openDocument(file);
+    else toastManager.add({ type: "warning", title: NO_NOTE_FROM_RELATIVE_LINK });
+  };
   // Waits for the list to say whether a draft holds this, or a draft's document would first draw
   // from main and then seem to change.
   if (all === null && !failed) {

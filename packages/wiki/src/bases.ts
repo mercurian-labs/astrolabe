@@ -21,6 +21,7 @@ import {
   type Expr,
 } from "./baseExpression.ts";
 import {
+  codeFacts,
   codeProperty,
   docName,
   FILE_FIELDS,
@@ -346,11 +347,16 @@ const propertyValue = (ref: PropertyRef, scope: BaseScope): BaseValue =>
       ? scope.formula(ref.name)
       : ref.kind === "code"
         ? codeProperty(scope.row, ref.name)
-        : noteProperty(scope.row, ref.name);
+        : ref.name === "code"
+          ? codeFacts(scope.row)
+          : noteProperty(scope.row, ref.name);
 
 /** A column's heading: its `displayName`, keyed as `note.x` (a bare `x` is ignored, as in Obsidian). */
 function label(base: WikiBase, ref: PropertyRef): string {
-  const configured = base.properties[canonical(ref)]?.displayName;
+  const configured =
+    base.properties[canonical(ref)]?.displayName ??
+    // A note's own `code.x`, labelled as Obsidian keys it, keeps its label.
+    (ref.kind === "code" ? base.properties[`note.${canonical(ref)}`]?.displayName : undefined);
   if (configured) return configured;
   if (ref.kind === "file") return FILE_FIELDS.get(ref.field) ?? canonical(ref);
   // `code.language`, as Obsidian labels a note property of that name.

@@ -47,6 +47,7 @@ export {
   isCanvasName,
   isDocumentFile,
   isSettledChangeRequest,
+  linkedFilePath,
   resolveWikiLink,
   wikiDocumentScope,
   wikiDraft,

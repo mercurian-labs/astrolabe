@@ -58,6 +58,7 @@ import {
   applyTreeDiff,
   filterListing,
   gitFailed,
+  viewDigest,
   isManifest,
   isTsConfig,
   parseLsTree,
@@ -1319,17 +1320,30 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
   // Bases.
 
   const baseVersions = new Map<string, BaseFileVersion>();
+  // By tree, and by the code a tree holds: a commit that changes only notes reuses its parent's.
   const baseTrees = new Map<string, ReadonlyMap<string, CodeFile>>();
-  const commonDirs = new Map<string, string | null>();
+  const baseCode = new Map<string, ReadonlyMap<string, CodeFile>>();
+  const commonDirs = new Map<string, string>();
   const treesOf = new Map<string, string>();
+  // Builds wait for one another, so readers asking at once share one build and one answer.
+  const baseLock = yield* Semaphore.make(1);
+  const remembered = <A>(cache: Map<string, A>, key: string, value: A, limit: number) => {
+    cache.set(key, value);
+    if (cache.size > limit) cache.delete(cache.keys().next().value as string);
+  };
 
   /** The facts of `versions` as a base reads them, decoded once per (path, blob). */
   const baseVersionsOf = Effect.fn("CodeIndex.baseVersionsOf")(function* (
     versions: ReadonlyArray<Version>,
   ) {
     const key = (version: Version) => `${version.path}\u0000${version.blob}`;
-    const missing = versions.filter((version) => !baseVersions.has(key(version)));
-    const byId = new Map(missing.map((version) => [version.id, version]));
+    const out = new Map<string, BaseFileVersion>();
+    const byId = new Map<number, Version>();
+    for (const version of versions) {
+      const found = baseVersions.get(key(version));
+      if (found === undefined) byId.set(version.id, version);
+      else out.set(version.path, found);
+    }
     for (const ids of chunks([...byId.keys()], IN_CHUNK)) {
       const rows = yield* read(
         sql<{ readonly id: number; readonly facts: Uint8Array; readonly imports: Uint8Array }>`
@@ -1347,16 +1361,10 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
           facts: decodeJson<StoredFacts>(row.facts),
           imports: decodeJson<ReadonlyArray<StoredImport>>(row.imports),
         };
-        baseVersions.set(key(version), baseFileVersion(file, version.lines));
-        if (baseVersions.size > BASE_FILES_CACHED) {
-          baseVersions.delete(baseVersions.keys().next().value as string);
-        }
+        const decoded = baseFileVersion(file, version.lines);
+        out.set(version.path, decoded);
+        remembered(baseVersions, key(version), decoded, BASE_FILES_CACHED);
       }
-    }
-    const out = new Map<string, BaseFileVersion>();
-    for (const version of versions) {
-      const found = baseVersions.get(key(version));
-      if (found !== undefined) out.set(version.path, found);
     }
     return out;
   });
@@ -1367,27 +1375,26 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
     if (known !== undefined) return known;
     const target = yield* revision(root, commit);
     if (target === null) return null;
-    treesOf.set(commit, target.tree);
+    remembered(treesOf, commit, target.tree, BASE_FILES_CACHED);
     return target.tree;
   });
 
-  const baseFacts: CodeIndex["Service"]["baseFacts"] = Effect.fn("CodeIndex.baseFacts")(function* ({
-    root,
-    commit,
-  }) {
-    if (!commonDirs.has(root)) commonDirs.set(root, (yield* locate(root))?.commonDir ?? null);
-    const commonDir = commonDirs.get(root) ?? null;
-    const candidates = [...repos.values()].filter(
-      (repo) => repo.commonDir === commonDir && repo.settings.enabled,
-    );
-    const repo = candidates.find((candidate) => candidate.ready);
-    if (repo === undefined) return { state: candidates.length > 0 ? "building" : "off" };
-    const tree = yield* treeOf(root, commit);
-    if (tree === null) return { state: "off" };
-    const cacheKey = `${repo.projectId}\u0000${tree}\u0000${repo.settings.skippedPaths.join("\n")}`;
-    const cached = baseTrees.get(cacheKey);
-    if (cached !== undefined) return { state: "ready", files: cached };
+  /** The code at `commit` as a base reads it: each file's facts and the files it links to. */
+  const buildBaseFacts = Effect.fn("CodeIndex.buildBaseFacts")(function* (
+    repo: Repo,
+    root: string,
+    commit: string,
+    treeKey: string,
+  ) {
+    const built = baseTrees.get(treeKey);
+    if (built !== undefined) return built;
     const view = yield* viewOfRef(repo, root, commit);
+    const codeKey = `${repo.projectId}\u0000${viewDigest(view)}`;
+    const same = baseCode.get(codeKey);
+    if (same !== undefined) {
+      remembered(baseTrees, treeKey, same, BASE_TREES_CACHED);
+      return same;
+    }
     yield* topUp(repo, view, root);
     const modules = yield* modulesOf(repo, view);
     const versions: Array<Version> = [];
@@ -1419,10 +1426,35 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
         })),
       });
     }
-    baseTrees.set(cacheKey, files);
-    if (baseTrees.size > BASE_TREES_CACHED) {
-      baseTrees.delete(baseTrees.keys().next().value as string);
+    remembered(baseCode, codeKey, files, BASE_TREES_CACHED);
+    remembered(baseTrees, treeKey, files, BASE_TREES_CACHED);
+    return files;
+  });
+
+  const baseFacts: CodeIndex["Service"]["baseFacts"] = Effect.fn("CodeIndex.baseFacts")(function* ({
+    root,
+    commit,
+  }) {
+    let commonDir = commonDirs.get(root);
+    if (commonDir === undefined) {
+      commonDir = (yield* locate(root))?.commonDir;
+      if (commonDir === undefined) return { state: "off" };
+      commonDirs.set(root, commonDir);
     }
+    const sharing = [...repos.values()].filter(
+      (repo) => repo.commonDir === commonDir && repo.status.state !== "failed",
+    );
+    // The project at the wiki's own folder decides; another checkout of the repository otherwise.
+    const own = sharing.filter((repo) => repo.root === root);
+    const candidates = (own.length > 0 ? own : sharing).filter((repo) => repo.settings.enabled);
+    const repo = candidates.find((candidate) => candidate.ready);
+    if (repo === undefined) return { state: candidates.length > 0 ? "building" : "off" };
+    const tree = yield* treeOf(root, commit);
+    if (tree === null) return { state: "off" };
+    const treeKey = `${repo.projectId}\u0000${tree}\u0000${repo.settings.skippedPaths.join("\n")}`;
+    const cached = baseTrees.get(treeKey);
+    if (cached !== undefined) return { state: "ready", files: cached };
+    const files = yield* baseLock.withPermits(1)(buildBaseFacts(repo, root, commit, treeKey));
     return { state: "ready", files };
   });
 

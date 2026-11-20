@@ -1,7 +1,10 @@
+// @effect-diagnostics nodeBuiltinImport:off - a synchronous hash of a file list.
 /**
  * What a checkout holds, read from git: each indexable file's path and blob, with uncommitted
  * files hashed as git would hash them. A checkout's code index is this list plus the shared facts.
  */
+import * as NodeCrypto from "node:crypto";
+
 import { inSkippedDirectory, isIndexable } from "@mercurian/code-graph/languages";
 import { CodeIndexError } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -169,4 +172,15 @@ export function filterListing(listing: Listing, skipped: (path: string) => boole
     files: new Map([...listing.files].filter(([path]) => !skipped(path))),
     manifests: listing.manifests,
   };
+}
+
+/** The files and manifests a view holds, as one hash: two views with the same code share it. */
+export function viewDigest(view: Pick<View, "files" | "manifests">): string {
+  const hash = NodeCrypto.createHash("sha1");
+  for (const map of [view.files, view.manifests]) {
+    // Sorted: a listing diffed from another holds the same files in another order.
+    for (const file of [...map.keys()].toSorted()) hash.update(`${file}\u0000${map.get(file)}\n`);
+    hash.update("\u0001");
+  }
+  return hash.digest("hex");
 }

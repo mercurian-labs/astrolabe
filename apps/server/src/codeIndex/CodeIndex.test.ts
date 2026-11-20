@@ -1236,7 +1236,19 @@ it.effect(
           const feature = yield* git(harness.root, ["rev-parse", "HEAD"]);
           yield* git(harness.root, ["switch", "--quiet", "main"]);
           const jobs = harness.jobs.length;
-          const onFeature = yield* harness.index.baseFacts({ root: harness.root, commit: feature });
+          // Readers asking at once share one build and one answer.
+          const [onFeature, alsoOnFeature] = yield* Effect.all(
+            [
+              harness.index.baseFacts({ root: harness.root, commit: feature }),
+              harness.index.baseFacts({ root: harness.root, commit: feature }),
+            ],
+            { concurrency: 2 },
+          );
+          assert.strictEqual(
+            onFeature.state === "ready" ? onFeature.files : null,
+            alsoOnFeature.state === "ready" ? alsoOnFeature.files : undefined,
+          );
+          assert.strictEqual(harness.jobs.length, jobs + 1);
           assert.deepStrictEqual(parsedPaths(harness.jobs[jobs]), ["apps/web/src/side.ts"]);
           assert.deepStrictEqual(
             onFeature.state === "ready" ? onFeature.files.get("apps/web/src/side.ts")?.links : null,
@@ -1244,6 +1256,13 @@ it.effect(
           );
           const again = yield* harness.index.baseFacts({ root: harness.root, commit: head });
           assert.strictEqual(again.state === "ready" ? again.files : null, files);
+          // A commit that changes only notes reads the same code.
+          yield* write(harness.root, { "docs/Plan.md": "# Plan\n" });
+          yield* git(harness.root, ["add", "."]);
+          yield* git(harness.root, ["commit", "--quiet", "-m", "Plan"]);
+          const notes = yield* git(harness.root, ["rev-parse", "HEAD"]);
+          const onNotes = yield* harness.index.baseFacts({ root: harness.root, commit: notes });
+          assert.strictEqual(onNotes.state === "ready" ? onNotes.files : null, files);
         }),
     ),
 );

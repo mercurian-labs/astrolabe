@@ -113,7 +113,12 @@ function docOf(entry: BaseFile, times: BaseFileTimes): BaseDoc {
     ...base,
     properties: {},
     tags: [],
-    links: typed.map((link): LinkValue => ({ kind: "link", path: link.target, from: entry.file })),
+    links: typed.map((link): LinkValue => ({
+      kind: "link",
+      path: link.target,
+      display: link.target.slice(link.target.lastIndexOf("/") + 1),
+      from: entry.file,
+    })),
     embeds: [],
     typedLinks: typed,
     code,

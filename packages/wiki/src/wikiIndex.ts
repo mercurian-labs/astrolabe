@@ -6,11 +6,15 @@ import {
   isHidden,
   isWikiDocument,
   linkFiles,
+  linkPath,
   resolveLink,
   unwrittenFile,
   type WikiLinkFiles,
 } from "./resolveLink.ts";
 import { isMapFile, parseMap, type MapEdgeRef, type SkillMap } from "./skillMap.ts";
+
+/** A name ending in an extension no document has, such as `.ts` or `.png`; `Release 1.2` doesn't. */
+const OTHER_FILE = /\.(?!(?:md|base|canvas)$)(?=[a-z0-9]*[a-z])[a-z0-9]{1,8}$/i;
 
 export interface WikiNote {
   readonly name: string;
@@ -84,7 +88,11 @@ const leadsTo = (
   return landed === null ? key(unwrittenFile(link.target, from)) === key(file) : landed === file;
 };
 
-export function indexFiles(files: WikiFiles): WikiIndex {
+/**
+ * `others` are the repository's files that aren't documents, which a base may name too. Without
+ * them, a name ending in another kind of file's extension is taken as one of them.
+ */
+export function indexFiles(files: WikiFiles, others?: ReadonlyArray<string>): WikiIndex {
   const notes = new Map<string, WikiNote>();
   const maps = new Map<string, SkillMap>();
   const bases = new Map<string, string>();
@@ -121,8 +129,13 @@ export function indexFiles(files: WikiFiles): WikiIndex {
   }
   const linked = new Set<string>();
   for (const note of notes.values()) for (const link of note.links) linked.add(key(link.target));
+  let otherFiles: WikiLinkFiles | undefined;
+  const isOther = (name: string) =>
+    others === undefined
+      ? OTHER_FILE.test(linkPath(name))
+      : resolveLink(name, null, (otherFiles ??= linkFiles(others))).file !== null;
   const named = (name: string) =>
-    resolveLink(name, null, documents).file !== null || linked.has(key(name));
+    resolveLink(name, null, documents).file !== null || linked.has(key(name)) || isOther(name);
   for (const [file, source] of bases) {
     for (const error of baseProblems(source, named)) errors.push({ file, error });
   }

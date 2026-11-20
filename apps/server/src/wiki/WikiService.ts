@@ -265,7 +265,7 @@ export class WikiService extends Context.Service<
     readonly list: Effect.Effect<WikiListResult, WikiError>;
     /**
      * Astrolabe: where bases read code files' facts. The code index hands itself over as it
-     * starts, since it reads the wiki list and so can't be one of this service's dependencies.
+     * starts; without one, as in most tests, code files keep their file fields only.
      */
     readonly useCodeFacts: (source: CodeFactsSource) => Effect.Effect<void>;
     /** Every change to any wiki, so open views know to read again. */
@@ -751,6 +751,7 @@ const make = Effect.gen(function* () {
     readonly code: ReadonlyMap<string, CodeFile> | undefined;
   }>(8);
   const codeFacts = yield* Ref.make<CodeFactsSource | null>(null);
+  const corpusLocks = new Map<string, Semaphore.Semaphore>();
   const fileListings = lru<FileListing>(8);
   // A change request's every read asks for its preview, and a canvas's merge reads three blobs.
   const mergePreviews = lru<WikiTreeMerge>(64);
@@ -922,7 +923,14 @@ const make = Effect.gen(function* () {
     listing.forEach((entry, position) => {
       files[entry.file] = contents[position] ?? "";
     });
-    const index = yield* Effect.try({ try: () => indexFiles(files), catch: planningError });
+    const index = yield* Effect.try({
+      try: () =>
+        indexFiles(
+          files,
+          others.map((entry) => entry.file),
+        ),
+      catch: planningError,
+    });
     const snapshot: Snapshot = { files, index, others };
     snapshots.set(treeish, snapshot);
     return snapshot;
@@ -2777,15 +2785,23 @@ const make = Effect.gen(function* () {
     const edits = yield* checkoutEdits(folder, true);
     if (carriedNames(edits).length === 0) return { head, edits, snapshot: committed };
     const files = applyChanges(committed.files, edits.changes);
+    const others = [
+      ...committed.others.filter(({ file }) => !(file in edits.blobs)),
+      ...Object.entries(edits.blobs).flatMap(([file, oid]) =>
+        oid === null ? [] : [{ file, oid }],
+      ),
+    ];
     const snapshot: Snapshot = {
       files,
-      index: yield* Effect.try({ try: () => indexFiles(files), catch: planningError }),
-      others: [
-        ...committed.others.filter(({ file }) => !(file in edits.blobs)),
-        ...Object.entries(edits.blobs).flatMap(([file, oid]) =>
-          oid === null ? [] : [{ file, oid }],
-        ),
-      ],
+      index: yield* Effect.try({
+        try: () =>
+          indexFiles(
+            files,
+            others.map((entry) => entry.file),
+          ),
+        catch: planningError,
+      }),
+      others,
     };
     return { head, edits, snapshot };
   });
@@ -3346,6 +3362,22 @@ const make = Effect.gen(function* () {
   ) {
     const cached = corpora.get(commit);
     if (cached !== undefined && cached.code === code) return cached.corpus;
+    let lock = corpusLocks.get(wiki.wikiId);
+    if (lock === undefined) {
+      lock = Semaphore.makeUnsafe(1);
+      corpusLocks.set(wiki.wikiId, lock);
+    }
+    return yield* lock.withPermits(1)(buildCorpus(wiki, commit, code));
+  });
+
+  // Readers asking at once wait for one build, then share it.
+  const buildCorpus = Effect.fn("WikiService.buildCorpus")(function* (
+    wiki: WikiRecord,
+    commit: string,
+    code: ReadonlyMap<string, CodeFile> | undefined,
+  ) {
+    const built = corpora.get(commit);
+    if (built !== undefined && built.code === code) return built.corpus;
     const listing = (yield* fileListingAt(wiki, commit)).entries.filter(
       (entry) => !isHidden(entry.file),
     );
@@ -3416,7 +3448,12 @@ const make = Effect.gen(function* () {
               }),
           });
           const edited = Object.keys(viewed).length > 0;
-          const index = edited ? indexFiles(applyChanges(snapshot.files, viewed)) : snapshot.index;
+          const index = edited
+            ? indexFiles(
+                applyChanges(snapshot.files, viewed),
+                snapshot.others.map((entry) => entry.file),
+              )
+            : snapshot.index;
           const changes = { ...inCheckout?.edits.changes, ...viewed };
           const located = locateBase(index, input);
           if ("problem" in located) {
