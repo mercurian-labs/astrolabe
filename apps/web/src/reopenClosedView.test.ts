@@ -17,6 +17,10 @@ import {
   type ThreadRightPanelState,
   useRightPanelStore,
 } from "./rightPanelStore";
+import { closeTab } from "./panes/arrangement";
+import { leaves } from "./panes/tree";
+import { workspace } from "./panes/workspace";
+import { chatTabKey, parseChatTabKey } from "./sectionTabs/sectionTabs";
 
 const threadRef = {
   environmentId: "local" as ScopedThreadRef["environmentId"],
@@ -132,6 +136,8 @@ describe("reopenClosedView", () => {
           shellLive: true,
           panel: before,
           chatOpen: false,
+          terminalOpen: false,
+          terminalSessions: false,
         }));
         expect(plan.restore).toBe(entry);
         const openPreview = vi.fn();
@@ -168,6 +174,61 @@ describe("reopenClosedView", () => {
     const state = selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, threadRef);
     expect(state.activeSurfaceId).toBe("graph");
     expect(state.surfaces.map((surface) => surface.id)).toEqual(["diff", "graph"]);
+  });
+
+  it("puts a closed chat back in its pane and place while that pane is open", async () => {
+    const chat = (id: string) => chatTabKey({ ...threadRef, threadId: id as never });
+    const [one, two, three, four] = ["one", "two", "three", "four"].map(chat) as [
+      string,
+      string,
+      string,
+      string,
+    ];
+    const pane = (id: string, tabs: string[]) => ({
+      type: "leaf" as const,
+      id,
+      tabs,
+      active: tabs[0]!,
+    });
+    workspace.update(() => ({
+      root: {
+        type: "branch",
+        id: "row",
+        direction: "row",
+        children: [pane("p1", [one, two, three]), pane("p2", [four])],
+        weights: [1, 1],
+      },
+      focused: "p2",
+      seq: 10,
+    }));
+    const close = (key: string) => {
+      workspace.update((arrangement) => closeTab(arrangement, key));
+      useClosedViewStore
+        .getState()
+        .remember({ kind: "chat-tab", threadRef: parseChatTabKey(key)! });
+      return useClosedViewStore.getState().entries[0]!;
+    };
+    const tabsOf = () => leaves(workspace.arrangement().root).map((leaf) => leaf.tabs);
+
+    const closed = close(two);
+    expect(closed.place).toEqual({ paneId: "p1", index: 1, beside: one });
+    await reopenClosedView(closed, { openPreview: vi.fn(), workspaceAvailable: true });
+    expect(tabsOf()).toEqual([[one, two, three], [four]]);
+
+    // A pane holding none of the tabs that stood beside it is a later one given the id.
+    const elsewhere = close(two);
+    await reopenClosedView(
+      { ...elsewhere, place: { paneId: "p2", index: 0, beside: three } },
+      { openPreview: vi.fn(), workspaceAvailable: true },
+    );
+    expect(leaves(workspace.arrangement().root)[1]?.tabs).toEqual([four]);
+
+    // Its pane gone, it opens as any chat would, never into a pane that isn't there.
+    const again = close(two);
+    workspace.update((arrangement) => closeTab(closeTab(arrangement, one), three));
+    await reopenClosedView(again, { openPreview: vi.fn(), workspaceAvailable: true });
+    expect(leaves(workspace.arrangement().root).some((leaf) => leaf.id === "p1")).toBe(false);
+    expect(tabsOf().flat()).toContain(two);
   });
 
   it("does not reopen workspace tabs without an available project", async () => {
@@ -253,6 +314,8 @@ describe("planNextReopen", () => {
     shellLive: true,
     panel: { isOpen: false, activeSurfaceId: null, surfaces: [] },
     chatOpen: false,
+    terminalOpen: false,
+    terminalSessions: true,
   };
   const openDiff: ThreadRightPanelState = {
     isOpen: true,
@@ -327,5 +390,13 @@ describe("planNextReopen", () => {
     const plan = planNextReopen(chats, (entry) => ({ ...known, chatOpen: entry.id === "a" }));
     expect(plan.drop.map((entry) => entry.id)).toEqual(["a"]);
     expect(plan.restore?.id).toBe("b");
+  });
+
+  it("drops a closed terminal whose sessions all ended, rather than start a new one", () => {
+    const terminals: ClosedViewEntry[] = [{ id: "t", kind: "terminal-tab", threadRef }];
+    expect(planNextReopen(terminals, () => known).restore?.id).toBe("t");
+    const ended = planNextReopen(terminals, () => ({ ...known, terminalSessions: false }));
+    expect(ended.drop.map((entry) => entry.id)).toEqual(["t"]);
+    expect(ended.restore).toBeNull();
   });
 });

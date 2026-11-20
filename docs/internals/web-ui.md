@@ -77,7 +77,29 @@ to), else the start page, so the sidebar selects what has focus. A section switc
 same route ([`agentsRoute.ts`](../../apps/web/src/panes/agentsRoute.ts)), whose arrival changes
 nothing; only a thread link or a sidebar click brings a chat forward (`openChat`), which parks
 another chat's linked tabs. A chat never takes another chat's place: one not open yet opens in
-a new tab after the chat in front, since replacing a chat would close it and its linked tabs. A pane's content has `contain: layout
+a new tab after the chat in front, since replacing a chat would close it and its linked tabs.
+
+A thread's `mod+j` terminal is a linked tab but not a surface. One live surface per thread would
+blank it whenever Diff took focus, and a surface shows only while the panel does, so it mirrors the
+terminal store's `terminalOpen` instead and renders in `WorkspaceView`, outside its chat's
+`Activity`, whose effect cleanup would dispose the Ghostty surface. Set aside, its container leaves
+the page and stays rendered into, up to a few threads; past that it replays from the server. Every
+way in writes the store, so none of them knows about panes. Its tab's ✕ hides rather than ends the
+shells, since ending deletes their history and `view.reopenClosed` could not bring the output back.
+For the same reason it waits aside when its chat closes, and returns where it stood.
+
+Its place names tabs, not panes: a pane reopened has a new id, and the chat can land elsewhere. Of
+the chat's own pane only the chat and its linked tabs count, since the rest stay behind when it
+moves. On a return side tabs come first, so the terminal finds what it spanned, and emptied panes
+close before it divides the room, or each switch would shrink it. It never runs along a pane it did
+not span: a run of panes folded into a wider row is gathered again, and panes no longer side by side
+leave it beside its chat alone.
+
+The panes read `layout` from the client settings directly, and those arrive after the first
+render. Until then nothing is placed or evicted: a tab the settings put in its owner's pane would
+go on every load, and one placed by the defaults would stay in the wrong place.
+
+A pane's content has `contain: layout
 paint`, so a `fixed` element inside it anchors to the pane, not the window: ChatView's header,
 built for T3 Code's window-wide panel, lays out inside a pane as with its panel closed
 (`useChatOwner`). It also caps every `z-index` inside the pane: a desktop browser page lives at the

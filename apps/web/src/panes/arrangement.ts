@@ -1,11 +1,13 @@
 import {
   findLeaf,
+  insertAround,
   insertBeside,
   leafWithTab,
   leaves,
   mapLeaf,
   removeLeaf,
   setWeights,
+  withOrigin,
   type Leaf,
   type Side,
   type SplitNode,
@@ -23,6 +25,9 @@ export interface Arrangement {
   readonly focused: string;
   readonly seq: number;
 }
+
+/** Where a pane adds a tab: after the one it shows, or at the end of its strip. */
+export type TabPosition = "after-current" | "end";
 
 const SURFACE_PREFIX = "surface:";
 
@@ -114,16 +119,16 @@ function insertTab(
 }
 
 /**
- * Opens a tab in a pane (the focused one by default) after its active tab, or in place of an
- * empty active tab, and shows it. A tab already open in that pane is shown; one open in another
- * pane moves over, closing that pane when it was its only tab. The pane takes focus unless
- * `focus` is false.
+ * Opens a tab in a pane (the focused one by default) at `position`, or in place of an empty active
+ * tab, and shows it. A tab already open in that pane is shown; one open in another pane moves
+ * over, closing that pane when it was its only tab. The pane takes focus unless `focus` is false.
  */
 export function openTab(
   arrangement: Arrangement,
   key: string,
   paneId: string = arrangement.focused,
   focus = true,
+  position: TabPosition = "after-current",
 ): Arrangement {
   const target = findLeaf(arrangement.root, paneId) ?? focusedPane(arrangement);
   const source = leafWithTab(arrangement.root, key);
@@ -139,7 +144,7 @@ export function openTab(
     }));
     return { ...from, root, focused: focus ? pane.id : from.focused };
   }
-  return insertTab(from, key, pane.id, at + 1, focus);
+  return insertTab(from, key, pane.id, position === "end" ? pane.tabs.length : at + 1, focus);
 }
 
 /**
@@ -188,6 +193,29 @@ export function openBeside(
     focused: focus ? leaf.id : from.focused,
     seq: from.seq + 2,
   };
+}
+
+/**
+ * Divides all of `target`, a part of the tree, and opens a tab in a new pane on one side of it,
+ * split from `from`, which takes its room back. Focus stays.
+ */
+export function openAround(
+  arrangement: Arrangement,
+  key: string,
+  target: SplitNode,
+  side: Side,
+  { weight, from }: { readonly weight: number; readonly from: string | undefined },
+): Arrangement {
+  const leaf = withOrigin(paneLeaf(`p${arrangement.seq}`, [key]), from);
+  const root = insertAround(
+    arrangement.root,
+    target,
+    leaf,
+    side,
+    `p${arrangement.seq + 1}`,
+    weight,
+  );
+  return { ...arrangement, root, seq: arrangement.seq + 2 };
 }
 
 function reweighPair(root: SplitNode, targetId: string, newId: string, weight: number): SplitNode {
@@ -414,6 +442,32 @@ export function splitWithTabs(
 }
 
 /**
+ * Astrolabe: moves tabs into a new column the whole height of the panes, at their left or right
+ * edge, as dropping a tab on that edge does. Beside a row of columns it takes an equal share.
+ */
+export function columnWithTabs(
+  arrangement: Arrangement,
+  keys: readonly string[],
+  side: "left" | "right",
+  activeKey?: string,
+): Arrangement {
+  const moving = keys.filter((key) => leafWithTab(arrangement.root, key));
+  if (moving.length === 0) return arrangement;
+  const { root } = arrangement;
+  const columns = root.type === "branch" && root.direction === "row" ? root.children.length : 1;
+  const placeholder = emptyKey(arrangement.seq);
+  const opened = openAround({ ...arrangement, seq: arrangement.seq + 1 }, placeholder, root, side, {
+    weight: 1 / (columns + 1),
+    from: undefined,
+  });
+  const pane = leafWithTab(opened.root, placeholder);
+  if (!pane) return arrangement;
+  const moved = closeTab(moveTabs(opened, moving, pane.id, undefined, activeKey), placeholder);
+  const landed = leafWithTab(moved.root, moving[0]!);
+  return landed ? focusPane(moved, landed.id) : moved;
+}
+
+/**
  * Moves several tabs of one pane into a new pane beside it, as "Split right" and "Split down"
  * do for a selection. Taking every tab leaves an empty tab behind, so the pane stays.
  */
@@ -453,13 +507,15 @@ export function splitTab(arrangement: Arrangement, key: string, side: Side): Arr
   return splitWithTab(from, key, source.id, side);
 }
 
-/** Opens an empty tab at the end of a pane's tabs (the focused one by default). */
+/** Opens an empty tab at `position` in a pane's tabs (the focused one by default). */
 export function newTab(
   arrangement: Arrangement,
   paneId: string = arrangement.focused,
+  position: TabPosition = "end",
 ): Arrangement {
   const target = findLeaf(arrangement.root, paneId) ?? focusedPane(arrangement);
-  const opened = insertTab(arrangement, emptyKey(arrangement.seq), target.id, target.tabs.length);
+  const at = position === "end" ? target.tabs.length : target.tabs.indexOf(target.active) + 1;
+  const opened = insertTab(arrangement, emptyKey(arrangement.seq), target.id, at);
   return { ...opened, seq: arrangement.seq + 1 };
 }
 

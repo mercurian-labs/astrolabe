@@ -117,7 +117,7 @@ export function getClientSettingsHydratedSnapshot(): boolean {
   return clientSettingsHydrationStatus === "ready";
 }
 
-function getClientSettingsHydrationStatusSnapshot(): ClientSettingsHydrationStatus {
+export function getClientSettingsHydrationStatusSnapshot(): ClientSettingsHydrationStatus {
   return clientSettingsHydrationStatus;
 }
 

@@ -116,7 +116,6 @@ function Drawer(props: {
       threadRef={props.threadRef}
       threadId={props.threadRef.threadId}
       cwd={props.cwd ?? "/repo"}
-      height={240}
       terminalIds={["term-1"]}
       activeTerminalId="term-1"
       terminalGroups={[{ id: "group-1", terminalIds: ["term-1"] }]}
@@ -126,7 +125,6 @@ function Drawer(props: {
       onNewTerminal={() => {}}
       onActiveTerminalChange={() => {}}
       onCloseTerminal={props.onCloseTerminal}
-      onHeightChange={() => {}}
       onAddTerminalContext={() => {}}
       keybindings={[]}
     />

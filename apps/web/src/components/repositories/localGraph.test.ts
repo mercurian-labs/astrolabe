@@ -128,6 +128,18 @@ describe("opening a local graph", () => {
       leafWithTab(after.root, localGraphKey({ ...checkout, checkout: { cwd: "/worktree" } })),
     ).toBeDefined();
   });
+
+  it("never covers a file beside it, where the graph opens the files clicked", () => {
+    const before = arranged(row(leaf("p1", [key("a.ts")]), leaf("p2", [key("b.ts")])), "p1");
+    const after = openLocalGraph(before, file("a.ts"));
+    expect(leaves(after.root).map((pane) => pane.tabs)).toEqual([
+      [key("a.ts")],
+      [FOLLOWING],
+      [key("b.ts")],
+    ]);
+    expect(focusedPane(after).id).toBe("p1");
+    expect(followedPath(after, checkout, null)).toBe("a.ts");
+  });
 });
 
 describe("linking a local graph to the file in front", () => {

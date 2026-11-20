@@ -21,9 +21,34 @@ export type ClosedView =
     }
   | { kind: "browser"; threadRef: ScopedThreadRef; snapshot: PreviewSessionSnapshot }
   // Astrolabe: a chat's own tab in the shared panes.
-  | { kind: "chat-tab"; threadRef: ScopedThreadRef };
+  | { kind: "chat-tab"; threadRef: ScopedThreadRef }
+  // Astrolabe: a chat's terminal tab, set aside with its sessions running.
+  | { kind: "terminal-tab"; threadRef: ScopedThreadRef };
 
-export type ClosedViewEntry = ClosedView & { id: string };
+/** Astrolabe: where a closed tab stood, so reopening it puts it back while its pane is open. */
+export interface ClosedPlace {
+  readonly paneId: string;
+  readonly index: number;
+  /** A tab that stayed in that pane, so a later pane reusing its id is not taken for it. */
+  readonly beside?: string;
+}
+
+export type ClosedViewEntry = ClosedView & { id: string; place?: ClosedPlace };
+
+let placeOf: (view: ClosedView) => ClosedPlace | null = () => null;
+
+/** Astrolabe: how the shared panes say where a view's tab stood when it closed. */
+export function setClosedViewPlaces(resolve: (view: ClosedView) => ClosedPlace | null) {
+  placeOf = resolve;
+}
+
+/** The place an entry recorded, when it is well formed. */
+export function closedPlaceOf(entry: ClosedViewEntry): ClosedPlace | null {
+  const place = entry.place;
+  return place && typeof place.paneId === "string" && Number.isSafeInteger(place.index)
+    ? place
+    : null;
+}
 
 interface ClosedViewStoreState {
   entries: ClosedViewEntry[];
@@ -45,6 +70,7 @@ const sameTarget = (entry: ClosedViewEntry, view: ClosedView): boolean => {
     case "browser":
       return view.kind === "browser" && entry.snapshot.tabId === view.snapshot.tabId;
     case "chat-tab":
+    case "terminal-tab":
       return true;
   }
 };
@@ -60,7 +86,7 @@ const isClosedViewEntry = (entry: unknown): entry is ClosedViewEntry => {
   const view = entry as ClosedViewEntry | null;
   if (!view || typeof view.id !== "string" || !isThreadRef(view.threadRef)) return false;
   if (view.kind === "browser") return isSnapshot(view.snapshot);
-  if (view.kind === "chat-tab") return true;
+  if (view.kind === "chat-tab" || view.kind === "terminal-tab") return true;
   if (view.kind !== "panel-tab") return false;
   const surface = view.surface;
   if (!surface || typeof surface.id !== "string") return false;
@@ -114,9 +140,10 @@ export const useClosedViewStore = create<ClosedViewStoreState>()(
       entries: [],
       remember: (view) => {
         const id = randomUUID();
+        const place = placeOf(view);
         set((state) => ({
           entries: [
-            { ...view, id },
+            { ...view, id, ...(place ? { place } : {}) },
             ...state.entries.filter((entry) => !sameTarget(entry, view)),
           ].slice(0, 20),
         }));

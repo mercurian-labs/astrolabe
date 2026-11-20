@@ -173,6 +173,8 @@ const entryKey = (entry: WikiSidebarEntry) => wikiTabKey(wikiSidebarEntryTab(ent
 export interface WikiRowActions {
   readonly drag: (tab: WikiTab, event: DragEvent<HTMLElement>) => void;
   readonly openAll: (tab: WikiTab) => void;
+  /** The row's menu's Open to the right: a new pane beside the focused one. */
+  readonly openBeside: (tab: WikiTab) => void;
   /** How many rows the row's menu acts on: the selection, when the row is in it. */
   readonly count: (tab: WikiTab) => number;
 }
@@ -326,6 +328,11 @@ export function WikiSidebar() {
     openAll: (tab) => {
       for (const each of actedOn(tab)) openWikiTab(each);
     },
+    openBeside: (tab) => {
+      useRowSelectionStore.getState().change(() => anchorRow(SELECTION_SECTION, wikiTabKey(tab)));
+      openWikiTab(tab, "beside");
+      if (isMobile) setOpenMobile(false);
+    },
     count: (tab) => actedOn(tab).length,
   };
   // A tree draws its own drag; this lets the panes and a board take what it carries.
@@ -359,6 +366,7 @@ export function WikiSidebar() {
         })),
       selection: (file) => rowActions.count(tabOf(file)),
       openAll: (file) => rowActions.openAll(tabOf(file)),
+      openBeside: (file) => rowActions.openBeside(tabOf(file)),
       carry: (file) => carry(tabOf(file)),
       carryFolder: (folder) =>
         carryDrag({
@@ -1300,7 +1308,13 @@ function CardRow({
             }}
             onContextMenu={(event) => {
               event.preventDefault();
-              void showRowMenu(event, onOpen, actions.count(tab), () => actions.openAll(tab));
+              void showRowMenu(
+                event,
+                onOpen,
+                actions.count(tab),
+                () => actions.openAll(tab),
+                () => actions.openBeside(tab),
+              );
             }}
             onKeyDown={(event) => {
               if (event.target !== event.currentTarget) return;
@@ -1341,6 +1355,7 @@ async function showRowMenu(
   onOpen: (event: RowClick) => void,
   count: number,
   onOpenAll: () => void,
+  onOpenBeside: () => void,
 ) {
   const api = readLocalApi();
   if (!api) return;
@@ -1358,10 +1373,7 @@ async function showRowMenu(
   ];
   const picked = await api.contextMenu.show(items, { x: event.clientX, y: event.clientY });
   if (picked === "new-tab") onOpen(NEW_TAB_CLICK);
-  else if (picked === "beside") {
-    const mac = isMacPlatform(navigator.platform);
-    onOpen({ ...NEW_TAB_CLICK, altKey: false, metaKey: mac, ctrlKey: !mac });
-  }
+  else if (picked === "beside") onOpenBeside();
 }
 
 /** A hover card line: a muted icon, then its text. */

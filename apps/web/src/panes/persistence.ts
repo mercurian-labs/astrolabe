@@ -9,7 +9,7 @@ import {
 } from "./arrangement";
 import type { LinkedArrangement, ParkedTab } from "./linkedTabs";
 import { isSectionTabKey } from "~/sectionTabs/sectionTabs";
-import { leaves, removeLeaf, withOrigin, type SplitNode } from "./tree";
+import { leaves, removeLeaf, withOrigin, type PanePlace, type Side, type SplitNode } from "./tree";
 
 /** The keys a right panel or the Change Requests panes keep: their surfaces, and chats and documents. */
 const isPaneKey = (key: string) => isTabKey(key) || isSectionTabKey(key);
@@ -157,6 +157,16 @@ export function loadArrangement(storage: StorageLike | null, threadKey: string):
   return readArrangement(storage, threadKey) ?? startingArrangement();
 }
 
+function parsePanePlace(value: unknown): PanePlace | null {
+  if (!isRecord(value)) return null;
+  const { tabs, side, weight } = value;
+  const sides: readonly unknown[] = ["left", "right", "top", "bottom"];
+  if (!Array.isArray(tabs) || tabs.length === 0 || !sides.includes(side)) return null;
+  if (!tabs.every((tab) => typeof tab === "string")) return null;
+  if (typeof weight !== "number" || !(weight > 0 && weight < 1)) return null;
+  return { tabs: tabs as string[], side: side as Side, weight };
+}
+
 /**
  * Astrolabe: the shared panes as kept on the device: their arrangement (`isKey` says which tabs
  * they hold) and links, keeping only links of tabs open or set aside, and set-aside tabs that
@@ -177,11 +187,13 @@ export function parseLinkedArrangement(
       const { pane, index, active } = place;
       if (typeof pane !== "string" || typeof index !== "number" || !Number.isFinite(index))
         continue;
+      const beside = parsePanePlace(place.beside);
       parked[key] = {
         pane,
         index: Math.max(0, index),
         active: active === true,
         ...(place.hidden === true ? { hidden: true } : {}),
+        ...(beside ? { beside } : {}),
       };
     }
   }
