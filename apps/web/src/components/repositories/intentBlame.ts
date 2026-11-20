@@ -56,13 +56,16 @@ const PLAIN_RUN = /[\p{L}\p{N}][\p{L}\p{N} ,.;:()!?/-]{23,}/u;
  * the message has none.
  */
 export function plainQuote(markdown: string): string | null {
-  for (const line of markdown.split("\n")) {
+  // A link renders as its text alone.
+  const shown = markdown.replace(/!?\[([^\]\n]*)\]\([^)\n]*\)/g, "$1");
+  for (const line of shown.split("\n")) {
     const run = PLAIN_RUN.exec(line.replace(MARKUP_START, ""))?.[0];
     if (!run || run.includes("--")) continue;
     const words = run.slice(0, 160);
     const cut = words.length < run.length ? words.slice(0, words.lastIndexOf(" ")) : words;
     const quote = cut.trim();
-    if (quote.length >= 24) return quote;
+    // A citation with no context finds only a quote that appears once.
+    if (quote.length >= 24 && shown.indexOf(quote) === shown.lastIndexOf(quote)) return quote;
   }
   return null;
 }

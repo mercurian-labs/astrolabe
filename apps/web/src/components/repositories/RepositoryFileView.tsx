@@ -484,12 +484,22 @@ function RepositoryFile({
     const head = view.state.selection.main.head;
     view.dispatch({ effects: EditorView.scrollIntoView(head, { y: "center" }) });
   }, [why]);
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- marks the answer out of date when the document's text moves on from the one asked about
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- marks the answer out of date when the document's text moves on from the one asked about, or the unsaved text it answered is saved
   useEffect(() => {
     if (why === null || fromDisk) return;
-    return session.onVersion(() => {
+    const offVersion = session.onVersion(() => {
       if (session.text() !== why.text) setStaleWhy(why.id);
     });
+    // An answer about unsaved text is out of date once that text is saved.
+    const offState = why.unsaved
+      ? session.subscribe(() => {
+          if (!session.getState().unsaved) setStaleWhy(why.id);
+        })
+      : () => undefined;
+    return () => {
+      offVersion();
+      offState();
+    };
   }, [why, fromDisk, session]);
   const openTurn = useStableCallback((turn: IntentBlameTurn) => {
     // Opens on the agent's words the panel quoted, highlighted; the request is just above them.

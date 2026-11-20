@@ -17,14 +17,23 @@ describe("plainQuote", () => {
       "The page was blank because nothing served",
     ],
     ["- **Done.** Short", null],
+    [
+      "Updated [IntentBlame.ts](apps/server/src/vcs/IntentBlame.ts) to fix the cache check.",
+      "Updated IntentBlame.ts to fix the cache check.",
+    ],
+    [
+      "The same words appear twice here.\nThe same words appear twice here.\nBut this other line is only once.",
+      "But this other line is only once.",
+    ],
     ["Wait -- this one has a dash pair in its only long run", null],
   ])("quotes words that render as written: %s", (markdown, quote) => {
     expect(plainQuote(markdown)).toBe(quote);
   });
 
   it("stops at a word boundary", () => {
-    const quote = plainQuote(`${"word ".repeat(60)}end`)!;
+    const words = Array.from({ length: 60 }, (_, index) => `word${index}`);
+    const quote = plainQuote(words.join(" "))!;
     expect(quote.length).toBeLessThanOrEqual(160);
-    expect(quote.endsWith("word")).toBe(true);
+    expect(words).toContain(quote.split(" ").at(-1));
   });
 });
