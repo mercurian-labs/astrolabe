@@ -888,10 +888,14 @@ function PanesSettings() {
           </Select>
         }
       />
-      <PaneSettingRow setting="terminalPlacement" />
-      <PaneSettingRow setting="sidePanePlacement" />
-      <PaneSettingRow setting="sidePaneOpensOn" />
-      <PaneSettingRow setting="newTabPosition" />
+      <AdvancedSettings
+        targetIds={Object.values(PANES_OPTIONS).map(({ id }) => searchableSetting(id).id)}
+      >
+        <PaneSettingRow setting="terminalPlacement" />
+        <PaneSettingRow setting="sidePanePlacement" />
+        <PaneSettingRow setting="sidePaneOpensOn" />
+        <PaneSettingRow setting="newTabPosition" />
+      </AdvancedSettings>
     </SettingsSection>
   );
 }
