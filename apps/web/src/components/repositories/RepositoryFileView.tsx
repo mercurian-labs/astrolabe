@@ -446,6 +446,13 @@ function RepositoryFile({
         : null,
     });
   });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the asked-about line in view above the panel that just took the editor's lower part
+  useEffect(() => {
+    const view = editorView.current;
+    if (!view || why === null) return;
+    const head = view.state.selection.main.head;
+    view.dispatch({ effects: EditorView.scrollIntoView(head, { y: "center" }) });
+  }, [why]);
   const openTurn = useStableCallback((turn: IntentBlameTurn) => {
     const ref = scopeThreadRef(environmentId, turn.threadId);
     if (turn.userMessageId !== null) turnReveal.request(scopedThreadKey(ref), turn.userMessageId);
