@@ -5,10 +5,11 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import * as PlatformError from "effect/PlatformError";
 
 import * as ServerConfig from "../config.ts";
 import * as GitVcsDriver from "./GitVcsDriver.ts";
-import { attributeLines, type BlameTurn, type LineSource } from "./IntentBlame.ts";
+import { attributeLines, type BlameChain, type BlameTurn } from "./IntentBlame.ts";
 import * as VcsProcess from "./VcsProcess.ts";
 
 const layer = GitVcsDriver.layer.pipe(
@@ -17,45 +18,63 @@ const layer = GitVcsDriver.layer.pipe(
   Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
 );
 
+// Strictly increasing commit dates keep "made before the turn began" exact. Git reads only
+// plausible timestamps as dates.
+let clock = 1_700_000_000;
+
 const checkout = (cwd: string) =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const driver = yield* GitVcsDriver.GitVcsDriver;
     const git = (...args: string[]) =>
-      driver
-        .execute({ operation: "IntentBlame.test", cwd, args, timeoutMs: 10_000 })
-        .pipe(Effect.map((result) => result.stdout.trim()));
+      Effect.suspend(() => {
+        clock += 10;
+        const date = `@${clock} +0000`;
+        return driver.execute({
+          operation: "IntentBlame.test",
+          cwd,
+          args,
+          timeoutMs: 10_000,
+          env: { GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date },
+        });
+      }).pipe(Effect.map((result) => result.stdout.trim()));
     const write = (contents: string) =>
       fileSystem.writeFileString(path.join(cwd, "f.ts"), contents);
+    const read = fileSystem.readFileString(path.join(cwd, "f.ts"));
     const commit = (contents: string, message: string) =>
       write(contents).pipe(
         Effect.andThen(git("add", "f.ts")),
         Effect.andThen(git("commit", "-m", message)),
       );
-    /** Points `ref` at the checkout's files as they are, as a checkpoint does. */
+    /** Points `ref` at the checkout's files as they are, on top of HEAD, as a checkpoint does. */
     const snapshot = (ref: string) =>
       Effect.gen(function* () {
         yield* git("add", "-A");
         const tree = yield* git("write-tree");
-        yield* git("update-ref", ref, yield* git("commit-tree", tree, "-m", ref));
+        yield* git("update-ref", ref, yield* git("commit-tree", tree, "-p", "HEAD", "-m", ref));
+        yield* git("reset", "--quiet");
         return ref;
       });
-    /** A turn that leaves the file as `contents`. */
-    const turn = (key: number, contents: string) =>
+    /** A turn whose work is `work`, which leaves the file as it finds it on disk. */
+    const turnDoing = <E>(key: number, work: Effect.Effect<unknown, E>) =>
       Effect.gen(function* () {
         const startRef = yield* snapshot(`refs/test/${key}/start`);
-        yield* write(contents);
+        yield* work;
         const endRef = yield* snapshot(`refs/test/${key}/end`);
         return { key, startRef, endRef } satisfies BlameTurn;
       });
-    return { cwd, git, write, commit, turn };
+    /** A turn that leaves the file as `contents`. */
+    const turn = (key: number, contents: string) => turnDoing(key, write(contents));
+    return { cwd, git, write, read, commit, turn, turnDoing };
   });
 
 const repository = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const root = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-intent-blame-" });
+  const root = yield* fileSystem.realPath(
+    yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-intent-blame-" }),
+  );
   const main = yield* checkout(path.join(root, "main"));
   yield* fileSystem.makeDirectory(main.cwd);
   yield* main.git("init", "--initial-branch=main");
@@ -64,41 +83,105 @@ const repository = Effect.gen(function* () {
   return { root, main, path };
 });
 
-const describe = (contents: string, sources: ReadonlyArray<LineSource>) =>
-  contents
-    .trimEnd()
-    .split("\n")
-    .map((line, index) => {
-      const source = sources[index]!;
-      return `${line}: ${source.origin === "turn" ? `turn ${source.turn}` : source.origin}`;
+/** Each line of the text the editor shows, with where it came from. */
+const attribute = (
+  main: { readonly cwd: string; readonly read: Effect.Effect<string, PlatformError.PlatformError> },
+  chains: ReadonlyArray<BlameChain>,
+  unsaved?: string,
+) =>
+  Effect.gen(function* () {
+    const saved = yield* main.read;
+    const contents = unsaved ?? saved;
+    const sources = yield* attributeLines({
+      repo: main.cwd,
+      path: "f.ts",
+      saved,
+      contents,
+      chains,
     });
+    return contents
+      .trimEnd()
+      .split("\n")
+      .map((line, index) => {
+        const source = sources[index]!;
+        return `${line}: ${source.origin === "turn" ? `turn ${source.turn}` : source.origin}`;
+      });
+  });
+
+const own = (...turns: BlameTurn[]): BlameChain => ({ own: true, turns });
+const elsewhere = (...turns: BlameTurn[]): BlameChain => ({ own: false, turns });
 
 it.layer(layer)("IntentBlame.attributeLines", (it) => {
-  it.effect("gives each line to the turn that last wrote it, and says when none did", () =>
+  it.effect("gives each line to the turn that last changed it, and says when none did", () =>
     Effect.gen(function* () {
       const { main } = yield* repository;
       yield* main.commit("a\nb\nc\n", "start");
       const first = yield* main.turn(0, "a\nb\nturn 0\nc\n");
       yield* main.write("a\nperson\nb\nturn 0\nc\n");
       const second = yield* main.turn(1, "a\nperson\nb\nturn 0 edited by turn 1\nc\nturn 1\n");
-      const contents = "a\nperson\nb\nturn 0 edited by turn 1\nc\nturn 1\nnot saved by a turn\n";
+      yield* main.write("a\nperson\nb\nturn 0 edited by turn 1\nc\nturn 1\nsaved by a person\n");
+      // A turn whose start checkpoint is gone cannot say which lines it wrote.
+      const startless = yield* main.turn(
+        2,
+        "a\nperson\nb\nturn 0 edited by turn 1\nc\nturn 1\nsaved by a person\nturn 2\n",
+      );
 
-      const sources = yield* attributeLines({
-        cwd: main.cwd,
-        path: "f.ts",
-        contents,
-        chains: [[first, second]],
-        rank: (key) => key,
-      });
+      const lines = yield* attribute(
+        main,
+        [own(first, second, { ...startless, startRef: "refs/test/gone" })],
+        "a\nperson\nb\nturn 0 edited by turn 1\nc\nturn 1\nsaved by a person\nturn 2\nnot saved\n",
+      );
 
-      assert.deepStrictEqual(describe(contents, sources), [
+      assert.deepStrictEqual(lines, [
         "a: before",
         "person: outside",
         "b: before",
         "turn 0 edited by turn 1: turn 1",
         "c: before",
         "turn 1: turn 1",
-        "not saved by a turn: outside",
+        "saved by a person: outside",
+        "turn 2: outside",
+        "not saved: unsaved",
+      ]);
+    }),
+  );
+
+  it.effect("does not credit a turn with what a merge or a rebase brought in", () =>
+    Effect.gen(function* () {
+      const { main } = yield* repository;
+      yield* main.commit("a\nb\n", "start");
+      yield* main.git("checkout", "-b", "upstream");
+      yield* main.commit("a\nb\nupstream\n", "upstream");
+      yield* main.git("checkout", "main");
+      // The agent commits its own edit, then merges upstream in.
+      const merging = yield* main.turnDoing(
+        0,
+        main
+          .commit("agent\na\nb\n", "agent")
+          .pipe(Effect.andThen(main.git("merge", "--no-edit", "upstream"))),
+      );
+      // A person adds to upstream; the next turn rebases onto it and edits again.
+      yield* main.git("checkout", "upstream");
+      yield* main.commit("a\nb\nupstream\nperson upstream\n", "person");
+      yield* main.git("checkout", "main");
+      yield* main.git("reset", "--hard", "HEAD~1");
+      yield* main.write("agent\na\nb\n");
+      const rebasing = yield* main.turnDoing(
+        1,
+        main
+          .git("rebase", "upstream")
+          .pipe(
+            Effect.andThen(main.write("agent\na\nb\nupstream\nperson upstream\nagent again\n")),
+          ),
+      );
+
+      assert.deepStrictEqual(yield* attribute(main, [own(merging, rebasing)]), [
+        "agent: turn 0",
+        "a: before",
+        "b: before",
+        "upstream: outside",
+        "person upstream: outside",
+        "agent again: turn 1",
       ]);
     }),
   );
@@ -122,16 +205,7 @@ it.layer(layer)("IntentBlame.attributeLines", (it) => {
         yield* main.git("branch", "-D", "feature");
         const mainTurn = yield* main.turn(1, "top\na\nb\nfeature\nmain turn\n");
 
-        const contents = "top\na\nb\nfeature\nmain turn\n";
-        const sources = yield* attributeLines({
-          cwd: main.cwd,
-          path: "f.ts",
-          contents,
-          chains: [[featureTurn], [mainTurn]],
-          rank: (key) => key,
-        });
-
-        assert.deepStrictEqual(describe(contents, sources), [
+        assert.deepStrictEqual(yield* attribute(main, [elsewhere(featureTurn), own(mainTurn)]), [
           "top: outside",
           "a: before",
           "b: before",
@@ -139,6 +213,24 @@ it.layer(layer)("IntentBlame.attributeLines", (it) => {
           "main turn: turn 1",
         ]);
       }),
+  );
+
+  it.effect("lets the file's own checkout decide before an older turn elsewhere", () =>
+    Effect.gen(function* () {
+      const { root, main, path } = yield* repository;
+      yield* main.commit("a\n", "start");
+      yield* main.git("worktree", "add", path.join(root, "other"), "-b", "other");
+      const other = yield* checkout(path.join(root, "other"));
+      const older = yield* other.turn(0, "a\nsame line\nonly there\n");
+      const newer = yield* main.turn(1, "a\nsame line\n");
+      yield* main.write("a\nsame line\nonly there\n");
+
+      assert.deepStrictEqual(yield* attribute(main, [elsewhere(older), own(newer)]), [
+        "a: before",
+        "same line: turn 1",
+        "only there: turn 0",
+      ]);
+    }),
   );
 
   it.effect(
@@ -160,15 +252,7 @@ it.layer(layer)("IntentBlame.attributeLines", (it) => {
         const contents = `${block}${base}const reformatted   =   1;\n`;
         yield* main.commit(contents, "person moves and reformats");
 
-        const sources = yield* attributeLines({
-          cwd: main.cwd,
-          path: "f.ts",
-          contents,
-          chains: [[featureTurn]],
-          rank: (key) => key,
-        });
-
-        assert.deepStrictEqual(describe(contents, sources), [
+        assert.deepStrictEqual(yield* attribute(main, [elsewhere(featureTurn)]), [
           "function writtenByTheTurn() {: turn 0",
           "  return 'a line long enough to move';: turn 0",
           "}: turn 0",

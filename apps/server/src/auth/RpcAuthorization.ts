@@ -301,6 +301,10 @@ const requiredScopesForRpcCall = (
   if (method === WS_METHODS.serverRetryResourceTelemetry) {
     return [AuthEnvironmentMaintainScope, AuthDiagnosticsReadScope];
   }
+  // Astrolabe: the answer quotes the threads' requests and the agent's words.
+  if (method === WS_METHODS.vcsIntentBlame) {
+    return [AuthFilesystemReadScope, AuthOrchestrationReadScope];
+  }
   if (method === WS_METHODS.assetsCreateUrl) {
     const { resource } = decodeAssetCreateUrlInput(payload);
     return [

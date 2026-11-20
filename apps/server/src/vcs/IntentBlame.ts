@@ -19,38 +19,46 @@ import {
 
 import { checkpointRefForScopeOrdinal } from "../orchestration-v2/CheckpointService.ts";
 import * as KnownWorkspaces from "../workspace/KnownWorkspaces.ts";
+import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import * as GitVcsDriver from "./GitVcsDriver.ts";
 
 const MAX_FILE_BYTES = 1024 * 1024;
 const MAX_TEXT_LENGTH = 2000;
+const CACHED_FILES = 32;
 const NOT_COMMITTED = /^0{40}$/;
-// Commits made here are throwaway, so fixed identities and dates keep them reproducible.
-const SYNTHETIC_COMMIT_ENV = {
-  GIT_AUTHOR_NAME: "Astrolabe",
-  GIT_AUTHOR_EMAIL: "intent-blame@astrolabe.invalid",
-  GIT_AUTHOR_DATE: "@0 +0000",
-  GIT_COMMITTER_NAME: "Astrolabe",
-  GIT_COMMITTER_EMAIL: "intent-blame@astrolabe.invalid",
-  GIT_COMMITTER_DATE: "@0 +0000",
-};
 
 /** A turn as the blame walks it: the checkpoints at its start (null if gone) and its end. */
 export interface BlameTurn {
+  /** Turns are numbered in the order they ran, across every checkout. */
   readonly key: number;
   readonly startRef: string | null;
   readonly endRef: string;
 }
 
+/** One checkout's turns, oldest first. `own` is the checkout the file is in. */
+export interface BlameChain {
+  readonly own: boolean;
+  readonly turns: ReadonlyArray<BlameTurn>;
+}
+
 export type LineSource =
   | { readonly origin: "turn"; readonly turn: number }
   | { readonly origin: "before" }
-  | { readonly origin: "outside" };
+  | { readonly origin: "outside" }
+  | { readonly origin: "unsaved" };
+
+interface CheckpointCommit {
+  readonly tree: string;
+  /** HEAD when the checkpoint was captured; null on an unborn branch. */
+  readonly head: string | null;
+  readonly capturedAt: string;
+}
 
 /**
  * Astrolabe: the turn behind each line of an open file. The turns that changed the file in one
  * checkout run in sequence, so each checkout's checkpoints become one throwaway history (the
  * file at each turn's start, then at its end) and `git blame` follows the file's lines back
- * through it. The commits go to a temporary object directory, never the repository's.
+ * through it. The history is written to a scratch repository that borrows this one's objects.
  */
 export class IntentBlame extends Context.Service<
   IntentBlame,
@@ -60,137 +68,252 @@ export class IntentBlame extends Context.Service<
 >()("t3/vcs/IntentBlame") {}
 
 /**
- * For each line of `contents`, the newest turn any checkout's history says wrote it. A line no
- * history gives to a turn is `before` when every history had it from its start.
+ * For each line of `contents`, the turn that last changed it. The file's own checkout decides
+ * first; other checkouts speak only for lines it gives to no turn, and there the oldest turn wins,
+ * since a later identical line elsewhere is a copy. When HEAD moved during a turn, what arrived
+ * with the move is a second parent of the turn, so a pull or merge does not count as the turn's.
  */
 export const attributeLines = Effect.fn("IntentBlame.attributeLines")(function* (input: {
-  readonly cwd: string;
+  /** The repository's root. */
+  readonly repo: string;
   /** Relative to the repository's root. */
   readonly path: string;
+  /** The file on disk. */
+  readonly saved: string;
+  /** The text to attribute: the editor's, or the file on disk. */
   readonly contents: string;
-  /** Each checkout's turns, oldest first. */
-  readonly chains: ReadonlyArray<ReadonlyArray<BlameTurn>>;
-  /** Higher for newer turns: which turn a line goes to when two histories claim it. */
-  readonly rank: (key: number) => number;
+  readonly chains: ReadonlyArray<BlameChain>;
 }) {
   const git = yield* GitVcsDriver.GitVcsDriver;
   const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
   const lineCount = countLines(input.contents);
-  const sources: Array<LineSource | null> = Array.from({ length: lineCount }, () => null);
-  const outsideAnywhere: boolean[] = Array.from({ length: lineCount }, () => false);
-  if (input.chains.length === 0 || lineCount === 0) {
-    return sources.map((): LineSource => ({ origin: "outside" }));
+  if (lineCount === 0) return [];
+  if (input.chains.length === 0 && input.contents === input.saved) {
+    return Array.from({ length: lineCount }, (): LineSource => ({ origin: "outside" }));
   }
 
-  const objects = yield* git.execute({
-    operation: "IntentBlame.objects",
-    cwd: input.cwd,
-    args: ["rev-parse", "--path-format=absolute", "--git-path", "objects"],
-  });
-  const scratch = yield* fs.makeTempDirectoryScoped({ prefix: "t3-intent-blame-" });
-  const env = {
-    ...SYNTHETIC_COMMIT_ENV,
-    GIT_OBJECT_DIRECTORY: scratch,
-    GIT_ALTERNATE_OBJECT_DIRECTORIES: objects.stdout.trim(),
-  };
-  const run = (operation: string, args: ReadonlyArray<string>, stdin?: string) =>
-    git.execute({
-      operation: `IntentBlame.${operation}`,
-      cwd: input.cwd,
-      args,
-      env,
-      allowNonZeroExit: true,
-      maxOutputBytes: 16 * MAX_FILE_BYTES,
-      ...(stdin === undefined ? {} : { stdin }),
-    });
-
-  const refs = input.chains.flatMap((chain) =>
-    chain.flatMap((turn) => (turn.startRef ? [turn.startRef, turn.endRef] : [turn.endRef])),
-  );
-  const checked = yield* run(
-    "trees",
-    ["cat-file", "--batch-check=%(objectname) %(objecttype)"],
-    refs.map((ref) => `${ref}^{tree}\n`).join(""),
-  );
-  const trees = new Map<string, string>();
-  checked.stdout
-    .trimEnd()
-    .split("\n")
-    .forEach((line, index) => {
-      const [id, type] = line.split(" ");
-      const ref = refs[index];
-      if (ref !== undefined && id !== undefined && type === "tree") trees.set(ref, id);
-    });
-
-  const commit = Effect.fn("IntentBlame.commit")(function* (
-    tree: string,
-    parent: string | null,
-    message: string,
-  ) {
-    const made = yield* run("commit", [
-      "commit-tree",
-      tree,
-      ...(parent === null ? [] : ["-p", parent]),
-      "-m",
-      message,
+  const inRepo = (operation: string, args: ReadonlyArray<string>) =>
+    git.execute({ operation: `IntentBlame.${operation}`, cwd: input.repo, args });
+  const refs = [
+    ...new Set(
+      input.chains.flatMap((chain) =>
+        chain.turns.flatMap((turn) =>
+          turn.startRef ? [turn.startRef, turn.endRef] : [turn.endRef],
+        ),
+      ),
+    ),
+  ];
+  const checkpoints = new Map<string, CheckpointCommit>();
+  if (refs.length > 0) {
+    const listed = yield* inRepo("checkpoints", [
+      "for-each-ref",
+      "--format=%(refname) %(tree) %(committerdate:unix) %(parent)",
+      ...refs,
     ]);
-    return made.exitCode === 0 ? made.stdout.trim() : null;
-  });
-
-  for (const chain of input.chains) {
-    // What each commit of the history stands for.
-    const meaning = new Map<string, LineSource>();
-    let tip: string | null = null;
-    for (const turn of chain) {
-      const end = trees.get(turn.endRef);
-      if (end === undefined) continue;
-      const start = turn.startRef === null ? undefined : trees.get(turn.startRef);
-      if (start !== undefined) {
-        const made: string | null = yield* commit(start, tip, `start ${turn.key}`);
-        if (made === null) continue;
-        meaning.set(made, tip === null ? { origin: "before" } : { origin: "outside" });
-        tip = made;
-      }
-      const made: string | null = yield* commit(end, tip, `turn ${turn.key}`);
-      if (made === null) continue;
-      meaning.set(made, tip === null ? { origin: "before" } : { origin: "turn", turn: turn.key });
-      tip = made;
-    }
-    if (tip === null) continue;
-    const blamed = yield* run(
-      "blame",
-      // -M keeps a turn's lines its own when they are moved within the file later.
-      ["blame", "--incremental", "-M", "--contents", "-", tip, "--", input.path],
-      input.contents,
-    );
-    // The file is not in this checkout's history, which then says nothing of its lines.
-    if (blamed.exitCode !== 0) continue;
-    for (const entry of parseIncrementalBlame(blamed.stdout)) {
-      const source: LineSource = NOT_COMMITTED.test(entry.commit)
-        ? { origin: "outside" }
-        : (meaning.get(entry.commit) ?? { origin: "outside" });
-      for (let line = entry.finalLine; line < entry.finalLine + entry.lines; line += 1) {
-        const index = line - 1;
-        if (index < 0 || index >= lineCount) continue;
-        const current = sources[index] ?? null;
-        if (source.origin === "outside") outsideAnywhere[index] = true;
-        if (source.origin === "turn") {
-          if (current?.origin !== "turn" || input.rank(source.turn) > input.rank(current.turn)) {
-            sources[index] = source;
-          }
-        } else if (current === null) {
-          sources[index] = source;
-        }
-      }
+    for (const line of listed.stdout.split("\n")) {
+      const [ref, tree, capturedAt, head] = line.split(" ");
+      if (ref && tree && capturedAt) checkpoints.set(ref, { tree, head: head || null, capturedAt });
     }
   }
-  return sources.map((source, index): LineSource => {
-    if (source?.origin === "turn") return source;
-    return source?.origin === "before" && !outsideAnywhere[index]
+
+  // What arrived when HEAD moved during a turn: the newest commit made before the turn began.
+  const imports = new Map<number, string>();
+  const moved = input.chains.flatMap((chain) =>
+    chain.turns.flatMap((turn) => {
+      const start = turn.startRef === null ? undefined : checkpoints.get(turn.startRef);
+      const end = checkpoints.get(turn.endRef);
+      return start?.head && end?.head && start.head !== end.head ? [{ turn, start, end }] : [];
+    }),
+  );
+  yield* Effect.forEach(
+    moved,
+    ({ turn, start, end }) =>
+      inRepo("imports", [
+        "log",
+        "--format=%T %ct",
+        `--until=@${start.capturedAt}`,
+        `${start.head}..${end.head}`,
+      ]).pipe(
+        Effect.map((result) => {
+          let newest: { tree: string; at: number } | null = null;
+          for (const line of result.stdout.split("\n")) {
+            const [tree, at] = line.split(" ");
+            if (tree && at && (newest === null || Number(at) > newest.at)) {
+              newest = { tree, at: Number(at) };
+            }
+          }
+          if (newest !== null) imports.set(turn.key, newest.tree);
+        }),
+      ),
+    { concurrency: 4, discard: true },
+  );
+
+  const objects = yield* inRepo("objects", [
+    "rev-parse",
+    "--path-format=absolute",
+    "--git-path",
+    "objects",
+  ]);
+  const scratch = yield* fs.makeTempDirectoryScoped({ prefix: "t3-intent-blame-" });
+  yield* inRepo("scratch", ["init", "--quiet", "--bare", scratch]);
+  yield* fs.writeFileString(
+    path.join(scratch, "objects", "info", "alternates"),
+    `${objects.stdout.trim()}\n`,
+  );
+
+  const stream: string[] = [];
+  const meanings = new Map<number, LineSource>();
+  let mark = 0;
+  const commit = (
+    branch: number,
+    meaning: LineSource,
+    parents: ReadonlyArray<number>,
+    change: string,
+  ) => {
+    mark += 1;
+    meanings.set(mark, meaning);
+    const [from, ...merges] = parents;
+    stream.push(
+      `commit refs/chains/${branch}`,
+      `mark :${mark}`,
+      "committer Astrolabe <intent-blame@astrolabe.invalid> 0 +0000",
+      "data 0",
+      ...(from === undefined ? [] : [`from :${from}`]),
+      ...merges.map((parent) => `merge :${parent}`),
+      change,
+      "",
+    );
+    return mark;
+  };
+  const root = (tree: string) => `M 040000 ${tree} ""`;
+  const savedBytes = Buffer.byteLength(input.saved);
+  const savedFile = `M 100644 inline ${quotePath(input.path)}\ndata ${savedBytes}\n${input.saved}`;
+
+  const chains = input.chains.length > 0 ? input.chains : [{ own: true, turns: [] }];
+  const tips = chains.map((chain, branch) => {
+    let tip: number | null = null;
+    for (const turn of chain.turns) {
+      const end = checkpoints.get(turn.endRef);
+      if (end === undefined) continue;
+      const start = turn.startRef === null ? undefined : checkpoints.get(turn.startRef);
+      if (start === undefined) {
+        // Without the turn's start, nothing says which of these lines the turn wrote.
+        tip = commit(
+          branch,
+          tip === null ? { origin: "before" } : { origin: "outside" },
+          tip === null ? [] : [tip],
+          root(end.tree),
+        );
+        continue;
+      }
+      const before: number = commit(
+        branch,
+        tip === null ? { origin: "before" } : { origin: "outside" },
+        tip === null ? [] : [tip],
+        root(start.tree),
+      );
+      const imported = imports.get(turn.key);
+      const arrived =
+        imported === undefined
+          ? []
+          : [commit(branch, { origin: "outside" }, [before], root(imported))];
+      tip = commit(
+        branch,
+        { origin: "turn", turn: turn.key },
+        [before, ...arrived],
+        root(end.tree),
+      );
+    }
+    return commit(branch, { origin: "outside" }, tip === null ? [] : [tip], savedFile);
+  });
+
+  const marksFile = path.join(scratch, "marks");
+  yield* git.execute({
+    operation: "IntentBlame.history",
+    cwd: input.repo,
+    args: [
+      `--git-dir=${scratch}`,
+      "fast-import",
+      "--quiet",
+      "--date-format=raw",
+      `--export-marks=${marksFile}`,
+    ],
+    stdin: `${stream.join("\n")}\ndone\n`,
+  });
+  const commits = new Map<string, LineSource>();
+  const shas = new Map<number, string>();
+  for (const line of (yield* fs.readFileString(marksFile)).split("\n")) {
+    const [name, sha] = line.split(" ");
+    const meaning = name ? meanings.get(Number(name.slice(1))) : undefined;
+    if (sha && meaning) {
+      commits.set(sha, meaning);
+      shas.set(Number(name!.slice(1)), sha);
+    }
+  }
+
+  const perChain = yield* Effect.forEach(
+    tips,
+    (tip) =>
+      git
+        .execute({
+          operation: "IntentBlame.blame",
+          cwd: input.repo,
+          // -M keeps a turn's lines its own when they are moved within the file later.
+          args: [
+            `--git-dir=${scratch}`,
+            "blame",
+            "--incremental",
+            "-M",
+            "--contents",
+            "-",
+            shas.get(tip)!,
+            "--",
+            input.path,
+          ],
+          stdin: input.contents,
+          maxOutputBytes: 16 * MAX_FILE_BYTES,
+        })
+        .pipe(
+          Effect.map((blamed) => {
+            const sources: Array<LineSource> = [];
+            for (const entry of parseIncrementalBlame(blamed.stdout)) {
+              const source: LineSource = NOT_COMMITTED.test(entry.commit)
+                ? { origin: "unsaved" }
+                : (commits.get(entry.commit) ?? { origin: "outside" });
+              for (let line = entry.finalLine; line < entry.finalLine + entry.lines; line += 1) {
+                sources[line - 1] = source;
+              }
+            }
+            return sources;
+          }),
+        ),
+    { concurrency: 4 },
+  );
+
+  return Array.from({ length: lineCount }, (_, index): LineSource => {
+    const seen = perChain.map((sources) => sources[index] ?? { origin: "outside" as const });
+    const own = chains.flatMap((chain, at) => (chain.own ? [seen[at]!] : []));
+    const ownTurn = own.find((source) => source.origin === "turn");
+    if (ownTurn) return ownTurn;
+    let oldest: LineSource | null = null;
+    for (const source of seen) {
+      if (source.origin === "turn" && (oldest?.origin !== "turn" || source.turn < oldest.turn)) {
+        oldest = source;
+      }
+    }
+    if (oldest) return oldest;
+    if (seen.some((source) => source.origin === "unsaved")) return { origin: "unsaved" };
+    return seen.every((source) => source.origin === "before")
       ? { origin: "before" }
       : { origin: "outside" };
   });
 }, Effect.scoped);
+
+/** A path as `git fast-import` reads it: C-style quoted. */
+function quotePath(value: string): string {
+  return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("\n", "\\n")}"`;
+}
 
 /** `git blame --incremental` entries: which commit gave which run of the final lines. */
 function parseIncrementalBlame(output: string): Array<{
@@ -241,9 +364,23 @@ const clip = (text: string | null | undefined) => {
   return trimmed.length > MAX_TEXT_LENGTH ? `${trimmed.slice(0, MAX_TEXT_LENGTH)}…` : trimmed;
 };
 
+interface ChangedRow {
+  readonly thread_id: string;
+  readonly run_id: string;
+  readonly scope_id: string;
+  readonly ordinal: number;
+  readonly captured_at: string;
+  readonly ref: string;
+  readonly checkout: string;
+  readonly title: string;
+  readonly turn_number: number;
+  readonly user_message_id: string | null;
+}
+
 const make = Effect.gen(function* () {
   const git = yield* GitVcsDriver.GitVcsDriver;
   const knownWorkspaces = yield* KnownWorkspaces.KnownWorkspaces;
+  const workspacePaths = yield* WorkspacePaths.WorkspacePaths;
   const sql = yield* SqlClient.SqlClient;
   const digest = yield* Digest.Digest;
   const fs = yield* FileSystem.FileSystem;
@@ -251,7 +388,13 @@ const make = Effect.gen(function* () {
   const services = Layer.mergeAll(
     Layer.succeed(GitVcsDriver.GitVcsDriver, git),
     Layer.succeed(FileSystem.FileSystem, fs),
+    Layer.succeed(Path.Path, path),
   );
+  // One answer per file, reused while its text and the turns that changed it stay the same.
+  const answers = new Map<
+    string,
+    { readonly contents: string; readonly turns: string; readonly result: IntentBlameResult }
+  >();
 
   const blame: IntentBlame["Service"]["blame"] = Effect.fn("IntentBlame.blame")(function* (input) {
     const failure = (detail: string) => (cause: unknown) =>
@@ -260,36 +403,40 @@ const make = Effect.gen(function* () {
       .assertContains(input.cwd)
       .pipe(Effect.mapError(failure("Not a known workspace.")));
 
-    const prefix = yield* git
-      .execute({
-        operation: "IntentBlame.prefix",
-        cwd: input.cwd,
-        args: ["rev-parse", "--show-prefix"],
-      })
-      .pipe(Effect.mapError(failure("Not in a Git repository.")));
-    const repoPath = `${prefix.stdout.trim()}${input.path}`;
-    const file = path.join(input.cwd, input.path);
-    const size = yield* fs.stat(file).pipe(Effect.mapError(failure("The file cannot be read.")));
-    if (Number(size.size) > MAX_FILE_BYTES) {
+    const unreadable = failure("The file cannot be read.");
+    const resolved = yield* workspacePaths
+      .resolveRelativePathWithinRoot({ workspaceRoot: input.cwd, relativePath: input.path })
+      .pipe(Effect.mapError(failure("The path is outside the workspace.")));
+    const realCwd = yield* fs.realPath(input.cwd).pipe(Effect.mapError(unreadable));
+    const file = yield* fs.realPath(resolved.absolutePath).pipe(Effect.mapError(unreadable));
+    if (!KnownWorkspaces.isWithinRoot(path, file, realCwd)) {
+      return yield* failure("The path is outside the workspace.")(undefined);
+    }
+    const info = yield* fs.stat(file).pipe(Effect.mapError(unreadable));
+    if (info.type !== "File") return yield* unreadable(undefined);
+    if (
+      Number(info.size) > MAX_FILE_BYTES ||
+      (input.contents !== undefined && Buffer.byteLength(input.contents) > MAX_FILE_BYTES)
+    ) {
       return yield* failure("The file is too big to attribute.")(undefined);
     }
-    const contents = yield* fs
-      .readFileString(file)
-      .pipe(Effect.mapError(failure("The file cannot be read.")));
+    const saved = yield* fs.readFileString(file).pipe(Effect.mapError(unreadable));
+    const contents = input.contents ?? saved;
+
+    const notInGit = failure("Not in a Git repository.");
+    const top = yield* git
+      .execute({
+        operation: "IntentBlame.root",
+        cwd: realCwd,
+        args: ["rev-parse", "--show-toplevel"],
+      })
+      .pipe(Effect.mapError(notInGit));
+    const repo = yield* fs.realPath(top.stdout.trim()).pipe(Effect.mapError(notInGit));
+    const repoPath = path.relative(repo, file).split(path.sep).join("/");
+    if (!KnownWorkspaces.isWithinRoot(path, file, repo)) return yield* notInGit(undefined);
 
     const queryFailure = failure("Could not read the turns that changed it.");
-    const changed = yield* sql<{
-      readonly thread_id: string;
-      readonly run_id: string;
-      readonly scope_id: string;
-      readonly ordinal: number;
-      readonly captured_at: string;
-      readonly ref: string;
-      readonly checkout: string;
-      readonly title: string;
-      readonly turn_number: number;
-      readonly user_message_id: string | null;
-    }>`
+    const changed = yield* sql<ChangedRow>`
       SELECT checkpoint.thread_id, checkpoint.run_id, checkpoint.scope_id,
         checkpoint.ordinal_within_scope AS ordinal, checkpoint.captured_at,
         json_extract(checkpoint.payload_json, '$.ref') AS ref,
@@ -312,35 +459,50 @@ const make = Effect.gen(function* () {
       ORDER BY checkpoint.captured_at ASC
     `.pipe(Effect.mapError(queryFailure));
 
+    const gitFailure = failure("Git could not follow the file's lines.");
     // A turn in another repository can list the same path; only this repository has its refs.
     const present = yield* git
       .execute({
         operation: "IntentBlame.refs",
-        cwd: input.cwd,
+        cwd: repo,
         args: ["cat-file", "--batch-check=%(objecttype)"],
         stdin: changed.map((row) => `${row.ref}\n`).join(""),
-        allowNonZeroExit: true,
       })
-      .pipe(Effect.mapError(failure("Could not read the turns' checkpoints.")));
+      .pipe(Effect.mapError(gitFailure));
     const presence = present.stdout.trimEnd().split("\n");
     const worktrees = yield* git
       .execute({
         operation: "IntentBlame.worktrees",
-        cwd: input.cwd,
-        args: ["worktree", "list", "--porcelain"],
-        allowNonZeroExit: true,
+        cwd: repo,
+        args: ["worktree", "list", "--porcelain", "-z"],
       })
-      .pipe(Effect.mapError(failure("Could not list the repository's checkouts.")));
-    const checkouts = new Set(
-      worktrees.stdout
-        .split("\n")
-        .filter((line) => line.startsWith("worktree "))
-        .map((line) => line.slice("worktree ".length)),
-    );
+      .pipe(Effect.mapError(gitFailure));
+    const checkouts = worktrees.stdout
+      .split("\0")
+      .filter((line) => line.startsWith("worktree "))
+      .map((line) => line.slice("worktree ".length));
+    // The checkout a turn ran in, as its root: the longest listed checkout holding its cwd.
+    const checkoutRoot = (cwd: string) =>
+      checkouts
+        .filter((root) => KnownWorkspaces.isWithinRoot(path, cwd, root))
+        .toSorted((a, b) => b.length - a.length)[0] ?? cwd;
     const rows = changed.filter((_, index) => presence[index] === "commit");
     const missingCheckpoints = changed.filter(
-      (row, index) => presence[index] !== "commit" && checkouts.has(row.checkout),
+      (row, index) =>
+        presence[index] !== "commit" && checkouts.includes(checkoutRoot(row.checkout)),
     ).length;
+
+    // A new checkpoint or a renamed thread changes the answer.
+    const signature = rows
+      .map((row) => `${row.ref}\u0001${row.title}\u0001${row.checkout}`)
+      .join("\u0000");
+    const cacheKey = `${repo}\0${repoPath}`;
+    const cached = answers.get(cacheKey);
+    if (cached && cached.contents === contents && cached.turns === signature) {
+      answers.delete(cacheKey);
+      answers.set(cacheKey, cached);
+      return { ...cached.result, missingCheckpoints };
+    }
 
     const chains = new Map<string, BlameTurn[]>();
     for (const [key, row] of rows.entries()) {
@@ -348,22 +510,19 @@ const make = Effect.gen(function* () {
         scopeId: CheckpointScopeId.make(row.scope_id),
         ordinalWithinScope: row.ordinal - 1,
       }).pipe(Effect.provideService(Digest.Digest, digest));
-      const chain = chains.get(row.checkout) ?? [];
+      const root = checkoutRoot(row.checkout);
+      const chain = chains.get(root) ?? [];
       chain.push({ key, startRef, endRef: row.ref });
-      chains.set(row.checkout, chain);
+      chains.set(root, chain);
     }
     const sources = yield* attributeLines({
-      cwd: input.cwd,
+      repo,
       path: repoPath,
+      saved,
       contents,
-      chains: [...chains.values()],
-      rank: (key) => key,
-    }).pipe(
-      Effect.provide(services),
-      Effect.mapError(failure("Git could not follow the file's lines.")),
-    );
+      chains: [...chains.entries()].map(([root, turns]) => ({ own: root === repo, turns })),
+    }).pipe(Effect.provide(services), Effect.mapError(gitFailure));
 
-    // Only the turns a line goes to are described, in the order they ran.
     const used = [...new Set(sources.flatMap((s) => (s.origin === "turn" ? [s.turn] : [])))].sort(
       (a, b) => a - b,
     );
@@ -371,27 +530,28 @@ const make = Effect.gen(function* () {
     const turns: IntentBlameTurn[] = [];
     for (const key of used) {
       const row = rows[key]!;
-      turns.push(yield* describeTurn(row, repoPath).pipe(Effect.mapError(queryFailure)));
+      const absolute = path.join(checkoutRoot(row.checkout), repoPath);
+      turns.push(yield* describeTurn(row, absolute).pipe(Effect.mapError(queryFailure)));
     }
-    const spans = toSpans(
-      sources.map((source) =>
-        source.origin === "turn" ? { origin: "turn", turn: index.get(source.turn)! } : source,
+    const result: IntentBlameResult = {
+      spans: toSpans(
+        sources.map((source) =>
+          source.origin === "turn" ? { origin: "turn", turn: index.get(source.turn)! } : source,
+        ),
       ),
-    );
-    return { spans, turns, missingCheckpoints };
+      turns,
+      changedBy: rows.length,
+      missingCheckpoints,
+    };
+    answers.delete(cacheKey);
+    answers.set(cacheKey, { contents, turns: signature, result });
+    if (answers.size > CACHED_FILES) answers.delete(answers.keys().next().value!);
+    return result;
   });
 
   const describeTurn = Effect.fn("IntentBlame.describeTurn")(function* (
-    row: {
-      readonly thread_id: string;
-      readonly run_id: string;
-      readonly captured_at: string;
-      readonly checkout: string;
-      readonly title: string;
-      readonly turn_number: number;
-      readonly user_message_id: string | null;
-    },
-    repoPath: string,
+    row: ChangedRow,
+    absolutePath: string,
   ) {
     const [request] =
       row.user_message_id === null
@@ -407,11 +567,12 @@ const make = Effect.gen(function* () {
       WHERE run_id = ${row.run_id} AND role = 'assistant'
       ORDER BY created_at ASC
     `;
-    // When the agent first wrote this file in the turn, from its own file edits.
+    // When the agent first changed this file in the turn, from its own file edits.
     const [firstChange] = yield* sql<{ readonly at: string | null }>`
       SELECT MIN(json_extract(payload_json, '$.startedAt')) AS at
       FROM orchestration_v2_projection_turn_items
-      WHERE run_id = ${row.run_id} AND type = 'file_change' AND instr(payload_json, ${repoPath}) > 0
+      WHERE run_id = ${row.run_id} AND type = 'file_change'
+        AND json_extract(payload_json, '$.fileName') = ${absolutePath}
     `;
     const changedAt = firstChange?.at ?? null;
     const before =

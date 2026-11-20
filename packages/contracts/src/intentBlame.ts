@@ -9,22 +9,25 @@ import {
 } from "./baseSchemas.ts";
 
 /**
- * Astrolabe: intent blame. For each line of a file as it is on disk, the agent turn that last
- * wrote it, found by comparing the file with the checkpoints of the turns that changed it.
+ * Astrolabe: intent blame. For each line of a file, the agent turn that last changed it, found by
+ * comparing the file with the checkpoints of the turns that changed it.
  */
 export const IntentBlameInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
   /** Relative to `cwd`. */
   path: TrimmedNonEmptyString,
+  /** The editor's unsaved text, when it differs from the file on disk. */
+  contents: Schema.optional(Schema.String),
 });
 export type IntentBlameInput = typeof IntentBlameInput.Type;
 
 /**
- * Where a run of lines came from. `turn`: a turn wrote it. `before`: it was there before every
- * recorded turn that changed the file. `outside`: it changed outside any recorded turn, such as
- * by a person, a merge, or a turn whose checkpoint is gone.
+ * Where a run of lines came from. `turn`: a turn changed it last. `before`: it was there before
+ * every recorded turn that changed the file. `outside`: it changed outside any recorded turn, such
+ * as by a person, a merge or pull, or a turn whose checkpoint is gone. `unsaved`: it exists only
+ * in the editor's unsaved text.
  */
-export const IntentBlameOrigin = Schema.Literals(["turn", "before", "outside"]);
+export const IntentBlameOrigin = Schema.Literals(["turn", "before", "outside", "unsaved"]);
 export type IntentBlameOrigin = typeof IntentBlameOrigin.Type;
 
 export const IntentBlameSpan = Schema.Struct({
@@ -58,7 +61,10 @@ export type IntentBlameTurn = typeof IntentBlameTurn.Type;
 
 export const IntentBlameResult = Schema.Struct({
   spans: Schema.Array(IntentBlameSpan),
+  /** The turns some line goes to, in the order they ran. */
   turns: Schema.Array(IntentBlameTurn),
+  /** Recorded turns that changed the file, whether or not any of their lines remain. */
+  changedBy: NonNegativeInt,
   /** Turns that changed the file but whose checkpoints this repository no longer has. */
   missingCheckpoints: NonNegativeInt,
 });
