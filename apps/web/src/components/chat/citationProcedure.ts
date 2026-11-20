@@ -125,6 +125,8 @@ export function citedThreadSnapshot(input: {
     if (input.status === "deleted") return { message: null, hasMoreHistory: false };
     return input.error === null ? null : { message: null, hasMoreHistory: false, loadFailed: true };
   }
+  // A thread opened cold first shows its cached copy, whose history meta is not known yet.
+  if (input.status !== "live" && input.error === null) return null;
   // Older pages merge into the visible turn items, not the message list.
   const item = input.thread.projection.visibleTurnItems.find(
     (row) =>

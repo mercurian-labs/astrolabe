@@ -462,6 +462,21 @@ function RepositoryFile({
     setWhy(null);
     editorView.current?.focus();
   });
+  const fileRoot = useRef<HTMLDivElement | null>(null);
+  // A native listener: an ancestor stops Escape before React's root listener would see it.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- listens for Escape on the file's DOM while the panel is open
+  useEffect(() => {
+    const root = fileRoot.current;
+    if (!root || why === null) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      // The editor prevents an Escape it used itself, such as closing completions or search.
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      event.preventDefault();
+      closeWhy();
+    };
+    root.addEventListener("keydown", onKeyDown);
+    return () => root.removeEventListener("keydown", onKeyDown);
+  }, [why, closeWhy]);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the asked-about line in view above the panel that just took the editor's lower part
   useEffect(() => {
     const view = editorView.current;
@@ -632,7 +647,7 @@ function RepositoryFile({
       />
     );
   return (
-    <div className="@container/file flex min-h-0 flex-1 flex-col">
+    <div ref={fileRoot} className="@container/file flex min-h-0 flex-1 flex-col">
       <TabHeader.Root>
         <FileBreadcrumbs path={path} trail={trail} />
         <TabHeader.Status className="font-mono @max-[36rem]/file:hidden">

@@ -43,11 +43,6 @@ export function IntentBlamePanel({
     <section
       aria-label="Why is this here?"
       className="flex max-h-[45%] min-h-0 shrink-0 flex-col border-t border-border bg-background"
-      onKeyDown={(event) => {
-        if (event.key !== "Escape") return;
-        event.stopPropagation();
-        onClose();
-      }}
     >
       <header className="flex items-center gap-2 px-(--workspace-gutter-start) py-1.5 text-xs">
         <span className="font-medium text-foreground">Why is this here?</span>

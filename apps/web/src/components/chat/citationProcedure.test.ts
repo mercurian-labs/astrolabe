@@ -121,6 +121,17 @@ describe("citedThreadSnapshot", () => {
     expect(citedThreadSnapshot(unloaded)).toBeNull();
   });
 
+  it("keeps waiting while a cached thread synchronizes, before it knows its history", () => {
+    const cached = { projection: { visibleTurnItems: [] } } as unknown as NonNullable<
+      Parameters<typeof citedThreadSnapshot>[0]["thread"]
+    >;
+    expect(citedThreadSnapshot({ ...unloaded, thread: cached, status: "cached" })).toBeNull();
+    expect(citedThreadSnapshot({ ...unloaded, thread: cached, status: "live" })).toEqual({
+      message: null,
+      hasMoreHistory: false,
+    });
+  });
+
   it("fails the citation when the thread could not load at all", async () => {
     const snapshot = citedThreadSnapshot({ ...unloaded, error: "Thread not found." });
     expect(snapshot).not.toBeNull();
