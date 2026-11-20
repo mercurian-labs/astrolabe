@@ -159,7 +159,8 @@ export const attributeLines = Effect.fn("IntentBlame.attributeLines")(function* 
     if (tip === null) continue;
     const blamed = yield* run(
       "blame",
-      ["blame", "--incremental", "--contents", "-", tip, "--", input.path],
+      // -M keeps a turn's lines its own when they are moved within the file later.
+      ["blame", "--incremental", "-M", "--contents", "-", tip, "--", input.path],
       input.contents,
     );
     // The file is not in this checkout's history, which then says nothing of its lines.

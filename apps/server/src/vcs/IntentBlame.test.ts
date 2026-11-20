@@ -140,4 +140,44 @@ it.layer(layer)("IntentBlame.attributeLines", (it) => {
         ]);
       }),
   );
+
+  it.effect(
+    "keeps a turn's lines through a merge commit, a cherry-pick and a move, but not a reformat",
+    () =>
+      Effect.gen(function* () {
+        const { root, main, path } = yield* repository;
+        const base = "a\nb\nc\nd\n";
+        yield* main.commit(base, "start");
+        yield* main.git("worktree", "add", path.join(root, "feature"), "-b", "feature");
+        const feature = yield* checkout(path.join(root, "feature"));
+        const block = "function writtenByTheTurn() {\n  return 'a line long enough to move';\n}\n";
+        const featureTurn = yield* feature.turn(0, `${base}${block}const reformatted = 1;\n`);
+        yield* feature.commit(`${base}${block}const reformatted = 1;\n`, "feature");
+        yield* main.git("merge", "--no-ff", "feature", "-m", "merge feature");
+        yield* main.git("checkout", "-b", "release", "HEAD~1");
+        yield* main.git("cherry-pick", "feature");
+        // A person moves the turn's function to the top and reformats one of its lines.
+        const contents = `${block}${base}const reformatted   =   1;\n`;
+        yield* main.commit(contents, "person moves and reformats");
+
+        const sources = yield* attributeLines({
+          cwd: main.cwd,
+          path: "f.ts",
+          contents,
+          chains: [[featureTurn]],
+          rank: (key) => key,
+        });
+
+        assert.deepStrictEqual(describe(contents, sources), [
+          "function writtenByTheTurn() {: turn 0",
+          "  return 'a line long enough to move';: turn 0",
+          "}: turn 0",
+          "a: before",
+          "b: before",
+          "c: before",
+          "d: before",
+          "const reformatted   =   1;: outside",
+        ]);
+      }),
+  );
 });
