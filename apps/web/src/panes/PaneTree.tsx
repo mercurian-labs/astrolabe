@@ -192,8 +192,8 @@ function PaneNode({
 
 /**
  * The line between two panes, after Obsidian's: 1px, with a 3px handle that takes the accent
- * colour while hovered or dragged. Dragging captures the pointer and turns the drag into the
- * branch's new weights.
+ * colour while hovered, dragged or focused. Dragging captures the pointer and turns the drag into
+ * the branch's new weights; focused, the arrow keys along it move it by a twentieth.
  */
 function Divider({
   branchId,
@@ -215,26 +215,45 @@ function Divider({
     setActive(false);
   };
   const row = direction === "row";
+  const extentOf = (element: Element) => {
+    const branch = element.parentElement?.parentElement?.getBoundingClientRect();
+    return branch ? (row ? branch.width : branch.height) : 0;
+  };
+  const total = weights.reduce((sum, weight) => sum + weight, 0) || 1;
   return (
     <div className={row ? "relative w-px shrink-0 bg-border" : "relative h-px shrink-0 bg-border"}>
       <div
         role="separator"
+        tabIndex={0}
+        aria-label="Resize panes"
         aria-orientation={row ? "vertical" : "horizontal"}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(((weights[0] ?? 0) / total) * 100)}
         data-active={active || undefined}
         className={
           row
-            ? "absolute inset-y-0 -left-px z-10 w-[3px] cursor-col-resize touch-none transition-colors hover:bg-primary data-active:bg-primary"
-            : "absolute inset-x-0 -top-px z-10 h-[3px] cursor-row-resize touch-none transition-colors hover:bg-primary data-active:bg-primary"
+            ? "absolute inset-y-0 -left-px z-10 w-[3px] cursor-col-resize touch-none outline-none transition-colors hover:bg-primary focus-visible:bg-primary data-active:bg-primary"
+            : "absolute inset-x-0 -top-px z-10 h-[3px] cursor-row-resize touch-none outline-none transition-colors hover:bg-primary focus-visible:bg-primary data-active:bg-primary"
         }
+        onKeyDown={(event) => {
+          const back = row ? "ArrowLeft" : "ArrowUp";
+          const forward = row ? "ArrowRight" : "ArrowDown";
+          if (event.key !== back && event.key !== forward) return;
+          event.preventDefault();
+          const extent = extentOf(event.currentTarget);
+          const step = (event.key === forward ? 1 : -1) * extent * 0.05;
+          const next = resize(weights, step, extent);
+          controller.update((arrangement) => resizePanes(arrangement, branchId, next));
+        }}
         onPointerDown={(event) => {
           if (event.button !== 0) return;
-          const branch = event.currentTarget.parentElement?.parentElement?.getBoundingClientRect();
           event.preventDefault();
           event.currentTarget.setPointerCapture(event.pointerId);
           drag.current = {
             start: weights,
             origin: along(event),
-            extent: branch ? (row ? branch.width : branch.height) : 0,
+            extent: extentOf(event.currentTarget),
           };
           setActive(true);
         }}

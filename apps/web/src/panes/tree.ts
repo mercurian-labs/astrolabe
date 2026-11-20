@@ -459,3 +459,87 @@ export function resizeTiled(
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
+
+interface Rect {
+  readonly x: number;
+  readonly y: number;
+  readonly w: number;
+  readonly h: number;
+}
+
+/** Each pane's place in a unit square, by the weights alone. */
+function leafRects(node: SplitNode, rect: Rect = { x: 0, y: 0, w: 1, h: 1 }): Map<string, Rect> {
+  if (node.type === "leaf") return new Map([[node.id, rect]]);
+  const total = node.weights.reduce((sum, weight) => sum + weight, 0) || 1;
+  const rects = new Map<string, Rect>();
+  let at = 0;
+  node.children.forEach((child, index) => {
+    const share = (node.weights[index] ?? 0) / total;
+    const part =
+      node.direction === "row"
+        ? { x: rect.x + rect.w * at, y: rect.y, w: rect.w * share, h: rect.h }
+        : { x: rect.x, y: rect.y + rect.h * at, w: rect.w, h: rect.h * share };
+    for (const [id, inner] of leafRects(child, part)) rects.set(id, inner);
+    at += share;
+  });
+  return rects;
+}
+
+/**
+ * Astrolabe: the pane touching `id` on `side`, the one sharing the most of that edge; null at the
+ * edge of the panes.
+ */
+export function neighbourLeaf(root: SplitNode, id: string, side: Side): Leaf | null {
+  const rects = leafRects(root);
+  const from = rects.get(id);
+  if (!from) return null;
+  const near = (a: number, b: number) => Math.abs(a - b) < 1e-9;
+  const overlap = (a0: number, a1: number, b0: number, b1: number) =>
+    Math.max(0, Math.min(a1, b1) - Math.max(a0, b0));
+  let best: { id: string; shared: number } | null = null;
+  for (const [other, to] of rects) {
+    if (other === id) continue;
+    const touches =
+      side === "left"
+        ? near(to.x + to.w, from.x)
+        : side === "right"
+          ? near(from.x + from.w, to.x)
+          : side === "top"
+            ? near(to.y + to.h, from.y)
+            : near(from.y + from.h, to.y);
+    if (!touches) continue;
+    const shared =
+      side === "left" || side === "right"
+        ? overlap(from.y, from.y + from.h, to.y, to.y + to.h)
+        : overlap(from.x, from.x + from.w, to.x, to.x + to.w);
+    if (shared > 0 && (best === null || shared > best.shared)) best = { id: other, shared };
+  }
+  return best ? (findLeaf(root, best.id) ?? null) : null;
+}
+
+/** Astrolabe: the tabs of panes `a` and `b` trade places; the panes keep their sizes. */
+export function swapLeafTabs(root: SplitNode, a: string, b: string): SplitNode {
+  const first = findLeaf(root, a);
+  const second = findLeaf(root, b);
+  if (!first || !second || a === b) return root;
+  return mapLeaf(
+    mapLeaf(root, a, (leaf) => ({ ...leaf, tabs: second.tabs, active: second.active })),
+    b,
+    (leaf) => ({ ...leaf, tabs: first.tabs, active: first.active }),
+  );
+}
+
+/** Astrolabe: the branch directly holding `id`, and its place there; null for a lone pane. */
+export function parentOf(
+  node: SplitNode,
+  id: string,
+): { readonly branch: Branch; readonly index: number } | null {
+  if (node.type === "leaf") return null;
+  const index = node.children.findIndex((child) => child.type === "leaf" && child.id === id);
+  if (index !== -1) return { branch: node, index };
+  for (const child of node.children) {
+    const found = parentOf(child, id);
+    if (found) return found;
+  }
+  return null;
+}

@@ -1,7 +1,7 @@
-import { focusPane, focusedPane, isEmptyTab, splitTab } from "./arrangement";
+import { focusPane, focusedPane, isEmptyTab, resizePanes, splitTab } from "./arrangement";
 import { useMaximizedPaneStore } from "./maximize";
 import type { PaneArrangementStore, PaneTabs } from "./panesHost";
-import { leaves, type Leaf } from "./tree";
+import { leaves, neighbourLeaf, parentOf, swapLeafTabs, type Leaf, type Side } from "./tree";
 
 /**
  * What acts on a whole pane, shared by its strip's controls and the keyboard menu: splitting the
@@ -71,4 +71,58 @@ export function focusedPaneOf(controller: PaneArrangementStore) {
     leaf: focusedPane(snapshot.arrangement),
     alone: leaves(snapshot.arrangement.root).length === 1,
   };
+}
+
+/** Astrolabe: the pane beside the focused one that its tabs would trade places with. */
+export function paneToward(controller: PaneArrangementStore, leaf: Leaf, side: Side) {
+  const snapshot = controller.getSnapshot();
+  return snapshot ? neighbourLeaf(snapshot.arrangement.root, leaf.id, side) : null;
+}
+
+/** Trades the pane's tabs with its neighbour's on `side`; focus moves with them. */
+export function movePane(controller: PaneArrangementStore, leaf: Leaf, side: Side) {
+  const target = paneToward(controller, leaf, side);
+  if (!target) return;
+  controller.update((arrangement) =>
+    focusPane(
+      { ...arrangement, root: swapLeafTabs(arrangement.root, leaf.id, target.id) },
+      target.id,
+    ),
+  );
+}
+
+/** The shares a pane steps through, as T3 Code's column width presets do. */
+const SIZE_STEPS = [1 / 3, 1 / 2, 2 / 3];
+
+/** The pane's next share of the room it divides with its siblings: ⅓, ½, ⅔, then ⅓ again. */
+function nextShare(share: number) {
+  return SIZE_STEPS.find((step) => step > share + 0.01) ?? SIZE_STEPS[0]!;
+}
+
+/** Whether the pane divides room with another, so it has a size to change. */
+export function canResizePane(controller: PaneArrangementStore, leaf: Leaf) {
+  const snapshot = controller.getSnapshot();
+  return snapshot ? parentOf(snapshot.arrangement.root, leaf.id) !== null : false;
+}
+
+/** Weights giving child `index` its next share (`nextShare`), the rest keeping their proportions. */
+export function cycledWeights(weights: readonly number[], index: number): number[] {
+  const total = weights.reduce((sum, weight) => sum + weight, 0) || 1;
+  const own = weights[index] ?? 0;
+  const share = nextShare(own / total);
+  const others = total - own || 1;
+  return weights.map((weight, at) => (at === index ? share : ((1 - share) * weight) / others));
+}
+
+/** Steps the pane's share of the room it divides with its siblings. */
+export function cyclePaneSize(controller: PaneArrangementStore, leaf: Leaf) {
+  controller.update((arrangement) => {
+    const parent = parentOf(arrangement.root, leaf.id);
+    if (!parent) return arrangement;
+    return resizePanes(
+      arrangement,
+      parent.branch.id,
+      cycledWeights(parent.branch.weights, parent.index),
+    );
+  });
 }

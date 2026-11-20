@@ -62,10 +62,14 @@ import { focusedChatOf, workspace } from "~/panes/workspace";
 import { parseChatTabKey, parseChatTerminalKey } from "~/sectionTabs/sectionTabs";
 import {
   canClosePane,
+  canResizePane,
   canSplitPane,
   closePane,
+  cyclePaneSize,
   focusedPaneOf,
   isPaneMaximized,
+  movePane,
+  paneToward,
   splitPane,
   toggleMaximizedPane,
 } from "~/panes/paneCommands";
@@ -375,6 +379,20 @@ function focusEntry(label: string, direction: FocusDirection, origin: KeyOrigin 
   return listKey ? entry(label, null) : repeatableEntry(label, run);
 }
 
+const PANE_MOVES = {
+  "pane.moveLeft": "left",
+  "pane.moveDown": "bottom",
+  "pane.moveUp": "top",
+  "pane.moveRight": "right",
+} as const;
+
+const MOVE_LABELS = {
+  left: "Move pane left",
+  bottom: "Move pane down",
+  top: "Move pane up",
+  right: "Move pane right",
+} as const;
+
 /** One of Astrolabe's commands, acting on what is on screen now. */
 function astrolabeCommand(
   command: AstrolabeKeybindingCommand,
@@ -448,6 +466,25 @@ function astrolabeCommand(
         ),
       );
     }
+    case "pane.moveLeft":
+    case "pane.moveDown":
+    case "pane.moveUp":
+    case "pane.moveRight": {
+      const side = PANE_MOVES[command];
+      const can = !!panes && !!focused && paneToward(panes.controller, focused.leaf, side) !== null;
+      return repeatableEntry(
+        MOVE_LABELS[side],
+        onPane(can, (handle, leaf) => movePane(handle.controller, leaf, side)),
+      );
+    }
+    case "pane.cycleSize":
+      return repeatableEntry(
+        "Cycle pane size",
+        onPane(
+          !!panes && !!focused && canResizePane(panes.controller, focused.leaf),
+          (handle, leaf) => cyclePaneSize(handle.controller, leaf),
+        ),
+      );
     case "pane.toggleFullScreen": {
       const panel = panes?.panel ?? null;
       const state = focused

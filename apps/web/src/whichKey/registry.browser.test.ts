@@ -200,7 +200,7 @@ describe("the keyboard menu built from the menu rules", () => {
       ["r", "Projects"],
       [",", "settings"],
     ]);
-    // Only the focus moves, the scrolls, and undo and redo repeat, there and nowhere in the groups.
+    // Only the focus moves, the scrolls, undo and redo, and moving or sizing a pane repeat.
     const repeatable = (group: WhichKeyGroup): string[] =>
       group.items.flatMap((item) =>
         item.group ? repeatable(item.group) : item.repeatable ? [item.keys[0]] : [],
@@ -214,6 +214,11 @@ describe("the keyboard menu built from the menu rules", () => {
       "u",
       "z",
       "Z",
+      "h",
+      "j",
+      "k",
+      "l",
+      "=",
     ]);
     // Each focus move's row reads its arrow, then its letter.
     expect(

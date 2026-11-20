@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
   MIN_SPLIT_PX,
+  findLeaf,
   insertBeside,
   minWidthPx,
   gatherSpan,
@@ -14,6 +15,8 @@ import {
   type Branch,
   type Leaf,
   type SplitNode,
+  neighbourLeaf,
+  swapLeafTabs,
 } from "./tree";
 
 const leaf = (id: string): Leaf => ({ type: "leaf", id, tabs: [id], active: id });
@@ -302,5 +305,39 @@ describe("what a pane spanned", () => {
     expect(root.id).toBe("b");
     expect(root.children.map((child) => child.id)).toEqual(["top", "r", "t"]);
     expect(root.weights).toEqual([1, 0.5, 0.5]);
+  });
+});
+
+describe("moving a pane", () => {
+  // a | b over c, with d to the right of both.
+  const root = branch(
+    "r",
+    "row",
+    [
+      branch(
+        "left",
+        "column",
+        [branch("top", "row", [leaf("a"), leaf("b")], [1, 1]), leaf("c")],
+        [1, 1],
+      ),
+      leaf("d"),
+    ],
+    [2, 1],
+  );
+
+  it("finds the pane touching each side, the one sharing most of that edge", () => {
+    expect(neighbourLeaf(root, "a", "right")?.id).toBe("b");
+    expect(neighbourLeaf(root, "a", "bottom")?.id).toBe("c");
+    expect(neighbourLeaf(root, "c", "top")?.id).toBe("a");
+    expect(neighbourLeaf(root, "c", "right")?.id).toBe("d");
+    expect(neighbourLeaf(root, "d", "left")?.id).toBe("b");
+    expect(neighbourLeaf(root, "a", "left")).toBeNull();
+  });
+
+  it("trades two panes' tabs, each pane keeping its size", () => {
+    const swapped = swapLeafTabs(root, "a", "d");
+    expect(findLeaf(swapped, "a")?.tabs).toEqual(["d"]);
+    expect(findLeaf(swapped, "d")?.tabs).toEqual(["a"]);
+    expect((swapped as Branch).weights).toEqual((root as Branch).weights);
   });
 });
