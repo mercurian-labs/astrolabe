@@ -84,7 +84,7 @@ The instrument is drawn from first principles, the way real astrolabes were made
 
 ### The agents' marks
 
-The marks beside Codex, Claude Code, Cursor, Grok, OpenCode and Antigravity belong to OpenAI, Anthropic, Anysphere, xAI, the OpenCode project and Google. We show them only to name the tools Astrolabe works with, printed in the page's ink, and no license here covers them.
+The marks beside Codex, Claude Code, Cursor, Grok, OpenCode, Antigravity, Muse Code and Pi belong to OpenAI, Anthropic, Anysphere, xAI, the OpenCode project, Google, Meta and Earendil. We show them only to name the tools Astrolabe works with, printed in the page's ink, and no license here covers them.
 
 ### Fonts
 

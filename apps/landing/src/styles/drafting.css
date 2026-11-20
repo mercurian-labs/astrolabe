@@ -1037,24 +1037,20 @@ section {
   }
 }
 
-/* ───────────────────────────────────────── [02] Value: the manifesto, then the agents it works with */
+/* ───────────────────────────────────────── [02] Value: the manifesto beside the agents it works with */
 
 .value {
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
   border-top: 1px solid var(--rule);
 }
-.value__tag {
-  grid-column: span 4;
-  padding: var(--pad-lg) var(--pad) var(--pad);
-}
 .value__text {
-  grid-column: span 8;
+  grid-column: span 7;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 2.25rem;
-  padding: var(--pad-lg) var(--pad) var(--pad-lg);
+  padding: var(--pad-lg) var(--pad);
 }
 .manifesto {
   max-width: 21em;
@@ -1078,18 +1074,16 @@ section {
 }
 
 .works {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
-  border-top: 1px solid var(--rule);
-}
-.works__label {
-  grid-column: span 4;
+  grid-column: span 5;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  border-left: 1px solid var(--rule);
+}
+.works__label {
+  display: flex;
+  flex-direction: column;
   gap: 1rem;
-  padding: 1.25rem var(--pad);
+  padding: var(--pad-lg) var(--pad) var(--pad);
 }
 .works__note {
   font-size: 0.9375rem;
@@ -1107,10 +1101,12 @@ section {
 .works__note a:hover {
   text-decoration-color: currentColor;
 }
+/* Four to a row, the grid's rules between them; it sits on the band's foot. */
 .works__list {
-  grid-column: span 8;
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: auto;
+  border-top: 1px solid var(--rule);
 }
 .works__list li {
   display: grid;
@@ -1121,10 +1117,16 @@ section {
   padding: 0.75rem 0.5rem;
   overflow-wrap: anywhere;
   border-left: 1px solid var(--rule);
-  font: 500 0.8125rem var(--mono);
+  font: 500 0.75rem var(--mono);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   text-align: center;
+}
+.works__list li:nth-child(4n + 1) {
+  border-left: 0;
+}
+.works__list li:nth-child(n + 5) {
+  border-top: 1px solid var(--rule);
 }
 /* Each agent's mark, in the page's ink rather than its brand colours, so it relights with the page.
    Antigravity's mark is a raster, so it prints through a mask. */
@@ -1139,41 +1141,49 @@ section {
   mask: var(--mark) center / contain no-repeat;
 }
 
+/* Narrower, the agents go under the manifesto in one row of eight, then two rows of four. */
 @media (max-width: 1100px) {
-  .works__label,
-  .works__list {
+  .value__text,
+  .works {
     grid-column: 1 / -1;
   }
-  .works__list {
+  .works {
+    border-left: 0;
     border-top: 1px solid var(--rule);
+  }
+  .works__label {
+    padding-top: 1.25rem;
+    padding-bottom: 1.25rem;
+  }
+  .works__list {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+  }
+  .works__list li:nth-child(n) {
+    border-top: 0;
+    border-left: 1px solid var(--rule);
   }
   .works__list li:first-child {
     border-left: 0;
   }
 }
-@media (max-width: 900px) {
-  .value__tag,
-  .value__text {
-    grid-column: 1 / -1;
-  }
-  .value__tag {
-    padding-bottom: 0;
-  }
+@media (max-width: 760px) {
   .value__text {
     padding-top: 1.5rem;
   }
   .works__list {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
-  .works__list li:nth-child(n + 4) {
+  .works__list li:nth-child(4n + 1) {
+    border-left: 0;
+  }
+  .works__list li:nth-child(n + 5) {
     border-top: 1px solid var(--rule);
   }
+  /* Four to a phone's width: the longest name (Antigravity) keeps to one line. */
   .works__list li {
-    min-height: 5.5rem;
-    font-size: 0.75rem;
-  }
-  .works__list li:nth-child(3n + 1) {
-    border-left: 0;
+    padding-inline: 0.25rem;
+    font-size: 0.6875rem;
+    letter-spacing: 0.02em;
   }
 }
 
