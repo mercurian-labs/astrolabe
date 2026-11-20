@@ -155,10 +155,7 @@ const withIndex = <A, E>(
               } as unknown as OrchestrationProjectShell,
             ]),
         }),
-        Layer.mock(WikiService.WikiService)({
-          list: Effect.succeed({ wikis: [] }),
-          subscribe: Stream.never,
-        }),
+        Layer.mock(WikiService.WikiService)({ useCodeFacts: () => Effect.void }),
         Layer.mock(ServerSettingsService.ServerSettingsService)({
           getSettings: Ref.get(settings),
           subscribeChanges: Effect.succeed(Stream.fromPubSub(settingsChanges)),
@@ -1158,6 +1155,9 @@ it.effect("reports a turned-off repository as off and builds it when turned back
           .outline({ projectId: PROJECT, cwd: harness.root, path: "src" })
           .pipe(Effect.flip);
         assert.strictEqual(refused.reason, "off");
+        const head = yield* git(harness.root, ["rev-parse", "HEAD"]);
+        const unread = yield* harness.index.baseFacts({ root: harness.root, commit: head });
+        assert.strictEqual(unread.state, "off");
         assert.strictEqual(harness.jobs.length, 0);
 
         yield* harness.setSettings({
@@ -1170,6 +1170,82 @@ it.effect("reports a turned-off repository as off and builds it when turned back
         assert.strictEqual(ready?.totalFiles, 2);
       }),
   ),
+);
+
+it.effect(
+  "gives a base each code file's facts and typed links, at any commit of the repository",
+  () =>
+    withIndex(
+      {
+        files: {
+          "packages/lib/package.json": '{ "name": "@x/lib", "exports": { ".": "./src/index.ts" } }',
+          "packages/lib/src/index.ts":
+            "export class Base {}\nexport interface Shape {}\nexport function make() {\n  return 1;\n}\n",
+          "apps/web/src/a.ts": [
+            'import { Base, make, type Shape } from "@x/lib";',
+            'import { side } from "./side.ts";',
+            "export class Widget extends Base implements Shape {",
+            "  run() {",
+            "    return make() + side;",
+            "  }",
+            "}",
+            "",
+          ].join("\n"),
+          "apps/web/src/side.ts": "export const side = 1;\n",
+          "apps/web/src/a.test.ts": 'import { Widget } from "./a.ts";\nnew Widget().run();\n',
+        },
+      },
+      (harness) =>
+        Effect.gen(function* () {
+          yield* reach(harness.index, "ready");
+          const head = yield* git(harness.root, ["rev-parse", "HEAD"]);
+          const facts = yield* harness.index.baseFacts({ root: harness.root, commit: head });
+          assert.strictEqual(facts.state, "ready");
+          const files = facts.state === "ready" ? facts.files : new Map();
+          assert.deepStrictEqual(files.get("apps/web/src/a.ts"), {
+            properties: {
+              language: "typescript",
+              lines: 8,
+              isTest: false,
+              exports: ["Widget"],
+              definitions: ["class Widget", "method Widget.run"],
+              package: null,
+            },
+            links: [
+              {
+                target: "packages/lib/src/index.ts",
+                types: ["imports", "calls", "extends", "implements"],
+              },
+              { target: "apps/web/src/side.ts", types: ["imports"] },
+            ],
+          });
+          assert.strictEqual(files.get("packages/lib/src/index.ts")?.properties.package, "@x/lib");
+          // A constructor isn't a call; the method call goes through a value, not the import.
+          assert.deepStrictEqual(files.get("apps/web/src/a.test.ts")?.links, [
+            { target: "apps/web/src/a.ts", types: ["imports"] },
+          ]);
+          assert.isTrue(files.get("apps/web/src/a.test.ts")?.properties.isTest);
+          assert.isFalse(files.has("packages/lib/package.json"));
+
+          // A pull request's commit answers for its own code, parsing only what it changed.
+          yield* git(harness.root, ["switch", "--quiet", "-c", "feature"]);
+          yield* write(harness.root, {
+            "apps/web/src/side.ts": 'export { make as side } from "@x/lib";\n',
+          });
+          yield* git(harness.root, ["commit", "--quiet", "-am", "Side"]);
+          const feature = yield* git(harness.root, ["rev-parse", "HEAD"]);
+          yield* git(harness.root, ["switch", "--quiet", "main"]);
+          const jobs = harness.jobs.length;
+          const onFeature = yield* harness.index.baseFacts({ root: harness.root, commit: feature });
+          assert.deepStrictEqual(parsedPaths(harness.jobs[jobs]), ["apps/web/src/side.ts"]);
+          assert.deepStrictEqual(
+            onFeature.state === "ready" ? onFeature.files.get("apps/web/src/side.ts")?.links : null,
+            [{ target: "packages/lib/src/index.ts", types: ["imports"] }],
+          );
+          const again = yield* harness.index.baseFacts({ root: harness.root, commit: head });
+          assert.strictEqual(again.state === "ready" ? again.files : null, files);
+        }),
+    ),
 );
 
 it.effect("waits while background work is paused, answering a file's own imports meanwhile", () =>

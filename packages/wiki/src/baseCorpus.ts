@@ -9,6 +9,8 @@ import { key, links as findLinks, typedLinks } from "./links.ts";
 import { noteProperties, noteTags } from "./properties.ts";
 import { isHidden, linkFiles, resolveLink } from "./resolveLink.ts";
 
+export type { CodeFile } from "./baseValues.ts";
+
 export interface BaseFile {
   readonly file: string;
   /** The text of a note or canvas; other files need none. */

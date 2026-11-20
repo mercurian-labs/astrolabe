@@ -1,3 +1,4 @@
+import type { ReferenceKind } from "@mercurian/code-graph";
 import { blobSizes, readBlobs } from "@mercurian/code-graph/git";
 import { isIndexable, languageOf } from "@mercurian/code-graph/languages";
 import {
@@ -52,6 +53,7 @@ import { forkParked } from "../serverActivation.ts";
 import * as ServerSettingsService from "../serverSettings.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as WikiService from "../wiki/WikiService.ts";
+import type { CodeFile } from "@mercurian/wiki";
 import {
   applyTreeDiff,
   filterListing,
@@ -119,6 +121,11 @@ export class CodeIndex extends Context.Service<
     readonly checkNodes: (
       input: CodeCheckout & { readonly ids: ReadonlyArray<string> },
     ) => Effect.Effect<{ readonly unknown: ReadonlyArray<string> }, CodeIndexError>;
+    /**
+     * What a base reads of each code file at `commit` of the repository checked out at `root`: a
+     * wiki's. The project checking out the same repository decides whether it is indexed.
+     */
+    readonly baseFacts: WikiService.CodeFactsSource;
   }
 >()("t3/codeIndex/CodeIndex") {}
 
@@ -149,6 +156,9 @@ export const layerPlaceholder = Layer.succeed(
     changes: notBuilt,
     map: notBuilt,
     checkNodes: notBuilt,
+    baseFacts: Effect.fn("CodeIndex.baseFacts")(function* () {
+      return { state: "off" } as const;
+    }),
   }),
 );
 
@@ -262,6 +272,10 @@ const FACTS_CACHED = 1000;
 const IMPORTS_CACHED = 5000;
 const HEAD_CHECK_INTERVAL = "1 minute";
 const IN_CHUNK = 500;
+/** A base's facts per file version: every version of a few repositories. */
+const BASE_FILES_CACHED = 50_000;
+/** Checkouts whose resolved facts a base keeps: main, a pull request, a thread's. */
+const BASE_TREES_CACHED = 4;
 /** Workers a question may start at once to index what its checkout changed. */
 const FOREGROUND_WORKERS = Math.min(4, Math.max(1, navigator.hardwareConcurrency - 1));
 
@@ -332,6 +346,59 @@ const LANGUAGE_NAMES: Readonly<Record<string, string>> = {
   go: "Go",
   rust: "Rust",
 };
+
+/** The types a link between two code files can carry, in the order a base lists them. */
+const LINK_TYPES = ["imports", "calls", "extends", "implements"] as const;
+/** References that type the link of the import binding their name. */
+const BOUND_TYPES: Partial<Record<ReferenceKind, (typeof LINK_TYPES)[number]>> = {
+  calls: "calls",
+  inherits: "extends",
+  implements: "implements",
+};
+
+/** A file version's facts as a base reads them, before its checkout resolves its imports. */
+interface BaseFileVersion {
+  readonly properties: Readonly<Record<string, unknown>>;
+  readonly imports: ReadonlyArray<StoredImport>;
+  /** Each import's types beyond `imports`: those of the references to the names it binds. */
+  readonly bound: ReadonlyArray<ReadonlySet<string>>;
+}
+
+function baseFileVersion(file: FileView, lines: number): BaseFileVersion {
+  const { symbols, references } = file.facts;
+  const local = new Map<string, number>();
+  file.imports.forEach((binding, position) => {
+    if (binding.local !== null && !local.has(binding.local)) local.set(binding.local, position);
+  });
+  const bound = file.imports.map(() => new Set<string>());
+  for (const reference of references) {
+    const type = BOUND_TYPES[reference.kind];
+    if (type === undefined) continue;
+    const head = reference.qualifier?.split(/\.|::/)[0];
+    const at =
+      reference.qualifier === null
+        ? local.get(reference.name)
+        : (local.get(reference.qualifier) ?? (head === undefined ? undefined : local.get(head)));
+    if (at !== undefined) bound[at]?.add(type);
+  }
+  return {
+    properties: {
+      language: (LANGUAGE_NAMES[file.language] ?? file.language).toLowerCase(),
+      lines,
+      isTest: Queries.isTestPath(file.path),
+      exports: [
+        ...new Set(
+          symbols
+            .filter((symbol) => symbol.exported && symbol.parent === null)
+            .map((symbol) => symbol.name),
+        ),
+      ],
+      definitions: symbols.map((symbol) => `${symbol.kind} ${symbol.qualified}`),
+    },
+    imports: file.imports,
+    bound,
+  };
+}
 
 /** Display names of a checkout's languages, the most files first. */
 function languagesOf(files: ReadonlyMap<string, string>): ReadonlyArray<string> {
@@ -878,15 +945,14 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
         Effect.orElseSucceed(() => null),
       );
 
-  /** Every project but the wikis, with its index settings: what the index may hold. */
+  /**
+   * Every project, with its index settings: what the index may hold. A project whose folder is
+   * also a wiki is indexed too, which is how that wiki's bases read its code.
+   */
   const indexedProjects = Effect.fn("CodeIndex.indexedProjects")(function* () {
     const settings = yield* serverSettings.getSettings;
     const shells = yield* projects.listShells();
-    const registered = yield* wikis.list.pipe(Effect.orElseSucceed(() => ({ wikis: [] })));
-    const wikiRoots = new Set(registered.wikis.map((wiki) => wiki.root));
-    return shells
-      .filter((shell) => !wikiRoots.has(shell.workspaceRoot))
-      .map((shell) => ({ shell, wanted: settingsFor(settings, shell.id) }));
+    return shells.map((shell) => ({ shell, wanted: settingsFor(settings, shell.id) }));
   });
 
   /** Match the repositories to the projects and their settings; start the builds that changed. */
@@ -1006,11 +1072,6 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
           ),
           Effect.forkScoped,
         );
-      yield* wikis.subscribe.pipe(
-        Stream.filter((event) => event.kind === "registered" || event.kind === "removed"),
-        Stream.runForEach(() => reconcileQuietly),
-        Effect.forkScoped,
-      );
       yield* reconcileQuietly;
       yield* followPolicy.pipe(
         Effect.andThen(checkHeads),
@@ -1253,6 +1314,116 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
     const view = yield* viewOfRef(repo, root, ref);
     yield* topUp(repo, view, root);
     return yield* snapshotOf(repo, view, prefix);
+  });
+
+  // Bases.
+
+  const baseVersions = new Map<string, BaseFileVersion>();
+  const baseTrees = new Map<string, ReadonlyMap<string, CodeFile>>();
+  const commonDirs = new Map<string, string | null>();
+  const treesOf = new Map<string, string>();
+
+  /** The facts of `versions` as a base reads them, decoded once per (path, blob). */
+  const baseVersionsOf = Effect.fn("CodeIndex.baseVersionsOf")(function* (
+    versions: ReadonlyArray<Version>,
+  ) {
+    const key = (version: Version) => `${version.path}\u0000${version.blob}`;
+    const missing = versions.filter((version) => !baseVersions.has(key(version)));
+    const byId = new Map(missing.map((version) => [version.id, version]));
+    for (const ids of chunks([...byId.keys()], IN_CHUNK)) {
+      const rows = yield* read(
+        sql<{ readonly id: number; readonly facts: Uint8Array; readonly imports: Uint8Array }>`
+          SELECT id, facts, imports FROM versions
+          WHERE id IN ${sql.in(ids)} AND facts IS NOT NULL
+        `,
+      );
+      for (const row of rows) {
+        const version = byId.get(row.id);
+        const language = version === undefined ? null : languageOf(version.path);
+        if (version === undefined || language === null) continue;
+        const file: FileView = {
+          path: version.path,
+          language,
+          facts: decodeJson<StoredFacts>(row.facts),
+          imports: decodeJson<ReadonlyArray<StoredImport>>(row.imports),
+        };
+        baseVersions.set(key(version), baseFileVersion(file, version.lines));
+        if (baseVersions.size > BASE_FILES_CACHED) {
+          baseVersions.delete(baseVersions.keys().next().value as string);
+        }
+      }
+    }
+    const out = new Map<string, BaseFileVersion>();
+    for (const version of versions) {
+      const found = baseVersions.get(key(version));
+      if (found !== undefined) out.set(version.path, found);
+    }
+    return out;
+  });
+
+  /** The tree of a commit, which never changes; null when `root` holds no such commit. */
+  const treeOf = Effect.fn("CodeIndex.treeOf")(function* (root: string, commit: string) {
+    const known = treesOf.get(commit);
+    if (known !== undefined) return known;
+    const target = yield* revision(root, commit);
+    if (target === null) return null;
+    treesOf.set(commit, target.tree);
+    return target.tree;
+  });
+
+  const baseFacts: CodeIndex["Service"]["baseFacts"] = Effect.fn("CodeIndex.baseFacts")(function* ({
+    root,
+    commit,
+  }) {
+    if (!commonDirs.has(root)) commonDirs.set(root, (yield* locate(root))?.commonDir ?? null);
+    const commonDir = commonDirs.get(root) ?? null;
+    const candidates = [...repos.values()].filter(
+      (repo) => repo.commonDir === commonDir && repo.settings.enabled,
+    );
+    const repo = candidates.find((candidate) => candidate.ready);
+    if (repo === undefined) return { state: candidates.length > 0 ? "building" : "off" };
+    const tree = yield* treeOf(root, commit);
+    if (tree === null) return { state: "off" };
+    const cacheKey = `${repo.projectId}\u0000${tree}\u0000${repo.settings.skippedPaths.join("\n")}`;
+    const cached = baseTrees.get(cacheKey);
+    if (cached !== undefined) return { state: "ready", files: cached };
+    const view = yield* viewOfRef(repo, root, commit);
+    yield* topUp(repo, view, root);
+    const modules = yield* modulesOf(repo, view);
+    const versions: Array<Version> = [];
+    for (const [file, blob] of view.files) {
+      const version = repo.versions.get(file, blob);
+      if (version?.state === VersionState.parsed) versions.push(version);
+    }
+    const facts = yield* baseVersionsOf(versions);
+    const files = new Map<string, CodeFile>();
+    for (const [path, version] of facts) {
+      const language = languageOf(path);
+      if (language === null) continue;
+      const types = new Map<string, Set<string>>();
+      version.imports.forEach((binding, position) => {
+        for (const target of modules.importedFiles(language, path, binding)) {
+          if (target === path) continue;
+          const held = types.get(target) ?? new Set<string>(["imports"]);
+          for (const type of version.bound[position] ?? []) held.add(type);
+          types.set(target, held);
+        }
+      });
+      const owner =
+        language === "typescript" || language === "tsx" ? modules.packages.owning(path) : null;
+      files.set(path, {
+        properties: { ...version.properties, package: owner?.name ?? null },
+        links: [...types].map(([target, held]) => ({
+          target,
+          types: LINK_TYPES.filter((type) => held.has(type)),
+        })),
+      });
+    }
+    baseTrees.set(cacheKey, files);
+    if (baseTrees.size > BASE_TREES_CACHED) {
+      baseTrees.delete(baseTrees.keys().next().value as string);
+    }
+    return { state: "ready", files };
   });
 
   /** Files that differ from the default branch's merge-base, and uncommitted ones. */
@@ -1574,6 +1745,8 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
     }),
   );
 
+  yield* wikis.useCodeFacts(baseFacts);
+
   return CodeIndex.of({
     subscribe,
     status,
@@ -1588,6 +1761,7 @@ export const make = Effect.fn("CodeIndex.make")(function* (options: CodeIndexOpt
     changes: changesBetween,
     map,
     checkNodes,
+    baseFacts,
   });
 });
 
