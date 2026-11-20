@@ -5,12 +5,10 @@ import { ProjectReadFileError } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { remapFileCommentAnnotations } from "./fileCommentAnnotations";
 import {
   filePreviewReadErrorMessage,
   isMarkdownPreviewFile,
   resolveFilePreviewPath,
-  setMarkdownTaskChecked,
   shouldShowFileExplorer,
   workspaceAssetResource,
 } from "./filePreviewMode";
@@ -28,44 +26,6 @@ describe("file preview read errors", () => {
   });
 });
 
-describe("file comment annotations", () => {
-  it("keeps an annotation range attached when Pierre remaps its anchor line", () => {
-    expect(
-      remapFileCommentAnnotations([
-        {
-          lineNumber: 20,
-          metadata: {
-            entries: [
-              {
-                id: "comment-1",
-                kind: "comment",
-                startLine: 7,
-                endLine: 16,
-                text: "Keep this guarded.",
-              },
-            ],
-          },
-        },
-      ]),
-    ).toEqual([
-      {
-        lineNumber: 20,
-        metadata: {
-          entries: [
-            {
-              id: "comment-1",
-              kind: "comment",
-              startLine: 11,
-              endLine: 20,
-              text: "Keep this guarded.",
-            },
-          ],
-        },
-      },
-    ]);
-  });
-});
-
 describe("isMarkdownPreviewFile", () => {
   it("recognizes markdown and MDX files case-insensitively", () => {
     expect(isMarkdownPreviewFile("README.md")).toBe(true);
@@ -73,21 +33,6 @@ describe("isMarkdownPreviewFile", () => {
     expect(isMarkdownPreviewFile("docs/guide.MARKDOWN")).toBe(true);
     expect(isMarkdownPreviewFile("docs/guide.mdown")).toBe(true);
     expect(isMarkdownPreviewFile("docs/guide.mkd")).toBe(true);
-  });
-});
-
-describe("setMarkdownTaskChecked", () => {
-  const markdown = "- [ ] First\n- [x] Second\n";
-
-  it("checks and unchecks the task marker at the supplied offset", () => {
-    expect(setMarkdownTaskChecked(markdown, 2, true)).toBe("- [x] First\n- [x] Second\n");
-    expect(setMarkdownTaskChecked(markdown, 14, false)).toBe("- [ ] First\n- [ ] Second\n");
-    expect(setMarkdownTaskChecked("1. [X] Ordered\n", 3, false)).toBe("1. [ ] Ordered\n");
-  });
-
-  it("leaves the document unchanged for a stale or invalid marker offset", () => {
-    expect(setMarkdownTaskChecked(markdown, 0, true)).toBe(markdown);
-    expect(setMarkdownTaskChecked(markdown, 200, true)).toBe(markdown);
   });
 });
 
@@ -187,6 +132,24 @@ describe("document preview contents", () => {
     expect(html.replaceAll(/<[^>]*>/g, "")).toBe("Hello boldUnicode: αvisible");
     expect(html).toContain("<strong>");
     expect(html).not.toContain("https:");
+  });
+
+  it("treats a backslash before a line break as a paragraph break, as TextEdit writes them", () => {
+    const html = (rtf: string) => {
+      const result = openRtf(bytes(rtf));
+      if (result.type !== "document") throw new Error("Expected document");
+      return result.pages.map((page) => page.html);
+    };
+    const textEdit = String.raw`{\rtf1\ansi{\fonttbl\f0\fswiss Helvetica;}
+\pard\f0\fs24 \cf0 First\
+Second\
+\
+Third}`;
+    const expected = html(
+      String.raw`{\rtf1\ansi{\fonttbl\f0\fswiss Helvetica;}\pard\f0\fs24 \cf0 First\par Second\par \par Third}`,
+    );
+    expect(html(textEdit)).toEqual(expected);
+    expect(html(textEdit.replaceAll("\n", "\r\n"))).toEqual(expected);
   });
 
   it("preserves rich text page breaks and formatting without splitting hidden destinations", () => {

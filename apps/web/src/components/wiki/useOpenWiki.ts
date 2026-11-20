@@ -2,7 +2,8 @@ import type { EnvironmentId, WikiId } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { useContext } from "react";
 
-import { activateTab, openBeside } from "~/panes/arrangement";
+import { activateTab } from "~/panes/arrangement";
+import { openNear } from "~/panes/placement";
 import { PanesHostContext } from "~/panes/panesHost";
 import { leafWithTab } from "~/panes/tree";
 
@@ -37,7 +38,7 @@ export function useOpenWikiTab() {
     panes.controller.update((arrangement) =>
       leafWithTab(arrangement.root, key)
         ? activateTab(arrangement, key)
-        : openBeside(arrangement, key, arrangement.focused, "right"),
+        : openNear(arrangement, key, arrangement.focused),
     );
   };
 }

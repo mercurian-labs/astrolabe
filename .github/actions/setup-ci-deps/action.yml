@@ -13,6 +13,10 @@ inputs:
     description: Arguments for `vp install`, such as filters. Empty installs the whole workspace.
     required: false
     default: ""
+  save-pnpm-store:
+    description: Set to "false" when a concurrent job with the same install args saves the pnpm store
+    required: false
+    default: "true"
 runs:
   using: composite
   steps:
@@ -26,6 +30,10 @@ runs:
         echo "version=$(sed -nE 's/^  vite-plus: ([0-9][^ ]*)$/\1/p' pnpm-workspace.yaml)" >> "$GITHUB_OUTPUT"
         echo "node=$(jq -r '.engines.node' package.json)" >> "$GITHUB_OUTPUT"
         echo "pnpm=$(jq -r '.packageManager' package.json)" >> "$GITHUB_OUTPUT"
+        # A `~` cache path restores to the home of the runner that saved it, and
+        # homes differ (/home/runner on GitHub and Blacksmith, /home/user on
+        # boat), so every `~` cache key names the home.
+        echo "CI_HOME_KEY=$(printf '%s' "$HOME" | tr / -)" >> "$GITHUB_ENV"
 
     # Pinned because release-desktop.yml signs builds with this action in the job.
     - name: Cache Vite+
@@ -34,7 +42,7 @@ runs:
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
         path: ~/.vite-plus
-        key: vite-plus-home-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.vp.outputs.version }}-node${{ steps.vp.outputs.node }}-${{ steps.vp.outputs.pnpm }}
+        key: vite-plus-home-v2-${{ runner.os }}-${{ runner.arch }}${{ env.CI_HOME_KEY }}-${{ steps.vp.outputs.version }}-node${{ steps.vp.outputs.node }}-${{ steps.vp.outputs.pnpm }}
 
     # setup-vp always runs the installer, which fetches vp from npm even when
     # this exact version is installed. A cache hit already has everything, so
@@ -123,10 +131,14 @@ runs:
         key: ${{ steps.pnpm_verified.outputs.cache-primary-key }}
 
     # A filtered install that started from the current full store adds nothing
-    # worth a second copy of it.
+    # worth a second copy of it. A stacked PR, based on a branch other than the
+    # default, saves a ~1 GB store only its own reruns can read, so it only restores.
+    # Concurrent jobs with the same install args reserve one key, so the losers
+    # compress the store for nothing; all but one pass save-pnpm-store: false.
     - name: Save pnpm store
       if: >-
-        inputs.install == 'true' &&
+        inputs.install == 'true' && inputs.save-pnpm-store == 'true' &&
+        (github.event_name != 'pull_request' || github.base_ref == github.event.repository.default_branch) &&
         steps.pnpm_cache.outputs.cache-hit != 'true' &&
         (steps.pnpm_store.outputs.namespace == 'full' ||
           steps.pnpm_cache.outputs.cache-matched-key != format('pnpm-full-v1-{0}-{1}-{2}', runner.os, runner.arch, hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json')))

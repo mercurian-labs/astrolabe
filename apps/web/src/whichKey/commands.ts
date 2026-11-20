@@ -9,6 +9,7 @@ import {
 import { hasCodeEditing, runCodeEditing, softWrapOn } from "@mercurian/editor/code/editing";
 import { hasGitChanges, runHunkCommand, type HunkCommand } from "@mercurian/editor/git";
 import { hasInFileSearch, openInFileSearch } from "@mercurian/editor/search";
+import { editorHistory, hasEditorHistory } from "@mercurian/editor/history";
 import { hasOutline } from "@mercurian/editor/outline";
 import { excerptControls, isExcerpt } from "@mercurian/editor/multibuffer/excerpt";
 import {
@@ -58,17 +59,22 @@ import { openOutlinePicker } from "~/components/outline/OutlinePicker";
 import { projectSymbolsOpener } from "~/components/outline/ProjectSymbolPicker";
 import { isEmptyTab } from "~/panes/arrangement";
 import { focusedChatOf, workspace } from "~/panes/workspace";
-import { parseChatTabKey } from "~/sectionTabs/sectionTabs";
+import { parseChatTabKey, parseChatTerminalKey } from "~/sectionTabs/sectionTabs";
 import {
   canClosePane,
+  canResizePane,
   canSplitPane,
   closePane,
+  cyclePaneSize,
   focusedPaneOf,
   isPaneMaximized,
+  movePane,
+  paneToward,
   splitPane,
   toggleMaximizedPane,
 } from "~/panes/paneCommands";
 import { localGraphOpener } from "~/components/repositories/localGraph";
+import { linkedFileEditToggle } from "~/components/files/linkedFileEditToggle";
 import { problemsOpener } from "~/components/repositories/multibuffer/openMultibuffer";
 import { focusRegion, regionToward } from "~/keyboardNav/regions";
 import { isListRow } from "~/keyboardNav/placeLists";
@@ -243,6 +249,31 @@ const HUNK_ENTRIES: Record<
   "hunk.previous": { command: "previous", label: "Previous change" },
 };
 
+/**
+ * Undo or redo in the code file or note the key came from, through its own history; faint
+ * elsewhere, and with nothing that way.
+ */
+function historyEntry(step: "undo" | "redo", origin: KeyOrigin | null): AppCommand {
+  const view = editorFrom(origin, hasEditorHistory);
+  const history = view?.state.facet(editorHistory);
+  const can =
+    view && history && !view.state.readOnly
+      ? step === "undo"
+        ? history.canUndo(view.state)
+        : history.canRedo(view.state)
+      : false;
+  return repeatableEntry(
+    step === "undo" ? "Undo" : "Redo",
+    view && history && can
+      ? () =>
+          afterPalette(() => {
+            view.focus();
+            history[step](view);
+          })
+      : null,
+  );
+}
+
 /** A language-server command on the code file the key came from; faint where none serves it. */
 function lspEntry(origin: KeyOrigin | null, label: string, run: (view: EditorView) => boolean) {
   const view = editorFrom(origin, hasLanguageServer);
@@ -348,6 +379,20 @@ function focusEntry(label: string, direction: FocusDirection, origin: KeyOrigin 
   return listKey ? entry(label, null) : repeatableEntry(label, run);
 }
 
+const PANE_MOVES = {
+  "pane.moveLeft": "left",
+  "pane.moveDown": "bottom",
+  "pane.moveUp": "top",
+  "pane.moveRight": "right",
+} as const;
+
+const MOVE_LABELS = {
+  left: "Move pane left",
+  bottom: "Move pane down",
+  top: "Move pane up",
+  right: "Move pane right",
+} as const;
+
 /** One of Astrolabe's commands, acting on what is on screen now. */
 function astrolabeCommand(
   command: AstrolabeKeybindingCommand,
@@ -421,6 +466,25 @@ function astrolabeCommand(
         ),
       );
     }
+    case "pane.moveLeft":
+    case "pane.moveDown":
+    case "pane.moveUp":
+    case "pane.moveRight": {
+      const side = PANE_MOVES[command];
+      const can = !!panes && !!focused && paneToward(panes.controller, focused.leaf, side) !== null;
+      return repeatableEntry(
+        MOVE_LABELS[side],
+        onPane(can, (handle, leaf) => movePane(handle.controller, handle.layoutKey, leaf, side)),
+      );
+    }
+    case "pane.cycleSize":
+      return repeatableEntry(
+        "Cycle pane size",
+        onPane(
+          !!panes && !!focused && canResizePane(panes.controller, focused.leaf),
+          (handle, leaf) => cyclePaneSize(handle.controller, leaf),
+        ),
+      );
     case "pane.toggleFullScreen": {
       const panel = panes?.panel ?? null;
       const state = focused
@@ -559,6 +623,9 @@ function astrolabeCommand(
       return languageServerEntry(context, "Select Python interpreter", (file) =>
         maintaining(file, file.toolchain === "python", () => openInterpreterPicker(file)),
       );
+    case "edit.undo":
+    case "edit.redo":
+      return historyEntry(command === "edit.undo" ? "undo" : "redo", context.origin);
     case "file.save": {
       const view = editorFrom(context.origin, hasFileSave);
       const run = view?.state.facet(fileSave) ?? null;
@@ -605,6 +672,10 @@ function astrolabeCommand(
     }
     case "repository.localGraph":
       return entry("Open local graph", localGraphOpener(panes?.controller ?? null));
+    case "file.toggleEdit": {
+      const toggle = linkedFileEditToggle(focused?.leaf.active ?? null);
+      return entry(toggle?.label ?? "Edit file", toggle?.run ?? null);
+    }
     case "multibuffer.expand":
     case "multibuffer.openExcerpt":
     case "multibuffer.nextFile":
@@ -679,9 +750,16 @@ function upstreamCommand(command: KeybindingCommand, context: AppCommandContext)
   if (command === "rightPanel.toggle" && context.chatTabs === null) {
     return entry(UPSTREAM_LABELS[command] ?? commandLabel(command), null);
   }
-  // The terminal drawer is the focused chat tab's: with anything else in focus there is none.
+  // The terminal is the focused chat's, a tab linked to it in focus included, or stands behind
+  // the focused tab: with anything else in focus there is none.
   const focusedTab = context.chatTabs?.activeKey ?? null;
-  if (command === "terminal.toggle" && (focusedTab === null || !parseChatTabKey(focusedTab))) {
+  if (
+    command === "terminal.toggle" &&
+    (focusedTab === null ||
+      (parseChatTabKey(focusedTab) === null && parseChatTerminalKey(focusedTab) === null)) &&
+    focusedChatOf(workspace.linked()) === null &&
+    workspace.terminalBehindFocusedTab() === null
+  ) {
     return entry(UPSTREAM_LABELS[command] ?? commandLabel(command), null);
   }
   const label = UPSTREAM_LABELS[command] ?? commandLabel(command);

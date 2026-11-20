@@ -1,9 +1,8 @@
+import { useAtomValue } from "@effect/atom-react";
 import {
   AuthTerminalOperateScope,
-  type EnvironmentId,
   type ResolvedKeybindingsConfig,
   type ScopedThreadRef,
-  type ThreadId,
 } from "@t3tools/contracts";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { projectScriptCwd, projectScriptRuntimeEnv } from "@t3tools/shared/projectScripts";
@@ -13,13 +12,16 @@ import { useComposerDraftStore } from "../composerDraftStore";
 import { useStableCallback } from "../hooks/useStableCallback";
 import type { TerminalContextSelection } from "../lib/terminalContext";
 import { focusActiveDrawerTerminal, focusTerminal } from "../lib/terminalFocus";
-import { cn } from "~/lib/utils";
+import { shortcutLabelForCommand } from "../keybindings";
+import { chatBridgeOf, useChatBridgeStore } from "../panes/chatBridge";
 import {
   selectThreadRightPanelState,
   useRightPanelStore,
   type RightPanelSurface,
 } from "../rightPanelStore";
 import { useProject, useQuietThreadShell } from "../state/entities";
+import { chatTabKey } from "../sectionTabs/sectionTabs";
+import { primaryServerKeybindingsAtom } from "../state/server";
 import { useEnvironmentScope } from "../state/session";
 import { useKnownTerminalSessions } from "../state/terminalSessions";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
@@ -27,7 +29,7 @@ import { useThreadTerminalActions } from "./terminal/useThreadTerminalActions";
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
 import { resolveTerminalWorktreePath } from "./ChatView.logic";
 
-/** Where a drawer or panel opens new terminals when a script run overrides the thread's own. */
+/** Where a terminal tab or panel opens new terminals when a script run overrides the thread's own. */
 export type PersistentTerminalLaunchContext = {
   readonly cwd: string;
   readonly worktreePath: string | null;
@@ -73,33 +75,41 @@ interface TerminalLaunchLocationWithEnv {
   readonly runtimeEnv: Record<string, string>;
 }
 
-interface PersistentThreadTerminalDrawerProps {
-  threadRef: { environmentId: EnvironmentId; threadId: ThreadId };
-  threadId: ThreadId;
-  active: boolean;
-  composerHeight: number;
-  launchContext: PersistentTerminalLaunchContext | null;
-  splitShortcutLabel: string | undefined;
-  splitVerticalShortcutLabel: string | undefined;
-  newShortcutLabel: string | undefined;
-  closeShortcutLabel: string | undefined;
-  keybindings: ResolvedKeybindingsConfig;
-  onAddTerminalContext: (selection: TerminalContextSelection) => void;
-}
-
-export const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDrawer({
+/**
+ * Astrolabe: a thread's terminal tab in the shared panes. It renders on its own rather than through
+ * ChatView, so it stays alive set aside, behind other tabs, and through its chat's `Activity`.
+ * What only the chat can reach comes through `chatBridge`.
+ */
+export const PersistentThreadTerminalTab = memo(function PersistentThreadTerminalTab({
   threadRef,
-  threadId,
-  active,
-  composerHeight,
-  launchContext,
-  splitShortcutLabel,
-  splitVerticalShortcutLabel,
-  newShortcutLabel,
-  closeShortcutLabel,
-  keybindings,
-  onAddTerminalContext,
-}: PersistentThreadTerminalDrawerProps) {
+  visible,
+}: {
+  readonly threadRef: ScopedThreadRef;
+  readonly visible: boolean;
+}) {
+  const { threadId } = threadRef;
+  const chatKey = chatTabKey(threadRef);
+  const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  const launchContext = useChatBridgeStore(
+    (state) => state.byChatKey[chatKey]?.launchContext ?? null,
+  );
+  const shortcutOptions = { context: { terminalFocus: true, terminalOpen: true } };
+  const splitShortcutLabel = shortcutLabelForCommand(
+    keybindings,
+    "terminal.split",
+    shortcutOptions,
+  );
+  const splitVerticalShortcutLabel = shortcutLabelForCommand(
+    keybindings,
+    "terminal.splitVertical",
+    shortcutOptions,
+  );
+  const newShortcutLabel = shortcutLabelForCommand(keybindings, "terminal.new", shortcutOptions);
+  const closeShortcutLabel = shortcutLabelForCommand(
+    keybindings,
+    "terminal.close",
+    shortcutOptions,
+  );
   const canOperateTerminal = useEnvironmentScope(threadRef.environmentId, AuthTerminalOperateScope);
   const terminalActions = useThreadTerminalActions(threadRef);
   const serverThread = useQuietThreadShell(threadRef);
@@ -113,7 +123,6 @@ export const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerm
   const terminalUiState = useTerminalUiStateStore((state) =>
     selectThreadTerminalUiState(state.terminalUiStateByThreadKey, threadRef),
   );
-  const visible = active && terminalUiState.terminalOpen;
   const knownTerminalSessions = useKnownTerminalSessions({
     environmentId: threadRef.environmentId,
     threadId,
@@ -152,7 +161,6 @@ export const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerm
   const serverOrderedTerminalIds = drawerTerminalSessions.map(
     (session) => session.target.terminalId,
   );
-  const storeSetTerminalHeight = useTerminalUiStateStore((state) => state.setTerminalHeight);
   const storeSplitTerminal = useTerminalUiStateStore((state) => state.splitTerminal);
   const storeSplitTerminalVertical = useTerminalUiStateStore(
     (state) => state.splitTerminalVertical,
@@ -191,10 +199,6 @@ export const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerm
       })
     : {};
 
-  const setTerminalHeight = (height: number) => {
-    storeSetTerminalHeight(threadRef, height);
-  };
-
   const launchDrawerTerminal = (place: (terminalId: string) => void) => {
     if (!cwd) return;
     const launched = terminalActions.launchTerminal({
@@ -231,55 +235,40 @@ export const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerm
     if (!visible) {
       return;
     }
-    onAddTerminalContext(selection);
+    chatBridgeOf(chatKey)?.addTerminalContext(selection);
   };
 
-  if (!project || (!terminalUiState.terminalOpen && !active) || !cwd) {
+  if (!project || !cwd) {
     return null;
   }
 
   return (
-    <div
-      className={cn(
-        "grid shrink-0 overflow-clip",
-        active ? (visible ? "grid-rows-[1fr]" : "grid-rows-[0fr]") : "hidden",
-        active &&
-          "[[data-panel-animations=true]_&]:transition-[grid-template-rows] [[data-panel-animations=true]_&]:duration-(--panel-animation-duration) [[data-panel-animations=true]_&]:ease-out",
-        active && visible && "[[data-panel-animations=true]_&]:starting:grid-rows-[0fr]!",
-      )}
-    >
-      <div className="min-h-0 overflow-clip">
-        <ThreadTerminalDrawer
-          threadRef={threadRef}
-          threadId={threadId}
-          cwd={cwd}
-          worktreePath={effectiveWorktreePath}
-          runtimeEnv={runtimeEnv}
-          visible={visible}
-          height={terminalUiState.terminalHeight}
-          composerHeight={composerHeight}
-          // Known-session order is MRU and changes on focus; persisted store order keeps sidebar labels stable.
-          terminalIds={canOperateTerminal ? terminalUiState.terminalIds : serverOrderedTerminalIds}
-          activeTerminalId={terminalUiState.activeTerminalId}
-          terminalGroups={terminalUiState.terminalGroups}
-          activeTerminalGroupId={terminalUiState.activeTerminalGroupId}
-          onSplitTerminal={splitTerminal}
-          onSplitTerminalVertical={splitTerminalVertical}
-          onNewTerminal={createNewTerminal}
-          splitShortcutLabel={visible ? splitShortcutLabel : undefined}
-          splitVerticalShortcutLabel={visible ? splitVerticalShortcutLabel : undefined}
-          newShortcutLabel={visible ? newShortcutLabel : undefined}
-          closeShortcutLabel={visible ? closeShortcutLabel : undefined}
-          keybindings={keybindings}
-          onActiveTerminalChange={activateTerminal}
-          onCloseTerminal={closeTerminal}
-          onHeightChange={setTerminalHeight}
-          onAddTerminalContext={handleAddTerminalContext}
-          terminalLabelsById={terminalLabelsById}
-          terminalLaunchLocationsById={terminalLaunchLocationsById}
-        />
-      </div>
-    </div>
+    <ThreadTerminalDrawer
+      threadRef={threadRef}
+      threadId={threadId}
+      cwd={cwd}
+      worktreePath={effectiveWorktreePath}
+      runtimeEnv={runtimeEnv}
+      visible={visible}
+      // Known-session order is MRU and changes on focus; persisted store order keeps sidebar labels stable.
+      terminalIds={canOperateTerminal ? terminalUiState.terminalIds : serverOrderedTerminalIds}
+      activeTerminalId={terminalUiState.activeTerminalId}
+      terminalGroups={terminalUiState.terminalGroups}
+      activeTerminalGroupId={terminalUiState.activeTerminalGroupId}
+      onSplitTerminal={splitTerminal}
+      onSplitTerminalVertical={splitTerminalVertical}
+      onNewTerminal={createNewTerminal}
+      splitShortcutLabel={visible ? (splitShortcutLabel ?? undefined) : undefined}
+      splitVerticalShortcutLabel={visible ? (splitVerticalShortcutLabel ?? undefined) : undefined}
+      newShortcutLabel={visible ? (newShortcutLabel ?? undefined) : undefined}
+      closeShortcutLabel={visible ? (closeShortcutLabel ?? undefined) : undefined}
+      keybindings={keybindings}
+      onActiveTerminalChange={activateTerminal}
+      onCloseTerminal={closeTerminal}
+      onAddTerminalContext={handleAddTerminalContext}
+      terminalLabelsById={terminalLabelsById}
+      terminalLaunchLocationsById={terminalLaunchLocationsById}
+    />
   );
 });
 
@@ -386,7 +375,6 @@ export const PersistentThreadTerminalPanel = memo(function PersistentThreadTermi
       cwd={cwd}
       worktreePath={worktreePath}
       runtimeEnv={runtimeEnv}
-      height={0}
       terminalIds={surface.terminalIds}
       activeTerminalId={surface.activeTerminalId}
       terminalGroups={[
@@ -406,7 +394,6 @@ export const PersistentThreadTerminalPanel = memo(function PersistentThreadTermi
       closeShortcutLabel={closeShortcutLabel}
       onActiveTerminalChange={onActiveTerminalChange}
       onCloseTerminal={onCloseTerminal}
-      onHeightChange={() => undefined}
       onAddTerminalContext={onAddTerminalContext}
       terminalLabelsById={terminalLabelsById}
       terminalLaunchLocationsById={terminalLaunchLocationsById}

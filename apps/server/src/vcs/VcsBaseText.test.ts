@@ -60,6 +60,9 @@ const statusEvents = Effect.gen(function* () {
     refreshLocalStatus: notUsed,
     refreshStatus: notUsed,
     refreshPullRequestStatus: notUsed,
+    streamBranchStatus: () => Stream.never,
+    refreshBranchStatus: notUsed,
+    streamBranchChanges: Stream.never,
     streamStatus: () => Stream.fromQueue(events),
   });
   return { events, layer };

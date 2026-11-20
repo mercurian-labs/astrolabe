@@ -7,7 +7,7 @@
     "dev": "ADMIN_ALLOW_ANONYMOUS=1 node --watch src/main.ts",
     "start": "node src/main.ts",
     "test": "vp test run --config ../../vite.config.ts --dir .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "effect-tsgo tsrs --noEmit"
   },
   "dependencies": {
     "@mercurian/cloud": "workspace:*",
@@ -17,7 +17,6 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "@types/pg": "^8.23.1",
-    "typescript": "catalog:",
     "vite-plus": "catalog:"
   }
 }

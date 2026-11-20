@@ -29,7 +29,7 @@ curl -fsSL https://raw.githubusercontent.com/mercurian-labs/astrolabe/main/scrip
 
 Then run `astrolabe` to start the server and open the local web app. `astrolabe service install` keeps it running in the background, `astrolabe update` moves to a newer release, and `astrolabe --help` has the full reference.
 
-To try it once without installing, run `npx @mercurian/astrolabe@latest` instead.
+To try it once without installing, run `npx @mercurian/astrolabe@latest`. It offers to install the `astrolabe` command for you.
 
 ### Desktop app
 

@@ -44,7 +44,7 @@ import { ThreadListV2SectionDivider } from "../threads/thread-list-v2-items";
 import type { FileTreeNode } from "../files/fileTree";
 import { setWikiShowHidden, useWikiShowHidden } from "./wikiPreferences";
 import { useWorkspaceState } from "../../state/workspace";
-import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
+import { useWorkspaceTabs } from "../layout/workspace/WorkspaceTabsContext";
 import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
 import { useWikiOverviews } from "./useWikiOverviews";
 import { WikiListFilters } from "./WikiListFilters";
@@ -347,7 +347,6 @@ export function WikisScreen() {
         renderScrollComponent={Platform.OS === "ios" ? WikiScrollView : undefined}
         contentInsetAdjustmentBehavior="never"
         contentInset={Platform.OS === "ios" ? { top: insets.top } : undefined}
-        contentInsetStartAdjustment={Platform.OS === "ios" ? insets.top : 0}
         initialScrollOffset={
           initialOffset > 0 ? initialOffset - (Platform.OS === "ios" ? insets.top : 0) : undefined
         }

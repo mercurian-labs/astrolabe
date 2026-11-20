@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  activateTab,
   closeTab,
+  columnWithTabs,
   moveTabs,
   newTab,
   openBeside,
@@ -56,6 +58,22 @@ describe("opening tabs", () => {
     const split = splitTab(openTab(startingArrangement(), diff, "p0"), diff, "right");
     expect(panes(split)).toEqual([["empty/1"], [diff]]);
     expect(panes(openTab(split, browser, "p0"))).toEqual([[browser], [diff]]);
+  });
+});
+
+describe("where a pane adds a tab", () => {
+  const three = () => activateTab(openTab(openTab(startingArrangement(), "a"), "b"), "a");
+
+  it("is after the tab it shows, or at the end of its strip as asked", () => {
+    expect(leaves(openTab(three(), "c").root)[0]?.tabs).toEqual(["a", "c", "b"]);
+    expect(leaves(openTab(three(), "c", "p0", true, "end").root)[0]?.tabs).toEqual(["a", "b", "c"]);
+  });
+
+  it("is the same for a New tab", () => {
+    const after = newTab(three(), "p0", "after-current");
+    expect(leaves(after.root)[0]?.tabs.indexOf("b")).toBe(2);
+    expect(leaves(newTab(three(), "p0", "end").root)[0]?.tabs.at(0)).toBe("a");
+    expect(leaves(newTab(three(), "p0", "end").root)[0]?.tabs.indexOf("b")).toBe(1);
   });
 });
 
@@ -228,5 +246,22 @@ describe("placing tabs dropped from outside the panes", () => {
   it("opens them in a new pane on a pane's edge", () => {
     const next = placeTabs(sideBySide(), [notes], "p1", { side: "bottom", index: 0 });
     expect(panes(next)).toEqual([[diff], [files], [notes]]);
+  });
+});
+
+describe("a new column at the panes' edge", () => {
+  it("runs the whole height, takes an equal share beside the columns, and gets focus", () => {
+    // Diff over Files on the left, Browser on the right.
+    const two = openBeside(openTab(startingArrangement(), diff), browser, "p0", "right");
+    const start = openBeside(two, files, "p0", "bottom", { focus: false });
+    expect((start.root as Branch).direction).toBe("row");
+    const next = columnWithTabs(start, [files], "right", files);
+    const root = next.root as Branch;
+    expect(root.direction).toBe("row");
+    expect(root.children.at(-1)).toMatchObject({ type: "leaf", tabs: [files] });
+    const total = root.weights.reduce((sum, weight) => sum + weight, 0);
+    expect((root.weights.at(-1) ?? 0) / total).toBeCloseTo(1 / 3);
+    expect(leaves(next.root).find((leaf) => leaf.id === next.focused)?.tabs).toEqual([files]);
+    expect(panes(columnWithTabs(start, [browser], "left"))[0]).toEqual([browser]);
   });
 });

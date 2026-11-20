@@ -431,33 +431,6 @@
       }
     },
     {
-      "name": "@react-native-async-storage/async-storage",
-      "version": "3.1.1",
-      "sourceUrl": "https://github.com/react-native-async-storage/async-storage",
-      "generatedNotice": {
-        "licenseId": "MIT",
-        "copyrights": ["Copyright (c) 2025 Krzysztof Borowy"]
-      }
-    },
-    {
-      "name": "deprecated-react-native-prop-types",
-      "version": "2.3.0",
-      "sourceUrl": "https://github.com/facebookarchive/react-native-deprecated-modules",
-      "generatedNotice": {
-        "licenseId": "MIT",
-        "copyrights": ["Copyright (c) Meta Platforms, Inc. and affiliates."]
-      }
-    },
-    {
-      "name": "@react-native/normalize-color",
-      "version": "2.1.0",
-      "sourceUrl": "https://github.com/facebook/react-native",
-      "generatedNotice": {
-        "licenseId": "MIT",
-        "copyrights": ["Copyright (c) Meta Platforms, Inc. and affiliates."]
-      }
-    },
-    {
       "name": "@bufbuild/protobuf",
       "version": "1.10.0",
       "generatedNotices": [
@@ -964,6 +937,14 @@
     {
       "name": "@rollup/rollup-darwin-arm64",
       "version": "4.68.0",
+      "generatedNotice": {
+        "licenseId": "MIT",
+        "copyrights": ["Copyright (c) 2017 [these people]"]
+      }
+    },
+    {
+      "name": "@rollup/rollup-darwin-arm64",
+      "version": "4.68.3",
       "generatedNotice": {
         "licenseId": "MIT",
         "copyrights": ["Copyright (c) 2017 [these people]"]

@@ -31,6 +31,7 @@ import * as Schema from "effect/Schema";
 import * as ServerConfig from "../config.ts";
 import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
 import * as GitWorkflowService from "../git/GitWorkflowService.ts";
+import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ThreadWikiCheckouts from "../wiki/ThreadWikiCheckouts.ts";
 import * as WikiService from "../wiki/WikiService.ts";
@@ -52,6 +53,12 @@ import {
 } from "@t3tools/provider-core/server/handoffBudget";
 import { deliverContextHandoffs, withInlineContext } from "./ContextHandoffDelivery.ts";
 import { editedCanvasNote } from "./EditedCanvasNote.ts";
+import {
+  editedFilesNote,
+  editedFilesSince,
+  latestTurnCheckpoint,
+  readEditedFileChanges,
+} from "./EditedFilesNote.ts";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProjectionStore from "./ProjectionStore.ts";
@@ -171,6 +178,9 @@ export const layer: Layer.Layer<
     // Astrolabe: optional, so a runtime without wikis starts turns unchanged.
     const wikis = yield* Effect.serviceOption(WikiService.WikiService);
     const wikiCheckouts = yield* Effect.serviceOption(ThreadWikiCheckouts.ThreadWikiCheckouts);
+    // Astrolabe: reads the checkpoint the user's file edits are diffed from; without it, the
+    // agent is asked to read those files instead.
+    const git = yield* Effect.serviceOption(GitVcsDriver.GitVcsDriver);
     const hostPlatform = yield* HostProcess.Platform;
 
     const resolveRecreateBase = Effect.fn("ProviderTurnStartService.resolveRecreateBase")(
@@ -247,13 +257,16 @@ export const layer: Layer.Layer<
         typeof RunExecutionService.selectInheritedBackgroundTurnItems
       >;
     }) => {
+      const isCurrentAttemptIn = (statuses: ReadonlyArray<OrchestrationV2Run["status"]>) =>
+        projectionStore
+          .getRun(input.threadId, input.runId)
+          .pipe(
+            Effect.map(
+              (run) => run?.activeAttemptId === input.attemptId && statuses.includes(run.status),
+            ),
+          );
       const isCurrentAttemptInStatus = (expectedStatus: OrchestrationV2Run["status"]) =>
-        projectionStore.getRuntimeRecoveryProjection(input.threadId).pipe(
-          Effect.map((current) => {
-            const run = current.runs.find((candidate) => candidate.id === input.runId);
-            return run?.activeAttemptId === input.attemptId && run.status === expectedStatus;
-          }),
-        );
+        isCurrentAttemptIn([expectedStatus]);
       return {
         isCurrentAttemptInStatus,
         loadInheritedBackgroundTurnItems: () =>
@@ -270,16 +283,7 @@ export const layer: Layer.Layer<
             Effect.catchCause(() => Effect.succeed(input.inheritedBackgroundTurnItems)),
           ),
         shouldStartProviderTurn: () => isCurrentAttemptInStatus("running"),
-        shouldFinalizeRun: () =>
-          projectionStore.getRuntimeRecoveryProjection(input.threadId).pipe(
-            Effect.map((current) => {
-              const run = current.runs.find((candidate) => candidate.id === input.runId);
-              return (
-                run?.activeAttemptId === input.attemptId &&
-                (run.status === "starting" || run.status === "running")
-              );
-            }),
-          ),
+        shouldFinalizeRun: () => isCurrentAttemptIn(["starting", "running"]),
         hasUnpairedRunInterruptRequest: () =>
           projectionStore
             .hasUnpairedRunInterruptRequest(
@@ -305,8 +309,7 @@ export const layer: Layer.Layer<
                 const request = turnItems.find((item) => item.type === "run_interrupt_request");
                 return request?.type === "run_interrupt_request" ? request.message : undefined;
               }),
-              // @effect-diagnostics-next-line effectSucceedWithVoid:off - This optional result requires undefined, not the wider void type.
-              Effect.catchCause(() => Effect.succeed(undefined)),
+              Effect.catchCause(() => Effect.undefined),
             ),
       };
     };
@@ -710,15 +713,9 @@ export const layer: Layer.Layer<
       });
       const { isCurrentAttemptInStatus } = runControls;
 
-      // A side chat shares its parent's worktree; the turn that gets its context asks before acting.
       const resolvedPolicy = yield* runtimePolicy
         .resolve({
-          thread:
-            projection.thread.lineage.sideChat === true &&
-            (sideChatHandoff !== undefined ||
-              !projection.runs.some((previous) => previous.ordinal < run.ordinal))
-              ? { ...projection.thread, runtimeMode: "approval-required" }
-              : projection.thread,
+          thread: projection.thread,
           modelSelection: run.modelSelection,
         })
         .pipe(Effect.result);
@@ -871,8 +868,12 @@ export const layer: Layer.Layer<
         text: message.text,
         records: message.context?.records ?? [],
       });
-      // Codex and Claude parse /goal from the prompt, so it goes verbatim and history waits a turn.
-      const goalDriver = session.driver === "codex" || session.driver === "claudeAgent";
+      // Native goal commands go verbatim; handoff history waits a turn.
+      const goalDriver =
+        session.driver === "codex" ||
+        session.driver === "claudeAgent" ||
+        (session.driver === "opencode" &&
+          session.providerSession.capabilities.turns.supportsNativeGoals === true);
       const goalCommand = goalDriver && parseGoalCommand(message) !== null;
       // The provider turn marks cancellation work delivered; restart continuations use their own text or resume natively.
       const noteContinuation = isRestartNoteContinuation(
@@ -975,10 +976,52 @@ export const layer: Layer.Layer<
                   ),
                 ),
               );
+      // Astrolabe: files the user saved from the thread's linked file tabs since its last prompt.
+      const editedFilePaths =
+        lastPrompt === undefined || isVerbatimPrompt(userText)
+          ? []
+          : editedFilesSince(
+              projection.thread.editedFiles ?? [],
+              lastPrompt.startedAt ?? lastPrompt.requestedAt,
+              message.context?.omitEditedFiles,
+            );
+      const turnCwd = resolvedRuntimePolicy.cwd;
+      const editedFiles =
+        editedFilePaths.length === 0 || turnCwd === null
+          ? null
+          : yield* projectionStore
+              .getThreadRecords(input.threadId, ["checkpoints", "checkpointScopes"])
+              .pipe(
+                Effect.flatMap(({ checkpoints, checkpointScopes }) =>
+                  readEditedFileChanges(
+                    {
+                      cwd: turnCwd,
+                      paths: editedFilePaths,
+                      checkpoint: latestTurnCheckpoint(
+                        checkpoints,
+                        checkpointScopes,
+                        turnCwd,
+                        run.ordinal,
+                      ),
+                    },
+                    Option.getOrNull(git),
+                  ),
+                ),
+                Effect.map(editedFilesNote),
+                Effect.provideService(FileSystem.FileSystem, fileSystem),
+                Effect.provideService(Path.Path, path),
+                Effect.catch((cause) =>
+                  Effect.logWarning("Could not read the files the user edited.", { cause }).pipe(
+                    Effect.as(null),
+                  ),
+                ),
+              );
       const providerTextFor = (nativeThreadHasTurns: boolean) =>
         (nativeThreadHasTurns ? newlyLinkedWikis : everyLinkedWiki).pipe(
           Effect.map((note) =>
-            [userText, note, editedBoards].filter((part) => part !== null).join("\n\n"),
+            [userText, note, editedBoards, editedFiles]
+              .filter((part) => part !== null)
+              .join("\n\n"),
           ),
         );
       const handoffContextForThread = (loadedProviderThread: OrchestrationV2ProviderThread) => {

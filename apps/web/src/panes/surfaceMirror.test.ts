@@ -199,3 +199,19 @@ describe("loading a thread", () => {
     expect(actives(chosen.arrangement)).toEqual([diff]);
   });
 });
+
+describe("a side pane set to open as a tab", () => {
+  it("opens the first surface among the chat's tabs instead of splitting", () => {
+    const chat = "chat:e:a";
+    const start = openTab(startingArrangement(), chat);
+    const keys = {
+      key: surfaceKey,
+      id: (key: string) => (key.startsWith("surface:") ? key.slice(8) : null),
+      splitFrom: null,
+      home: "p0",
+      position: "end" as const,
+    };
+    const { arrangement } = followRecord(start, closed, record("diff", ["diff"]), null, keys);
+    expect(panes(arrangement)).toEqual([[chat, surfaceKey("diff")]]);
+  });
+});

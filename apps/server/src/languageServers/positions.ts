@@ -25,6 +25,7 @@ const fromPosition = (doc: Text, position: Position): number => {
 };
 
 /** An edit in an answer that cannot be expressed in the requester's document. */
+// @effect-diagnostics-next-line extendsNativeError:off - a throw sentinel inside synchronous offset mapping.
 export class Unrepresentable extends Error {}
 
 export interface OffsetMapper {

@@ -21,6 +21,7 @@ export type SettingsPath =
   | "/settings/wikis"
   | "/settings/general"
   | "/settings/diagnostics"
+  | "/settings/voice"
   | "/settings/appearance"
   | "/settings/chat"
   | "/settings/diffs"
@@ -67,12 +68,14 @@ export interface SettingsSearchItem {
   readonly cloudOnly?: boolean;
   readonly environmentOnly?: boolean;
   readonly providerSettingsOnly?: boolean;
-  readonly macProviderSettingsOnly?: boolean;
   readonly localBackendManagementOnly?: boolean;
   readonly localEnvironmentOnly?: boolean;
+  readonly primaryEnvironmentOnly?: boolean;
   readonly wslAvailableOnly?: boolean;
   readonly managedTunnelOnly?: boolean;
   readonly peerLinksOnly?: boolean;
+  readonly fastWorktreeCheckoutOnly?: boolean;
+  readonly textGeneratorsOnly?: boolean;
   readonly secondary?: boolean;
   readonly requiresThreadAutoSettlement?: boolean;
 }
@@ -82,12 +85,15 @@ export interface SettingsSearchAvailability {
   readonly hasCloudPublicConfig: boolean;
   readonly hasEnvironment: boolean;
   readonly hasProviderSettingsEnvironment: boolean;
-  readonly hasMacProviderSettingsEnvironment: boolean;
   readonly canManageLocalBackend: boolean;
   readonly isWslSettingsRowVisible: boolean;
   readonly hasThreadAutoSettlement: boolean;
   readonly managedTunnelActive?: boolean;
   readonly hasPeerLinkHost?: boolean;
+  readonly hasFastWorktreeCheckoutEnvironment?: boolean;
+  /** An environment without a provider allow-list, which hides text generators. */
+  readonly hasTextGeneratorsEnvironment?: boolean;
+  readonly hasPrimaryEnvironment?: boolean;
 }
 
 export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
@@ -115,6 +121,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/maintenance": "Maintenance",
   "/settings/labs": "Labs",
   "/settings/about": "About",
+  "/settings/voice": "Voice",
   "/settings/archived": "Archive",
 };
 
@@ -131,6 +138,7 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
       "/settings/chat",
       "/settings/diffs",
       "/settings/keybindings",
+      "/settings/voice",
       "/settings/snap-shot",
     ],
   },
@@ -494,6 +502,30 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/appearance",
   },
   {
+    id: "terminal-placement",
+    title: "Terminal placement",
+    to: "/settings/general",
+    searchTerms: ["panes split below chat tab cmd+j layout"],
+  },
+  {
+    id: "side-pane-placement",
+    title: "Side pane placement",
+    to: "/settings/general",
+    searchTerms: ["panes linked tabs beside chat tab right panel layout"],
+  },
+  {
+    id: "side-pane-opens-on",
+    title: "Side pane opens on",
+    to: "/settings/general",
+    searchTerms: ["panes last used diff files browser pull request default layout"],
+  },
+  {
+    id: "new-tab-position",
+    title: "New tab position",
+    to: "/settings/general",
+    searchTerms: ["panes tabs after current end order layout"],
+  },
+  {
     id: "project-grouping",
     title: "Project grouping",
     to: "/settings/general",
@@ -532,6 +564,22 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["hide fold running monitoring threads inbox sidebar shelf"],
   },
   {
+    id: "tool-call-visibility",
+    title: "Tool calls in chat",
+    to: "/settings/chat",
+    searchTerms: [
+      "hide tool calls commands edits searches work log activity quiet chat zen final answers only",
+    ],
+  },
+  {
+    id: "screen-reader-announcements",
+    title: "Screen reader announcements",
+    to: "/settings/chat",
+    searchTerms: [
+      "accessibility a11y screen reader nvda jaws voiceover orca narrator speech announce read aloud messages activity steps",
+    ],
+  },
+  {
     id: "guest-links",
     title: "Guest links",
     to: "/settings/labs",
@@ -547,11 +595,124 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["beta link another machine vps peer agents work there delegate"],
   },
   {
+    id: "prompt-suggestions-beta",
+    title: "Suggest next prompt",
+    to: "/settings/labs",
+    scope: "environment",
+    searchTerms: ["beta tab autocomplete predict next message claude codex ghost text"],
+  },
+  {
     id: "simlock-hosts",
     title: "Simlock device hosts (alpha)",
     to: "/settings/labs",
     scope: "environment",
     searchTerms: ["beta alpha simlock callstack simulator emulator ios android pool lease gateway"],
+  },
+  {
+    id: "worktree-fast-checkout",
+    title: "Fast worktree checkout",
+    to: "/settings/labs",
+    scope: "environment",
+    fastWorktreeCheckoutOnly: true,
+    searchTerms: ["beta fast worktree checkout clone apfs copy-on-write cache macos speed"],
+  },
+  {
+    id: "voice-transcription-destination",
+    title: "Transcribe with",
+    to: "/settings/voice",
+    searchTerms: [
+      "send microphone audio dictation destination speech voice stt transcription environment machine consent privacy cloud OpenAI Grok OpenRouter",
+    ],
+  },
+  {
+    id: "voice-microphone",
+    title: "Microphone",
+    to: "/settings/voice",
+    searchTerms: ["mic input audio device"],
+  },
+  {
+    id: "dictation-shortcut-mode",
+    title: "Dictation shortcut",
+    to: "/settings/voice",
+    searchTerms: ["speech voice keyboard hotkey hold toggle auto"],
+  },
+  {
+    id: "speech-language",
+    title: "Transcription language",
+    to: "/settings/voice",
+    searchTerms: ["speech voice translate english auto detect"],
+  },
+  {
+    id: "speech-dictionary",
+    title: "Dictionary",
+    to: "/settings/voice",
+    searchTerms: ["speech voice transcription vocabulary names glossary alias"],
+  },
+  {
+    id: "speech-project-dictionary",
+    title: "Project dictionary",
+    to: "/settings/voice",
+    scope: "project-defaults",
+    searchTerms: [
+      "speech voice transcription vocabulary shared dictionary team environment glossary",
+    ],
+  },
+  {
+    id: "speech-post-processing-model",
+    title: "Cleanup model",
+    to: "/settings/voice",
+    scope: "environment",
+    searchTerms: ["speech voice transcript cleanup provider model post-processing"],
+  },
+  {
+    id: "speech-correction-word",
+    title: "Correction cue",
+    to: "/settings/voice",
+    searchTerms: ["speech voice cleanup sorry scratch that fix mistake"],
+  },
+  {
+    id: "speech-silence-filtering",
+    title: "Silence filtering",
+    to: "/settings/voice",
+    searchTerms: ["voice speech vad silero pauses noise"],
+  },
+  {
+    id: "remove-filler-words",
+    title: "Remove filler words",
+    to: "/settings/voice",
+    searchTerms: ["voice speech transcription hesitation um uh cleanup"],
+  },
+  {
+    id: "speech-post-processing",
+    title: "Clean up transcripts",
+    to: "/settings/voice",
+    searchTerms: ["speech transcription polish clean provider prompt post-processing"],
+  },
+  {
+    id: "speech-models",
+    title: "Transcription models",
+    to: "/settings/voice",
+    searchTerms: [
+      "speech voice stt download whisper parakeet canary moonshine accuracy speed benchmark languages",
+    ],
+  },
+  {
+    id: "speech-hardware",
+    title: "Transcription hardware and model unloading",
+    to: "/settings/voice",
+    searchTerms: ["speech voice stt advanced gpu cpu acceleration memory unload idle"],
+  },
+  {
+    id: "microphone-test",
+    title: "Test microphone",
+    to: "/settings/voice",
+    searchTerms: ["test mic audio playback loopback record input level"],
+  },
+  {
+    id: "transcription-test",
+    title: "Test model",
+    to: "/settings/voice",
+    searchTerms: ["test voice speech model transcription recognition"],
   },
   {
     id: "auto-settle-inactive-threads",
@@ -611,6 +772,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Time format",
     to: "/settings/general",
     searchTerms: ["timestamp clock locale system browser os 12 hour 24 hour"],
+  },
+  {
+    id: "pane-open-beside",
+    title: "Open beside",
+    to: "/settings/general",
+    searchTerms: ["panes split splits columns tabs layout room width side pane placement"],
   },
   {
     id: "response-streaming",
@@ -761,6 +928,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["base directory folder browser path home"],
   },
   {
+    id: "ghq-clone-layout",
+    title: "Clone into host folders",
+    to: "/settings/threads",
+    scope: "environment-defaults",
+    searchTerms: ["ghq clone destination host owner repository root layout"],
+  },
+  {
     id: "unpin-confirmation",
     title: "Unpin confirmation",
     to: "/settings/general",
@@ -827,6 +1001,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     storeListingOnly: true,
   },
   {
+    id: "welcome-page",
+    title: "Welcome page",
+    to: "/settings/about",
+    primaryEnvironmentOnly: true,
+    searchTerms: ["onboarding setup first run getting started agents import projects"],
+  },
+  {
     id: "privacy-policy",
     title: "Privacy policy",
     to: "/settings/about",
@@ -850,18 +1031,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "open-source-licenses",
     title: "Open source licenses",
     to: "/settings/about",
-  },
-  {
-    id: "legacy-plan-mode",
-    title: "Plan mode (legacy)",
-    to: "/settings/labs",
-    searchTerms: ["build plan composer old"],
-  },
-  {
-    id: "legacy-context-window-indicator",
-    title: "Context window indicator (legacy)",
-    to: "/settings/labs",
-    searchTerms: ["composer meter usage tokens circle old"],
   },
   {
     id: "keybindings",
@@ -927,12 +1096,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     providerSettingsOnly: true,
   },
   {
-    id: "cursor-keychain-usage",
-    title: "Cursor account usage",
+    id: "text-generators",
+    title: "Text generators",
     to: "/settings/providers",
-    searchTerms: ["cursor macOS keychain usage tokens cost limits permission"],
+    searchTerms: [
+      "model api api key openai openrouter anthropic ollama lm studio custom endpoint base url thread titles commit messages",
+    ],
     providerSettingsOnly: true,
-    macProviderSettingsOnly: true,
+    textGeneratorsOnly: true,
   },
   {
     id: "provider-health-check-interval",
@@ -1116,10 +1287,10 @@ export const SETTINGS_SEARCH_ITEMS = [
   ...sourceControlHostSearchItems(sourceControlClients.definitions),
   {
     id: "source-control-writing-style",
-    title: "Source control writing style",
+    title: "Commit and pull request writing",
     to: "/settings/source-control",
     searchTerms: [
-      "repository conventions conventional commits custom instructions change descriptions request titles",
+      "repository conventions conventional commits custom instructions commit messages change pr pull request merge request titles descriptions body style prompt write my own",
     ],
     environmentOnly: true,
   },
@@ -1127,7 +1298,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "follow-change-request-templates",
     title: "Follow pull request templates",
     to: "/settings/source-control",
-    searchTerms: ["repository pr pull request description structure"],
+    searchTerms: ["repository pr pull request merge request change request description structure"],
     environmentOnly: true,
   },
   {
@@ -1379,6 +1550,7 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
   "/settings/projects": "project",
   "/settings/wikis": null,
   "/settings/general": null,
+  "/settings/voice": null,
   "/settings/appearance": null,
   "/settings/chat": null,
   "/settings/diffs": null,
@@ -1417,7 +1589,6 @@ const SPLIT_SETTINGS_PATHS: ReadonlySet<string> = new Set([
 // Section anchors that moved but are not search results themselves.
 const MOVED_SECTION_ANCHORS: Readonly<Record<string, SettingsPath>> = {
   "authorized-clients": "/settings/access",
-  "legacy-features": "/settings/labs",
   "text-generation": "/settings/threads",
   about: "/settings/about",
 };
@@ -1518,13 +1689,16 @@ export function filterAvailableSettingsSearchItems(
       (!item.cloudOnly || availability.hasCloudPublicConfig) &&
       (!item.environmentOnly || availability.hasEnvironment) &&
       (!item.providerSettingsOnly || availability.hasProviderSettingsEnvironment) &&
-      (!item.macProviderSettingsOnly || availability.hasMacProviderSettingsEnvironment) &&
       (!item.localBackendManagementOnly || availability.canManageLocalBackend) &&
       (!item.localEnvironmentOnly || !availability.localEnvironmentDisabled) &&
+      (!item.primaryEnvironmentOnly || availability.hasPrimaryEnvironment === true) &&
       (!item.wslAvailableOnly || availability.isWslSettingsRowVisible) &&
       (!item.requiresThreadAutoSettlement || availability.hasThreadAutoSettlement) &&
       (!item.managedTunnelOnly || availability.managedTunnelActive === true) &&
-      (!item.peerLinksOnly || availability.hasPeerLinkHost === true),
+      (!item.peerLinksOnly || availability.hasPeerLinkHost === true) &&
+      (!item.fastWorktreeCheckoutOnly ||
+        availability.hasFastWorktreeCheckoutEnvironment === true) &&
+      (!item.textGeneratorsOnly || availability.hasTextGeneratorsEnvironment === true),
   );
 }
 

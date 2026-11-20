@@ -19,6 +19,15 @@ export function isTerminalFocused(): boolean {
   return getTerminalFocusOwner() !== null;
 }
 
+export function subscribeToTerminalFocusChanges(listener: () => void): () => void {
+  window.addEventListener("focusin", listener, true);
+  window.addEventListener("focusout", listener, true);
+  return () => {
+    window.removeEventListener("focusin", listener, true);
+    window.removeEventListener("focusout", listener, true);
+  };
+}
+
 interface TerminalFocusTarget {
   readonly threadRef: ScopedThreadRef;
   readonly terminalId: string;
@@ -36,6 +45,24 @@ let pendingFocus: { readonly threadKey: string; readonly terminalId: string } | 
 // layout phase, before ChatView's thread-enter effect runs.
 let enteredThreadKey: string | null = null;
 let navigationRequestThreadKey: string | null = null;
+
+// A terminal asked for that cannot take focus yet may need its tab shown first.
+const waitingListeners = new Set<() => void>();
+
+/** Calls `listener` when a terminal is asked for and has to wait to take focus. */
+export function subscribeTerminalFocusWaiting(listener: () => void): () => void {
+  waitingListeners.add(listener);
+  return () => {
+    waitingListeners.delete(listener);
+  };
+}
+
+/** The request of this thread waiting to take focus: the same object until a newer one. */
+export function waitingTerminalFocus(
+  threadRef: ScopedThreadRef,
+): { readonly terminalId: string } | null {
+  return pendingFocus?.threadKey === scopedThreadKey(threadRef) ? pendingFocus : null;
+}
 
 function isPending(threadKey: string, terminalId: string): boolean {
   return pendingFocus?.threadKey === threadKey && pendingFocus.terminalId === terminalId;
@@ -62,6 +89,7 @@ function focusMountedTarget(threadKey: string, terminalId: string): boolean {
 export function focusTerminal(threadRef: ScopedThreadRef, terminalId: string): void {
   const threadKey = scopedThreadKey(threadRef);
   pendingFocus = focusMountedTarget(threadKey, terminalId) ? null : { threadKey, terminalId };
+  if (pendingFocus) for (const listener of waitingListeners) listener();
 }
 
 /**
@@ -114,16 +142,19 @@ export function focusTerminalOnNavigation(threadRef: ScopedThreadRef, terminalId
 }
 
 /**
- * Entering a thread with its drawer open focuses the drawer terminal, unless a
- * navigating handler already asked for a terminal there. Returns the leave
- * cleanup for ChatView's effect.
+ * Entering a thread focuses its open terminal when `focusIt` says the terminal is where focus was
+ * left, unless a navigating handler already asked for a terminal there. Returns the leave cleanup
+ * for ChatView's effect.
  */
-export function focusTerminalOnThreadEnter(threadRef: ScopedThreadRef): () => void {
+export function focusTerminalOnThreadEnter(
+  threadRef: ScopedThreadRef,
+  focusIt: boolean,
+): () => void {
   const threadKey = scopedThreadKey(threadRef);
   const requestedByHandler = navigationRequestThreadKey === threadKey;
   navigationRequestThreadKey = null;
   enteredThreadKey = threadKey;
-  if (!requestedByHandler) {
+  if (!requestedByHandler && focusIt) {
     const { terminalOpen, activeTerminalId } = selectThreadTerminalUiState(
       useTerminalUiStateStore.getState().terminalUiStateByThreadKey,
       threadRef,

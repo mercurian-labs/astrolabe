@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { fileAssetResource, fileView, threadFileInCheckout } from "./fileView";
+import { fileAssetResource, fileView, linkedFileEditorPath } from "./fileView";
 
 describe("fileView", () => {
   it.each([
@@ -44,18 +44,19 @@ describe("fileAssetResource", () => {
   });
 });
 
-describe("threadFileInCheckout", () => {
+describe("linkedFileEditorPath", () => {
   it.each([
-    [false, "/repo/src/a.ts", true, "src/a.ts"],
+    [false, "/repo/src/a.ts", "src/a.ts"],
+    [false, "/repo/README.md", "README.md"],
     // A file outside the checkout, the checkout itself, and a sibling folder sharing its prefix.
-    [false, "/tmp/shot.png", true, null],
-    [false, "/repo", true, null],
-    [false, "/repo-other/a.ts", true, null],
-    // A folder in the checkout, an attachment (no path), and a draft thread.
-    [false, "/repo/src", false, null],
-    [false, null, true, null],
-    [true, "/repo/src/a.ts", true, null],
-  ] as const)("draft %s, %s (file %s)", (draft, absolutePath, isFile, expected) => {
-    expect(threadFileInCheckout(draft, "/repo", absolutePath, isFile)).toBe(expected);
+    [false, "/tmp/notes.txt", null],
+    [false, "/repo", null],
+    [false, "/repo-other/a.ts", null],
+    // A file our editor doesn't open, an attachment (no path), and a draft thread.
+    [false, "/repo/shot.png", null],
+    [false, null, null],
+    [true, "/repo/src/a.ts", null],
+  ] as const)("draft %s, %s", (draft, absolutePath, expected) => {
+    expect(linkedFileEditorPath(draft, "/repo", absolutePath)).toBe(expected);
   });
 });

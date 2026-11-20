@@ -44,7 +44,7 @@ preference is saved separately on each device.
 
 ## Motion
 
-The main sidebar, right panel, and terminal drawer open and close immediately by default. Move the
+The main sidebar and right panel open and close immediately by default. Move the
 **Panel animations** slider above 0 ms to add motion, up to 400 ms, unless reduced motion is enabled
 in your operating system. Moving between threads always snaps to the selected thread's panel state
 without replaying its transitions.
@@ -58,7 +58,9 @@ change. Export your theme as JSON to share it.
 ## Environment themes
 
 Environment themes and defaults come from the server serving your web app or the desktop app's
-main local environment. app.astrolabe.sh and additional connections do not use them.
+main local environment. With the desktop app's local environment off, they come from the
+[background service](./background-service.md) on the same machine while the app is connected to
+it. app.astrolabe.sh and other connections do not use them.
 
 Select a published theme in **Settings → Appearance** to follow its palette as the server updates
 it. **Duplicate** makes an independent copy you can edit. A saved custom theme with the same ID

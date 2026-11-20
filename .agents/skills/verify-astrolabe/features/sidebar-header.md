@@ -71,9 +71,10 @@ actions at its right end.
 - **Icon rail** (`nav[aria-label='Sections']`, at wide widths on web and desktop; absent in a
   narrow window, 700px for one): the sections on top
   (Agents, Wikis, Projects, Changes when the server supports pull requests),
-  the current one marked with a bar and `aria-current="page"`; the desktop app's update control
-  (`Check for updates`, a rail list row), then Usage and Settings, sit at the foot. Where cloud sign-in is
-  configured, Settings is the account menu instead of a link (see
+  the current one marked with a bar and `aria-current="page"`; the update control
+  (a rail list row named `Check for updates` on desktop, or the pending summary such as
+  `Update 1 provider`, which web shows too), then Usage and Settings, sit at the foot. Where cloud sign-in is
+  configured, Settings is the account menu instead of a plain button (see
   [account-menu.md](account-menu.md)). The sidebar toggle is not in the rail but above it (see
   Rail mark). The rail is the first stop of upstream's F6 cycle and the sidebar the next
   (keyboard-nav.md).
@@ -163,7 +164,7 @@ the first search result, take the `getBoundingClientRect` centre (nonzero height
 `document.elementFromPoint(cx, cy).closest(...)` returns that element. The borders are visual-only:
 read `getComputedStyle` widths on the header row (a bottom border) and `[data-app-rail-cap]` (none: the border stops above the rail). Colours: `[data-sidebar-chrome-header]` and `[data-app-rail]` share a `backgroundColor`; `[data-slot=sidebar-inner]` matches `main[data-slot=sidebar-inset]` (light and dark, Mercurian and another theme), and a hovered and the current row still show a fill. The edge: `getComputedStyle(document.querySelector('[data-app-sidebar]'), '::after').top` is `0px`. Check the pill is not clipped at the default sidebar width,
 and again after dragging `Resize Sidebar` narrower. Thread rows: a `sidebar-row-card`'s
-`getBoundingClientRect().height` is 78 with a branch line and 58 without (its `li` adds 4).
+`getBoundingClientRect().height` is 78 with a branch line and 56 without (its `li` adds 4).
 
 ## Gotchas
 

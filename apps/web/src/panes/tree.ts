@@ -50,6 +50,156 @@ export function leafWithTab(node: SplitNode, key: string) {
   return leaves(node).find((leaf) => leaf.tabs.includes(key));
 }
 
+/** A pane's place in the unit square its tree divides. */
+interface Box {
+  readonly left: number;
+  readonly right: number;
+  readonly top: number;
+  readonly bottom: number;
+}
+
+function boxes(node: SplitNode, box: Box, found: Map<string, Box>) {
+  if (node.type === "leaf") {
+    found.set(node.id, box);
+    return;
+  }
+  const total = sum(node.weights);
+  let start = 0;
+  node.children.forEach((child, index) => {
+    const end = start + (node.weights[index] ?? 1) / total;
+    const lerp = (from: number, to: number, at: number) => from + (to - from) * at;
+    boxes(
+      child,
+      node.direction === "row"
+        ? { ...box, left: lerp(box.left, box.right, start), right: lerp(box.left, box.right, end) }
+        : { ...box, top: lerp(box.top, box.bottom, start), bottom: lerp(box.top, box.bottom, end) },
+      found,
+    );
+    start = end;
+  });
+}
+
+const EDGE_TOLERANCE = 1e-9;
+
+/** The pane directly below `id`, sharing the most of its bottom edge; null at the bottom. */
+export function paneBelow(root: SplitNode, id: string): Leaf | null {
+  const found = new Map<string, Box>();
+  boxes(root, { left: 0, right: 1, top: 0, bottom: 1 }, found);
+  const box = found.get(id);
+  if (!box) return null;
+  let best: Leaf | null = null;
+  let widest = 0;
+  for (const leaf of leaves(root)) {
+    const other = found.get(leaf.id);
+    if (!other || Math.abs(other.top - box.bottom) > EDGE_TOLERANCE) continue;
+    const shared = Math.min(box.right, other.right) - Math.max(box.left, other.left);
+    if (shared > widest + EDGE_TOLERANCE) {
+      widest = shared;
+      best = leaf;
+    }
+  }
+  return best;
+}
+
+/** A pane's place beside what it spanned, enough to divide that the same way again. */
+export interface PanePlace {
+  /**
+   * The tabs beside it, the pane taking its room first. Tabs, not panes: a pane closed and opened
+   * again has a new id, and a tab keeps its name wherever it moves.
+   */
+  readonly tabs: readonly string[];
+  readonly side: Side;
+  /** The pane's share of the room it divides with them, out of 1. */
+  readonly weight: number;
+}
+
+/**
+ * Where `id` stands beside the neighbour that takes its room when it goes; null alone. `tabsOf`
+ * says which of a pane's tabs mark that place.
+ */
+export function placeBeside(
+  root: SplitNode,
+  id: string,
+  tabsOf: (leaf: Leaf) => readonly string[] = (leaf) => leaf.tabs,
+): PanePlace | null {
+  if (root.type === "leaf") return null;
+  const index = root.children.findIndex((child) => child.type === "leaf" && child.id === id);
+  if (index === -1) {
+    for (const child of root.children) {
+      const place = placeBeside(child, id, tabsOf);
+      if (place) return place;
+    }
+    return null;
+  }
+  const leaf = root.children[index];
+  if (leaf?.type !== "leaf") return null;
+  const { at, heir } = heirOf(root.children, index, leaf);
+  const neighbour = root.children[at];
+  if (!neighbour) return null;
+  const before = index < at;
+  const own = root.weights[index] ?? 1;
+  const panes = leaves(neighbour).toSorted((a, b) => Number(b.id === heir) - Number(a.id === heir));
+  return {
+    tabs: panes.flatMap(tabsOf),
+    side: root.direction === "row" ? (before ? "left" : "right") : before ? "top" : "bottom",
+    weight: own / (own + (root.weights[at] ?? 1)),
+  };
+}
+
+/** The smallest part of the tree holding every pane with one of `tabs`; null with none. */
+export function spanOf(root: SplitNode, tabs: readonly string[]): SplitNode | null {
+  const standing = (node: SplitNode) =>
+    leaves(node).filter((leaf) => leaf.tabs.some((key) => tabs.includes(key))).length;
+  const all = standing(root);
+  if (all === 0) return null;
+  let node = root;
+  while (node.type === "branch") {
+    const inner = node.children.find((child) => standing(child) === all);
+    if (!inner) break;
+    node = inner;
+  }
+  return node;
+}
+
+/**
+ * The part of the tree a pane coming back to `tabs` may divide, so it never runs along a pane it
+ * did not span: their span, or a run of its children gathered into a branch of their own, as they
+ * stood before folding into their parent. Null when others stand among them.
+ */
+export function gatherSpan(
+  root: SplitNode,
+  tabs: readonly string[],
+  branchId: string,
+): { readonly root: SplitNode; readonly target: SplitNode } | null {
+  const span = spanOf(root, tabs);
+  if (span === null) return null;
+  const marked = (leaf: Leaf) => leaf.tabs.some((key) => tabs.includes(key));
+  if (span.type === "leaf" || leaves(span).every(marked)) return { root, target: span };
+  const held = span.children.map((child) => leaves(child).some(marked));
+  const [first, last] = [held.indexOf(true), held.lastIndexOf(true)];
+  const run = span.children.slice(first, last + 1);
+  if (!run.every((child) => leaves(child).every(marked))) return null;
+  const weights = span.weights.slice(first, last + 1);
+  const target: Branch = {
+    type: "branch",
+    id: branchId,
+    direction: span.direction,
+    children: run,
+    weights,
+  };
+  const gathered: Branch = {
+    ...span,
+    children: [...span.children.slice(0, first), target, ...span.children.slice(last + 1)],
+    weights: [...span.weights.slice(0, first), sum(weights), ...span.weights.slice(last + 1)],
+  };
+  const swap = (node: SplitNode): SplitNode => {
+    if (node === span) return gathered;
+    if (node.type === "leaf") return node;
+    return { ...node, children: node.children.map(swap) };
+  };
+  return { root: swap(root), target };
+}
+
 function containsLeaf(node: SplitNode, id: string): boolean {
   return node.type === "leaf" ? node.id === id : node.children.some((c) => containsLeaf(c, id));
 }
@@ -236,6 +386,37 @@ export function insertBeside(
 }
 
 /**
+ * Divides all of `target`, a part of the tree, and puts `newLeaf` on the given side of it with
+ * `weight` of its room, as a pane spanning a row of panes comes back. A branch left running the
+ * same way as its parent folds into it, the others keeping their shares.
+ */
+export function insertAround(
+  root: SplitNode,
+  target: SplitNode,
+  newLeaf: Leaf,
+  side: Side,
+  branchId: string,
+  weight: number,
+): SplitNode {
+  const wrap = normalize({
+    type: "branch",
+    id: branchId,
+    direction: sideDirection(side),
+    children: isBefore(side) ? [newLeaf, target] : [target, newLeaf],
+    weights: isBefore(side) ? [weight, 1 - weight] : [1 - weight, weight],
+  });
+  const place = (node: SplitNode): SplitNode => {
+    if (node === target) return wrap;
+    if (node.type === "leaf") return node;
+    const children = node.children.map(place);
+    return children.every((child, index) => child === node.children[index])
+      ? node
+      : normalize({ ...node, children });
+  };
+  return place(root);
+}
+
+/**
  * The narrowest a subtree may be, in pixels: panes side by side add up, stacked panes take
  * the widest. `minOf` gives each pane's own minimum width.
  */
@@ -277,4 +458,88 @@ export function resizeTiled(
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
+}
+
+interface Rect {
+  readonly x: number;
+  readonly y: number;
+  readonly w: number;
+  readonly h: number;
+}
+
+/** Each pane's place in a unit square, by the weights alone. */
+function leafRects(node: SplitNode, rect: Rect = { x: 0, y: 0, w: 1, h: 1 }): Map<string, Rect> {
+  if (node.type === "leaf") return new Map([[node.id, rect]]);
+  const total = node.weights.reduce((sum, weight) => sum + weight, 0) || 1;
+  const rects = new Map<string, Rect>();
+  let at = 0;
+  node.children.forEach((child, index) => {
+    const share = (node.weights[index] ?? 0) / total;
+    const part =
+      node.direction === "row"
+        ? { x: rect.x + rect.w * at, y: rect.y, w: rect.w * share, h: rect.h }
+        : { x: rect.x, y: rect.y + rect.h * at, w: rect.w, h: rect.h * share };
+    for (const [id, inner] of leafRects(child, part)) rects.set(id, inner);
+    at += share;
+  });
+  return rects;
+}
+
+/**
+ * Astrolabe: the pane touching `id` on `side`, the one sharing the most of that edge; null at the
+ * edge of the panes.
+ */
+export function neighbourLeaf(root: SplitNode, id: string, side: Side): Leaf | null {
+  const rects = leafRects(root);
+  const from = rects.get(id);
+  if (!from) return null;
+  const near = (a: number, b: number) => Math.abs(a - b) < 1e-9;
+  const overlap = (a0: number, a1: number, b0: number, b1: number) =>
+    Math.max(0, Math.min(a1, b1) - Math.max(a0, b0));
+  let best: { id: string; shared: number } | null = null;
+  for (const [other, to] of rects) {
+    if (other === id) continue;
+    const touches =
+      side === "left"
+        ? near(to.x + to.w, from.x)
+        : side === "right"
+          ? near(from.x + from.w, to.x)
+          : side === "top"
+            ? near(to.y + to.h, from.y)
+            : near(from.y + from.h, to.y);
+    if (!touches) continue;
+    const shared =
+      side === "left" || side === "right"
+        ? overlap(from.y, from.y + from.h, to.y, to.y + to.h)
+        : overlap(from.x, from.x + from.w, to.x, to.x + to.w);
+    if (shared > 0 && (best === null || shared > best.shared)) best = { id: other, shared };
+  }
+  return best ? (findLeaf(root, best.id) ?? null) : null;
+}
+
+/** Astrolabe: the tabs of panes `a` and `b` trade places; the panes keep their sizes. */
+export function swapLeafTabs(root: SplitNode, a: string, b: string): SplitNode {
+  const first = findLeaf(root, a);
+  const second = findLeaf(root, b);
+  if (!first || !second || a === b) return root;
+  return mapLeaf(
+    mapLeaf(root, a, (leaf) => ({ ...leaf, tabs: second.tabs, active: second.active })),
+    b,
+    (leaf) => ({ ...leaf, tabs: first.tabs, active: first.active }),
+  );
+}
+
+/** Astrolabe: the branch directly holding `id`, and its place there; null for a lone pane. */
+export function parentOf(
+  node: SplitNode,
+  id: string,
+): { readonly branch: Branch; readonly index: number } | null {
+  if (node.type === "leaf") return null;
+  const index = node.children.findIndex((child) => child.type === "leaf" && child.id === id);
+  if (index !== -1) return { branch: node, index };
+  for (const child of node.children) {
+    const found = parentOf(child, id);
+    if (found) return found;
+  }
+  return null;
 }

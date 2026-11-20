@@ -10,15 +10,25 @@ import {
   useRepositoryTabLabel,
 } from "~/components/repositories/RepositoryTabView";
 import type { EnvironmentChangeGroup } from "@t3tools/client-runtime/changeGroups";
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import {
+  parseScopedThreadKey,
+  scopedThreadKey,
+  scopeThreadRef,
+} from "@t3tools/client-runtime/environment";
 import { ThreadId, type ProjectId, type ScopedThreadRef } from "@t3tools/contracts";
 import type { NavigateFn } from "@tanstack/react-router";
 import { MessageSquareIcon } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import ChatView from "~/components/ChatView";
 import { PullRequestDetailPanel } from "~/components/pullRequest/PullRequestDetailPanel";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
-import { guideShown, pullRequestActed } from "~/components/pullRequest/pullRequestWorkspace";
+import {
+  guideShown,
+  pullRequestActed,
+  settlePullRequestTabReveal,
+  usePullRequestTabReveals,
+} from "~/components/pullRequest/pullRequestWorkspace";
 import {
   pullRequestTargetOfKey,
   type FullPullRequestTarget,
@@ -31,7 +41,6 @@ import { isTerminalFocused } from "~/lib/terminalFocus";
 import {
   activateTab,
   focusedPane,
-  openBeside,
   openTab,
   placeTabs,
   replaceTab,
@@ -39,11 +48,16 @@ import {
   type Arrangement,
 } from "~/panes/arrangement";
 import type { PaneArrangementStore, PaneTabLabel } from "~/panes/panesHost";
+import { openNear } from "~/panes/placement";
 import { workspace } from "~/panes/workspace";
 import { leafWithTab } from "~/panes/tree";
 import { pullRequestSurface } from "~/rightPanelStore";
 import { useComposerDraftStore } from "~/composerDraftStore";
-import { useThreadShell } from "~/state/entities";
+import { appAtomRegistry } from "~/rpc/atomRegistry";
+import { useQuietThreadShell, useThreadShell } from "~/state/entities";
+import { useEnvironmentShellStatus } from "~/state/shell";
+import { threadFamilies } from "~/state/threads";
+import { isThreadRouteSnapshotAuthoritative } from "~/threadRoutes";
 import { chatTabKey, parseChatTabKey } from "./sectionTabs";
 
 /** An arrangement showing `key`: brought forward where it is, else opened in the focused pane. */
@@ -54,7 +68,7 @@ function showKeyIn(
 ): Arrangement {
   if (leafWithTab(arrangement.root, key)) return activateTab(arrangement, key);
   return placement === "beside"
-    ? openBeside(arrangement, key, arrangement.focused, "right")
+    ? openNear(arrangement, key, arrangement.focused)
     : openTab(arrangement, key, arrangement.focused);
 }
 
@@ -159,14 +173,12 @@ export function SectionTabContent({
             if (pane && pane.id !== groupPane?.id && pane.tabs.length === 1) {
               return activateTab(arrangement, key);
             }
-            const beside = openBeside(
-              arrangement,
-              key,
-              groupPane?.id ?? arrangement.focused,
-              "right",
-            );
-            // A new chat opens in front of the group first; moving it out leaves the group in front.
-            return activateTab(beside, tabKey, false);
+            const beside = openNear(arrangement, key, groupPane?.id ?? arrangement.focused);
+            // A new chat opens in front of the group first; moving it out leaves the group in
+            // front, and with no room it stays in front of the group.
+            const together =
+              leafWithTab(beside.root, key)?.id === leafWithTab(beside.root, tabKey)?.id;
+            return together ? beside : activateTab(beside, tabKey, false);
           })
         }
         openAll={
@@ -228,9 +240,27 @@ function openTabGroup(keys: ReadonlyArray<string>, group: EnvironmentChangeGroup
   for (const key of keys) {
     if (parseChatTabKey(key) !== null) continue;
     if (inGroup) workspace.openLinked(key, groupKey);
-    else workspace.open(key, beside ? "beside" : "tab");
+    else workspace.open(key, beside ? "near" : "tab");
     beside = false;
   }
+}
+
+/**
+ * Keeps the family of an open thread the shell leaves out (an older settled thread) in the shell
+ * rows until the chat leaves it, so every reader of its shell row finds it.
+ */
+function useOpenThreadFamily(threadRef: ScopedThreadRef, missing: boolean) {
+  const key = scopedThreadKey(threadRef);
+  // Sticks to the chat's thread, so the row the family brings in does not release it.
+  const [mountedKey, setMountedKey] = useState<string | null>(null);
+  const nextKey = missing || mountedKey === key ? key : null;
+  if (nextKey !== mountedKey) setMountedKey(nextKey);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- holds the open thread's family in the thread family registry until the chat leaves it
+  useEffect(() => {
+    const ref = mountedKey === null ? null : parseScopedThreadKey(mountedKey);
+    if (ref === null) return;
+    return threadFamilies.mount(appAtomRegistry, ref.environmentId, ref.threadId);
+  }, [mountedKey]);
 }
 
 /**
@@ -240,6 +270,12 @@ function openTabGroup(keys: ReadonlyArray<string>, group: EnvironmentChangeGroup
  */
 export function PaneChat({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
   const draftId = useComposerDraftStore((store) => store.getDraftIdByRef(threadRef));
+  const shell = useQuietThreadShell(threadRef);
+  const shellStatus = useEnvironmentShellStatus(threadRef.environmentId);
+  useOpenThreadFamily(
+    threadRef,
+    isThreadRouteSnapshotAuthoritative(shellStatus) && shell === null && draftId === null,
+  );
   return draftId ? (
     <ChatView
       draftId={draftId}
@@ -311,14 +347,17 @@ function PanePullRequest({
   readonly store: PaneArrangementStore;
   readonly active: boolean;
 }) {
+  const revealUrl = usePullRequestTabReveals((state) => state.byTabKey[tabKey]);
   return (
     <PullRequestDetailPanel
       environmentId={target.environmentId as ScopedThreadRef["environmentId"]}
       shortcutsEnabled={active}
       getShortcutContext={shortcutContext}
       tabOnPage
+      revealUrl={revealUrl}
+      onRevealSettled={(url) => settlePullRequestTabReveal(tabKey, url)}
       onGuideShown={() => guideShown(tabKey)}
-      onActed={(action, phase = "done") => pullRequestActed(target, action, phase)}
+      onActed={(action, phase = "done", reply) => pullRequestActed(target, action, phase, reply)}
       reference={{
         projectId: target.projectId as ProjectId,
         repository: target.repository,

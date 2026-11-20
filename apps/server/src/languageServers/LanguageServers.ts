@@ -2459,7 +2459,10 @@ const make = Effect.fn("LanguageServers.make")(function* (options: LanguageServe
         texts.set(uri, open);
         continue;
       }
-      const read = yield* Effect.try(() => NodeURL.fileURLToPath(uri)).pipe(
+      const read = yield* Effect.try({
+        try: () => NodeURL.fileURLToPath(uri),
+        catch: (cause) => new Cause.UnknownError(cause),
+      }).pipe(
         Effect.flatMap((file) => fileSystem.readFileString(file)),
         Effect.map((text) => Text.of(text.split(/\r\n?|\n/))),
         Effect.orElseSucceed(() => null),

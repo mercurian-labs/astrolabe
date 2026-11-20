@@ -49,7 +49,7 @@ type OpenCitationComment = {
 };
 
 const EDITOR_CLASS_NAME =
-  "-m-1 max-h-52 min-h-[calc(2lh+--spacing(2))] overflow-y-auto p-1 whitespace-pre-wrap wrap-break-word bg-transparent leading-relaxed text-foreground focus:outline-none";
+  "-m-1 max-h-52 min-h-[calc(2lh+--spacing(2))] overflow-x-hidden overflow-y-auto p-1 whitespace-pre-wrap wrap-break-word bg-transparent leading-relaxed text-foreground focus:outline-none";
 
 const selectVimModeEnabled = (settings: ClientSettings) => settings.vimModeEnabled;
 const COMPOSER_EDITOR = { composer: true };

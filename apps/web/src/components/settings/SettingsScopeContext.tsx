@@ -5,7 +5,7 @@ import { AsyncResult, Atom } from "effect/reactivity";
 import { createContext, type ReactNode, useContext } from "react";
 
 import { useEnvironments, usePrimaryEnvironmentId } from "../../state/environments";
-import { getProjectFileQueryAtom, optimisticFileAtom } from "../files/projectFilesQueryState";
+import { getProjectFileQueryAtom } from "../files/projectFilesQueryState";
 import { useSettingsProjectGroups } from "./useSettingsProjectGroups";
 import { resolveScopedSettingsTargets, selectScopedSettingsEnvironments } from "./scopedSettings";
 import { resolveSettingsScope, type SettingsScopeSearch } from "./settingsScope";
@@ -26,9 +26,7 @@ const memberProjectFilesAtom = Atom.family((membersKey: string) => {
         getProjectFileQueryAtom(environmentId, workspaceRoot, T3_PROJECT_FILE_NAME),
       );
       if (result.waiting) continue;
-      const data =
-        get(optimisticFileAtom(environmentId, workspaceRoot, T3_PROJECT_FILE_NAME))?.data ??
-        AsyncResult.getOrElse(result, () => null);
+      const data = AsyncResult.getOrElse(result, () => null);
       files.set(
         physicalProjectKey,
         data === null || data.exists === false || data.truncated

@@ -12,14 +12,14 @@
   "scripts": {
     "dev": "vp dev",
     "build": "vp build && node scripts/emit-page.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "effect-tsgo tsrs --noEmit"
   },
   "dependencies": {
     "@better-auth/passkey": "1.7.7",
     "@t3tools/shared": "workspace:*",
     "better-auth": "1.7.7",
-    "react": "19.2.6",
-    "react-dom": "19.2.6"
+    "react": "catalog:",
+    "react-dom": "catalog:"
   },
   "devDependencies": {
     "@mercurian/cloud": "workspace:*",
@@ -29,7 +29,6 @@
     "@types/react-dom": "~19.2.3",
     "@vitejs/plugin-react": "^6.0.0",
     "tailwindcss": "^4.0.0",
-    "typescript": "catalog:",
     "vite-plus": "catalog:"
   }
 }

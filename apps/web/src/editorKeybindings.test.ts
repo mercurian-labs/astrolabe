@@ -10,6 +10,7 @@ import {
   codeEditorKeys,
   codeMirrorKey,
   editorFindKeys,
+  editorHistoryKeys,
   editorHunkKeys,
   fileSaveKeys,
   markdownEditorKeys,
@@ -207,6 +208,34 @@ describe("a code file's keys from the keybindings", () => {
   it("leaves the wiki's formatting keys as they were", () => {
     const keys = markdownEditorKeys(DEFAULT_RESOLVED_KEYBINDINGS, { composer: false });
     expect(keys).toMatchObject({ italic: ["Mod-i"], link: ["Mod-Shift-k"] });
+  });
+});
+
+describe("an editor's undo and redo keys from the keybindings", () => {
+  it("undoes and redoes on the usual keys in an editor, and on whatever a user binds instead", () => {
+    expect(editorHistoryKeys(DEFAULT_RESOLVED_KEYBINDINGS)).toEqual({
+      undo: ["Mod-z"],
+      redo: ["Mod-Shift-z", "Ctrl-y"],
+    });
+    const rules: KeybindingRule[] = [
+      { key: "alt+z", command: "edit.undo", when: "editorFocus" },
+      { key: "alt+shift+z", command: "edit.redo", when: "terminalFocus" },
+    ];
+    expect(editorHistoryKeys(compileResolvedKeybindingsConfig(rules))).toEqual({
+      undo: ["Alt-z"],
+      redo: [],
+    });
+  });
+
+  it("leaves mod+z to undoing the thread outside an editor", () => {
+    const event = { key: "z", metaKey: true, ctrlKey: false, shiftKey: false, altKey: false };
+    const resolve = (editorFocus: boolean) =>
+      resolveShortcutCommand(event, DEFAULT_RESOLVED_KEYBINDINGS, {
+        platform: "MacIntel",
+        context: { editorFocus, editableFocus: editorFocus },
+      });
+    expect(resolve(true)).toBe("edit.undo");
+    expect(resolve(false)).toBe("thread.undo");
   });
 });
 

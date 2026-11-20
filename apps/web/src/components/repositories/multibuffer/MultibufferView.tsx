@@ -29,6 +29,7 @@ import {
 
 import {
   useCodeEditorKeys,
+  useEditorHistoryKeys,
   useEditorFindKeys,
   useEditorHunkKeys,
   useMultibufferKeys,
@@ -299,6 +300,7 @@ function ExcerptRow({
   const findKeys = useEditorFindKeys();
   const hunkKeys = useEditorHunkKeys();
   const editingKeys = useCodeEditorKeys();
+  const historyKeys = useEditorHistoryKeys();
   const keys = useMultibufferKeys();
   const head = useEnvironmentQuery(
     open
@@ -373,7 +375,7 @@ function ExcerptRow({
           excerptKeys(keys),
           inFileSearch({ keys: findKeys }),
           gitChanges({ keys: hunkKeys }),
-          codeEditing({ keys: editingKeys }),
+          codeEditing({ keys: editingKeys, historyKeys }),
         ]),
         compartments.readOnly.reconfigure(readOnlyExtension(readOnly)),
         compartments.extra.reconfigure(extensions?.(file) ?? []),
@@ -391,6 +393,7 @@ function ExcerptRow({
     findKeys,
     hunkKeys,
     editingKeys,
+    historyKeys,
     readOnly,
     extensions,
   ]);

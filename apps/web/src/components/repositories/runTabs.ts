@@ -3,17 +3,12 @@ import { isRunnableText } from "@mercurian/editor/run/command";
 import { runTerminalThreadId, ThreadId, type EnvironmentId } from "@t3tools/contracts";
 
 import { environmentCatalog } from "~/connection/catalog";
-import {
-  activateTab,
-  allTabs,
-  type Arrangement,
-  openBeside,
-  openTab,
-  replaceTab,
-} from "~/panes/arrangement";
+import { activateTab, allTabs, type Arrangement, openTab, replaceTab } from "~/panes/arrangement";
 import type { PaneArrangementStore } from "~/panes/panesHost";
+import { openNear } from "~/panes/placement";
 import { leafWithTab, leaves } from "~/panes/tree";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
+import { parseChatTabKey } from "~/sectionTabs/sectionTabs";
 import { languageServersEnvironment } from "~/state/languageServers";
 import { terminalEnvironment } from "~/state/terminal";
 import { toastManager } from "../ui/toast";
@@ -84,11 +79,14 @@ export function placeRunTab(
   }
   const filePane = fileKey === null ? undefined : leafWithTab(arrangement.root, fileKey);
   const runPane = leaves(arrangement.root).find(
-    (leaf) => leaf.id !== filePane?.id && leaf.tabs.some((open) => runOfKey(open) !== null),
+    (leaf) =>
+      leaf.id !== filePane?.id &&
+      parseChatTabKey(leaf.active) === null &&
+      leaf.tabs.some((open) => runOfKey(open) !== null),
   );
   if (runPane) return openTab(arrangement, key, runPane.id, false);
   return filePane
-    ? openBeside(arrangement, key, filePane.id, "right", { focus: false, weight: RUN_WEIGHT })
+    ? openNear(arrangement, key, filePane.id, { focus: false, weight: RUN_WEIGHT })
     : openTab(arrangement, key, undefined, false);
 }
 

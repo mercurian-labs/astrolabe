@@ -12,7 +12,11 @@ import type { ClientSettings } from "@t3tools/contracts";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
-import { useEditorFindKeys, useMarkdownEditorKeys } from "~/editorKeybindings";
+import {
+  useEditorFindKeys,
+  useEditorHistoryKeys,
+  useMarkdownEditorKeys,
+} from "~/editorKeybindings";
 import { useVimScreenLines } from "~/vimScreenLines";
 import { useClientSettings } from "~/hooks/useSettings";
 import { appVimKeys } from "~/whichKey/doors";
@@ -242,6 +246,7 @@ export function WikiNoteEditor({
   // One options object per set of keys, since a drawn base block re-renders this component.
   const keys = useMarkdownEditorKeys(NOTE_EDITOR);
   const findKeys = useEditorFindKeys();
+  const historyKeys = useEditorHistoryKeys();
   const [preview, setPreview] = useState(() => ({
     keys,
     options: previewOptions(
@@ -278,6 +283,7 @@ export function WikiNoteEditor({
         vim={vim}
         vimPanel={false}
         findKeys={findKeys}
+        historyKeys={historyKeys}
       />
       {hostBlocks.map((block) =>
         createPortal(

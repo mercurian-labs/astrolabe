@@ -1,6 +1,7 @@
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { type EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
+import { type EnvironmentId, ProjectId, type ScopedThreadRef, ThreadId } from "@t3tools/contracts";
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
+import { DEFAULT_THREAD_TERMINAL_ID } from "~/types";
 import {
   createMemoryHistory,
   createRootRoute,
@@ -19,7 +20,6 @@ import {
   useState,
 } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { userEvent } from "vite-plus/test/browser";
 
 import { act, render } from "../../test/render";
 
@@ -74,10 +74,52 @@ vi.mock(import("~/chatTabs/chatTabLabel"), async (original) => ({
   ChatTabWatch: (() => null) as never,
 }));
 
+// The Ghostty surface stands aside: this is what a terminal viewport does with focus, on the real
+// request queue, so the panes' placing, showing and hiding are what's under test.
+vi.mock(import("~/components/PersistentThreadTerminals"), async () => {
+  const { consumePendingTerminalFocus, registerTerminalFocusTarget } =
+    await import("~/lib/terminalFocus");
+  function TerminalStandIn({
+    threadRef,
+    visible,
+  }: {
+    threadRef: ScopedThreadRef;
+    visible: boolean;
+  }) {
+    const input = useRef<HTMLTextAreaElement>(null);
+    const shows = useRef(visible);
+    useLayoutEffect(() => {
+      shows.current = visible;
+      if (visible) consumePendingTerminalFocus(threadRef, DEFAULT_THREAD_TERMINAL_ID);
+    }, [threadRef, visible]);
+    useLayoutEffect(
+      () =>
+        registerTerminalFocusTarget({
+          threadRef,
+          terminalId: DEFAULT_THREAD_TERMINAL_ID,
+          focus: () => {
+            if (!shows.current) return false;
+            input.current?.focus();
+            return document.activeElement === input.current;
+          },
+        }),
+      [threadRef],
+    );
+    return <textarea ref={input} aria-label="Terminal" data-terminal-owner="drawer" />;
+  }
+  return {
+    PersistentThreadTerminalTab: TerminalStandIn as never,
+    PersistentThreadTerminalPanel: (() => null) as never,
+  };
+});
+
 vi.mock(import("~/components/ChatView"), async () => {
   const { LinkedPanel } = await import("./LinkedPanel");
   const { useChatShortcuts } = await import("~/components/chat/useChatShortcuts");
   const { useChatComposerRef } = await import("~/composerHandleContext");
+  const { lendChat } = await import("./chatBridge");
+  const { useChatOwner } = await import("./PaneSurfaceHost");
+  const { isFocusedChatTab } = await import("./workspace");
   type ComposerRef = ReturnType<typeof useChatComposerRef>;
   function Composer({ composerRef }: { composerRef: ComposerRef }) {
     const node = useRef<HTMLDivElement>(null);
@@ -96,22 +138,6 @@ vi.mock(import("~/components/ChatView"), async () => {
       [],
     );
     return <div ref={node} contentEditable data-testid="composer-editor" />;
-  }
-  // As ChatView's drawer does: opening focuses its terminal, closing gives focus to the composer.
-  function TerminalDrawer({ composerRef }: { composerRef: ComposerRef }) {
-    const [open, setOpen] = useState(false);
-    const toggle = () => {
-      setOpen(!open);
-      if (open) composerRef.current?.focusAtEnd();
-    };
-    return (
-      <>
-        <button type="button" aria-label="Toggle terminal drawer" onClick={toggle}>
-          drawer
-        </button>
-        {open ? <textarea aria-label="Terminal" autoFocus /> : null}
-      </>
-    );
   }
   function Surface({ thread, surface }: { thread: string; surface: string }) {
     const [id] = useState(() => Math.random().toString(36).slice(2));
@@ -134,6 +160,20 @@ vi.mock(import("~/components/ChatView"), async () => {
         selectThreadRightPanelState(state.byThreadKey, scopeThreadRef(env, ThreadId.make(threadId)))
           .surfaces,
     );
+    const owner = useChatOwner();
+    // As ChatView does: what only the chat can reach, its composer here, lent to the panes.
+    useLayoutEffect(() => {
+      if (owner === null) return;
+      return lendChat(owner, {
+        launchContext: null,
+        addTerminalContext: () => {},
+        endTerminals: () => {},
+        openSidePane: () => false,
+        focusComposer: () => {
+          if (isFocusedChatTab(owner)) composerRef.current?.focusAtEnd();
+        },
+      });
+    }, [composerRef, owner]);
     useChatShortcuts({
       enabled: probe.shortcuts,
       keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
@@ -190,7 +230,6 @@ vi.mock(import("~/components/ChatView"), async () => {
         >
           {null}
         </LinkedPanel>
-        <TerminalDrawer composerRef={composerRef} />
         <Composer composerRef={composerRef} />
       </div>
     );
@@ -203,7 +242,6 @@ vi.mock(import("~/components/ChatView"), async () => {
     surfaces: [],
     environmentId: "env-1",
     activeSurfaceId: null,
-    pendingSurfaceIds: new Set(),
     previewSessions: {},
     desktopByTabId: {},
     previewRuntimeTabId: (tabId: string) => tabId,
@@ -223,22 +261,33 @@ import { useClosedViewStore } from "../closedViewStore";
 import { ComposerHandleContext, focusedChatComposerRef } from "../composerHandleContext";
 import { repositoryTabKey } from "../components/repositories/repositoryTabs";
 import { selectThreadRightPanelState, useRightPanelStore } from "../rightPanelStore";
-import { chatSurfaceKey, chatTabKey } from "../sectionTabs/sectionTabs";
+import {
+  chatSurfaceKey,
+  chatTabKey,
+  chatTerminalKey,
+  parseChatTabKey,
+} from "../sectionTabs/sectionTabs";
+import { focusActiveDrawerTerminal } from "../lib/terminalFocus";
+import { useTerminalUiStateStore } from "../terminalUiStateStore";
 import { Route as ChatLayoutRoute } from "../routes/_chat";
 import { agentsRoute } from "./agentsRoute";
 import {
   activateTab,
   allTabs,
   focusPane,
+  moveTabs,
+  newTab,
+  openBeside,
   openTab,
   splitTab,
   startingArrangement,
 } from "./arrangement";
 import { carryDrag, endDrag } from "./drag";
+import { useMaximizedPaneStore } from "./maximize";
 import type { PanelProps } from "./panesController";
 import { KEPT_CHATS } from "./recentChats";
 import { leaves } from "./tree";
-import { workspace } from "./workspace";
+import { workspace, WORKSPACE_LAYOUT_KEY } from "./workspace";
 import { WorkspaceView } from "./WorkspaceView";
 
 const focusedKey = () => {
@@ -409,7 +458,7 @@ describe("WorkspaceView chat tabs", () => {
     expect(probe.heard).toEqual(["B:x"]);
   });
 
-  it("toggles a chat's terminal drawer from mod+j only while that chat's tab has focus", async () => {
+  it("toggles a chat's terminal from mod+j only with that chat or its terminal in focus", async () => {
     setup();
     const file = repositoryTabKey({
       kind: "file",
@@ -443,35 +492,131 @@ describe("WorkspaceView chat tabs", () => {
     await change(() => workspace.update((a) => focusPane(a, paneOf(chatOf("A")))));
     pressModJ();
     expect(probe.terminalToggles).toEqual(["A", "A"]);
+
+    // Its own terminal tab in focus, from where mod+j hides it.
+    const ref = parseChatTabKey(chatOf("A"))!;
+    const terminal = chatTerminalKey(chatOf("A"));
+    await change(() => useTerminalUiStateStore.getState().setTerminalOpen(ref, true));
+    await change(() => workspace.update((a) => activateTab(a, terminal)));
+    expect(focusedKey()).toBe(terminal);
+    pressModJ();
+    expect(probe.terminalToggles).toEqual(["A", "A", "A"]);
+    useTerminalUiStateStore.getState().clearTerminalUiState(ref);
   });
 
-  it("gives focus back to its own composer as a chat's drawer closes, with another chat beside it", async () => {
-    setup();
-    workspace.update(() => openTab(startingArrangement(), chatOf("A")));
-    await using _screen = await mount("A");
-    // B opens beside A after it, so its composer is the last to mount.
-    await change(() =>
-      workspace.update((a) => splitTab(openTab(a, chatOf("B")), chatOf("B"), "right")),
-    );
-    expect(shows("A") && shows("B")).toBe(true);
+  describe("a chat's terminal tab", () => {
     const paneOf = (key: string) =>
       leaves(workspace.arrangement().root).find((leaf) => leaf.tabs.includes(key))!.id;
-    const inChat = (thread: string, selector: string) =>
-      chatNode(thread)!.querySelector<HTMLElement>(selector)!;
-    const toggleA = inChat("A", "[aria-label='Toggle terminal drawer']");
+    const ref = refOf("A");
+    const terminal = chatTerminalKey(chatOf("A"));
+    const terminals = () => useTerminalUiStateStore.getState();
+    const terminalInput = () => document.querySelector("textarea[aria-label='Terminal']");
+    /** Chat A focused in its pane, chat B beside it, A's terminal open below A with focus. */
+    async function mountWithTerminal({ shortcuts = false } = {}) {
+      setup();
+      probe.shortcuts = shortcuts;
+      workspace.update(() => openTab(startingArrangement(), chatOf("A")));
+      const screen = await mount("A");
+      // B opens beside A after it, so its composer is the last to mount.
+      await change(() =>
+        workspace.update((a) => splitTab(openTab(a, chatOf("B")), chatOf("B"), "right")),
+      );
+      await change(() => workspace.update((a) => focusPane(a, paneOf(chatOf("A")))));
+      expect(shows("A") && shows("B")).toBe(true);
+      await change(() => {
+        terminals().setTerminalOpen(ref, true);
+        focusActiveDrawerTerminal(ref);
+      });
+      await vi.waitFor(() => expect(document.activeElement).toBe(terminalInput()));
+      return screen;
+    }
 
-    await userEvent.click(toggleA);
-    await vi.waitFor(() => expect(document.activeElement).toBe(inChat("A", "textarea")));
-    await userEvent.click(toggleA);
+    it("takes focus as it opens, its pane with it", async () => {
+      await using _screen = await mountWithTerminal();
+      expect(focusedKey()).toBe(terminal);
+      expect(paneOf(terminal)).not.toBe(paneOf(chatOf("A")));
+      expect(workspace.linked().front).toBe(chatOf("A"));
+      terminals().clearTerminalUiState(ref);
+    });
 
-    await vi.waitFor(() =>
-      expect(document.activeElement).toBe(inChat("A", "[data-testid='composer-editor']")),
-    );
-    expect(workspace.arrangement().focused).toBe(paneOf(chatOf("A")));
-    expect(workspace.linked().front).toBe(chatOf("A"));
-    await vi.waitFor(() =>
-      expect(document.querySelector("[data-route-thread]")?.textContent).toBe("A"),
-    );
+    it("gives focus back to its own composer as it hides, with another chat beside it", async () => {
+      await using _screen = await mountWithTerminal();
+      await change(() => terminals().setTerminalOpen(ref, false));
+      await vi.waitFor(() =>
+        expect(document.activeElement).toBe(
+          chatNode("A")!.querySelector("[data-testid='composer-editor']"),
+        ),
+      );
+      expect(workspace.arrangement().focused).toBe(paneOf(chatOf("A")));
+      expect(workspace.linked().front).toBe(chatOf("A"));
+      await vi.waitFor(() =>
+        expect(document.querySelector("[data-route-thread]")?.textContent).toBe("A"),
+      );
+      terminals().clearTerminalUiState(ref);
+    });
+
+    it("comes out from behind a tab and from under a maximized pane, with focus", async () => {
+      await using _screen = await mountWithTerminal();
+      const paneId = paneOf(terminal);
+      await change(() =>
+        workspace.update((a) => activateTab(openTab(a, "wiki:e:note", paneId), "wiki:e:note")),
+      );
+      expect(document.activeElement).not.toBe(terminalInput());
+      await change(() => {
+        expect(workspace.revealTerminal(chatOf("A"))).toBe(true);
+        focusActiveDrawerTerminal(ref);
+      });
+      await vi.waitFor(() => expect(document.activeElement).toBe(terminalInput()));
+
+      await change(() =>
+        useMaximizedPaneStore.getState().toggle(WORKSPACE_LAYOUT_KEY, paneOf(chatOf("B"))),
+      );
+      await change(() => {
+        expect(workspace.revealTerminal(chatOf("A"))).toBe(true);
+        focusActiveDrawerTerminal(ref);
+      });
+      await vi.waitFor(() => expect(document.activeElement).toBe(terminalInput()));
+      expect(useMaximizedPaneStore.getState().maximized).toBeNull();
+      terminals().clearTerminalUiState(ref);
+    });
+
+    it("answers mod+j from a New tab in front of it, and not from a file in another pane", async () => {
+      await using _screen = await mountWithTerminal({ shortcuts: true });
+      const pressModJ = () =>
+        window.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "j",
+            metaKey: /Mac|iPhone|iPad/.test(navigator.platform),
+            ctrlKey: !/Mac|iPhone|iPad/.test(navigator.platform),
+            cancelable: true,
+          }),
+        );
+      const paneId = paneOf(terminal);
+      await change(() => workspace.update((a) => focusPane(newTab(a, paneId), paneId)));
+      expect(focusedKey()).toMatch(/^empty\//);
+      pressModJ();
+      expect(probe.terminalToggles).toEqual(["A"]);
+
+      await change(() =>
+        workspace.update((a) => openBeside(a, "wiki:e:note", paneOf(chatOf("B")), "right")),
+      );
+      expect(focusedKey()).toBe("wiki:e:note");
+      pressModJ();
+      expect(probe.terminalToggles).toEqual(["A"]);
+      terminals().clearTerminalUiState(ref);
+    });
+
+    it("takes focus from the tab it was dragged by as it lands in another pane", async () => {
+      await using _screen = await mountWithTerminal();
+      const pill = [...document.querySelectorAll<HTMLElement>("[data-pane-tab]")].find(
+        (each) => each.dataset.key === terminal,
+      )!;
+      pill.focus();
+      expect(document.activeElement).toBe(pill);
+      await change(() => workspace.update((a) => moveTabs(a, [terminal], paneOf(chatOf("B")))));
+      await vi.waitFor(() => expect(document.activeElement).toBe(terminalInput()));
+      terminals().clearTerminalUiState(ref);
+    });
   });
 
   it("types into the focused chat's composer, not the one beside it", async () => {

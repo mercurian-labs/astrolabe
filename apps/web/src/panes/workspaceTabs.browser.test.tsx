@@ -92,7 +92,8 @@ vi.mock(import("~/localApi"), async (original) => ({
 }));
 
 import { useRightPanelStore } from "../rightPanelStore";
-import { chatSurfaceKey, chatTabKey } from "../sectionTabs/sectionTabs";
+import { chatSurfaceKey, chatTabKey, chatTerminalKey } from "../sectionTabs/sectionTabs";
+import { useTerminalUiStateStore } from "../terminalUiStateStore";
 import { repositoryTabKey } from "../components/repositories/repositoryTabs";
 import { openTab, splitTab, startingArrangement } from "./arrangement";
 import { useLiveSurfaceCovered } from "./LinkedPanel";
@@ -154,7 +155,6 @@ function panelProps(overrides: Partial<PanelProps>): PanelProps {
     surfaces: [],
     environmentId: ref.environmentId,
     activeSurfaceId: null,
-    pendingSurfaceIds: new Set(),
     previewSessions: {},
     desktopByTabId: {},
     previewRuntimeTabId: (tabId) => `runtime:${tabId}`,
@@ -536,6 +536,19 @@ describe("a thread's surface as a tab of the shared panes", () => {
   });
 });
 
+describe("the host's tab containers", () => {
+  it("keep one held out of the page, rendered into, until it is let go", () => {
+    const host = createWorkspaceHost();
+    const container = host.containerFor("held");
+    document.body.append(container);
+    host.prune(new Set(), new Set(["held"]));
+    expect(container.isConnected).toBe(false);
+    expect(host.containerFor("held")).toBe(container);
+    host.prune(new Set(), new Set());
+    expect(host.containerFor("held")).not.toBe(container);
+  });
+});
+
 describe("a chat's linked tabs filter", () => {
   // ChatView's right-panel toggle, as the filter's Hide all and shortcut reach it.
   const filter = (
@@ -602,6 +615,61 @@ describe("a chat's linked tabs filter", () => {
     await settle();
     expect(linkedPanes()).toEqual([[diff, files]]);
     expect(linkedActive()).toBe(diff);
+  });
+
+  it("hides the terminal alone, leaving the panel's tabs, and Hide all takes both", async () => {
+    using _panel = emptyPanel();
+    useRightPanelStore.getState().open(ref, "diff");
+    useTerminalUiStateStore.getState().setTerminalOpen(ref, true);
+    await using screen = await renderPanes({}, filter);
+    const diff = chatSurfaceKey(chat, "diff");
+    const terminal = chatTerminalKey(chat);
+    const showing = () => leaves(workspace.arrangement().root).flatMap((leaf) => leaf.tabs);
+    expect(control(screen.container)?.ariaLabel).toBe("Linked tabs (2)");
+
+    await openFilter(screen.container);
+    await act(() => row("Terminal").click());
+    await settle();
+    expect(showing()).toEqual([chat, diff]);
+
+    await act(() => row("Terminal").click());
+    await settle();
+    expect(showing()).toContain(terminal);
+
+    await act(() => action("Hide all")!.click());
+    await settle();
+    expect(showing()).toEqual([chat]);
+    useTerminalUiStateStore.getState().clearTerminalUiState(ref);
+  });
+
+  it("stays one click for someone who only hid a terminal with mod+j", async () => {
+    using _panel = emptyPanel();
+    useTerminalUiStateStore.getState().setTerminalOpen(ref, true);
+    useTerminalUiStateStore.getState().setTerminalOpen(ref, false);
+    await using screen = await renderPanes({}, filter);
+    expect(control(screen.container)).toBeNull();
+    expect(newLinkedButton(screen.container)).not.toBeNull();
+    useTerminalUiStateStore.getState().clearTerminalUiState(ref);
+  });
+
+  it("promises the panel's shortcut for Hide all only while it would do the same", async () => {
+    using _panel = emptyPanel();
+    useRightPanelStore.getState().open(ref, "diff");
+    const labelled = (
+      <LinkedTabsFilter
+        owner={chat}
+        available
+        shortcutLabel="⌥⌘B"
+        onToggle={() => useRightPanelStore.getState().toggleVisibility(ref)}
+      />
+    );
+    await using screen = await renderPanes({}, labelled);
+    await openFilter(screen.container);
+    expect(action("Hide all")?.textContent).toContain("⌥⌘B");
+    await act(() => useTerminalUiStateStore.getState().setTerminalOpen(ref, true));
+    await settle();
+    expect(action("Hide all")?.textContent).not.toContain("⌥⌘B");
+    useTerminalUiStateStore.getState().clearTerminalUiState(ref);
   });
 
   it("hides the last one showing with the panel, which brings it back", async () => {

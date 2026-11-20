@@ -42,12 +42,7 @@ function ConfiguredSettingsAuthRouteScreen() {
   if (showT3Connect && account.status === "signedIn") {
     return (
       <View collapsable={false} className="flex-1 bg-sheet">
-        <AppBar
-          title="Remote access"
-          sidebar={false}
-          onBack={() => setShowT3Connect(false)}
-          hideBottomBorder
-        />
+        <AppBar title="Remote access" onBack={() => setShowT3Connect(false)} hideBottomBorder />
         <SettingsScreenContent>
           <T3ConnectProfilePage />
         </SettingsScreenContent>

@@ -106,6 +106,7 @@ function PullRequestRowImpl({
   inSelection = false,
   onDragRow,
   onRowMenu,
+  onIntent,
   hostActions,
   onActed,
   closing = false,
@@ -132,6 +133,8 @@ function PullRequestRowImpl({
   /** Astrolabe: the row dragged, toward a pane's strip; and its right-click menu. */
   onDragRow?: (entry: EnvironmentPullRequestEntry, event: DragEvent<HTMLElement>) => void;
   onRowMenu?: (entry: EnvironmentPullRequestEntry, event: MouseEvent<HTMLElement>) => void;
+  /** The row the pointer or focus rests on, or null when it leaves. */
+  onIntent?: (entry: PullRequestRowTarget | null) => void;
   hostActions: ReadonlySet<PullRequestAction>;
   onActed: (result: PullRequestSpeedActionResult) => void;
   closing?: boolean;
@@ -238,6 +241,14 @@ function PullRequestRowImpl({
           onAuxClick={(event) => {
             if (event.button === 1) onSelect(entry, event);
           }}
+          onPointerEnter={() => onIntent?.(entry)}
+          onPointerLeave={(event) => {
+            if (event.currentTarget !== document.activeElement) onIntent?.(null);
+          }}
+          onFocus={() => onIntent?.(entry)}
+          onBlur={(event) => {
+            if (!event.currentTarget.matches(":hover")) onIntent?.(null);
+          }}
           className={cn(
             SIDEBAR_ROW_SURFACE_CLASS,
             "min-w-0 flex-1",
@@ -342,6 +353,14 @@ function PullRequestRowImpl({
         }}
         onAuxClick={(event) => {
           if (event.button === 1) onSelect(entry, event);
+        }}
+        onPointerEnter={() => onIntent?.(entry)}
+        onPointerLeave={(event) => {
+          if (event.currentTarget !== document.activeElement) onIntent?.(null);
+        }}
+        onFocus={() => onIntent?.(entry)}
+        onBlur={(event) => {
+          if (!event.currentTarget.matches(":hover")) onIntent?.(null);
         }}
         className={cn(
           PULL_REQUEST_ROW_CLASS,

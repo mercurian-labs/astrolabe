@@ -115,10 +115,10 @@ export function trackSwitchBlockReason(input: {
   if (!crossesReleaseTrack(input.serverVersion, input.targetVersion)) return null;
   const databaseMigration = input.databaseMigration();
   if (input.targetDatabaseMigration === undefined || databaseMigration === undefined) {
-    return `Cannot confirm this database works with t3@${input.targetVersion}. Switch tracks from Settings → About → Update track, which checks it first.`;
+    return `Cannot confirm this database works with astrolabe@${input.targetVersion}. Switch tracks from Settings → About → Update track, which checks it first.`;
   }
   return input.targetDatabaseMigration < databaseMigration
-    ? `This database has changes t3@${input.targetVersion} does not support yet; it stays on this release.`
+    ? `This database has changes astrolabe@${input.targetVersion} does not support yet; it stays on this release.`
     : null;
 }
 
@@ -282,16 +282,27 @@ export const make = Effect.fn("cloud.server_self_update.make")(function* () {
               ),
             ),
       }).pipe(
-        Effect.mapError((error) =>
-          error._tag === "PinnedRuntimePreflightBlockedError"
-            ? failWith(error.reason, error)
-            : mirror !== undefined && isUnpublishedRelease(error)
-              ? failWith(
-                  `${mirror.organization}'s update mirror has no astrolabe@${targetVersion} for this machine.`,
-                  error,
-                )
-              : failWith(`Could not prepare astrolabe@${targetVersion}.`, error),
-        ),
+        Effect.mapError((error) => {
+          if (error._tag === "PinnedRuntimePreflightBlockedError") {
+            return failWith(error.reason, error);
+          }
+          if (mirror !== undefined && isUnpublishedRelease(error)) {
+            return failWith(
+              `${mirror.organization}'s update mirror has no astrolabe@${targetVersion} for this machine.`,
+              error,
+            );
+          }
+          const downloadFailure = [
+            error.httpStatus === undefined ? undefined : `HTTP ${error.httpStatus}`,
+            error.downloadHost === undefined ? undefined : `from ${error.downloadHost}`,
+          ]
+            .filter((part) => part !== undefined)
+            .join(" ");
+          return failWith(
+            `Could not prepare astrolabe@${targetVersion} while ${error.step}${downloadFailure ? ` (${downloadFailure})` : ""}.`,
+            error,
+          );
+        }),
       );
 
       yield* reportProgress("installing");

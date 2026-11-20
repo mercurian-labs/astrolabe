@@ -66,6 +66,8 @@ export type RightPanelSurface =
       attachment?: ChatFileAttachment;
       /** Deepest workspace path retained for navigating back down after moving up. */
       folderTrail?: string;
+      /** Astrolabe: the tab shows its file in our editor, not the read-only preview. */
+      editing?: true;
     }
   | {
       id: `pull-request:${string}`;
@@ -77,6 +79,8 @@ export type RightPanelSurface =
       repository: string;
       number: number;
       url?: string;
+      /** A clicked link waiting for the panel to show where it points; cleared once shown. */
+      revealUrl?: string;
       detailTab?: PullRequestDetailTab;
     }
   | { id: "pull-requests"; kind: "pull-requests" }
@@ -137,6 +141,8 @@ interface RightPanelStoreState {
   renameDevice: (ref: ScopedThreadRef, surfaceId: string, title: string) => void;
   openBrowser: (ref: ScopedThreadRef, tabId: string | null) => void;
   openFile: (ref: ScopedThreadRef, relativePath: string, line?: number) => void;
+  /** Astrolabe: switches a file tab between our editor and its read-only preview. */
+  setFileEditing: (ref: ScopedThreadRef, surfaceId: string, editing: boolean) => void;
   /** Moves in place; "" opens the root explorer. folderTrail keeps the return path; keepSource opens beside the source. */
   navigateFolder: (
     ref: ScopedThreadRef,
@@ -155,6 +161,8 @@ interface RightPanelStoreState {
       repository: string;
       number: number;
       url?: string;
+      /** A clicked link to reveal; reopening a surface passes only its `url`. */
+      revealUrl?: string;
       detailTab?: PullRequestDetailTab;
     },
   ) => void;
@@ -163,6 +171,8 @@ interface RightPanelStoreState {
     surfaceId: string,
     detailTab: PullRequestDetailTab,
   ) => void;
+  /** Clears the surface's pending link only while it is still `revealUrl`. */
+  settlePullRequestReveal: (ref: ScopedThreadRef, surfaceId: string, revealUrl: string) => void;
   openTerminal: (ref: ScopedThreadRef, terminalId: string) => void;
   splitTerminal: (
     ref: ScopedThreadRef,
@@ -311,6 +321,13 @@ export function pullRequestSurface(target: {
     ...(target.detailTab === undefined ? {} : { detailTab: target.detailTab }),
   };
 }
+
+/** A pending link belongs to the click that made it, not to a reload or a reopen. */
+const withoutReveal = (surface: RightPanelSurface): RightPanelSurface => {
+  if (surface.kind !== "pull-request" || surface.revealUrl === undefined) return surface;
+  const { revealUrl: _pending, ...rest } = surface;
+  return rest;
+};
 
 const upsertSurface = (
   current: ThreadRightPanelState,
@@ -529,7 +546,15 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
                         surface.revealRequestId >= 0
                           ? surface.revealRequestId
                           : 0;
-                      return [{ ...surface, revealLine, revealRequestId }];
+                      const { editing, ...rest } = surface;
+                      return [
+                        {
+                          ...rest,
+                          revealLine,
+                          revealRequestId,
+                          ...(editing === true ? { editing } : {}),
+                        },
+                      ];
                     }
                     if (surface.kind === "pull-request") {
                       if (
@@ -771,16 +796,17 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
           userAction(state, scopedThreadKey(ref), (current) => {
             const surface = pullRequestSurface(target);
             const next = upsertSurface(current, surface);
-            return target.url
-              ? {
-                  ...next,
-                  surfaces: next.surfaces.map((entry) =>
-                    entry.id === surface.id && entry.kind === "pull-request"
-                      ? { ...entry, ...surface }
-                      : entry,
-                  ),
-                }
-              : next;
+            const { url, revealUrl } = target;
+            if (!url && !revealUrl) return next;
+            return {
+              ...next,
+              surfaces: next.surfaces.map((entry) => {
+                if (entry.id !== surface.id || entry.kind !== "pull-request") return entry;
+                // A later link replaces one not yet shown.
+                const { revealUrl: _previous, ...rest } = entry;
+                return { ...rest, ...surface, ...(revealUrl ? { revealUrl } : {}) };
+              }),
+            };
           }),
         ),
       setPullRequestDetailTab: (ref, surfaceId, detailTab) =>
@@ -797,6 +823,20 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
               surface.id === surfaceId && surface.kind === "pull-request"
                 ? { ...surface, detailTab }
                 : surface,
+            ),
+          }));
+        }),
+      settlePullRequestReveal: (ref, surfaceId, revealUrl) =>
+        set((state) => {
+          const threadKey = scopedThreadKey(ref);
+          const existing = state.byThreadKey[threadKey]?.surfaces.find(
+            (surface) => surface.id === surfaceId,
+          );
+          if (existing?.kind !== "pull-request" || existing.revealUrl !== revealUrl) return state;
+          return automaticUpdate(state, threadKey, (current) => ({
+            ...current,
+            surfaces: current.surfaces.map((surface) =>
+              surface.id === surfaceId ? withoutReveal(surface) : surface,
             ),
           }));
         }),
@@ -818,11 +858,14 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
               (surface): surface is Extract<RightPanelSurface, { kind: "file" }> =>
                 surface.id === surfaceId && surface.kind === "file",
             );
-            const surface = fileSurface(
-              relativePath,
-              normalizeRevealLine(line),
-              (existing?.revealRequestId ?? 0) + 1,
-            );
+            const surface = {
+              ...fileSurface(
+                relativePath,
+                normalizeRevealLine(line),
+                (existing?.revealRequestId ?? 0) + 1,
+              ),
+              ...(existing?.editing ? { editing: true as const } : {}),
+            };
             return {
               ...current,
               isOpen: true,
@@ -834,6 +877,17 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
                 : [...withoutStandaloneExplorer, surface],
             };
           }),
+        ),
+      setFileEditing: (ref, surfaceId, editing) =>
+        set((state) =>
+          automaticUpdate(state, scopedThreadKey(ref), (current) => ({
+            ...current,
+            surfaces: current.surfaces.map((surface) => {
+              if (surface.id !== surfaceId || surface.kind !== "file") return surface;
+              const { editing: _was, ...rest } = surface;
+              return editing ? { ...rest, editing: true } : rest;
+            }),
+          })),
         ),
       navigateFolder: (ref, surfaceId, relativePath, folderTrail, keepSource = false) =>
         set((state) =>
@@ -1198,8 +1252,15 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
       ),
       partialize: (state) => ({
         byThreadKey: Object.fromEntries(
-          Object.entries(state.byThreadKey).filter(
-            ([threadKey]) => !isPullRequestsPanelKey(threadKey),
+          Object.entries(state.byThreadKey).flatMap(([threadKey, threadState]) =>
+            isPullRequestsPanelKey(threadKey)
+              ? []
+              : [
+                  [
+                    threadKey,
+                    { ...threadState, surfaces: threadState.surfaces.map(withoutReveal) },
+                  ],
+                ],
           ),
         ),
         threadPanelVisibilityByThreadKey: Object.fromEntries(
@@ -1229,7 +1290,7 @@ useRightPanelStore.subscribe((next, previous) => {
       ...removed.filter((surface) => surface.id !== before.activeSurfaceId),
       ...removed.filter((surface) => surface.id === before.activeSurfaceId),
     ];
-    for (const surface of closedInOrder) {
+    for (const surface of closedInOrder.map(withoutReveal)) {
       if (
         surface.kind === "terminal" ||
         (surface.kind === "preview" && surface.resourceId !== null)

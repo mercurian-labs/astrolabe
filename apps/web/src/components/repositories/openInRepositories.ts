@@ -1,11 +1,9 @@
 import type { EnvironmentId, ProjectId, ScopedThreadRef } from "@t3tools/contracts";
-import { type NavigateFn, useNavigate } from "@tanstack/react-router";
-import { FolderGit2Icon } from "lucide-react";
+import type { NavigateFn } from "@tanstack/react-router";
 
 import { readProject, readThreadShell } from "~/state/entities";
 import type { SectionTabMove } from "~/sectionTabs/SectionTabContent";
 import { workspace } from "~/panes/workspace";
-import { threadFileInCheckout } from "./fileView";
 import { repositoryFileReveal } from "./repositoryFileReveal";
 import { revealInRepositoryFilter } from "./repositoryFilter";
 import { showWorktreeFiles, worktreeFilesKey } from "./repositoryScope";
@@ -89,23 +87,4 @@ export function openRepositoryFileAtLine(
   workspace.show(tabKey);
   repositoryFileReveal.request(tabKey, target.line);
   void navigate({ to: "/repositories" });
-}
-
-/** Astrolabe: the thread file panel's "Open in Projects", its open-in picker's primary action. */
-export function useThreadFileOpen(
-  threadRef: ScopedThreadRef,
-  draft: boolean,
-  cwd: string,
-  absolutePath: string | null,
-  isFile: boolean,
-  line: number | null,
-) {
-  const navigate = useNavigate();
-  const path = threadFileInCheckout(draft, cwd, absolutePath, isFile);
-  if (path === null) return null;
-  return {
-    label: "Projects",
-    Icon: FolderGit2Icon,
-    open: () => repositoryMoveOfSurface(threadRef, `file:${path}`, line)?.run(navigate),
-  };
 }

@@ -25,6 +25,7 @@ const indexOfHeaderEnd = (buffer: Uint8Array): number => {
   return -1;
 };
 
+// @effect-diagnostics-next-line extendsNativeError:off - a throw sentinel inside the synchronous decoder.
 class FramingError extends Error {}
 
 /** Splits a byte stream into message bodies, as text; chunks may cut anywhere. */

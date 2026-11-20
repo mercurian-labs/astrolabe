@@ -1,3 +1,4 @@
+import * as WorktreeBranchSync from "./WorktreeBranchSync.ts";
 import * as GuestShareService from "../guest/GuestShareService.ts";
 import * as UsageLimitRecoveryWorker from "./UsageLimitRecoveryWorker.ts";
 import * as ChangeGroupService from "../changeGroups/ChangeGroupService.ts";
@@ -36,6 +37,7 @@ import * as Orchestrator from "./Orchestrator.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProjectionMaintenance from "./ProjectionMaintenance.ts";
 import * as ProjectStore from "./ProjectStore.ts";
+import * as EditedFileCheck from "./EditedFileCheck.ts";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
 import * as ProviderContinuationService from "./ProviderContinuationService.ts";
@@ -180,6 +182,7 @@ const layerProviderTurnStartServiceProvided = ProviderTurnStartService.layer.pip
       layerProviderAuthServiceProvided,
       layerRunExecutionServiceProvided,
       layerRuntimePolicyProvided,
+      GitVcsDriver.layer,
     ),
   ),
 );
@@ -408,6 +411,9 @@ export const layer = Layer.mergeAll(
 );
 
 export const layerProduction = Layer.mergeAll(
+  WorktreeBranchSync.layer.pipe(
+    Layer.provide(Layer.merge(layerThreadManagementProvided, ProjectionStore.layer)),
+  ),
   // Astrolabe: turn start reads the wiki services when they are there, to tell agents their
   // wikis and mount the thread's checkouts of them; run finalization saves those checkouts.
   layer.pipe(
@@ -456,6 +462,13 @@ export const layerProduction = Layer.mergeAll(
 ).pipe(
   Layer.provide(ResourceCleanupService.layer.pipe(Layer.provide(layerScheduledTaskProvided))),
   Layer.provide(ThreadPurge.layer.pipe(Layer.provide(layerThreadWikiCheckoutsProvided))),
+  Layer.provide(
+    EditedFileCheck.layer.pipe(
+      Layer.provide(
+        Layer.mergeAll(layerThreadManagementProvided, ProjectStore.layer, GitVcsDriver.layer),
+      ),
+    ),
+  ),
   Layer.provide(Scheduler.layer),
   Layer.provideMerge(layerEventInfrastructure),
 );

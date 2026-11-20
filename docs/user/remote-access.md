@@ -280,9 +280,8 @@ command to run on the host:
 sudo astrolabe browser setup
 ```
 
-The server shows the exact line for how you started it, such as
-`sudo npx @mercurian/astrolabe browser setup`, and keeps your `PATH` when Node is installed only
-for your user. Where `astrolabe` is not on your `PATH`, such as with only the
+The server shows the exact line for how you started it, and keeps your `PATH`
+when you started it with `npx` and Node is installed only for your user. Where `astrolabe` is not on your `PATH`, such as with only the
 desktop app installed, it names the full path of the app's own `astrolabe` instead. It allows Chrome's sandbox with an AppArmor profile and installs
 any missing libraries and system fonts with apt; pages that load without text
 can mean the host has no fonts. It is safe to run again. Without `sudo`, it only
@@ -328,14 +327,17 @@ off, its result arrives once it is back on.
 On the machine you will work from, open **Settings → Environments → Linked environments**,
 choose **Link**, and pick the other machine or enter its address. The list
 holds the machines this app knows and those on your Astrolabe account. If this
-app is connected to that machine with a session that manages access there, it
-makes the pairing code itself; otherwise paste one from that machine's
-**Settings → Sharing & access**. From a terminal, use
+app has an address for that machine and is connected to it with a session that
+manages access there, it makes the pairing code itself; otherwise paste one
+from that machine's **Settings → Sharing & access**. An address you type always
+needs a pasted code. From a terminal, use
 `astrolabe environment link <address> --pairing-code <code> --access <mode>`.
 
 You can also ask an agent to link a machine by name, such as "delegate this to
 my vps". It shows a card in the thread where you pick the machine the same way
-and the access, then approve.
+and the access, then approve. An address the agent gives that this app does
+not know for one of your machines also needs a pasted code. Paste one only for
+an address you trust: the code is sent there.
 
 - The access you pick is the most agents from this machine may do there. An
   agent also never gets more there than its own mode here.
@@ -363,17 +365,21 @@ pairing links and revoke client sessions. Revoking an unused link prevents new
 pairings; revoke a device's session to remove its existing access. Command-line
 management is available through `astrolabe auth --help`.
 
+When the app connects to more than one environment, choose one at the top of the
+page. A desktop app with **Local environment** off can manage a background
+service on the same machine this way, including its remote access link.
+
 A session with an open connection stays listed after its access credential
 expires.
 
 To choose a token's permissions, pass `--scope` once for each scope you want:
 
 ```sh
-npx @mercurian/astrolabe pair --scope orchestration:read --scope relay:read
+astrolabe pair --scope orchestration:read --scope relay:read
 ```
 
 The selected scopes replace the default permissions. The same option works with
-`npx @mercurian/astrolabe auth pairing create` and `npx @mercurian/astrolabe auth session issue`; each command's
+`astrolabe auth pairing create` and `astrolabe auth session issue`; each command's
 `--help` lists the available scopes. Without `--scope`, pairing tokens and issued
 bearer sessions get every permission, including managing access and remote access.
 A terminal or a full-access agent on the host can reach those as well, so a

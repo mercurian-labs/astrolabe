@@ -79,7 +79,9 @@ export function reviewCommentContextLabel(comment: ReviewCommentPresentation): s
   const rangeLabel = diffRange
     ? `L${diffRange[2]}${diffRange[3] ? ` to L${diffRange[3]}` : ""}${diffRange[1] === "-" ? " (before)" : ""}`
     : comment.rangeLabel;
-  return `${basename(comment.filePath)} ${rangeLabel}`;
+  const sectionPullRequest = /^pull-request:(\d+)$/u.exec(comment.sectionId)?.[1];
+  const prefix = sectionPullRequest === undefined ? "" : `#${sectionPullRequest} `;
+  return `${prefix}${basename(comment.filePath)} ${rangeLabel}`;
 }
 
 export function isPullRequestSummaryContext(comment: ReviewCommentPresentation): boolean {
@@ -119,9 +121,12 @@ export function pullRequestContextKindLabel(comment: ReviewCommentPresentation):
 export function previewAnnotationContextLabel(annotation: PreviewAnnotationPayload): string {
   const comment = annotation.comment.trim().replace(/\s+/g, " ");
   if (comment) {
-    return comment.length > PREVIEW_LABEL_MAX_CHARS
-      ? `${comment.slice(0, PREVIEW_LABEL_MAX_CHARS - 1)}…`
-      : comment;
+    if (comment.length <= PREVIEW_LABEL_MAX_CHARS) return comment;
+    let end = PREVIEW_LABEL_MAX_CHARS - 1;
+    const previous = comment.charCodeAt(end - 1);
+    const next = comment.charCodeAt(end);
+    if (previous >= 0xd800 && previous <= 0xdbff && next >= 0xdc00 && next <= 0xdfff) end -= 1;
+    return `${comment.slice(0, end)}…`;
   }
   return annotation.pageTitle?.trim() || "Preview annotation";
 }
@@ -354,6 +359,7 @@ export function buildMessageContext(input: {
   environmentContexts?: ReadonlyArray<EnvironmentContextRecord>;
   attachments?: ReadonlyArray<BoundComposerAttachment>;
   omitEditedBoards?: ReadonlyArray<TurnItemId>;
+  omitEditedFiles?: ReadonlyArray<string>;
 }): OrchestrationMessageContext | undefined {
   const screenshotAttachmentIds = new Set(
     (input.attachments ?? []).flatMap(({ attachment }) =>
@@ -374,10 +380,16 @@ export function buildMessageContext(input: {
     ...(input.attachments ?? []).map(attachmentContextRecord),
   ];
   const omitEditedBoards = input.omitEditedBoards ?? [];
-  if (records.length === 0 && omitEditedBoards.length === 0) return undefined;
-  return omitEditedBoards.length === 0
-    ? { version: 1, records }
-    : { version: 1, records, omitEditedBoards };
+  const omitEditedFiles = input.omitEditedFiles ?? [];
+  if (records.length === 0 && omitEditedBoards.length === 0 && omitEditedFiles.length === 0) {
+    return undefined;
+  }
+  return {
+    version: 1,
+    records,
+    ...(omitEditedBoards.length === 0 ? {} : { omitEditedBoards }),
+    ...(omitEditedFiles.length === 0 ? {} : { omitEditedFiles }),
+  };
 }
 
 export function asKnownContextRecord(

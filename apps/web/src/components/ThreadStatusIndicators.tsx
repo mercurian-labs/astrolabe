@@ -595,7 +595,7 @@ export function ThreadWorktreeIndicator({
             role="img"
             aria-label={tooltip}
             data-testid={`thread-worktree-${thread.id}`}
-            className="inline-flex items-center justify-center"
+            className="inline-flex size-4 shrink-0 items-center justify-center"
           />
         }
       >

@@ -1,15 +1,14 @@
 import { CanvasPanel } from "../canvas/CanvasPanel";
 import type {
-  EditorId,
   EnvironmentId,
   PreviewAnnotationPayload,
   ProjectId,
-  ResolvedKeybindingsConfig,
   ScopedThreadRef,
   ThreadLinkedPullRequest,
   ThreadPullRequestLink,
 } from "@t3tools/contracts";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import { resolvePathLinkTarget } from "@t3tools/shared/fileLinks";
 import { lazy, Suspense } from "react";
 import SideChatPane from "./SideChatPane";
 import type { ComposerImageAttachment, DraftId } from "../../composerDraftStore";
@@ -22,6 +21,7 @@ import {
   type PersistentThreadTerminalPanelProps,
 } from "../PersistentThreadTerminals";
 import { pullRequestPanelContext } from "../pullRequest/pullRequestDetail.logic";
+import { linkedFileEditorPath } from "../repositories/fileView";
 import { PullRequestDetailPanel } from "../pullRequest/PullRequestDetailPanel";
 import { PullRequestDetailGhost } from "../pullRequest/PullRequestGhosts";
 import { PullRequestsUnavailableState } from "../pullRequest/PullRequestsUnavailableState";
@@ -35,6 +35,7 @@ const DevicePanel = lazy(() =>
   import("../device/DevicePanel").then((module) => ({ default: module.DevicePanel })),
 );
 const FilePreviewPanel = lazy(() => import("../files/FilePreviewPanel"));
+const LinkedFileEditor = lazy(() => import("../files/LinkedFileEditor"));
 const GraphPanel = lazy(() => import("../graph/GraphPanel"));
 const LineagePanel = lazy(() => import("../lineage/LineagePanel"));
 const ignoreTurn = (_messageId: string) => {};
@@ -55,12 +56,10 @@ interface RightPanelPullRequestProps {
 }
 
 interface RightPanelFileProps {
+  readonly projectId?: ProjectId | undefined;
   readonly projectName: string | null;
   readonly workspaceRoot: string | undefined;
-  readonly availableEditors: ReadonlyArray<EditorId>;
-  readonly pendingSurfaceIds: ReadonlySet<string>;
   readonly onOpenFile: (relativePath: string) => void;
-  readonly onPendingChange: (relativePath: string, pending: boolean) => void;
 }
 
 export function RightPanelSurfaceContent(props: {
@@ -70,7 +69,6 @@ export function RightPanelSurfaceContent(props: {
   readonly environmentId: EnvironmentId;
   readonly visible: boolean;
   readonly composerDraftTarget: ScopedThreadRef | DraftId;
-  readonly keybindings: ResolvedKeybindingsConfig;
   readonly configuredPreviewUrls: ReadonlyArray<string>;
   readonly workspaceMutationId: string | null;
   readonly getShortcutContext: () => ShortcutMatchContext;
@@ -163,6 +161,10 @@ export function RightPanelSurfaceContent(props: {
             number: surface.number,
           }}
           initialTab={surface.detailTab ?? "summary"}
+          revealUrl={surface.revealUrl}
+          onRevealSettled={(revealUrl) => {
+            useRightPanelStore.getState().settlePullRequestReveal(threadRef, surface.id, revealUrl);
+          }}
           onTabChange={(tab) => {
             useRightPanelStore.getState().setPullRequestDetailTab(threadRef, surface.id, tab);
           }}
@@ -233,6 +235,32 @@ export function RightPanelSurfaceContent(props: {
       const files = props.files;
       const attachment = surface.kind === "file" ? surface.attachment : undefined;
       if (!attachment && (files.projectName === null || !files.workspaceRoot)) return null;
+      const cwd = files.workspaceRoot ?? "";
+      const editPath =
+        surface.kind === "file" && surface.editing && !attachment
+          ? linkedFileEditorPath(
+              typeof props.composerDraftTarget === "string",
+              cwd,
+              resolvePathLinkTarget(surface.relativePath, cwd),
+            )
+          : null;
+      const setEditing = (editing: boolean) =>
+        useRightPanelStore.getState().setFileEditing(threadRef, surface.id, editing);
+      if (surface.kind === "file" && editPath !== null) {
+        return (
+          <Suspense fallback={null}>
+            <LinkedFileEditor
+              threadRef={threadRef}
+              surfaceId={surface.id}
+              cwd={cwd}
+              path={editPath}
+              revealLine={surface.revealLine}
+              revealRequestId={surface.revealRequestId}
+              onPreview={() => setEditing(false)}
+            />
+          </Suspense>
+        );
+      }
       return (
         <Suspense fallback={null}>
           <FilePreviewPanel
@@ -240,13 +268,11 @@ export function RightPanelSurfaceContent(props: {
               attachment ? `attachment:${attachment.id}` : files.workspaceRoot
             }`}
             environmentId={props.environmentId}
-            cwd={files.workspaceRoot ?? ""}
+            cwd={cwd}
             projectName={files.projectName ?? ""}
+            projectId={files.projectId}
             threadRef={threadRef}
             composerDraftTarget={props.composerDraftTarget}
-            keybindings={props.keybindings}
-            availableEditors={files.availableEditors}
-            openInShortcutEnabled={shortcutsEnabled}
             relativePath={surface.kind === "file" ? surface.relativePath : null}
             {...(attachment ? { attachment } : {})}
             revealLine={surface.kind === "file" ? (surface.revealLine ?? null) : null}
@@ -258,8 +284,7 @@ export function RightPanelSurfaceContent(props: {
                 .navigateFolder(threadRef, surface.id, relativePath, folderTrail, keepSource)
             }
             folderTrail={surface.folderTrail}
-            onPendingChange={files.onPendingChange}
-            selectedFilePending={surface.kind === "file" && files.pendingSurfaceIds.has(surface.id)}
+            onEdit={() => setEditing(true)}
             workspaceMutationId={props.workspaceMutationId}
           />
         </Suspense>

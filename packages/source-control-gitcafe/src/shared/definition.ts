@@ -15,6 +15,7 @@ import {
   parseChangeRequestPath,
   parseCommitPath,
   projectChangeRequestHost,
+  repositoryUrlFromPagePath,
 } from "@t3tools/source-control-core/shared/definition";
 import { icon } from "./icon.ts";
 
@@ -24,6 +25,7 @@ const GITCAFE_HOSTS = new Set(["git.cafe", "staging.git.cafe"]);
 /** GitCafe serves pull requests at `/pull/<n>` and redirects the older `/pulls/<n>` there. */
 const CHANGE_REQUEST_PATH = /^\/([^/]+\/[^/]+)\/pulls?\/(\d+)(?:\/|$)/u;
 const COMMIT_PATH = /^\/([^/]+\/[^/]+)\/commit\/([0-9a-f]+)\/?$/iu;
+const REPOSITORY_PAGE_PATH = /^\/([^/]+\/[^/]+)\/(?:tree|blob)\/[^/]/u;
 
 function parseChangeRequestUrl(url: URL) {
   return GITCAFE_HOSTS.has(url.hostname.toLowerCase())
@@ -75,6 +77,10 @@ export const definition = defineSourceControl({
   fileUrl: (input) => buildFileUrl(input, "blob"),
   parseCommitUrl: (url) =>
     GITCAFE_HOSTS.has(url.hostname.toLowerCase()) ? parseCommitPath(url, COMMIT_PATH) : null,
+  repositoryUrlFromPage: (url) =>
+    GITCAFE_HOSTS.has(url.hostname.toLowerCase())
+      ? repositoryUrlFromPagePath(url, REPOSITORY_PAGE_PATH)
+      : null,
   changeRequestUrlFromReferenceAutolink: () => null,
   changeRequestActions: new Set([
     "ready",

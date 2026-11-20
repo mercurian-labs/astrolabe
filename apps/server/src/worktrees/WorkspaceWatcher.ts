@@ -4,6 +4,7 @@ import * as NodeModule from "node:module";
 
 import type * as ParcelWatcherModule from "@parcel/watcher";
 import type { ProjectWorktreeChange } from "@t3tools/contracts";
+import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -187,17 +188,19 @@ const make = Effect.gen(function* () {
     }
     const raw = yield* Effect.acquireRelease(Queue.unbounded<RawChange>(), Queue.shutdown);
     const ignore = [...ALWAYS_IGNORED, ...(yield* ignoredDirectories(root))];
-    const subscribed = yield* Effect.tryPromise(() =>
-      loadParcelWatcher().subscribe(
-        real.success,
-        (error, events) => {
-          // The watcher reports dropped events as an error; reading everything again recovers.
-          if (error) Queue.offerUnsafe(raw, { type: "overflow" });
-          else Queue.offerAllUnsafe(raw, events);
-        },
-        { ignore },
-      ),
-    ).pipe(Effect.result);
+    const subscribed = yield* Effect.tryPromise({
+      try: () =>
+        loadParcelWatcher().subscribe(
+          real.success,
+          (error, events) => {
+            // The watcher reports dropped events as an error; reading everything again recovers.
+            if (error) Queue.offerUnsafe(raw, { type: "overflow" });
+            else Queue.offerAllUnsafe(raw, events);
+          },
+          { ignore },
+        ),
+      catch: (cause) => new Cause.UnknownError(cause),
+    }).pipe(Effect.result);
     if (Result.isFailure(subscribed)) {
       yield* stop(unwatchedReason(subscribed.failure.cause));
       return watch;

@@ -10,10 +10,7 @@ import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScroll
 import { serverEnvironment } from "../../state/server";
 import { useEnvironmentsWithScope } from "../../state/session";
 import { useAtomCommand } from "../../state/use-atom-command";
-import {
-  AndroidSettingsEnvironmentFilter,
-  SettingsEnvironmentFilterHeader,
-} from "./components/SettingsEnvironmentFilterHeader";
+import { useSettingsEnvironmentMenu } from "./components/SettingsEnvironmentFilterHeader";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
 import { SettingsSwitchRow } from "./components/SettingsSwitchRow";
@@ -73,6 +70,7 @@ const ROWS: ReadonlyArray<{
  * by each selected environment.
  */
 export function SettingsChangeRequestsRouteScreen() {
+  const environmentMenu = useSettingsEnvironmentMenu();
   const insets = useSafeAreaInsets();
   const { selectedTargets } = useSettingsEnvironmentFilter();
   const writable = useEnvironmentsWithScope(selectedTargets, AuthSettingsWriteScope);
@@ -93,26 +91,23 @@ export function SettingsChangeRequestsRouteScreen() {
     }
   };
   return (
-    <>
-      <SettingsEnvironmentFilterHeader />
-      <SettingsScreen title="Changes" trailing={<AndroidSettingsEnvironmentFilter />}>
-        <ScrollView
-          contentInsetAdjustmentBehavior="automatic"
-          showsVerticalScrollIndicator={false}
-          className="flex-1"
-          contentContainerClassName="gap-6 px-5 pt-4"
-          contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
-        >
-          {reference ? (
-            <GroupingSection
-              environmentId={reference.environmentId}
-              disabled={!canWrite}
-              onChange={write}
-            />
-          ) : null}
-        </ScrollView>
-      </SettingsScreen>
-    </>
+    <SettingsScreen title="Changes" menus={[environmentMenu]}>
+      <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
+        showsVerticalScrollIndicator={false}
+        className="flex-1"
+        contentContainerClassName="gap-6 px-5 pt-4"
+        contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
+      >
+        {reference ? (
+          <GroupingSection
+            environmentId={reference.environmentId}
+            disabled={!canWrite}
+            onChange={write}
+          />
+        ) : null}
+      </ScrollView>
+    </SettingsScreen>
   );
 }
 

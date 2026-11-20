@@ -16,6 +16,11 @@ for a command's name or keys (`t ]` finds Chat Tab: Next).
 
 ## Composer controls
 
+`mod+shift+d` starts dictation in the focused editor, or the composer, and finishes it on the next press;
+`Esc` discards the recording. Change the chord under **Composer: Start or Finish
+Dictation**, and the hold or toggle behavior in **Settings → Voice**. See
+[Voice input](./voice-input.md).
+
 In **Settings → Chat → Send shortcut**, choose whether Enter sends, requires
 `mod+Enter` for multiline prompts, or always requires `mod+Enter`. `Shift+Enter`
 inserts a new line. This applies to the web and desktop composer at desktop widths.
@@ -124,9 +129,10 @@ you need.
 | `f`                     | Find a file in the current project                                                                                                                                                                                                                                 |
 | Arrows, `h` `j` `k` `l` | [Move focus](#moving-focus) left, down, up, or right                                                                                                                                                                                                               |
 | `d` `u`                 | [Scroll](#scrolling) down or up half a page                                                                                                                                                                                                                        |
+| `z` `Z`                 | [Undo or redo](#undo-and-redo) in the code file or note you're in                                                                                                                                                                                                  |
 | `g`                     | Go to Agents, Wikis, Projects, Changes, Usage, or Settings                                                                                                                                                                                                         |
 | `t`                     | Tabs: next, previous, close, reopen, back, forward, link                                                                                                                                                                                                           |
-| `p`                     | Panes: split, close, maximize, full screen, right panel                                                                                                                                                                                                            |
+| `p`                     | Panes: split, close, maximize, full screen, move, size, right panel                                                                                                                                                                                                |
 | `s` `s`                 | Show or hide the sidebar                                                                                                                                                                                                                                           |
 | `w`                     | Open Wikis, or find or create a document                                                                                                                                                                                                                           |
 | `e`                     | [Find](#find-in-a-file-or-note), [go to a symbol](#go-to-a-symbol), [edit code](#edit-code), step through [changes](#changes-in-a-code-file) and pick their base, [problems](#problems-in-a-code-file), and [language features](#language-features-in-a-code-file) |
@@ -189,6 +195,26 @@ faint when there is nowhere further to go. `Ctrl+D` and `Ctrl+U` work while you
 are not typing; in the composer and notes they stay Vim's. On Windows and Linux
 they stay the diff toggle and Usage, so use Space `d` and `u` there, or bind
 **Scroll Down** and **Scroll Up** to other keys.
+
+### Panes
+
+`mod+\` splits the tab in front into a new pane to the right and `mod+alt+\` into one below;
+`Ctrl+Tab` and `Ctrl+Shift+Tab` step through the focused pane's tabs; `mod+alt+f` maximizes the
+focused pane or puts the others back. `mod+alt+shift` and an arrow trades the focused pane's tabs
+with the pane that way, which keeps every pane's size, and `mod+alt+r` steps the focused pane
+through a third, a half and two thirds of the room it shares. In the keyboard menu these are
+Space `p` `v`, `p` `s`, `t` `]`, `t` `[`, `p` `m`, `p` `h` `j` `k` `l`, and `p` `=`; after a
+move or a size step, the same key keeps going for the repeat window. Tab to the line between
+two panes and the arrow keys along it move it. In a browser, `Ctrl+Tab` may switch the
+browser's own tabs; the desktop app keeps it.
+
+### Undo and redo
+
+`mod+z` undoes in a code file or note, and `mod+shift+z` or `Ctrl+Y` redoes. Space `z` and `Z`
+do the same from the keyboard menu, and more `z` and `Z` keep going for the repeat window; the
+Command Palette lists **Undo** and **Redo** too. They show faint when there is nothing to undo or
+redo. In a note, undo takes back only your own changes, never an agent's. Change the keys under
+**Editors** in **Settings → Keybindings**.
 
 ### The sidebar's list
 
@@ -378,7 +404,9 @@ stops a few minutes after you close its tab.
 Language servers can run a project's code, so each project starts out untrusted, once per machine.
 An untrusted project runs only the servers that never run project code and are already on the
 machine or downloaded, marked restricted in the header; the others wait, and agents' code tools
-say so unless it is only ESLint or Tailwind waiting. Click **Trust project** in the header to run them, downloads included. A worktree shares
+say so unless it is only ESLint or Tailwind waiting. A file in an untrusted project asks under its
+header: click **Trust project** to run them, downloads included, or **Not now** to hide the
+question; the server menu in the header still offers **Trust project**. A worktree shares
 its repository's trust. To take it back, go to **Settings → Projects → Language servers** and
 click **Revoke**: the project's servers restart restricted. A restricted server fetches nothing a
 file names, so JSON, YAML and TOML schemas at a URL load once the project is trusted.
@@ -500,10 +528,11 @@ the language servers already running there, and the code index when none is or t
 answer.
 
 Rename Symbol opens a box below the name: type the new name and press Enter, or Escape to
-cancel. The rename reaches every file that uses the name, open or not, and they are saved. Then
-every changed place opens in one editor of excerpts, with **Undo rename** at the top. It is not in
-the file's own undo: use that button, or run Undo Rename, to put every file back. Edits made since
-are kept. Closing the tab keeps the rename.
+cancel. The rename reaches every file that uses the name, open or not, and they are saved. A
+rename within the file shows a notice with **Undo**; one across several files opens every changed
+place beside the file in one editor of excerpts, titled Rename results, with **Undo rename** at the
+top. It is not in the file's own undo: use that button, or run Undo Rename, to put every file back.
+Edits made since are kept. Closing the tab keeps the rename.
 
 Format Document reformats the file with its language server, Ruff for Python, as one step you can
 undo. Repository files save themselves as you type; `mod+s` (`:w` in Vim) also saves now, and
@@ -592,9 +621,15 @@ to show only actions.
 
 In a new thread, `Cmd+Shift+H` moves the draft to the next machine.
 
-In the composer, Return sends and `Shift+Return` inserts a new line. `Cmd+Return`
-also sends. To make Return insert a new line instead, change the Return key
-behavior in Settings → Keyboard.
+In the composer, Return sends and `Shift+Return` inserts a new line. While a
+turn is running, `Cmd+Return` sends with the other follow-up action. To make
+Return insert a new line instead, change the Return key behavior in Settings →
+Keyboard; `Cmd+Return` then sends.
+
+## Android
+
+With a hardware keyboard, the composer handles Return as on iPad, with `Ctrl` in
+place of `Cmd`. The on-screen keyboard's Return always inserts a new line.
 
 ## Edit the configuration file
 
@@ -696,6 +731,9 @@ a shortcut.
 `thread.stop` interrupts the running turn in the focused thread. It has no default
 shortcut; assign one in **Settings → Keybindings**.
 
+`thread.regenerateTitle` generates a new title for the focused thread, like
+**Regenerate title** in the thread menu. It has no default shortcut.
+
 `thread.undo` (`mod+z` by default) reverses the actions shown in the notice at the
 bottom of the sidebar, such as unpin, settle, snooze, archive, or discarding a
 draft. Consecutive
@@ -713,7 +751,8 @@ to where you were first. In a code file those keys indent, so use `ctrl+-` and `
 Space `p` `f` takes the focused pane full screen: it fills the panes. Press it
 again to restore it. Space `p` `r` hides the
 [linked tabs](./thread-sidebar.md#linked-tabs) of the chat in front, or brings them back; Space `t` `n` opens a new linked tab for the focused chat, and Space
-`t` `k` links the focused tab to the chat in front, or unlinks it.
+`t` `k` links the focused tab to the chat in front, or unlinks it. Space `t` `e` switches a
+thread's file tab between its preview and the editor.
 
 `chat.new` may ask you to choose a project when there is more than one.
 `chat.newLocal` skips that chooser. Both use your

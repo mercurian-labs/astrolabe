@@ -49,8 +49,9 @@ import {
   TerminalSquare,
   LayoutDashboard,
   Waypoints,
+  Volume2Icon,
+  VolumeOffIcon,
 } from "lucide-react";
-import { Volume2, VolumeOff } from "lucide";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
@@ -70,7 +71,6 @@ import { resolveShortcutCommand, type ShortcutMatchContext } from "~/keybindings
 import { readLocalApi } from "~/localApi";
 import { useStableCallback } from "~/hooks/useStableCallback";
 import { Button } from "~/components/ui/button";
-import { MorphIcon } from "~/components/MorphIcon";
 import { AndroidIcon, AppleIcon } from "~/components/Icons";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { Kbd } from "~/components/ui/kbd";
@@ -122,7 +122,6 @@ export interface RightPanelTabsProps {
   surfaces: readonly RightPanelSurface[];
   environmentId: EnvironmentId | null;
   activeSurfaceId: string | null;
-  pendingSurfaceIds: ReadonlySet<string>;
   previewSessions: Readonly<Record<string, PreviewSessionSnapshot>>;
   desktopByTabId: Readonly<Record<string, DesktopPreviewOverlay>>;
   /** Maps server-local session ids to desktop runtime ids; session ids cannot address desktop operations. */
@@ -918,7 +917,6 @@ function RightPanelTab(
     surface: RightPanelSurface;
     dragDisabled: boolean;
     active: boolean;
-    pending: boolean;
     title: string;
     audio: TabAudioState;
     audioRuntimeTabId: string | null;
@@ -965,12 +963,6 @@ function RightPanelTab(
           environmentId={props.environmentId}
           pullRequestStatusSeed={props.pullRequestStatusSeed}
         />
-        {props.pending ? (
-          <span
-            className="absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full bg-current"
-            aria-hidden
-          />
-        ) : null}
       </PanelTabCloseButton>
       {audio === "none" || !audioRuntimeTabId ? null : (
         <Tooltip>
@@ -987,7 +979,11 @@ function RightPanelTab(
                     .catch(() => undefined);
                 }}
               >
-                <MorphIcon className="size-3" icon={audio === "muted" ? VolumeOff : Volume2} />
+                {audio === "muted" ? (
+                  <VolumeOffIcon className="size-3" />
+                ) : (
+                  <Volume2Icon className="size-3" />
+                )}
               </button>
             }
           />
@@ -1342,12 +1338,13 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
     if (!viewport) return;
 
     const update = () => updateTabScrollState(viewport);
+    // Only a vertical mouse wheel is translated. Horizontal input scrolls natively, since
+    // consuming it keeps Chromium from starting the gesture scroll that swipe navigation tracks.
     const handleWheel = (event: WheelEvent) => {
-      if (event.ctrlKey) return;
-      let delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+      if (event.ctrlKey || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
+      let delta = event.deltaY;
       if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) delta *= 16;
       if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) delta *= viewport.clientWidth;
-      if (delta === 0) return;
 
       const previousScrollLeft = viewport.scrollLeft;
       viewport.scrollLeft += delta;
@@ -1419,7 +1416,6 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                     surface={surface}
                     dragDisabled={!props.onMoveSurface || renamingDevice === surface.id}
                     active={surface.id === props.activeSurfaceId}
-                    pending={props.pendingSurfaceIds.has(surface.id)}
                     title={surfaceTitle(surface, props.previewSessions, props.terminalLabelsById)}
                     audio={tabAudioState(
                       previewTabId ? (props.desktopByTabId[previewTabId] ?? null) : null,

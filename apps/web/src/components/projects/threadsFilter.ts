@@ -40,6 +40,7 @@ export function threadStatusFilterOf(status: SidebarThreadStatus): ThreadStatusF
     case "input":
     case "request":
       return "needs-you";
+    case "preparing":
     case "working":
     case "waiting":
       return "working";

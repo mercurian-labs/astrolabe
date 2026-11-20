@@ -11,6 +11,7 @@ import {
 } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, keymap, WidgetType } from "@codemirror/view";
 
+import { hiddenLinesUnfold } from "../code/editing.ts";
 import { EXCERPT_EXPAND_LINES, type ExcerptBounds, mapBounds } from "./excerpts.ts";
 
 /**
@@ -259,6 +260,20 @@ const edgeKeys = Prec.high(
   ]),
 );
 
+// Unfold shows more lines around the excerpt, as its bars do; Unfold all shows the whole file.
+const unfoldExcerpt = (lines: (state: EditorState) => number) => (view: EditorView) => {
+  const controls = view.state.facet(controlsFacet);
+  if (controls === null || hiddenRuns(view.state).length === 0) return false;
+  const count = lines(view.state);
+  controls.expand(count, count);
+  return true;
+};
+
+const unfoldIntoExcerpt = hiddenLinesUnfold.of({
+  unfold: unfoldExcerpt(() => 0),
+  unfoldAll: unfoldExcerpt((state) => state.doc.lines),
+});
+
 const theme = EditorView.baseTheme({
   ".atlas-excerpt-hidden": { display: "flex", height: "18px", alignItems: "center" },
   ".atlas-excerpt-expand": {
@@ -330,6 +345,7 @@ export function excerpt(options: {
     keepEditsInside,
     keepSelectionInside,
     edgeKeys,
+    unfoldIntoExcerpt,
     theme,
     EditorView.editorAttributes.of({ [EXCERPT_ATTRIBUTE]: "" }),
   ];

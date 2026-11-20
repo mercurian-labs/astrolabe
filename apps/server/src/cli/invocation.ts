@@ -17,7 +17,7 @@ export const CLI_PACKAGE = "@mercurian/astrolabe";
 export type CliRunner = "npx" | "pnpm dlx" | "bunx";
 
 /** Detection is best-effort; callers must fail closed to a plain `t3` command. */
-function detectCliRunner(entryPath: string): CliRunner | null {
+export function detectCliRunner(entryPath: string): CliRunner | null {
   const path = entryPath.replaceAll("\\", "/");
   if (path.includes("/_npx/")) {
     return "npx";

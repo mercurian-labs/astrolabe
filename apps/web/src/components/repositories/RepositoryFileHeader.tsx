@@ -1,49 +1,11 @@
-import { useAtomValue } from "@effect/atom-react";
-import type { EnvironmentId } from "@t3tools/contracts";
-import { resolvePathLinkTarget } from "@t3tools/shared/fileLinks";
 import * as Schema from "effect/Schema";
 import { Code2Icon, EyeIcon, Table2Icon } from "lucide-react";
 import { useState, useSyncExternalStore } from "react";
 
-import { OpenInPicker } from "~/components/chat/OpenInPicker";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { TabHeader } from "~/panes/TabHeader";
-import { useRemoteOpenState } from "~/remoteOpen";
-import { usePrimaryEnvironmentId } from "~/state/environments";
-import {
-  primaryServerAvailableEditorsAtom,
-  primaryServerKeybindingsAtom,
-  serverEnvironment,
-} from "~/state/server";
 import type { RenderedForm } from "./fileView";
 import { repositoryFileReveal } from "./repositoryFileReveal";
-
-/** The open-in-editor picker for one file, with reveal in the file manager where the host has it. */
-export function FileOpenIn(props: {
-  readonly environmentId: EnvironmentId;
-  readonly cwd: string;
-  readonly path: string;
-}) {
-  const keybindings = useAtomValue(primaryServerKeybindingsAtom);
-  const availableEditors = useAtomValue(primaryServerAvailableEditorsAtom);
-  const config = useAtomValue(serverEnvironment.configValueAtom(props.environmentId));
-  const primaryEnvironmentId = usePrimaryEnvironmentId();
-  const remote = useRemoteOpenState(props.environmentId);
-  if (props.environmentId !== primaryEnvironmentId && remote.mode === "local-exec") return null;
-  return (
-    <OpenInPicker
-      environmentId={props.environmentId}
-      keybindings={keybindings}
-      availableEditors={availableEditors}
-      openInCwd={resolvePathLinkTarget(props.path, props.cwd)}
-      openInCwdIsFile
-      compact
-      // The favourite-editor key opens the chat's checkout.
-      enableShortcut={false}
-      revealFileManager={config?.shellRevealInFileManager === true}
-    />
-  );
-}
 
 // The thread's file panel's keys, so both views open a kind the same way.
 const RENDERED_STORAGE_KEYS = {

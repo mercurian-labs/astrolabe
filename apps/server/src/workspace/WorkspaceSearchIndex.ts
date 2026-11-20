@@ -531,7 +531,7 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
   const searchContents: WorkspaceSearchIndex["Service"]["searchContents"] = Effect.fn(
     "WorkspaceSearchIndex.searchContents",
   )(function* (input) {
-    const { searchQuery, regexMode } = buildContentSearchQuery(input);
+    let { searchQuery, regexMode } = buildContentSearchQuery(input);
     // Grep cursors advance per file; post-filters need enough raw candidates before advancing.
     const rawPageSize =
       input.wholeWord || input.pathFilter !== null
@@ -541,6 +541,7 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
     let position: IndexedContentSearchPosition | null = input.start;
     let reachedLimit = false;
     let regexFallbackError: string | undefined;
+    let retryLiterally = false;
 
     while (position !== null && !reachedLimit) {
       const pageStart: IndexedContentSearchPosition = position;
@@ -561,6 +562,13 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
           afterContext: input.contextLines,
         }),
       );
+      // fff searches an invalid pattern as a literal, which would keep the `(?i)` prefix.
+      retryLiterally = regexMode && !input.caseSensitive && result.regexFallbackError !== undefined;
+      if (retryLiterally) {
+        regexFallbackError = result.regexFallbackError;
+        ({ searchQuery, regexMode } = buildContentSearchQuery({ ...input, useRegex: false }));
+        continue;
+      }
       regexFallbackError ??= result.regexFallbackError;
       position =
         result.nextCursor === null

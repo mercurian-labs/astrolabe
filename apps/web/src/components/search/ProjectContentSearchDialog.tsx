@@ -201,6 +201,7 @@ function OpenContentSearchDialog(props: {
     );
   };
   const handleListKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
     if (
       resolveShortcutCommand(event.nativeEvent, keybindings, openInEditorContext) ===
       "projectSearch.openInEditor"

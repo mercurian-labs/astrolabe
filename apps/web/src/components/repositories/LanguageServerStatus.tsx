@@ -1,10 +1,12 @@
-import { useAtomValue } from "@effect/atom-react";
+import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { selectEnvironmentQueryData } from "@t3tools/client-runtime/state/runtime";
 import type {
   LanguageServerRoute,
   LanguageServerStatus,
   LanguageServerToolchainOption,
 } from "@t3tools/contracts";
+import { Atom } from "effect/reactivity";
+import { ShieldIcon } from "lucide-react";
 import { Fragment } from "react";
 
 import { formatBytes } from "~/lib/formatBytes";
@@ -35,7 +37,7 @@ import {
 } from "./languageServerFile";
 
 const LABELS: Record<LanguageServerStatus["state"], (name: string) => string> = {
-  "trust-needed": (name) => `${name} needs this project trusted`,
+  "trust-needed": (name) => `${name}: Not trusted`,
   disabled: (name) => `${name}: Off in settings`,
   downloading: (name) => `Downloading ${name}…`,
   starting: (name) => `${name} starting…`,
@@ -83,6 +85,34 @@ export function LanguageServerStatusEntry({
   return <Entry file={file} status={status} servers={servers} />;
 }
 
+/** What the header entry and the trust bar both read: the companions and whether trust helps. */
+function useServers(
+  file: LanguageServerFile,
+  status: LanguageServerStatus,
+  servers: ReadonlyArray<LanguageServerRoute>,
+) {
+  const canMaintain = useAtomValue(
+    languageServersEnvironment.restart.permissionAtom(file.environmentId),
+  );
+  const running = selectEnvironmentQueryData(
+    useAtomValue(languageServersEnvironment.statuses(file.environmentId)),
+  );
+  const others = servers.filter(({ server }) => server !== file.server);
+  // Companions the checkout doesn't use have no status; Settings says why.
+  const companions = others
+    .filter((route) => !route.off)
+    .flatMap(
+      ({ server }) =>
+        running?.find((other) => other.cwd === file.cwd && other.server === server) ?? [],
+    );
+  const trustable = [status, ...companions].some(
+    (entry) => entry.state === "trust-needed" || entry.restricted,
+  );
+  // The route's name has no version: the label stays short while nothing runs.
+  const name = servers.find(({ server }) => server === file.server)?.name ?? status.name;
+  return { canMaintain, others, companions, trustable, name };
+}
+
 function Entry({
   file,
   status,
@@ -92,43 +122,26 @@ function Entry({
   readonly status: LanguageServerStatus;
   readonly servers: ReadonlyArray<LanguageServerRoute>;
 }) {
-  const canMaintain = useAtomValue(
-    languageServersEnvironment.restart.permissionAtom(file.environmentId),
-  );
-  const running = selectEnvironmentQueryData(
-    useAtomValue(languageServersEnvironment.statuses(file.environmentId)),
-  );
-  const others = servers.filter(({ server }) => server !== file.server);
+  const { canMaintain, others, companions, trustable, name } = useServers(file, status, servers);
   const off = others.filter((route) => route.off);
-  // Companions the checkout doesn't use have no status; Settings says why.
-  const companions = others
-    .filter((route) => !route.off)
-    .flatMap(
-      ({ server }) =>
-        running?.find((other) => other.cwd === file.cwd && other.server === server) ?? [],
-    );
   const { state, restricted } = status;
   const alive = state === "ready" || state === "starting";
-  const trustable = [status, ...companions].some(
-    (entry) => entry.state === "trust-needed" || entry.restricted,
-  );
+  // Trust is asked in the bar under the header, which has room to say what it allows.
   const nudge =
-    !canMaintain || alive || state === "downloading"
+    !canMaintain || alive || state === "downloading" || state === "trust-needed"
       ? null
-      : state === "trust-needed"
-        ? { label: "Trust project", run: () => trustLanguageServerProject(file) }
-        : state === "disabled"
-          ? { label: "Turn on", run: () => turnOnLanguageServer(file, file.server) }
-          : {
-              label: state === "missing" ? "Try again" : "Restart",
-              run: () => restartLanguageServer(file),
-            };
+      : state === "disabled"
+        ? { label: "Turn on", run: () => turnOnLanguageServer(file, file.server) }
+        : {
+            label: state === "missing" ? "Try again" : "Restart",
+            run: () => restartLanguageServer(file),
+          };
   return (
     <span className="flex shrink-0 items-center gap-1">
       <Menu>
         <MenuTrigger render={<Button size="xs" variant="ghost" />}>
           <span role="status">
-            {LABELS[state](status.name)}
+            {LABELS[state](state === "trust-needed" ? name : status.name)}
             {restricted && state !== "trust-needed" ? " (restricted)" : null}
             {companions.length > 0 ? ` +${companions.length}` : null}
           </span>
@@ -183,6 +196,70 @@ function Entry({
         </Button>
       ) : null}
     </span>
+  );
+}
+
+const trustBarDismissed = Atom.family((checkout: string) =>
+  Atom.make(false).pipe(Atom.keepAlive, Atom.withLabel(`language-servers:trust-bar:${checkout}`)),
+);
+
+/**
+ * Astrolabe: the question an untrusted project's code file asks once, under its header. "Not now"
+ * hides it for the checkout until the app reloads; the header's menu and the commands still trust.
+ */
+export function LanguageServerTrustBar({
+  file,
+  status,
+  servers,
+}: {
+  readonly file: LanguageServerFile | null;
+  readonly status: LanguageServerStatus | null;
+  readonly servers: ReadonlyArray<LanguageServerRoute>;
+}) {
+  if (file === null || status === null) return null;
+  return <TrustBar file={file} status={status} servers={servers} />;
+}
+
+function TrustBar({
+  file,
+  status,
+  servers,
+}: {
+  readonly file: LanguageServerFile;
+  readonly status: LanguageServerStatus;
+  readonly servers: ReadonlyArray<LanguageServerRoute>;
+}) {
+  const { canMaintain, trustable, name } = useServers(file, status, servers);
+  const dismissedAtom = trustBarDismissed(`${file.environmentId}\0${file.cwd}`);
+  const dismissed = useAtomValue(dismissedAtom);
+  const dismiss = useAtomSet(dismissedAtom);
+  if (!canMaintain || !trustable || dismissed) return null;
+  return (
+    <div
+      role="region"
+      aria-label="Project trust"
+      className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border bg-muted/40 px-(--workspace-gutter-start) py-2 text-xs"
+    >
+      <ShieldIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+      <p className="min-w-0 flex-1 basis-64">
+        <span className="font-medium text-foreground">
+          {status.state === "trust-needed"
+            ? `${name} starts once you trust this project.`
+            : "Some language features are off until you trust this project."}
+        </span>{" "}
+        <span className="text-muted-foreground">
+          Trusting lets its language servers download and run code from it.
+        </span>
+      </p>
+      <span className="flex shrink-0 items-center gap-1">
+        <Button size="xs" variant="ghost" onClick={() => dismiss(true)}>
+          Not now
+        </Button>
+        <Button size="xs" variant="outline" onClick={() => trustLanguageServerProject(file)}>
+          Trust project
+        </Button>
+      </span>
+    </div>
   );
 }
 

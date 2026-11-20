@@ -12,10 +12,15 @@ import { __setClientSettingsForTests } from "./hooks/useSettings";
 import { readThreadPreviewState, resetPreviewStateForTests } from "./previewStateStore";
 import { planNextReopen, type ReopenOwnerState, reopenClosedView } from "./reopenClosedView";
 import {
+  hostRightPanel,
   selectThreadRightPanelState,
   type ThreadRightPanelState,
   useRightPanelStore,
 } from "./rightPanelStore";
+import { closeTab } from "./panes/arrangement";
+import { leaves } from "./panes/tree";
+import { workspace } from "./panes/workspace";
+import { chatTabKey, parseChatTabKey } from "./sectionTabs/sectionTabs";
 
 const threadRef = {
   environmentId: "local" as ScopedThreadRef["environmentId"],
@@ -40,28 +45,120 @@ beforeEach(() => {
 });
 
 describe("reopenClosedView", () => {
-  it("restores a file tab at its line without creating a browser session", async () => {
-    const openPreview = vi.fn();
-    const reopened = await reopenClosedView(
-      {
-        kind: "panel-tab",
+  it.each([
+    { relativePath: "src/app.ts", line: 18, folderTrail: undefined },
+    { relativePath: "apps", line: null, folderTrail: "apps/web/src" },
+    { relativePath: "", line: null, folderTrail: "apps/web/src" },
+  ])(
+    "restores the captured file or folder tab at '$relativePath'",
+    async ({ relativePath, line, folderTrail }) => {
+      const panels = useRightPanelStore.getState();
+      if (folderTrail === undefined) panels.openFile(threadRef, relativePath, line ?? undefined);
+      else {
+        panels.openFile(threadRef, folderTrail);
+        panels.navigateFolder(threadRef, `file:${folderTrail}`, relativePath, folderTrail);
+      }
+      const expected =
+        relativePath === ""
+          ? { kind: "files", id: "files", folderTrail }
+          : {
+              kind: "file",
+              id: `file:${relativePath}`,
+              relativePath,
+              revealLine: line,
+              revealRequestId: 1,
+              ...(folderTrail === undefined ? {} : { folderTrail }),
+            };
+      const before = selectThreadRightPanelState(
+        useRightPanelStore.getState().byThreadKey,
         threadRef,
-        surface: {
-          kind: "file",
-          id: "file:src/app.ts",
-          relativePath: "src/app.ts",
-          revealLine: 18,
-          revealRequestId: 1,
-        },
-      },
-      { openPreview, workspaceAvailable: true },
-    );
-    expect(reopened).toBe(true);
-    const state = selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, threadRef);
-    expect(state.isOpen).toBe(true);
-    expect(state.surfaces).toMatchObject([{ id: "file:src/app.ts", revealLine: 18 }]);
-    expect(openPreview).not.toHaveBeenCalled();
-  });
+      );
+      expect(before.surfaces).toEqual([expected]);
+      panels.closeSurface(threadRef, expected.id);
+      expect(
+        selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, threadRef).surfaces,
+      ).toEqual([]);
+      const entries = useClosedViewStore.getState().entries;
+      expect(entries).toEqual([
+        { id: expect.any(String), kind: "panel-tab", threadRef, surface: expected },
+      ]);
+      const openPreview = vi.fn();
+      const reopened = await reopenClosedView(entries[0]!, {
+        openPreview,
+        workspaceAvailable: true,
+      });
+      expect(reopened).toBe(true);
+      const state = selectThreadRightPanelState(
+        useRightPanelStore.getState().byThreadKey,
+        threadRef,
+      );
+      expect(state.isOpen).toBe(true);
+      expect(state.activeSurfaceId).toBe(expected.id);
+      expect(state.surfaces).toEqual([expected]);
+      expect(openPreview).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    { hosted: false, folderTrail: "packages/contracts/src" },
+    { hosted: false, folderTrail: undefined },
+    { hosted: true, folderTrail: "packages/contracts/src" },
+    { hosted: true, folderTrail: undefined },
+  ])(
+    "preserves a hidden root tab with trail $folderTrail (hosted: $hosted)",
+    async ({ hosted, folderTrail }) => {
+      const panels = useRightPanelStore.getState();
+      panels.openFile(threadRef, "apps/web/src");
+      panels.navigateFolder(threadRef, "file:apps/web/src", "", "apps/web/src");
+      panels.closeSurface(threadRef, "files");
+      const entry = useClosedViewStore.getState().entries[0]!;
+      const hostRef = hosted
+        ? { ...threadRef, threadId: "host" as ScopedThreadRef["threadId"] }
+        : threadRef;
+      const unhost = hosted ? hostRightPanel(threadRef, hostRef) : undefined;
+      try {
+        if (folderTrail === undefined) panels.open(threadRef, "files");
+        else {
+          panels.openFile(threadRef, folderTrail);
+          panels.navigateFolder(threadRef, `file:${folderTrail}`, "", folderTrail);
+        }
+        panels.close(threadRef);
+        const before = selectThreadRightPanelState(
+          useRightPanelStore.getState().byThreadKey,
+          hostRef,
+        );
+        expect(before.isOpen).toBe(false);
+        const plan = planNextReopen([entry], () => ({
+          environmentKnown: true,
+          catalogReady: true,
+          ownerExists: true,
+          sideChatExists: true,
+          shellLive: true,
+          panel: before,
+          chatOpen: false,
+          terminalOpen: false,
+          terminalSessions: false,
+        }));
+        expect(plan.restore).toBe(entry);
+        const openPreview = vi.fn();
+        expect(
+          await reopenClosedView(plan.restore!, { openPreview, workspaceAvailable: true }),
+        ).toBe(true);
+        const after = selectThreadRightPanelState(
+          useRightPanelStore.getState().byThreadKey,
+          hostRef,
+        );
+        expect(after.isOpen).toBe(true);
+        expect(after.activeSurfaceId).toBe("files");
+        expect(after.surfaces).toEqual([
+          { kind: "files", id: "files", ...(folderTrail === undefined ? {} : { folderTrail }) },
+        ]);
+        expect(openPreview).not.toHaveBeenCalled();
+      } finally {
+        unhost?.();
+      }
+    },
+  );
 
   it("remembers a closed graph tab and reopens it without a workspace", async () => {
     const panels = useRightPanelStore.getState();
@@ -79,19 +176,82 @@ describe("reopenClosedView", () => {
     expect(state.surfaces.map((surface) => surface.id)).toEqual(["diff", "graph"]);
   });
 
+  it("puts a closed chat back in its pane and place while that pane is open", async () => {
+    const chat = (id: string) => chatTabKey({ ...threadRef, threadId: id as never });
+    const [one, two, three, four] = ["one", "two", "three", "four"].map(chat) as [
+      string,
+      string,
+      string,
+      string,
+    ];
+    const pane = (id: string, tabs: string[]) => ({
+      type: "leaf" as const,
+      id,
+      tabs,
+      active: tabs[0]!,
+    });
+    workspace.update(() => ({
+      root: {
+        type: "branch",
+        id: "row",
+        direction: "row",
+        children: [pane("p1", [one, two, three]), pane("p2", [four])],
+        weights: [1, 1],
+      },
+      focused: "p2",
+      seq: 10,
+    }));
+    const close = (key: string) => {
+      workspace.update((arrangement) => closeTab(arrangement, key));
+      useClosedViewStore
+        .getState()
+        .remember({ kind: "chat-tab", threadRef: parseChatTabKey(key)! });
+      return useClosedViewStore.getState().entries[0]!;
+    };
+    const tabsOf = () => leaves(workspace.arrangement().root).map((leaf) => leaf.tabs);
+
+    const closed = close(two);
+    expect(closed.place).toEqual({ paneId: "p1", index: 1, beside: one });
+    await reopenClosedView(closed, { openPreview: vi.fn(), workspaceAvailable: true });
+    expect(tabsOf()).toEqual([[one, two, three], [four]]);
+
+    // A pane holding none of the tabs that stood beside it is a later one given the id.
+    const elsewhere = close(two);
+    await reopenClosedView(
+      { ...elsewhere, place: { paneId: "p2", index: 0, beside: three } },
+      { openPreview: vi.fn(), workspaceAvailable: true },
+    );
+    expect(leaves(workspace.arrangement().root)[1]?.tabs).toEqual([four]);
+
+    // Its pane gone, it opens as any chat would, never into a pane that isn't there.
+    const again = close(two);
+    workspace.update((arrangement) => closeTab(closeTab(arrangement, one), three));
+    await reopenClosedView(again, { openPreview: vi.fn(), workspaceAvailable: true });
+    expect(leaves(workspace.arrangement().root).some((leaf) => leaf.id === "p1")).toBe(false);
+    expect(tabsOf().flat()).toContain(two);
+  });
+
   it("does not reopen workspace tabs without an available project", async () => {
     const options = {
       openPreview: vi.fn(),
       workspaceAvailable: false,
     };
     for (const surface of [
-      { kind: "files", id: "files" },
+      { kind: "files", id: "files", folderTrail: "apps/web/src" },
       {
         kind: "file",
         id: "file:src/app.ts",
         relativePath: "src/app.ts",
         revealLine: null,
         revealRequestId: 0,
+      },
+      {
+        kind: "file",
+        id: "file:apps",
+        relativePath: "apps",
+        revealLine: null,
+        revealRequestId: 1,
+        folderTrail: "apps/web/src",
       },
     ] as const) {
       expect(await reopenClosedView({ kind: "panel-tab", threadRef, surface }, options)).toBe(
@@ -154,6 +314,8 @@ describe("planNextReopen", () => {
     shellLive: true,
     panel: { isOpen: false, activeSurfaceId: null, surfaces: [] },
     chatOpen: false,
+    terminalOpen: false,
+    terminalSessions: true,
   };
   const openDiff: ThreadRightPanelState = {
     isOpen: true,
@@ -228,5 +390,13 @@ describe("planNextReopen", () => {
     const plan = planNextReopen(chats, (entry) => ({ ...known, chatOpen: entry.id === "a" }));
     expect(plan.drop.map((entry) => entry.id)).toEqual(["a"]);
     expect(plan.restore?.id).toBe("b");
+  });
+
+  it("drops a closed terminal whose sessions all ended, rather than start a new one", () => {
+    const terminals: ClosedViewEntry[] = [{ id: "t", kind: "terminal-tab", threadRef }];
+    expect(planNextReopen(terminals, () => known).restore?.id).toBe("t");
+    const ended = planNextReopen(terminals, () => ({ ...known, terminalSessions: false }));
+    expect(ended.drop.map((entry) => entry.id)).toEqual(["t"]);
+    expect(ended.restore).toBeNull();
   });
 });

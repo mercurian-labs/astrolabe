@@ -60,6 +60,7 @@ export type KeybindingCommandOption = KeybindingCommand;
 const CORE_WHEN_VARIABLES = [
   "terminalFocus",
   "terminalOpen",
+  "previewOpen",
   "isWeb",
   "isDesktop",
   "true",
@@ -241,7 +242,18 @@ const KEYBINDING_GROUPS = [
   {
     id: "editor",
     title: "Editors",
-    prefixes: ["markdown", "search", "code", "hunk", "outline", "diagnostic", "lsp", "run", "file"],
+    prefixes: [
+      "markdown",
+      "search",
+      "edit",
+      "code",
+      "hunk",
+      "outline",
+      "diagnostic",
+      "lsp",
+      "run",
+      "file",
+    ],
   },
   { id: "terminal", title: "Terminal", prefixes: ["terminal"] },
   { id: "preview", title: "Preview & diff", prefixes: ["preview", "diff"] },
@@ -446,6 +458,9 @@ const ASTROLABE_COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
   "run.atCursor": "Run at Cursor",
   "run.last": "Run Last",
   "file.save": "Save File",
+  "file.toggleEdit": "Files: Edit or Preview File",
+  "edit.undo": "Undo",
+  "edit.redo": "Redo",
   "multibuffer.expand": "Show More Lines Around Excerpt",
   "multibuffer.openExcerpt": "Open Excerpt in Its File",
   "multibuffer.nextFile": "Next File in Results",
@@ -463,6 +478,7 @@ export function commandLabel(command: KeybindingCommand): string {
   if (command === "composer.sendAlternate") return "Composer: Opposite Queue or Steer Action";
   if (command === "composer.sendBackground") return "Composer: Start in Background";
   if (command === "composer.sendAndNewThread") return "Composer: Send and Start New Thread";
+  if (command === "composer.dictation") return "Composer: Start or Finish Dictation";
   if (command === "thread.steerQueuedMessage") return "Queue: Send First Queued Message";
   if (command === "thread.editQueuedMessage") return "Queue: Edit Last Queued Message";
   if (command === "thread.copyReference") return "Pull Request: Copy Link or Thread";

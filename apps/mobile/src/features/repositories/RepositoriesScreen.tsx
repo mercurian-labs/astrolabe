@@ -20,8 +20,8 @@ import { changeRequestProjectKindAtom } from "../../state/wiki";
 import { useWorkspaceState } from "../../state/workspace";
 import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
 import { ThreadListV2SectionDivider } from "../threads/thread-list-v2-items";
-import { ListFilterMenu } from "../workspace/ListFilterMenu";
-import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
+import { ListFilterMenu } from "../layout/workspace/ListFilterMenu";
+import { useWorkspaceTabs } from "../layout/workspace/WorkspaceTabsContext";
 
 const repositoryKey = (project: Pick<EnvironmentProject, "environmentId" | "id">) =>
   `${project.environmentId}:${project.id}`;

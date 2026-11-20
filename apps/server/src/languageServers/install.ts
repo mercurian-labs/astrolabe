@@ -87,6 +87,7 @@ export const describeDownload = (download: Download): string => {
   }
 };
 
+// @effect-diagnostics-next-line preferSchemaTaggedError:off - internal to installs; never crosses the wire.
 class InstallError extends Data.TaggedError("InstallError")<{
   readonly message: string;
   readonly cause?: unknown;
@@ -154,6 +155,7 @@ const majorOf = (version: string) => Number.parseInt(version.split(".")[0] ?? ""
 export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function* (options: {
   readonly cacheDir: string;
   readonly registry: string;
+  readonly goInstalls?: ReadonlyArray<string>;
 }) {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -372,7 +374,7 @@ export const makeInstaller = Effect.fn("LanguageServers.makeInstaller")(function
     }
     if (launch.go !== undefined) {
       // Our PATH dates from when we started; Go installed since is in one of its usual places.
-      for (const go of [yield* onPath("go"), ...GO_INSTALLS]) {
+      for (const go of [yield* onPath("go"), ...(options.goInstalls ?? GO_INSTALLS)]) {
         if (go !== null && (yield* exists(go))) {
           return { kind: "go", go: launch.go, goCommand: go } as const;
         }

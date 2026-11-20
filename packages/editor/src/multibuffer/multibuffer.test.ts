@@ -10,6 +10,7 @@ import { EditorState, type Extension, type Transaction } from "@codemirror/state
 import { EditorView } from "@codemirror/view";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
+import { codeEditing, runCodeEditing } from "../code/editing.ts";
 import { excerptBounds } from "./excerpt.ts";
 import {
   type ExcerptDocument,
@@ -118,7 +119,7 @@ function setup(files: Record<string, string>, inputs: MultibufferFileInput[], co
     openFile: (path, line) => opened.push({ path, line }),
   });
   multibuffer.set(inputs);
-  const extensions = (): Extension => history();
+  const extensions = (): Extension => [history(), codeEditing()];
   /** Opens every file and shows every excerpt in an editor. */
   const showAll = () => {
     for (const file of multibuffer.fileList()) {
@@ -255,6 +256,22 @@ describe("Multibuffer", () => {
     expect(visible(excerpts()[0]!)).toBe(
       Array.from({ length: 10 }, (_, index) => `line ${index + 4}`).join("\n"),
     );
+  });
+
+  it("unfolds an excerpt five lines either side, and the whole file with Unfold all", () => {
+    const { showAll, excerpts, visible } = setup({ "a.ts": lines(30) }, [
+      { path: "a.ts", lines: [{ line: 10 }, { line: 22 }] },
+    ]);
+    showAll();
+    const [first] = excerpts();
+    expect(runCodeEditing(first!.view!, "unfold")).toBe(true);
+    expect(visible(first!)).toBe(
+      Array.from({ length: 13 }, (_, index) => `line ${index + 4}`).join("\n"),
+    );
+    expect(runCodeEditing(first!.view!, "unfoldAll")).toBe(true);
+    expect(excerpts()).toHaveLength(1);
+    expect(visible(excerpts()[0]!)).toBe(lines(30));
+    expect(runCodeEditing(excerpts()[0]!.view!, "unfold")).toBe(false);
   });
 
   it("merges excerpts once the lines between them are deleted", () => {

@@ -348,17 +348,6 @@ function setThreadTerminalOpen(state: ThreadTerminalUiState, open: boolean): Thr
   return { ...normalized, terminalOpen: open };
 }
 
-function setThreadTerminalHeight(
-  state: ThreadTerminalUiState,
-  height: number,
-): ThreadTerminalUiState {
-  const normalized = normalizeThreadTerminalUiState(state);
-  if (!Number.isFinite(height) || height <= 0 || normalized.terminalHeight === height) {
-    return normalized;
-  }
-  return { ...normalized, terminalHeight: height };
-}
-
 function splitThreadTerminal(
   state: ThreadTerminalUiState,
   terminalId: string,
@@ -562,7 +551,6 @@ interface TerminalUiStateStoreState {
   terminalUiStateByThreadKey: Record<string, ThreadTerminalUiState>;
   suppressedTerminalIdsByThreadKey: Record<string, string[]>;
   setTerminalOpen: (threadRef: ScopedThreadRef, open: boolean) => void;
-  setTerminalHeight: (threadRef: ScopedThreadRef, height: number) => void;
   splitTerminal: (threadRef: ScopedThreadRef, terminalId: string) => void;
   splitTerminalVertical: (threadRef: ScopedThreadRef, terminalId: string) => void;
   newTerminal: (threadRef: ScopedThreadRef, terminalId: string) => void;
@@ -635,8 +623,6 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
               : undefined,
           );
         },
-        setTerminalHeight: (threadRef, height) =>
-          updateTerminal(threadRef, (state) => setThreadTerminalHeight(state, height)),
         splitTerminal: (threadRef, terminalId) =>
           updateTerminal(threadRef, (state) => splitThreadTerminal(state, terminalId), {
             terminalId,

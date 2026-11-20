@@ -25,7 +25,6 @@ import { MediaActions } from "../media/MediaActions";
 import { MediaVideoPlayer } from "../media/MediaVideoPlayer";
 import { FileBreadcrumbs } from "./FileBreadcrumbs";
 import { fileAssetResource, type FileView, type RenderedForm } from "./fileView";
-import { FileOpenIn } from "./RepositoryFileHeader";
 import type { CheckedOutRepositoryTab } from "./repositoryTabs";
 
 type FileTab = Extract<CheckedOutRepositoryTab, { kind: "file" }>;
@@ -50,9 +49,6 @@ export default function RepositoryFileViewer(props: {
           <GitBranchIcon className="size-3.5" />
           {tab.checkoutName}
         </TabHeader.Status>
-        <TabHeader.Actions>
-          <FileOpenIn environmentId={tab.environmentId} cwd={tab.cwd} path={tab.path} />
-        </TabHeader.Actions>
       </TabHeader.Root>
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <Viewer target={tab} kind={props.kind} />

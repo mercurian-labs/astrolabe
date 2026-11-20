@@ -43,6 +43,7 @@ const THREAD_KEYBINDING_COMMANDS = [
   "thread.copyReference",
   "thread.settle",
   "thread.pin",
+  "thread.regenerateTitle",
   "thread.undo",
   ...THREAD_JUMP_KEYBINDING_COMMANDS,
 ] as const;
@@ -110,6 +111,11 @@ export const ASTROLABE_KEYBINDING_COMMANDS = [
   "pane.close",
   "pane.toggleMaximized",
   "pane.toggleFullScreen",
+  "pane.moveLeft",
+  "pane.moveDown",
+  "pane.moveUp",
+  "pane.moveRight",
+  "pane.cycleSize",
   "focus.left",
   "focus.down",
   "focus.up",
@@ -138,6 +144,10 @@ export const ASTROLABE_KEYBINDING_COMMANDS = [
   "run.last",
   "repository.localGraph",
   "file.save",
+  "file.toggleEdit",
+  // Undo and redo in the code file or note the key came from, which each editor binds itself.
+  "edit.undo",
+  "edit.redo",
   // Multi-file views (search results, problems): stacked excerpt editors.
   "multibuffer.expand",
   "multibuffer.openExcerpt",
@@ -231,6 +241,7 @@ export const STATIC_KEYBINDING_COMMANDS = [
   "composer.sendAlternate",
   "composer.sendBackground",
   "composer.sendAndNewThread",
+  "composer.dictation",
   "composer.host",
   "composer.cycleHost",
   "composer.effort",

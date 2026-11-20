@@ -22,7 +22,7 @@ import {
 } from "../../rightPanelStore";
 import { requestWorkspaceContentFocus, requestWorkspaceFocus } from "../../lib/workspaceFocus";
 import { setActivePreviewTab } from "../../previewStateStore";
-import { BrowserSettingsReadError } from "../../browser/openFileInPreview";
+import { isBrowserSettingsReadError } from "../../browser/openFileInPreview";
 import { addBrowserSurface } from "../preview/addBrowserSurface";
 import { focusActivePanelTerminal, focusTerminal } from "../../lib/terminalFocus";
 import { subscribePreviewAction } from "../preview/previewActionBus";
@@ -36,6 +36,9 @@ import { previewEnvironment } from "../../state/preview";
 import { useAtomCommand } from "../../state/use-atom-command";
 import type { ChatShortcutCommands } from "./useChatShortcuts";
 import { useCodeGraphViewOpener } from "../graph/useCodeGraphViewOpener";
+import { getLayoutBehavior } from "../../panes/layoutBehavior";
+import { workspace } from "../../panes/workspace";
+import { chatTabKey } from "../../sectionTabs/sectionTabs";
 interface RightPanelActionsInput {
   readonly activeThreadRef: ScopedThreadRef | null;
   readonly activeProject: EnvironmentProject | null;
@@ -118,7 +121,7 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     }).then((result) => {
       if (result._tag !== "Failure" || isAtomCommandInterrupted(result)) return;
       const error = squashAtomCommandFailure(result);
-      if (error instanceof BrowserSettingsReadError) {
+      if (isBrowserSettingsReadError(error)) {
         toastManager.add(
           stackedThreadToast({
             type: "error",
@@ -224,16 +227,49 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     }
   };
   const activateRightPanelSurfaceStable = useStableCallback(activateRightPanelSurface);
+  const addPullRequestSurface = () => {
+    if (!supportsPullRequests || activeThreadRef === null || pullRequestPanelTarget === null)
+      return;
+    useRightPanelStore.getState().openPullRequest(activeThreadRef, pullRequestPanelTarget);
+  };
+  // Astrolabe: a thread with linked tabs reopens as it was left; with none, a fixed choice opens
+  // that surface, and "last used", having nothing to go back to, opens the launcher.
+  const openSidePaneDefault = (): boolean => {
+    if (!activeThreadRef) return false;
+    if (!workspace.sidePaneEmpty(chatTabKey(activeThreadRef))) return false;
+    switch (getLayoutBehavior().sidePaneOpensOn) {
+      case "diff":
+        if (!isServerThread || !isGitRepo) return false;
+        addDiffSurface();
+        return true;
+      case "files":
+        if (!activeProject) return false;
+        addFilesSurface();
+        return true;
+      case "browser":
+        if (!browserAvailable || !canOperatePreview) return false;
+        createBrowserSurface();
+        return true;
+      case "pull-request":
+        if (!supportsPullRequests || pullRequestPanelTarget === null) return false;
+        addPullRequestSurface();
+        return true;
+      case "last-used":
+        return false;
+    }
+  };
   const toggleRightPanel = () => {
     if (!activeThreadRef) return;
     if (rightPanelOpen) {
       closePreviewPanel();
       return;
     }
+    if (openSidePaneDefault()) return;
     useRightPanelStore.getState().toggleVisibility(activeThreadRef);
     focusActivePanelTerminal(activeThreadRef);
   };
   const toggleRightPanelStable = useStableCallback(toggleRightPanel);
+  const openSidePaneDefaultStable = useStableCallback(openSidePaneDefault);
   const toggleThreadPanel = () => {
     if (!activeThreadRef) return;
     const store = useRightPanelStore.getState();
@@ -297,11 +333,6 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     );
   };
   const copyRightPanelFilePathStable = useStableCallback(copyRightPanelFilePath);
-  const addPullRequestSurface = () => {
-    if (!supportsPullRequests || activeThreadRef === null || pullRequestPanelTarget === null)
-      return;
-    useRightPanelStore.getState().openPullRequest(activeThreadRef, pullRequestPanelTarget);
-  };
   const addPullRequestSurfaceStable = useStableCallback(addPullRequestSurface);
   const onOpenTurnDiff = (runId: RunId, filePath?: string) => {
     if (!isServerThread || !activeThreadRef) return;
@@ -367,6 +398,7 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     openFileSurfaceStable,
     toggleRightPanelMaximizedStable,
     toggleRightPanelStable,
+    openSidePaneDefaultStable,
     toggleThreadPanelStable,
   };
 }

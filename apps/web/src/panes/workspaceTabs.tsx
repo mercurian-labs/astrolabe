@@ -1,10 +1,15 @@
 import { repositoryMoveOfSurface } from "~/components/repositories/openInRepositories";
-import { Link2, Plus, SquareDashed } from "lucide-react";
-import { Volume2, VolumeOff } from "lucide";
+import {
+  Link2,
+  Plus,
+  SquareDashed,
+  TerminalSquare,
+  Volume2Icon,
+  VolumeOffIcon,
+} from "lucide-react";
 import { useEffect, useEffectEvent, useSyncExternalStore } from "react";
 
 import { useBrowserDefaults } from "~/browser/browserDefaults";
-import { MorphIcon } from "~/components/MorphIcon";
 import { previewBridge } from "~/components/preview/previewBridge";
 import {
   DeviceTabTooltip,
@@ -26,7 +31,7 @@ import { useClosedViewStore } from "~/closedViewStore";
 import { isElectron } from "~/env";
 import { useTheme } from "~/hooks/useTheme";
 import { resolveShortcutCommand } from "~/keybindings";
-import { isTerminalFocused } from "~/lib/terminalFocus";
+import { focusActiveDrawerTerminal, isTerminalFocused } from "~/lib/terminalFocus";
 import { cn } from "~/lib/utils";
 import {
   selectThreadRightPanelState,
@@ -35,10 +40,16 @@ import {
 } from "~/rightPanelStore";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { useSectionTabLabel } from "~/sectionTabs/SectionTabContent";
-import { parseChatSurfaceKey, parseChatTabKey, chatSurfaceKey } from "~/sectionTabs/sectionTabs";
+import {
+  parseChatSurfaceKey,
+  parseChatTabKey,
+  parseChatTerminalKey,
+  chatSurfaceKey,
+} from "~/sectionTabs/sectionTabs";
 import { primaryServerKeybindingsAtom } from "~/state/server";
 import { followedGraphFiles, linkMarkKeyOf, linkMarkOf } from "./linkMarks";
 import { focusedPane, isEmptyTab, newTab } from "./arrangement";
+import { getLayoutBehavior } from "./layoutBehavior";
 import type { PanelProps } from "./panesController";
 import type { PaneTabLabel, PaneTabLabelProps, PaneTabMenuItem, PaneTabs } from "./panesHost";
 import { keptFromPane } from "./linkedTabs";
@@ -84,6 +95,10 @@ export function createWorkspaceHost(): WorkspaceHost {
         keys,
         paneTabs,
         (key) => parseChatTabKey(key) !== null,
+        (key) =>
+          (parseChatTerminalKey(key) !== null
+            ? getLayoutBehavior().terminalPlacement
+            : getLayoutBehavior().sidePanePlacement) === "new-tab",
       ),
     close: closeWorkspaceTab,
     NewTab: NewTabButton,
@@ -92,8 +107,13 @@ export function createWorkspaceHost(): WorkspaceHost {
         if (isEmptyTab(key)) continue;
         const container = containerFor(key);
         // Moving a node that is already in place would still detach and reattach it.
-        if (container.parentNode !== slot) slot.appendChild(container);
+        const moved = container.parentNode !== slot;
+        if (moved) slot.appendChild(container);
         container.style.display = key === leaf.active ? "" : "none";
+        // The move took focus out of the terminal, and a drag leaves it on the tab.
+        if (moved && key === leaf.active && leaf.id === workspace.arrangement().focused) {
+          focusMovedTerminal(key);
+        }
       }
     },
     Overlay: EmptyTabOverlay,
@@ -110,14 +130,19 @@ export function createWorkspaceHost(): WorkspaceHost {
     controller: workspace.store,
     tabs,
     containerFor,
-    prune(open) {
+    prune(open, held) {
       for (const [key, container] of containers) {
         if (open.has(key)) continue;
         container.remove();
-        containers.delete(key);
+        if (!held.has(key)) containers.delete(key);
       }
     },
   };
+}
+
+function focusMovedTerminal(key: string) {
+  const ref = parseChatTabKey(parseChatTerminalKey(key) ?? "");
+  if (ref) focusActiveDrawerTerminal(ref);
 }
 
 /** The front chat's panel props, re-rendering when what the tabs draw from them changes. */
@@ -180,7 +205,7 @@ function standaloneKeyOfTab(tabKey: string): string | null {
  */
 function linkAction(tabKey: string): PaneTabMenuItem | null {
   if (parseChatSurfaceKey(tabKey) !== null || parseChatTabKey(tabKey) !== null) return null;
-  if (isEmptyTab(tabKey)) return null;
+  if (isEmptyTab(tabKey) || parseChatTerminalKey(tabKey) !== null) return null;
   const graph = graphLinkAction(tabKey);
   if (graph !== undefined) return graph;
   return workspace.linked().owners[tabKey] === undefined
@@ -242,6 +267,10 @@ function surfaceMenuItems(tabKey: string): PaneTabMenuItem[] {
  * with unsaved edits asks first too. A chat closed this way can be reopened (`view.reopenClosed`).
  */
 export function closeWorkspaceTab(tabKey: string) {
+  if (parseChatTerminalKey(tabKey) !== null) {
+    workspace.closeTerminalTab(tabKey);
+    return;
+  }
   const parsed = parseChatSurfaceKey(tabKey);
   const ref = parsed ? parseChatTabKey(parsed.chatKey) : null;
   if (parsed === null || ref === null) {
@@ -282,6 +311,9 @@ function useTabLabel(tabKey: string): PaneTabLabel {
   const section = useSectionTabLabel(tabKey);
   const { resolvedTheme } = useTheme();
   if (chat !== null) return chat;
+  if (parseChatTerminalKey(tabKey) !== null) {
+    return { title: "Terminal", icon: <TerminalSquare className="size-3 shrink-0" /> };
+  }
   if (parsed === null && section !== null) return section;
   if (!surface) return { title: "New tab", icon: <SquareDashed className="size-3 shrink-0" /> };
   const sessions = panel?.previewSessions ?? {};
@@ -302,12 +334,6 @@ function useTabLabel(tabKey: string): PaneTabLabel {
           environmentId={environmentId}
           pullRequestStatusSeed={panel?.pullRequestStatusSeeds?.[surface.id]}
         />
-        {panel?.pendingSurfaceIds.has(surface.id) ? (
-          <span
-            className="absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full bg-current"
-            aria-hidden
-          />
-        ) : null}
       </span>
     ),
     ...(previewTabId && audio !== "none" && panel?.previewRuntimeTabId
@@ -421,7 +447,7 @@ function TabAudioButton({
           />
         }
       >
-        <MorphIcon className="size-3" icon={muted ? VolumeOff : Volume2} />
+        {muted ? <VolumeOffIcon className="size-3" /> : <Volume2Icon className="size-3" />}
       </TooltipTrigger>
       <TooltipPopup>{label}</TooltipPopup>
     </Tooltip>
@@ -544,7 +570,10 @@ function shortcutContext() {
  * Mod+T (`rightPanel.new`) does the same in the focused pane.
  */
 function NewTabButton({ paneId }: { paneId: string }) {
-  const open = () => workspace.update((arrangement) => newTab(arrangement, paneId));
+  const open = () =>
+    workspace.update((arrangement) =>
+      newTab(arrangement, paneId, getLayoutBehavior().newTabPosition),
+    );
   const onNewTabShortcut = useEffectEvent((event: KeyboardEvent) => {
     if (event.defaultPrevented || event.isComposing) return;
     if (focusedPane(workspace.arrangement()).id !== paneId) return;

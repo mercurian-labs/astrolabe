@@ -18,6 +18,7 @@ import {
 } from "../observability/Metrics.ts";
 import * as RunFinalizationService from "./RunFinalizationService.ts";
 import * as ResourceCleanupService from "./ResourceCleanupService.ts";
+import * as EditedFileCheck from "./EditedFileCheck.ts";
 import * as EffectOutbox from "./EffectOutbox.ts";
 import * as CheckpointRollbackService from "./CheckpointRollbackService.ts";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
@@ -87,6 +88,7 @@ export const layerExecutor: Layer.Layer<
     const runFinalization = yield* RunFinalizationService.RunFinalizationService;
     const resourceCleanup = yield* ResourceCleanupService.ResourceCleanupService;
     const threadPurge = yield* ThreadPurge.ThreadPurge;
+    const editedFileCheck = yield* EditedFileCheck.EditedFileCheck;
     const checkpointRollback = yield* CheckpointRollbackService.CheckpointRollbackServiceV2;
     const providerSessions = yield* ProviderSessionManager.ProviderSessionManagerV2;
     const providerTurnControl = yield* ProviderTurnControlService.ProviderTurnControlServiceV2;
@@ -565,6 +567,24 @@ export const layerExecutor: Layer.Layer<
                 threadId: effect.threadId,
                 requestId: effect.commandId,
                 kind: effect.request.kind,
+              })
+              .pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new OrchestrationEffectExecutionError({
+                      effectId: effect.id,
+                      effectType: effect.request.type,
+                      cause,
+                    }),
+                ),
+              );
+          case "thread.file-edit.check":
+            return editedFileCheck
+              .check({
+                threadId: effect.threadId,
+                commandId: effect.commandId,
+                path: effect.request.path,
+                editedAt: effect.request.editedAt,
               })
               .pipe(
                 Effect.mapError(

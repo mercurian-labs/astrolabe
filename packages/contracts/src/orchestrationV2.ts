@@ -279,6 +279,7 @@ export const OrchestrationV2ThreadCapabilities = Schema.Struct({
 export type OrchestrationV2ThreadCapabilities = typeof OrchestrationV2ThreadCapabilities.Type;
 
 export const OrchestrationV2TurnCapabilities = Schema.Struct({
+  supportsNativeGoals: Schema.optional(Schema.Boolean),
   exposesNativeTurnId: Schema.Boolean,
   emitsTurnStarted: Schema.Boolean,
   emitsTurnCompleted: Schema.Boolean,
@@ -442,6 +443,19 @@ const LenientThreadOpens = Schema.NullOr(OrchestrationV2ThreadOpens).pipe(
   Schema.catchDecoding(() => Effect.succeedSome(null)),
 );
 
+/** Astrolabe: how many edited files a thread keeps, newest first; older edits drop off. */
+export const THREAD_EDITED_FILES_MAX = 100;
+
+/**
+ * Astrolabe: a file the user saved from the editor in one of the thread's linked file tabs, by
+ * its path in the thread's checkout, at its latest edit. The next prompt tells the agent of it.
+ */
+export const OrchestrationV2ThreadEditedFile = Schema.Struct({
+  path: TrimmedNonEmptyString,
+  editedAt: Schema.DateTimeUtc,
+});
+export type OrchestrationV2ThreadEditedFile = typeof OrchestrationV2ThreadEditedFile.Type;
+
 export const OrchestrationV2AppThread = Schema.Struct({
   ...OrchestrationV2CreationFields,
   id: ThreadId,
@@ -497,6 +511,7 @@ export const OrchestrationV2AppThread = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
   opens: Schema.optional(LenientThreadOpens),
+  editedFiles: Schema.optional(Schema.Array(OrchestrationV2ThreadEditedFile)),
   titleRegeneration: Schema.optional(
     Schema.NullOr(
       Schema.Struct({
@@ -517,6 +532,13 @@ export const OrchestrationV2AppThread = Schema.Struct({
   deletedAt: Schema.NullOr(Schema.DateTimeUtc),
 });
 export type OrchestrationV2AppThread = typeof OrchestrationV2AppThread.Type;
+
+/** A thread another agent drives: a local subagent or a task delegated from a linked environment. */
+export const isDelegatedAppThread = (
+  thread: Pick<OrchestrationV2AppThread, "lineage" | "delegatedFrom">,
+): boolean =>
+  // MCP-launched threads store `delegatedFrom: null` at runtime, so check both absent shapes.
+  thread.lineage.relationshipToParent === "subagent" || thread.delegatedFrom != null;
 
 /** Provider-native children cannot receive messages; T3 delegate_task children can. */
 export function isProviderNativeSubagentThread(
@@ -693,6 +715,7 @@ export const OrchestrationV2Run = Schema.Struct({
   checkpointId: Schema.NullOr(CheckpointId),
   contextHandoffId: Schema.NullOr(ContextHandoffId),
   restartContinuationOfRunId: Schema.optional(RunId),
+  usageLimitContinuationOfRunId: Schema.optional(RunId),
   delegatedTaskId: Schema.optional(NodeId),
   workStartedAt: Schema.optional(Schema.DateTimeUtc),
   restartCancelledBackgroundWork: Schema.optional(
@@ -706,6 +729,8 @@ export const OrchestrationV2Run = Schema.Struct({
   ),
   delegatedCompletion: Schema.optional(OrchestrationV2DelegatedCompletionCohort),
   workspacePreparation: Schema.optional(OrchestrationV2ThreadLaunchWorkspaceStrategy),
+  /** Starts a new provider conversation; earlier runs stay visible but never reach the provider. */
+  freshContext: Schema.optional(Schema.Boolean),
 });
 export type OrchestrationV2Run = typeof OrchestrationV2Run.Type;
 
@@ -865,6 +890,8 @@ export const OrchestrationV2RemoteTaskChild = Schema.Struct({
   environmentId: EnvironmentId,
   threadId: ThreadId,
   label: Schema.String,
+  /** The title it launched with there; absent on tasks recorded before it was kept. */
+  title: Schema.optional(Schema.String),
   /** The run there that carries the task; absent on tasks recorded before it was kept. */
   runId: Schema.optional(RunId),
   /**
@@ -952,6 +979,14 @@ export const OrchestrationV2ProviderSession = Schema.Struct({
   cwd: TrimmedNonEmptyString,
   model: Schema.NullOr(TrimmedNonEmptyString),
   capabilities: OrchestrationV2ProviderCapabilities,
+  extensionStatuses: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        key: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+        text: TrimmedNonEmptyString.check(Schema.isMaxLength(4096)),
+      }),
+    ).check(Schema.isMaxLength(32)),
+  ).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   createdAt: Schema.DateTimeUtc,
   updatedAt: Schema.DateTimeUtc,
   lastError: Schema.NullOr(Schema.String),
@@ -1004,6 +1039,9 @@ function kindUnionWithFallback<
 }
 
 const PendingBackgroundTaskFields = {
+  command: Schema.optional(Schema.String),
+  itemId: Schema.optional(TurnItemId),
+  sourceThreadId: Schema.optional(ThreadId),
   taskId: TrimmedNonEmptyString,
   description: Schema.optional(TrimmedNonEmptyString),
   /** The subagent task that started this work and waits on it. */
@@ -1185,6 +1223,8 @@ export const OrchestrationV2ProviderTurn = Schema.Struct({
   completedAt: Schema.NullOr(Schema.DateTimeUtc),
   tokenUsage: Schema.optional(OrchestrationV2ProviderTurnTokenUsage),
   turnTokenUsage: Schema.optional(TurnTokenUsage),
+  /** The model the provider reported running this turn's root agent, which can differ from the requested one. */
+  model: Schema.optional(TrimmedNonEmptyString),
 });
 export type OrchestrationV2ProviderTurn = typeof OrchestrationV2ProviderTurn.Type;
 
@@ -1552,6 +1592,7 @@ const OrchestrationV2SecretRequestFields = {
   type: Schema.Literal("secret_request"),
   label: TrimmedNonEmptyString,
   reason: Schema.String,
+  url: Schema.optional(Schema.String),
   placeholder: Schema.optional(Schema.String),
   delivery: Schema.optional(OrchestrationV2SecretRequestDelivery),
   secretStatus: OrchestrationV2SecretRequestStatus,
@@ -1591,8 +1632,9 @@ const OrchestrationV2LinkRequestFields = {
   url: Schema.optional(TrimmedNonEmptyString),
   reason: Schema.String,
   /**
-   * The environment the agent named, or the one answering at `url`. Without
-   * either the user picks the machine in the card.
+   * The environment the agent named. Without it or `url` the user picks the
+   * machine in the card. Beside a `url`, this and `label` are what answered
+   * there on an older server: unauthenticated, so clients ignore both.
    */
   environmentId: Schema.optional(EnvironmentId),
   label: Schema.optional(Schema.String),
@@ -1622,6 +1664,7 @@ export const OrchestrationV2TurnItem = Schema.Union([
     senderThreadId: Schema.optional(ThreadId),
     idleCompaction: Schema.optional(OrchestrationV2IdleCompaction),
     workflowScript: OrchestrationV2ConversationMessage.fields.workflowScript,
+    freshContext: OrchestrationV2Run.fields.freshContext,
     inputIntent: OrchestrationV2UserMessageInputIntent,
     text: Schema.String,
     /** Same as the text of message `messageId`. */
@@ -1903,6 +1946,8 @@ export const OrchestrationV2DomainEvent = Schema.Union([
       "thread.active-reordered",
       "thread.tags-updated",
       "thread.visited",
+      "thread.file-edited",
+      "thread.file-edit-cleared",
       "thread.marked-unread",
       "thread.metadata-updated",
       "thread.pull-request-synced",
@@ -2113,6 +2158,8 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   latestRunStartedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   latestRunCompletedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   latestRunStopRequested: Schema.optional(Schema.Boolean),
+  /** The latest run answers a background-work progress wake, like a Monitor line, not a terminal one. Absent from older servers. */
+  latestRunBackgroundWake: Schema.optional(Schema.Boolean),
   activeRunId: Schema.NullOr(RunId),
   activityRunStartedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   activityRunStatus: Schema.optional(
@@ -2250,6 +2297,13 @@ export const OrchestrationV2ShellStreamItem = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("synchronized"),
   }),
+  /**
+   * The only item of a resume the server cannot replay when the client asked for
+   * `httpSnapshotFallback`: load the HTTP snapshot and subscribe again from its cursor.
+   */
+  Schema.Struct({
+    kind: Schema.Literal("snapshot-required"),
+  }),
   Schema.Struct({
     kind: Schema.Literal("snapshot"),
     snapshot: OrchestrationV2ShellSnapshot,
@@ -2305,6 +2359,14 @@ export const OrchestrationV2AppThreadJson = OrchestrationV2AppThread.mapFields((
   autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtcFromString)),
   lastVisitedAt: Schema.NullOr(Schema.DateTimeUtcFromString).pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
+  editedFiles: Schema.optional(
+    Schema.Array(
+      OrchestrationV2ThreadEditedFile.mapFields((editedFields) => ({
+        ...editedFields,
+        editedAt: Schema.DateTimeUtcFromString,
+      })),
+    ),
   ),
   titleRegeneration: Schema.optional(
     Schema.NullOr(
@@ -2464,6 +2526,7 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
     senderThreadId: Schema.optional(ThreadId),
     idleCompaction: Schema.optional(OrchestrationV2IdleCompaction),
     workflowScript: OrchestrationV2ConversationMessage.fields.workflowScript,
+    freshContext: OrchestrationV2Run.fields.freshContext,
     inputIntent: OrchestrationV2UserMessageInputIntent,
     text: Schema.String,
     context: Schema.optional(OrchestrationMessageContext),
@@ -2794,6 +2857,8 @@ export const OrchestrationV2DomainEventJson = Schema.Union([
       "thread.active-reordered",
       "thread.tags-updated",
       "thread.visited",
+      "thread.file-edited",
+      "thread.file-edit-cleared",
       "thread.marked-unread",
       "thread.pull-request-synced",
       "thread.metadata-updated",
@@ -2989,6 +3054,7 @@ export const OrchestrationV2Command = Schema.Union([
     type: Schema.Literal("thread.settle"),
     commandId: CommandId,
     threadId: ThreadId,
+    expectedLatestRunId: Schema.optional(RunId),
     settledAt: Schema.optional(Schema.DateTimeUtc),
   }),
   /** Rejects changes since snapshotAt or any explicit settled override to preserve user actions. */
@@ -3178,6 +3244,8 @@ export const OrchestrationV2Command = Schema.Union([
     scheduledTaskId: Schema.optional(ScheduledTaskId),
     senderThreadId: Schema.optional(ThreadId),
     idleCompaction: Schema.optional(OrchestrationV2IdleCompaction),
+    /** Start a new provider session without the thread's earlier context. Never steers. */
+    freshContext: Schema.optional(Schema.Boolean),
     commandId: CommandId,
     threadId: ThreadId,
     messageId: MessageId,
@@ -3313,6 +3381,14 @@ export const OrchestrationV2Command = Schema.Union([
     commandId: CommandId,
     threadId: ThreadId,
     requestId: RuntimeRequestId,
+  }),
+  /** Astrolabe: the user saved a file from the editor in one of the thread's linked file tabs. */
+  Schema.Struct({
+    type: Schema.Literal("thread.file-edit.record"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    /** The file's path in the thread's checkout. */
+    path: TrimmedNonEmptyString.check(Schema.isMaxLength(4096)),
   }),
   /** Astrolabe: the user's edits to a board an agent drew, replayed on the board as it is now. */
   Schema.Struct({
@@ -3570,9 +3646,21 @@ const OrchestrationV2InternalCommand = Schema.Union([
     turnItemId: TurnItemId,
     label: TrimmedNonEmptyString,
     reason: Schema.String,
+    url: Schema.optional(Schema.String),
     placeholder: Schema.optional(Schema.String),
     delivery: Schema.optional(OrchestrationV2SecretRequestDelivery),
     secretStatus: OrchestrationV2SecretRequestStatus,
+  }),
+  /**
+   * Astrolabe: the user's edits to a file net out to nothing since the last turn, so its edit is
+   * dropped. Only the edit at `editedAt` is: a newer one stands.
+   */
+  Schema.Struct({
+    type: Schema.Literal("thread.file-edit.clear"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    path: TrimmedNonEmptyString,
+    editedAt: Schema.DateTimeUtc,
   }),
   /** Astrolabe: records a board an agent drew, laid out by the server. */
   Schema.Struct({
@@ -3631,11 +3719,14 @@ export const ORCHESTRATION_V2_WS_METHODS = {
   searchThreadStream: "orchestration.searchThreadStream",
   getArchivedShellSnapshot: "orchestration.getArchivedShellSnapshot",
   getThreadFamily: "orchestration.getThreadFamily",
+  getThreadTitles: "orchestration.getThreadTitles",
+  getThreadLinkMetadata: "orchestration.getThreadLinkMetadata",
   getWorktreeThreadIds: "orchestration.getWorktreeThreadIds",
   getOlderSettledThreads: "orchestration.getOlderSettledThreads",
   getThreadProjection: "orchestration.getThreadProjection",
   getWorkflowScript: "orchestration.getWorkflowScript",
   getNativeChildWork: "orchestration.getNativeChildWork",
+  previewFileRevert: "orchestration.previewFileRevert",
   stopWorkflow: "orchestration.stopWorkflow",
   forceStopThread: "orchestration.forceStopThread",
   getTurnItem: "orchestration.getTurnItem",
@@ -3643,6 +3734,7 @@ export const ORCHESTRATION_V2_WS_METHODS = {
   subscribeShell: "orchestration.subscribeShell",
   subscribeThread: "orchestration.subscribeThread",
   subscribeCommandOutput: "orchestration.subscribeCommandOutput",
+  subscribePromptSuggestion: "orchestration.subscribePromptSuggestion",
 } as const;
 
 export const OrchestrationV2SubscribeCommandOutputInput = Schema.Struct({
@@ -3671,6 +3763,16 @@ export class OrchestrationV2CommandOutputError extends Schema.TaggedError<Orches
     cause: Schema.optional(Schema.Defect()),
   },
 ) {}
+
+export const OrchestrationV2SubscribePromptSuggestionInput = Schema.Struct({
+  threadId: ThreadId,
+});
+
+/** Unpersisted predicted next prompt for the run that produced it; null when there is none. */
+export const OrchestrationV2PromptSuggestion = Schema.NullOr(
+  Schema.Struct({ runId: RunId, text: Schema.String }),
+);
+export type OrchestrationV2PromptSuggestion = typeof OrchestrationV2PromptSuggestion.Type;
 
 export const OrchestrationV2ArchivedShellSnapshot = Schema.Struct({
   schemaVersion: PositiveInt,
@@ -3725,6 +3827,11 @@ export type OrchestrationV2GetThreadProjectionInput =
 
 export const OrchestrationV2SubscribeShellInput = Schema.Struct({
   afterSequence: Schema.optionalKey(NonNegativeInt),
+  /**
+   * With `afterSequence`, a gap the server cannot replay answers `snapshot-required` instead of
+   * a socket snapshot, which clients without transport compression download over gzip HTTP.
+   */
+  httpSnapshotFallback: Schema.optionalKey(Schema.Literal(true)),
   requestCompletionMarker: Schema.optionalKey(Schema.Boolean),
   /**
    * Snapshots leave out idle subagent children; read them with `getThreadFamily`. Send only to
@@ -3754,6 +3861,19 @@ export const OrchestrationV2ThreadFamily = Schema.Struct({
   threads: Schema.Array(OrchestrationV2ThreadShell),
 });
 export type OrchestrationV2ThreadFamily = typeof OrchestrationV2ThreadFamily.Type;
+
+export const OrchestrationV2GetThreadTitlesInput = Schema.Struct({
+  threadIds: Schema.Array(ThreadId),
+});
+
+/** Titles of the requested threads that exist, archived ones included. Deleted and unknown ids are absent. */
+export const OrchestrationV2ThreadTitles = Schema.Record(ThreadId, Schema.String);
+
+export const OrchestrationV2ThreadLinkMetadata = Schema.Struct({
+  title: Schema.String,
+  projectId: Schema.NullOr(ProjectId),
+});
+export type OrchestrationV2ThreadLinkMetadata = typeof OrchestrationV2ThreadLinkMetadata.Type;
 
 export const OrchestrationV2GetWorktreeThreadIdsInput = Schema.Struct({
   worktreePath: TrimmedNonEmptyString,
@@ -4183,6 +4303,58 @@ export class OrchestrationV2GetNativeChildWorkError extends Schema.TaggedError<O
   }
 }
 
+/** Astrolabe: a file the user edited in the thread's checkout, to put back as the agent left it. */
+export const OrchestrationV2PreviewFileRevertInput = Schema.Struct({
+  threadId: ThreadId,
+  /** The file's path in the thread's checkout. */
+  path: TrimmedNonEmptyString.check(Schema.isMaxLength(4096)),
+});
+export type OrchestrationV2PreviewFileRevertInput =
+  typeof OrchestrationV2PreviewFileRevertInput.Type;
+
+/**
+ * Why a file can't be reverted here: a turn is running (the agent may be writing it), a commit since
+ * the checkpoint changed it, the thread has no finished turn, the agent's version has no such file,
+ * the file reads as the agent left it, or either side can't be read.
+ */
+export const OrchestrationV2FileRevertBlock = Schema.Literals([
+  "running",
+  "committed",
+  "no-checkpoint",
+  "not-in-checkpoint",
+  "unchanged",
+  "unreadable",
+]);
+export type OrchestrationV2FileRevertBlock = typeof OrchestrationV2FileRevertBlock.Type;
+
+/** Astrolabe: what reverting an edited file to the agent's last checkpoint would throw away. */
+export const OrchestrationV2FileRevertPreview = Schema.Struct({
+  /** The thread's checkout the path is in. */
+  cwd: Schema.String,
+  /** The file as the checkpoint has it; null when blocked before it was read. */
+  checkpointText: Schema.NullOr(Schema.String),
+  /** The file is gone from disk: reverting recreates it. */
+  missing: Schema.Boolean,
+  /** From the checkpoint to the file now, as the agent's note diffs it; null when too large. */
+  diff: Schema.NullOr(Schema.String),
+  /** Changes that didn't come through the editor may be in the diff, and would go too. */
+  outsideChanges: Schema.Boolean,
+  blocked: Schema.NullOr(OrchestrationV2FileRevertBlock),
+});
+export type OrchestrationV2FileRevertPreview = typeof OrchestrationV2FileRevertPreview.Type;
+
+export class OrchestrationV2PreviewFileRevertError extends Schema.TaggedError<OrchestrationV2PreviewFileRevertError>()(
+  "OrchestrationV2PreviewFileRevertError",
+  {
+    threadId: ThreadId,
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {
+  override get message(): string {
+    return "Could not compare the file with the agent's version.";
+  }
+}
+
 const WORKFLOW_FILE_ERROR_MESSAGES = {
   "invalid-path": "Workflow files must be absolute paths with the expected extension.",
   "root-unavailable": "Workflow file root unavailable.",
@@ -4338,6 +4510,14 @@ export const OrchestrationV2RpcSchemas = {
     input: OrchestrationV2GetThreadFamilyInput,
     output: OrchestrationV2ThreadFamily,
   },
+  getThreadTitles: {
+    input: OrchestrationV2GetThreadTitlesInput,
+    output: OrchestrationV2ThreadTitles,
+  },
+  getThreadLinkMetadata: {
+    input: OrchestrationV2GetThreadTitlesInput,
+    output: Schema.Record(ThreadId, OrchestrationV2ThreadLinkMetadata),
+  },
   getWorktreeThreadIds: {
     input: OrchestrationV2GetWorktreeThreadIdsInput,
     output: OrchestrationV2WorktreeThreadIds,
@@ -4366,6 +4546,10 @@ export const OrchestrationV2RpcSchemas = {
     input: OrchestrationV2GetNativeChildWorkInput,
     output: OrchestrationV2GetNativeChildWorkResult,
   },
+  previewFileRevert: {
+    input: OrchestrationV2PreviewFileRevertInput,
+    output: OrchestrationV2FileRevertPreview,
+  },
   getTurnItem: {
     input: OrchestrationV2GetTurnItemInput,
     output: OrchestrationV2GetTurnItemResult,
@@ -4385,6 +4569,10 @@ export const OrchestrationV2RpcSchemas = {
   subscribeCommandOutput: {
     input: OrchestrationV2SubscribeCommandOutputInput,
     output: OrchestrationV2CommandOutputFrame,
+  },
+  subscribePromptSuggestion: {
+    input: OrchestrationV2SubscribePromptSuggestionInput,
+    output: OrchestrationV2PromptSuggestion,
   },
 } as const;
 

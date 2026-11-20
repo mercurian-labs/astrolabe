@@ -188,6 +188,23 @@ describe("applyOrchestrationV2ProjectionEvent", () => {
     expect(next?.updatedAt).toEqual(archivedAt);
   });
 
+  it("drops a cleared file edit without counting it as thread activity", () => {
+    const later = DateTime.makeUnsafe("2026-06-20T01:00:00.000Z");
+    const edited = {
+      ...emptyProjection,
+      thread: { ...emptyProjection.thread, editedFiles: [{ path: "src/a.ts", editedAt: later }] },
+    };
+    const next = applyOrchestrationV2ProjectionEvent(edited, {
+      id: "event-file-edit-cleared",
+      type: "thread.file-edit-cleared",
+      threadId,
+      occurredAt: later,
+      payload: { ...emptyProjection.thread, editedFiles: [] },
+    } as unknown as OrchestrationV2DomainEvent);
+    expect(next?.thread.editedFiles).toEqual([]);
+    expect(next?.updatedAt).toEqual(now);
+  });
+
   it("preserves visible row identity when run updates do not change membership", () => {
     const item = commandItem("item-stable");
     const visibleTurnItems = [

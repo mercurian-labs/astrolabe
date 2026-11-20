@@ -36,6 +36,7 @@ export interface SkillMap {
   readonly body?: string;
 }
 
+// @effect-diagnostics-next-line extendsNativeError:off - thrown by synchronous parsing outside Effect.
 export class WikiFormatError extends Error {
   override readonly name = "WikiFormatError";
 }
