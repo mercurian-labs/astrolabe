@@ -782,7 +782,8 @@ const PANES_OPTIONS = {
   sidePanePlacement: {
     id: "side-pane-placement",
     label: "side pane placement",
-    description: "Where a chat's diff, files, browser and other linked tabs open.",
+    description:
+      "Where a chat's diff, files, browser and pull request open. The terminal has its own setting.",
     options: { "beside-chat": "Beside the chat", "new-tab": "As a tab" },
   },
   sidePaneOpensOn: {

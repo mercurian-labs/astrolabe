@@ -137,6 +137,7 @@ describe("reopenClosedView", () => {
           panel: before,
           chatOpen: false,
           terminalOpen: false,
+          terminalSessions: false,
         }));
         expect(plan.restore).toBe(entry);
         const openPreview = vi.fn();
@@ -306,6 +307,7 @@ describe("planNextReopen", () => {
     panel: { isOpen: false, activeSurfaceId: null, surfaces: [] },
     chatOpen: false,
     terminalOpen: false,
+    terminalSessions: true,
   };
   const openDiff: ThreadRightPanelState = {
     isOpen: true,
@@ -380,5 +382,13 @@ describe("planNextReopen", () => {
     const plan = planNextReopen(chats, (entry) => ({ ...known, chatOpen: entry.id === "a" }));
     expect(plan.drop.map((entry) => entry.id)).toEqual(["a"]);
     expect(plan.restore?.id).toBe("b");
+  });
+
+  it("drops a closed terminal whose sessions all ended, rather than start a new one", () => {
+    const terminals: ClosedViewEntry[] = [{ id: "t", kind: "terminal-tab", threadRef }];
+    expect(planNextReopen(terminals, () => known).restore?.id).toBe("t");
+    const ended = planNextReopen(terminals, () => ({ ...known, terminalSessions: false }));
+    expect(ended.drop.map((entry) => entry.id)).toEqual(["t"]);
+    expect(ended.restore).toBeNull();
   });
 });

@@ -66,6 +66,15 @@ describe("opening a view near the pane you are reading", () => {
       [note],
       [terminal],
     ]);
+    // Behind a New tab in its pane too.
+    const covered = arranged(
+      row([leaf("p1", [chat]), leaf("p2", [terminal, "empty/3"], "empty/3")]),
+    );
+    expect(tabsOf(openNear(covered, note, "p1", { widthPx: 4000 }))).toEqual([
+      [chat],
+      [note],
+      [terminal, "empty/3"],
+    ]);
   });
 
   it("divides for a tab that may not share the chat's pane, room or not", () => {

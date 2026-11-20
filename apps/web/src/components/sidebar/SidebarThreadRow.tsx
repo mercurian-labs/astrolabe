@@ -131,6 +131,8 @@ import {
   preventMiddleClickScroll,
 } from "./SidebarCard";
 import { UnpinRowAction } from "./UnpinRowAction";
+import { workspace } from "../../panes/workspace";
+import { chatTabKey } from "../../sectionTabs/sectionTabs";
 
 // The fields thread rows show. Provider status pushes refresh `checkedAt`,
 // status and auth on every provider; leaving those out keeps each
@@ -853,6 +855,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   );
 
   const handleClick = (event: ReactMouseEvent) => {
+    // Astrolabe: a plain click on the thread in front shows its chat over its own linked tab.
+    if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+      workspace.revealChat(chatTabKey(threadRef));
+    }
     onThreadClick(event, threadRef);
   };
   // Astrolabe: the middle button opens the thread in a new chat tab, as Option-click does.
@@ -882,6 +888,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     }
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
+    workspace.revealChat(chatTabKey(threadRef));
     onThreadActivate(threadRef);
   };
   const handleDoubleClick = (event: ReactMouseEvent) => {

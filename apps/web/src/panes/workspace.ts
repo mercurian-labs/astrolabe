@@ -489,8 +489,11 @@ export function createWorkspace(
         out = hideLinkedTab(next, key, front, standsAlone);
       }
       if (standing) {
-        out = { ...out, arrangement: activateTab(out.arrangement, front) };
-        handFocusTo = front;
+        // Hiding it hands focus to the chat; its last shell ending takes focus only from itself.
+        const handsFocus =
+          terminals.terminalIds.length > 0 || focusedPane(next.arrangement).id === standing.id;
+        out = { ...out, arrangement: activateTab(out.arrangement, front, handsFocus) };
+        if (handsFocus) handFocusTo = front;
       }
       return settleLinks(out, context);
     }
@@ -1039,6 +1042,17 @@ export function createWorkspace(
     });
   };
 
+  /**
+   * Brings the chat `key` back in front of its own linked tab covering it (a terminal or diff the
+   * settings put in its pane), as clicking its thread in the sidebar asks. Anything else stays.
+   */
+  const revealChat = (key: string) => {
+    const linked = current();
+    const pane = leafWithTab(linked.arrangement.root, key);
+    if (focusedChatOf(linked) !== key || !pane || pane.active === key) return;
+    update((arrangement) => activateTab(arrangement, key));
+  };
+
   /** Opens chats as tabs after the chat in front, which stays in front. */
   const openChatsBesideFront = (keys: readonly string[]) =>
     apply((linked) => {
@@ -1219,6 +1233,7 @@ export function createWorkspace(
     openChat,
     openChatsBesideFront,
     placeOf,
+    revealChat,
     openLinked: openLinkedTab,
     unlink,
     newLinkedTab,

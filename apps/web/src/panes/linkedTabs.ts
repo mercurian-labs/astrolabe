@@ -411,17 +411,19 @@ export function settleLinks(state: LinkedArrangement, context: LinkContext): Lin
       ? gatherSpan(arrangement.root, beside.tabs, `p${arrangement.seq}`)
       : null;
     const target =
-      standing && !ownPane
-        ? place.pane
-        : joins
-          ? (ownerPane ?? null)
-          : beside && (gathered || ownerPane !== undefined)
+      joins && ownerPane !== undefined
+        ? ownerPane
+        : standing && !ownPane
+          ? place.pane
+          : joins
             ? null
-            : alone
-              ? ownerPane === undefined
-                ? null
-                : (paneBelow(arrangement.root, ownerPane)?.id ?? null)
-              : home;
+            : beside && (gathered || ownerPane !== undefined)
+              ? null
+              : alone
+                ? ownerPane === undefined
+                  ? null
+                  : (paneBelow(arrangement.root, ownerPane)?.id ?? null)
+                : home;
     // Entering its owner's pane from elsewhere, as the settings now ask: it joins as a new tab would.
     const joined = joins && target !== null && target !== place.pane && place.pane !== "";
     if (target === null) {
@@ -437,10 +439,13 @@ export function settleLinks(state: LinkedArrangement, context: LinkContext): Lin
         );
       } else if (!alone && !beside) {
         // Astrolabe: the placement rule finds it room beside the owner (`openNear`).
+        // A pane emptied for a parked tab, as a terminal's, stays the one it returns to.
+        const kept = new Set(Object.values(parked).map((other) => other.pane));
         arrangement = openNear(arrangement, key, ownerPane ?? arrangement.focused, {
           focus: false,
           weight: LINKED_PANE_WEIGHT,
           ownPane: true,
+          avoid: (leaf) => kept.has(leaf.id) && leaf.tabs.every(isEmptyTab),
         });
       } else {
         // What it stood beside is gone or apart: it keeps its side of the owner, and nothing wider.

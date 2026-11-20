@@ -29,6 +29,8 @@ export interface ReopenOwnerState {
   chatOpen: boolean;
   /** Whether the thread's terminal shows with its chat. */
   terminalOpen: boolean;
+  /** Whether the thread still has a terminal session; one that ended does not come back. */
+  terminalSessions: boolean;
 }
 
 export function planNextReopen(
@@ -51,7 +53,7 @@ export function planNextReopen(
       entry.kind === "chat-tab"
         ? owner.chatOpen
         : entry.kind === "terminal-tab"
-          ? owner.terminalOpen
+          ? owner.terminalOpen || !owner.terminalSessions
           : entry.kind === "panel-tab"
             ? owner.panel.isOpen && owner.panel.surfaces.some((s) => s.id === entry.surface.id)
             : owner.panel.surfaces.some(

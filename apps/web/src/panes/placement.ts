@@ -47,12 +47,18 @@ export function paneWidthPx(node: SplitNode, id: string, widthPx: number): numbe
  * would cover, nor a chat's terminal, which stands alone below it. The nearest after it in reading
  * order, else the nearest before it.
  */
-export function sidePaneOf(arrangement: Arrangement, targetId: string): Leaf | undefined {
+export function sidePaneOf(
+  arrangement: Arrangement,
+  targetId: string,
+  avoid: (leaf: Leaf) => boolean = () => false,
+): Leaf | undefined {
   const all = leaves(arrangement.root);
   const at = all.findIndex((leaf) => leaf.id === targetId);
   if (at === -1) return undefined;
   const takes = (leaf: Leaf) =>
-    parseChatTabKey(leaf.active) === null && parseChatTerminalKey(leaf.active) === null;
+    parseChatTabKey(leaf.active) === null &&
+    !leaf.tabs.some((key) => parseChatTerminalKey(key) !== null) &&
+    !avoid(leaf);
   return all.slice(at + 1).find(takes) ?? all.slice(0, at).toReversed().find(takes);
 }
 
@@ -89,6 +95,8 @@ export interface OpenNearOptions {
   readonly ownPane?: boolean;
   /** It may join a side pane; a local graph may not, as it would cover the files it opens. */
   readonly joins?: boolean;
+  /** Panes it may not join, as one kept for a parked tab's return. */
+  readonly avoid?: (leaf: Leaf) => boolean;
   /** Whether the panes may divide for room; the setting by default. */
   readonly divides?: boolean;
 }
@@ -109,12 +117,13 @@ export function openNear(
     widthPx = panesWidthPx(),
     ownPane = false,
     joins = true,
+    avoid,
     divides = opensBeside === "when-room",
   }: OpenNearOptions = {},
 ): Arrangement {
   const holder = leafWithTab(arrangement.root, key);
   if (holder && holder.id !== targetId) return activateTab(arrangement, key, focus);
-  const sidePane = joins ? sidePaneOf(arrangement, targetId) : undefined;
+  const sidePane = joins ? sidePaneOf(arrangement, targetId, avoid) : undefined;
   if (sidePane) return openTab(arrangement, key, sidePane.id, focus);
   if (ownPane || (divides && hasRoomBeside(arrangement, targetId, key, weight, widthPx))) {
     return openBeside(arrangement, key, targetId, side, { focus, weight });

@@ -1127,7 +1127,13 @@ describe("a chat's terminal tab", () => {
     expect(focused).toBe(0);
     terminals().setTerminalOpen(refA, false);
     expect(focused).toBe(1);
+    // Its last shell ending hands focus over only from the terminal itself, never from elsewhere.
     terminals().setTerminalOpen(refA, true);
+    terminals().closeTerminal(refA, DEFAULT_THREAD_TERMINAL_ID);
+    expect(focused).toBe(1);
+    terminals().setTerminalOpen(refA, true);
+    const terminalPane = leafWithTab(workspace.arrangement().root, chatTerminalKey(chatA))!.id;
+    workspace.update((arrangement) => focusPane(arrangement, terminalPane));
     terminals().closeTerminal(refA, DEFAULT_THREAD_TERMINAL_ID);
     expect(focused).toBe(2);
     stop();

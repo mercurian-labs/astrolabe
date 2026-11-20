@@ -53,7 +53,17 @@ const PREVIEW_FORWARDED_COMMANDS = [
   "rightPanel.toggle",
   "rightPanel.toggleMaximized",
   "preview.focusUrl",
+  "terminal.toggle",
 ] as const;
+
+/** Whether the thread's terminal shows, and whether any of its sessions is still there. */
+function terminalStateOf(ref: ScopedThreadRef) {
+  const terminal = selectThreadTerminalUiState(
+    useTerminalUiStateStore.getState().terminalUiStateByThreadKey,
+    ref,
+  );
+  return { terminalOpen: terminal.terminalOpen, terminalSessions: terminal.terminalIds.length > 0 };
+}
 
 const isGlobalPullRequests = (ref: ScopedThreadRef) =>
   scopedThreadKey(ref) === scopedThreadKey(PULL_REQUESTS_PANEL_REF);
@@ -101,6 +111,7 @@ export function ReopenClosedViewShortcut() {
           panel,
           chatOpen: false,
           terminalOpen: false,
+          terminalSessions: false,
         };
       }
       return {
@@ -115,10 +126,7 @@ export function ReopenClosedViewShortcut() {
           appAtomRegistry.get(environmentShell.stateValueAtom(ref.environmentId)).status === "live",
         panel,
         chatOpen: openTabs.has(chatTabKey(ref)),
-        terminalOpen: selectThreadTerminalUiState(
-          useTerminalUiStateStore.getState().terminalUiStateByThreadKey,
-          ref,
-        ).terminalOpen,
+        ...terminalStateOf(ref),
       };
     });
     for (const entry of drop) useClosedViewStore.getState().remove(entry.id);
