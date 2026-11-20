@@ -87,6 +87,24 @@ describe("RPC authorization scopes", () => {
     }
   });
 
+  it("lets file readers read the Git tab and only source control writers change a checkout", () => {
+    expect(requiredScopeForRpcMethod(WS_METHODS.gitClientStatus)).toBe(AuthFilesystemReadScope);
+    expect(requiredScopeForRpcMethod(WS_METHODS.gitClientLog)).toBe(AuthFilesystemReadScope);
+    for (const method of [
+      WS_METHODS.gitClientStage,
+      WS_METHODS.gitClientUnstage,
+      WS_METHODS.gitClientDiscard,
+      WS_METHODS.gitClientCommit,
+      WS_METHODS.gitClientGenerateCommitMessage,
+      WS_METHODS.gitClientUndo,
+      WS_METHODS.gitClientFetch,
+      WS_METHODS.gitClientPull,
+    ]) {
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthSourceControlWriteScope);
+      expect(clientRpcRequiredScopes(method, undefined)).toEqual([AuthSourceControlWriteScope]);
+    }
+  });
+
   it("keeps moving a wiki's files behind source control write", () => {
     expect(requiredScopeForRpcMethod(WS_METHODS.wikiMove)).toBe(AuthSourceControlWriteScope);
     expect(clientRpcRequiredScopes(WS_METHODS.wikiMove, undefined)).toEqual([

@@ -221,6 +221,9 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.worktreesList]: AuthOrchestrationReadScope,
   [WS_METHODS.worktreesSubscribeChanges]: AuthOrchestrationReadScope,
   [WS_METHODS.worktreesStatus]: AuthOrchestrationReadScope,
+  // Astrolabe: Git tab reads, like review reads; its writes come from CLIENT_GUARDED_RPC_SCOPES.
+  [WS_METHODS.gitClientStatus]: AuthFilesystemReadScope,
+  [WS_METHODS.gitClientLog]: AuthFilesystemReadScope,
   [WS_METHODS.reviewGetDiffFileContents]: AuthFilesystemReadScope,
   [WS_METHODS.terminalOpen]: AuthTerminalOperateScope,
   [WS_METHODS.terminalAttach]: AuthTerminalOperateScope,

@@ -153,6 +153,15 @@ export class GitManager extends Context.Service<
       input: GitRunStackedActionInput,
       options?: GitRunStackedActionOptions,
     ) => Effect.Effect<GitRunStackedActionResult, GitManagerServiceError>;
+    /** Astrolabe: the message committing `filePaths` (else every change) would get, uncommitted. */
+    readonly suggestCommitMessage: (input: {
+      readonly cwd: string;
+      readonly branch: string | null;
+      readonly filePaths?: readonly string[];
+    }) => Effect.Effect<
+      { readonly subject: string; readonly body: string } | null,
+      GitManagerServiceError
+    >;
     readonly subscribePullRequestStateChanges: Effect.Effect<
       Stream.Stream<ThreadPullRequestKey>,
       never,
@@ -3386,7 +3395,51 @@ export const make = Effect.gen(function* () {
     asUserAction,
   );
 
+  // Astrolabe: the Git tab generates with the same settings and policy as runStackedAction.
+  const suggestCommitMessage: GitManager["Service"]["suggestCommitMessage"] = Effect.fn(
+    "GitManager.suggestCommitMessage",
+  )(function* (input) {
+    const settings = yield* projectSettingsFor(input).pipe(
+      Effect.flatMap(({ settings, projectId }) =>
+        settings.sourceControlWriterModelSelection === null
+          ? Effect.succeed({
+              modelSelection: settings.textGenerationModelSelection,
+              projectId,
+              style: settings.sourceControlWritingStyle,
+            })
+          : providerRegistry.getProviders.pipe(
+              Effect.map((providers) => ({
+                modelSelection: ServerSettings.resolveSourceControlWriterModelSelection(
+                  settings,
+                  providers,
+                  projectId,
+                ),
+                projectId,
+                style: settings.sourceControlWritingStyle,
+              })),
+            ),
+      ),
+      Effect.mapError(
+        (cause) =>
+          new GitManagerError({
+            operation: "suggestCommitMessage",
+            cwd: input.cwd,
+            detail: "Failed to get server settings.",
+            cause,
+          }),
+      ),
+    );
+    const suggestion = yield* resolveCommitAndBranchSuggestion({
+      cwd: input.cwd,
+      branch: input.branch,
+      ...(input.filePaths ? { filePaths: input.filePaths } : {}),
+      settings,
+    });
+    return suggestion === null ? null : { subject: suggestion.subject, body: suggestion.body };
+  });
+
   return GitManager.of({
+    suggestCommitMessage,
     createWorktree,
     localStatus,
     remoteStatus,

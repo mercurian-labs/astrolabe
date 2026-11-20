@@ -260,6 +260,7 @@ import * as LanguageServers from "./languageServers/LanguageServers.ts";
 import { searchProjectSymbols } from "./languageServers/projectSymbols.ts";
 import * as ChangeGroupService from "./changeGroups/ChangeGroupService.ts";
 import * as ProjectWorktreeService from "./worktrees/ProjectWorktreeService.ts";
+import * as GitClientService from "./git/GitClientService.ts";
 import * as CodeIndex from "./codeIndex/CodeIndex.ts";
 import * as PullRequestReviewGuideService from "./pullRequest/PullRequestReviewGuideService.ts";
 import { listLinkedPullRequestThreads } from "./pullRequest/linkedThreads.ts";
@@ -1425,6 +1426,7 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
     const review = yield* ReviewService.ReviewService;
     const changeGroups = yield* ChangeGroupService.ChangeGroupService;
     const worktrees = yield* ProjectWorktreeService.ProjectWorktreeService;
+    const gitClient = yield* GitClientService.GitClientService;
     const baseTexts = yield* VcsBaseText.VcsBaseText;
     const documents = yield* Documents.Documents;
     const codeIndex = yield* CodeIndex.CodeIndex;
@@ -1439,6 +1441,17 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
       [WS_METHODS.worktreesSubscribeChanges]: (input) => worktrees.changes(input),
       [WS_METHODS.worktreesStatus]: (input) => worktrees.status(input),
       [WS_METHODS.worktreesMarkOpened]: (input) => worktrees.markOpened(input),
+      [WS_METHODS.gitClientStatus]: (input) => gitClient.status(input),
+      [WS_METHODS.gitClientLog]: (input) => gitClient.log(input),
+      [WS_METHODS.gitClientStage]: (input) => gitClient.stage(input),
+      [WS_METHODS.gitClientUnstage]: (input) => gitClient.unstage(input),
+      [WS_METHODS.gitClientDiscard]: (input) => gitClient.discard(input),
+      [WS_METHODS.gitClientCommit]: (input) => gitClient.commit(input),
+      [WS_METHODS.gitClientGenerateCommitMessage]: (input) =>
+        gitClient.generateCommitMessage(input),
+      [WS_METHODS.gitClientUndo]: (input) => gitClient.undo(input),
+      [WS_METHODS.gitClientFetch]: (input) => gitClient.fetch(input),
+      [WS_METHODS.gitClientPull]: (input) => gitClient.pull(input),
       [WS_METHODS.codeIndexSubscribe]: (_input) => codeIndex.subscribe,
       [WS_METHODS.codeIndexLocalGraph]: (input) => codeIndex.localGraph(input),
       [WS_METHODS.codeIndexRebuild]: (input) => codeIndex.rebuild(input).pipe(Effect.as({})),
