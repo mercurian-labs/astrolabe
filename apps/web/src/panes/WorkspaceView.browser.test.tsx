@@ -741,7 +741,7 @@ describe("WorkspaceView chat tabs", () => {
     expect(probe.surfaces.length).toBe(mounted);
   });
 
-  it("closes the focused tab from mod+w, a chat or its linked tab, and leaves a lone New tab open", async () => {
+  it("closes the focused tab from mod+w, minimizes a linked one, and leaves a lone New tab open", async () => {
     setup();
     useRightPanelStore.getState().open(refOf("A"), "diff");
     useRightPanelStore.getState().open(refOf("A"), "graph");
@@ -770,6 +770,7 @@ describe("WorkspaceView chat tabs", () => {
     expect((await pressModW()).defaultPrevented).toBe(true);
     expect(paneOf(graphA)).toBeUndefined();
     expect(paneOf(diffA)).toBeDefined();
+    expect(workspace.linkedTabsOf(chatOf("A"))).toContainEqual({ key: graphA, shown: false });
 
     // The chat in focus closes itself, not the linked tab its panel has in front.
     await change(() => workspace.update((a) => focusPane(a, paneOf(chatOf("A"))!)));
@@ -778,7 +779,6 @@ describe("WorkspaceView chat tabs", () => {
     expect(allTabs(workspace.arrangement())).not.toContain(chatOf("A"));
     expect(useClosedViewStore.getState().entries).toMatchObject([
       { kind: "chat-tab", threadRef: refOf("A") },
-      { kind: "panel-tab", surface: { id: "graph" } },
     ]);
 
     await change(() => workspace.update(() => startingArrangement()));

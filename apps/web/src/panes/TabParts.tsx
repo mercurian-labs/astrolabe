@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { Minus, X } from "lucide-react";
 import type { ComponentProps, MouseEvent, ReactNode } from "react";
 
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
@@ -106,5 +106,28 @@ export function TabCloseButton({
     <TabIconButton data-tab-close label={label} onClick={onClick}>
       <X className="size-3" />
     </TabIconButton>
+  );
+}
+
+/**
+ * Astrolabe: a linked tab's minimize, where its ✕ would be. It stands in the ✕'s place, so the
+ * chain mark gives way to it on hover just the same.
+ */
+export function TabMinimizeButton({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: (event: MouseEvent<HTMLButtonElement>) => void;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={<TabIconButton data-tab-close data-tab-minimize label={label} onClick={onClick} />}
+      >
+        <Minus className="size-3" />
+      </TooltipTrigger>
+      <TooltipPopup side="bottom">Minimize</TooltipPopup>
+    </Tooltip>
   );
 }

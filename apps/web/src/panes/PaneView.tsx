@@ -70,7 +70,13 @@ import {
   useTabSelectionStore,
 } from "./tabSelection";
 import { noteTabGroupRuns, useTabGroupRelease } from "./tabGroupNumbers";
-import { preventTabMiddleButtonDefault, TabCloseButton, TabTitle, TabTitleInput } from "./TabParts";
+import {
+  preventTabMiddleButtonDefault,
+  TabCloseButton,
+  TabMinimizeButton,
+  TabTitle,
+  TabTitleInput,
+} from "./TabParts";
 import { findLeaf, leaves, type Leaf } from "./tree";
 import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
 
@@ -134,7 +140,7 @@ function LabeledTabPill({
   label,
 }: TabPillProps & { readonly label: PaneTabLabel }) {
   const { controller, tabs } = usePanesHost();
-  const { title, icon, tooltip, accessory, trailing, rename } = label;
+  const { title, icon, tooltip, accessory, trailing, rename, minimize } = label;
   const [renaming, setRenaming] = useState(false);
   const navigate = useNavigate();
   const dragging = useDragging(tabKey);
@@ -183,6 +189,7 @@ function LabeledTabPill({
       | "open-elsewhere"
       | "rename"
       | `own:${number}`
+      | "minimize"
       | "close"
       | "close-others"
       | "close-to-right"
@@ -199,6 +206,7 @@ function LabeledTabPill({
         label: item.label,
         ...(item.disabled ? { disabled: true } : {}),
       })),
+      ...(minimize ? [{ id: "minimize" as const, label: "Minimize" }] : []),
       { id: "close", label: "Close", disabled: !closable },
       { id: "close-others", label: "Close others", disabled: only },
       { id: "close-to-right", label: "Close tabs to the right", disabled: last },
@@ -218,6 +226,9 @@ function LabeledTabPill({
         break;
       case "rename":
         setRenaming(true);
+        break;
+      case "minimize":
+        minimize?.();
         break;
       case "close":
         tabs.close(tabKey);
@@ -279,11 +290,13 @@ function LabeledTabPill({
           activate();
         }
       }}
-      // Middle-click closes.
+      // Middle-click closes, or minimizes a linked tab.
       onMouseDown={preventTabMiddleButtonDefault}
       onMouseUp={preventTabMiddleButtonDefault}
       onAuxClick={(event) => {
-        if (event.button === 1 && closable) tabs.close(tabKey);
+        if (event.button !== 1) return;
+        if (minimize) minimize();
+        else if (closable) tabs.close(tabKey);
       }}
       onDoubleClick={(event) => {
         if (rename && !(event.target instanceof Element && event.target.closest("button"))) {
@@ -319,11 +332,19 @@ function LabeledTabPill({
       ) : (
         <TabTitle title={title} tooltip={tooltip} />
       )}
-      {/* Outside the end: a linked tab's ✕ is centred over the end's chain mark on hover. */}
+      {/* Outside the end: a linked tab's minimize is centred over the end's chain mark on hover. */}
       {trailing}
       <span data-tab-end className="relative flex shrink-0 items-center gap-1.5">
         {tabs.Marker ? <tabs.Marker tabKey={tabKey} /> : null}
-        {closable ? (
+        {minimize ? (
+          <TabMinimizeButton
+            label={`Minimize ${title}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              minimize();
+            }}
+          />
+        ) : closable ? (
           <TabCloseButton
             label={`Close ${title}`}
             onClick={(event) => {

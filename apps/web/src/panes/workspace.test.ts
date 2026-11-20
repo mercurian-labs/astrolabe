@@ -337,6 +337,43 @@ describe("the shared panes", () => {
     stop();
   });
 
+  it("minimize a linked tab into its chat's menu, the last one showing with the chat's panel", () => {
+    const workspace = createWorkspace(chatTabsDevice);
+    const stop = workspace.follow();
+    const diff = chatSurfaceKey(chatA, "diff");
+    const files = chatSurfaceKey(chatA, "files");
+    useRightPanelStore.getState().open(refA, "diff");
+    useRightPanelStore.getState().open(refA, "files");
+    let hidden = 0;
+    const hide = () => {
+      hidden += 1;
+      useRightPanelStore.getState().close(refA);
+    };
+    workspace.setPanel({ onHide: hide } as unknown as Parameters<typeof workspace.setPanel>[0]);
+    // A chat, and a tab no chat's menu lists, close as ever.
+    expect(workspace.minimizeLinkedTab(chatA)).toBe(false);
+    expect(workspace.minimizeLinkedTab("wiki:doc")).toBe(false);
+
+    expect(workspace.minimizeLinkedTab(diff)).toBe(true);
+    expect(panes(workspace)).toEqual([[chatA, chatB], [files]]);
+    expect(workspace.linkedTabsOf(chatA)).toEqual([
+      { key: diff, shown: false },
+      { key: files, shown: true },
+    ]);
+    expect(hidden).toBe(0);
+
+    expect(workspace.minimizeLinkedTab(files)).toBe(true);
+    expect(hidden).toBe(1);
+    expect(panes(workspace)).toEqual([[chatA, chatB]]);
+    expect(workspace.minimizes(files)).toBe(false);
+
+    // An empty New tab holds nothing to bring back: it closes rather than minimizes.
+    workspace.newLinkedTab(chatA);
+    const blank = panes(workspace)[1]?.find((key) => key.startsWith("empty/")) ?? "";
+    expect(workspace.minimizes(blank)).toBe(false);
+    stop();
+  });
+
   it("show only the tab picked while its chat's panel is closed", () => {
     const workspace = createWorkspace(chatTabsDevice);
     const stop = workspace.follow();

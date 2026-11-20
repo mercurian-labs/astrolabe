@@ -101,6 +101,7 @@ export function createWorkspaceHost(): WorkspaceHost {
             : getLayoutBehavior().sidePanePlacement) === "new-tab",
       ),
     close: closeWorkspaceTab,
+    minimize: workspace.minimizeLinkedTab,
     NewTab: NewTabButton,
     place: (slot, leaf) => {
       for (const key of leaf.tabs) {
@@ -292,7 +293,20 @@ export function closeWorkspaceTab(tabKey: string) {
 }
 
 function TabLabel({ tabKey, children }: PaneTabLabelProps) {
-  return children(useTabLabel(tabKey));
+  const label = useTabLabel(tabKey);
+  const minimizes = useSyncExternalStore(subscribeLinks, () => workspace.minimizes(tabKey));
+  return children(
+    minimizes ? { ...label, minimize: () => workspace.minimizeLinkedTab(tabKey) } : label,
+  );
+}
+
+function subscribeLinks(listener: () => void) {
+  const stopPanes = workspace.store.subscribe(listener);
+  const stopRecords = useRightPanelStore.subscribe(listener);
+  return () => {
+    stopPanes();
+    stopRecords();
+  };
 }
 
 /**
