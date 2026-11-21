@@ -4,4 +4,4 @@
 export const headline = "Understand what your agents build, as fast as they build it.";
 
 export const description =
-  "Astrolabe is an agent development environment that helps your team understand what its agents build, at the speed they build it. Run Claude Code, Codex and Cursor side by side, read their code with the same code intelligence they use, see their changes drawn on a canvas, keep what they learn in a wiki and review their work as one change.";
+  "Run Claude Code, Codex, Cursor and other coding agents side by side in one local workspace. Astrolabe gives agents the tools to explain changes as visual stories, back every step with live code-index evidence, and grow a linked git wiki that powers your skills.";
