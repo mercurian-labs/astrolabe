@@ -35,13 +35,14 @@ const toolRow = tools.map((name) => {
           <section class="surfaces" id="understanding" aria-labelledby="understanding-title">
             <div class="head">
               <div class="head__main">
-                <p class="tag">[06] Understanding</p>
-                <h2 id="understanding-title" class="h2" data-reveal>See what changed, drawn.</h2>
+                <p class="tag">[06] Canvases</p>
+                <h2 id="understanding-title" class="h2" data-reveal>Visual stories backed by the code.</h2>
               </div>
               <p class="body head__aside" data-reveal>
-                An agent can explain its work as a drawing: how the parts fit, what it moved and what that
-                means for the people who use it. Keep the drawing, and it goes into the wiki with the change,
-                so a reviewer starts from the picture.
+                A diff shows which lines moved, not what happened. An agent can explain its work as an
+                interactive visual story on a canvas: step by step, showing how the parts fit, what moved
+                and what changes for the people who use it. Keep the board and it lands in the wiki beside
+                the change.
               </p>
             </div>
 
@@ -250,18 +251,17 @@ const toolRow = tools.map((name) => {
                   requests moved and what a shopper sees.
                 </p>
                 <p>
-                  The agent that draws it can query the code index and the language servers in the same
-                  turn, and a card can cite a file and its lines. Click the card to open the code there. Once
-                  the canvas is kept, a card that cites code is marked when that file is changed or deleted.
+                  Every card is backed by evidence. While drawing, the agent queries the code index and
+                  language servers to cite exact files and lines. Click a card to open the code there; once
+                  kept in the wiki, any card whose cited file changes or disappears marks itself stale.
                 </p>
                 <p>
-                  Edit the board by hand on a computer or your phone. Draw arrows sharp, curved or at right
-                  angles, put a head at either end or none, and add bends where you want one to go. Keep the canvas,
-                  and it goes into the wiki in a pull request you merge like any other.
+                  Refine the board by hand on your computer or phone, then keep it in the wiki as a pull
+                  request you merge alongside the code.
                 </p>
                 <p class="surface__note">
-                  Canvases are JSON Canvas files, so the same board opens in Obsidian, which draws every
-                  card’s arrow curved. So far we have tried drawing with Claude.
+                  Canvases are standard JSON Canvas files, so the same board opens in Obsidian. Verified with
+                  Claude Code today.
                 </p>
                 <a class="link" href="/download">Download Astrolabe<svg class="arw" aria-hidden="true"><use href="#i-arrow" /></svg></a>
               </div>

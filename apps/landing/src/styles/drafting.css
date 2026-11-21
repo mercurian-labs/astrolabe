@@ -856,6 +856,12 @@ section {
   height: 3rem;
   padding: 0 1.1rem;
 }
+.hero__note {
+  max-width: 36em;
+  margin-top: 0.25rem;
+  line-height: 1.5;
+  text-wrap: balance;
+}
 
 /* The tour's phases: a segmented bar, the phase shown filled, and a caption that names what the
    picture shows. Inert for now; the tour will fill the bar and change the caption with the phase. */

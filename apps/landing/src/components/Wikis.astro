@@ -3,12 +3,12 @@
             <div class="head">
               <div class="head__main">
                 <p class="tag">[04] Knowledge</p>
-                <h2 id="wikis-title" class="h2" data-reveal>The knowledge your team works from.</h2>
+                <h2 id="wikis-title" class="h2" data-reveal>Linked knowledge that scales with your agents.</h2>
               </div>
               <p class="body head__aside" data-reveal>
-                Your team keeps its conventions, decisions and plans in a wiki. Agents read it before they
-                start and write down what they worked out, and you accept each change. A wiki is a folder of
-                linked Markdown in git, with its own section in the app and a tab on your iPhone.
+                Giant prompt files rot fast. In Astrolabe, your team’s decisions, invariants and plans live
+                as small, linked Markdown notes in git, modeled on Obsidian. Agents read the links before
+                they start, write down what they worked out as pull requests, and never merge without you.
               </p>
             </div>
 
@@ -108,15 +108,16 @@
               <div class="surface__desc">
                 <p>
                   Ask Claude to bring a page up to date and you watch it edit: its words tinted, what it
-                  removes ghosted, its cursor named. Your own saves wait for its turn to end.
+                  removes ghosted, its cursor named. Your own edits wait until its turn finishes, so neither
+                  overwrites the other.
                 </p>
                 <p>
                   Each edit lands as an amendment in a pull request, and you can revert any one on its own.
                   The wiki changes only when a person merges.
                 </p>
                 <p class="surface__note">
-                  Agents edit through the app's wiki tools, none of which can merge. So far we have
-                  tried this with Claude.
+                  Agents edit through the app’s wiki tools, none of which can merge. Verified with Claude Code
+                  today; any agent that calls Astrolabe’s wiki tools can use them.
                 </p>
                 <a class="link" href="/download">Download Astrolabe<svg class="arw" aria-hidden="true"><use href="#i-arrow" /></svg></a>
               </div>
@@ -125,7 +126,7 @@
             <article class="surface" aria-labelledby="surface-bases">
               <div class="surface__title">
                 <p class="tag">Bases and link types</p>
-                <h3 id="surface-bases" class="h3">Ask the wiki a question.</h3>
+                <h3 id="surface-bases" class="h3">Live queries for people and skills.</h3>
               </div>
               <div class="surface__ui">
           <figure class="window">
@@ -220,9 +221,10 @@
                   The type reads as a mark beside the words and stays in the Markdown.
                 </p>
                 <p>
-                  A base is a query over the wiki that reads those links. This one lists every note that
-                  links to Rounding as depends-on or decided-in. Agents and people both run it to find the
-                  notes a change touches.
+                  A base is a live filter over the wiki that reads those typed links. This one lists every
+                  note that links to Rounding as depends-on or decided-in. People run it before changing a
+                  core invariant, and agent skills query it at runtime to pull only the knowledge a specific
+                  workflow needs.
                 </p>
                 <p class="surface__note">
                   Bases use Obsidian’s format, so a base written in Obsidian works here. Obsidian keeps typed
