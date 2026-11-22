@@ -1222,6 +1222,36 @@ export function createWorkspace(
     useTerminalUiStateStore.getState().setTerminalOpen(ref, false);
   };
 
+  /**
+   * The chat in front, when `key` is one of its linked tabs on screen that minimizing can set
+   * aside for its menu to bring back. An empty New tab holds nothing to bring back: it closes.
+   */
+  const minimizerOf = (key: string): string | null => {
+    const { front, owners } = current();
+    if (!(key in owners) || isEmptyTab(key) || front === null || refOf(front) === null) return null;
+    const listed = linkedTabsOf(current(), front, context).some(
+      (tab) => tab.key === key && tab.shown,
+    );
+    return listed ? front : null;
+  };
+
+  /**
+   * Minimizes the linked tab `key`: it leaves the panes and stays in its chat's linked tabs menu.
+   * The last one showing goes with its chat's panel, as the menu's untick does. False for a tab
+   * that is not one, which closes instead.
+   */
+  const minimizeLinkedTab = (key: string): boolean => {
+    const owner = minimizerOf(key);
+    if (owner === null) return false;
+    const showing = linkedTabsOf(current(), owner, context).filter(
+      (tab) => tab.shown && !standsAlone(tab.key),
+    );
+    const hidePanel = panel?.onHide;
+    if (!standsAlone(key) && showing.length === 1 && hidePanel) hidePanel();
+    else setLinkedTabShown(owner, key, false);
+    return true;
+  };
+
   return {
     store,
     /** The arrangement as it stands. */
@@ -1251,6 +1281,9 @@ export function createWorkspace(
     terminalBehindFocusedTab,
     terminalOnScreen,
     revealTerminal,
+    minimizeLinkedTab,
+    /** Whether `key` is a linked tab that minimizes rather than closes (`minimizeLinkedTab`). */
+    minimizes: (key: string) => minimizerOf(key) !== null,
     /** The chat `owner`'s linked tabs, as its filter lists them. */
     linkedTabsOf: (owner: string): LinkedTab[] => linkedTabsOf(current(), owner, context),
     /** The thread of the chat in front, whose surfaces the panes show. */

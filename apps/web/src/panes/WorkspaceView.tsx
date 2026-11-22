@@ -223,7 +223,7 @@ function closeFocusedTab(event: KeyboardEvent) {
   }
   event.preventDefault();
   event.stopPropagation();
-  if (!event.repeat) closeWorkspaceTab(active);
+  if (!event.repeat && !workspace.minimizeLinkedTab(active)) closeWorkspaceTab(active);
 }
 
 /**

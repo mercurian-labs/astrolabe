@@ -185,7 +185,9 @@ function closeTarget(context: AppCommandContext): (() => void) | null {
     const { leaf, alone } = focused;
     // A lone empty tab has nothing to close, as its strip says.
     if (alone && leaf.tabs.length === 1 && isEmptyTab(leaf.active)) return null;
-    return () => panes.tabs.close(leaf.active);
+    return () => {
+      if (!panes.tabs.minimize?.(leaf.active)) panes.tabs.close(leaf.active);
+    };
   }
   const active = chatTabs?.activeKey;
   return chatTabs && active ? () => chatTabs.close(active) : null;

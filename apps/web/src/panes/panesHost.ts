@@ -29,6 +29,11 @@ export interface PaneTabLabel {
   readonly trailing?: ReactNode;
   /** Renames the tab; double-clicking its title, or its menu's Rename, edits it in place. */
   readonly rename?: (title: string) => void;
+  /**
+   * Astrolabe: sets a linked tab aside for its chat's menu to bring back. Its button, middle-click
+   * and the close shortcut do this instead of closing it; its menu still offers Close.
+   */
+  readonly minimize?: () => void;
 }
 
 /** What a set of panes' `Label` is given: the tab, and what draws its label. */
@@ -69,6 +74,8 @@ export interface PaneTabs {
   readonly menuItems?: (tabKey: string) => readonly PaneTabMenuItem[];
   /** Closes a tab, which may ask first. */
   readonly close: (tabKey: string) => void;
+  /** Astrolabe: minimizes a linked tab (see `PaneTabLabel.minimize`); false for any other tab. */
+  readonly minimize?: (tabKey: string) => boolean;
   /** The control after a pane's tabs that opens another tab there. */
   readonly NewTab: ComponentType<{ readonly paneId: string }>;
   /**

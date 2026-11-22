@@ -380,7 +380,7 @@ describe("a pane's New tab", () => {
 });
 
 describe("a thread's surface as a tab of the shared panes", () => {
-  it("cancels the middle button's defaults and closes once on middle-click", async () => {
+  it("cancels the middle button's defaults and minimizes on middle-click", async () => {
     using _panel = emptyPanel();
     useRightPanelStore.getState().open(ref, "diff");
     const onCloseSurface = vi.fn();
@@ -392,9 +392,11 @@ describe("a thread's surface as a tab of the shared panes", () => {
     expect((await mouse(diff, "mousedown", 1)).defaultPrevented).toBe(true);
     // Chromium on Linux pastes the primary selection unless the release is cancelled too.
     expect((await mouse(diff, "mouseup", 1)).defaultPrevented).toBe(true);
-    expect(onCloseSurface).not.toHaveBeenCalled();
     await mouse(diff, "auxclick", 1);
-    expect(onCloseSurface).toHaveBeenCalledExactlyOnceWith({ id: "diff", kind: "diff" });
+    expect(onCloseSurface).not.toHaveBeenCalled();
+    expect(workspace.linkedTabsOf(chat)).toEqual([
+      { key: chatSurfaceKey(chat, "diff"), shown: false },
+    ]);
   });
 
   it("offers a workspace file's path to copy", async () => {
@@ -407,7 +409,7 @@ describe("a thread's surface as a tab of the shared panes", () => {
       "Open in Projects",
       "Open as its own tab",
       "Copy path",
-      "Close",
+      "Minimize",
     ]);
     expect(onCopyFilePath).toHaveBeenCalledExactlyOnceWith("src/app.ts");
   });
@@ -432,7 +434,7 @@ describe("a thread's surface as a tab of the shared panes", () => {
     )!;
     again.value = "Something else";
     await dispatch(again, new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-    expect(screen.container.querySelector("input")).toBeNull();
+    expect(screen.container.querySelector('input[aria-label^="Rename"]')).toBeNull();
     expect(tab(screen.container, "Lab phone")).toBeDefined();
     const surface = useRightPanelStore
       .getState()

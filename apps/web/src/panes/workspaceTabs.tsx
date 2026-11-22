@@ -25,6 +25,7 @@ import {
 import { followLocalGraph, pinLocalGraph } from "~/components/repositories/localGraph";
 import { parseRepositoryTabKey } from "~/components/repositories/repositoryTabs";
 import { Button } from "~/components/ui/button";
+import { ComboboxTrigger } from "~/components/ui/combobox";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { closeAskingFirst } from "~/components/wiki/WikiTabView";
 import { useClosedViewStore } from "~/closedViewStore";
@@ -54,6 +55,7 @@ import type { PanelProps } from "./panesController";
 import type { PaneTabLabel, PaneTabLabelProps, PaneTabMenuItem, PaneTabs } from "./panesHost";
 import { keptFromPane } from "./linkedTabs";
 import type { WorkspaceHost } from "./PaneSurfaceHost";
+import { LinkedTabsMarkMenu } from "./LinkedTabsFilter";
 import { TabIconButton } from "./TabParts";
 import type { Leaf } from "./tree";
 import { useChatTabLabel } from "~/chatTabs/chatTabLabel";
@@ -101,6 +103,7 @@ export function createWorkspaceHost(): WorkspaceHost {
             : getLayoutBehavior().sidePanePlacement) === "new-tab",
       ),
     close: closeWorkspaceTab,
+    minimize: workspace.minimizeLinkedTab,
     NewTab: NewTabButton,
     place: (slot, leaf) => {
       for (const key of leaf.tabs) {
@@ -292,7 +295,20 @@ export function closeWorkspaceTab(tabKey: string) {
 }
 
 function TabLabel({ tabKey, children }: PaneTabLabelProps) {
-  return children(useTabLabel(tabKey));
+  const label = useTabLabel(tabKey);
+  const minimizes = useSyncExternalStore(subscribeLinks, () => workspace.minimizes(tabKey));
+  return children(
+    minimizes ? { ...label, minimize: () => workspace.minimizeLinkedTab(tabKey) } : label,
+  );
+}
+
+function subscribeLinks(listener: () => void) {
+  const stopPanes = workspace.store.subscribe(listener);
+  const stopRecords = useRightPanelStore.subscribe(listener);
+  return () => {
+    stopPanes();
+    stopRecords();
+  };
 }
 
 /**
@@ -383,6 +399,35 @@ function LinkMark({ tabKey }: { readonly tabKey: string }) {
   const tooltip = mark.owns
     ? `${mark.count} linked ${mark.count === 1 ? "tab" : "tabs"} follow this tab`
     : `Linked to ${name}`;
+  const ink = LINK_INKS[mark.ink % LINK_INKS.length];
+  // A chat's own mark opens its linked tabs menu, so a linked tab covering it can be found again.
+  if (mark.owns && parseChatTabKey(tabKey) !== null) {
+    return (
+      <LinkedTabsMarkMenu owner={tabKey}>
+        {(label) => (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <ComboboxTrigger
+                  render={
+                    <TabIconButton
+                      data-link-mark={mark.ink}
+                      data-link-owner
+                      label={label}
+                      onClick={(event) => event.stopPropagation()}
+                    />
+                  }
+                />
+              }
+            >
+              <Link2 className={cn("size-3", ink)} aria-hidden />
+            </TooltipTrigger>
+            <TooltipPopup side="bottom">{label}</TooltipPopup>
+          </Tooltip>
+        )}
+      </LinkedTabsMarkMenu>
+    );
+  }
   return (
     <Tooltip>
       <TooltipTrigger
@@ -390,10 +435,7 @@ function LinkMark({ tabKey }: { readonly tabKey: string }) {
           <span
             data-link-mark={mark.ink}
             aria-label={tooltip}
-            className={cn(
-              "flex size-3.5 shrink-0 items-center justify-center",
-              LINK_INKS[mark.ink % LINK_INKS.length],
-            )}
+            className={cn("flex size-3.5 shrink-0 items-center justify-center", ink)}
           />
         }
       >
