@@ -26,14 +26,15 @@ are all rights reserved unless a row says otherwise. (DECISION pending, the same
 
 The marks in the Works with strip (`src/data/agent-marks.json`, `assets/marks/`) belong to their
 owners: OpenAI (Codex), Anthropic (Claude Code), Anysphere (Cursor), xAI (Grok), the OpenCode
-project (OpenCode) and Google (Antigravity). They are used only to name the tools Astrolabe works
+project (OpenCode), Google (Antigravity), Meta (Muse Code) and Earendil (Pi). They are used only to
+name the tools Astrolabe works
 with, printed in the page's ink rather than their brand colours, and are not covered by any license
 in this repository.
 
 | File | Source |
 | --- | --- |
 | `src/data/agent-marks.json` (Codex, Claude Code, Cursor) | The app's own icons, `apps/web/src/components/Icons.tsx` (`OpenAI`, `ClaudeAI`, `CursorIcon`). |
-| `src/data/agent-marks.json` (Grok, OpenCode) | The app's provider icons, `packages/provider-grok/src/client.ts` and `packages/provider-opencode/src/client.ts`. |
+| `src/data/agent-marks.json` (Grok, OpenCode, Muse Code, Pi) | The app's provider icons, `packages/provider-grok/src/client.ts`, `packages/provider-opencode/src/client.ts`, `packages/provider-muse/src/client.ts` and `packages/provider-pi/src/client.ts`. |
 | `assets/marks/antigravity.png` | The app's `AntigravityIcon` (`apps/web/src/components/Icons.tsx`), scaled to 64 px. |
 
 ## `assets/footer/`

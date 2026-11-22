@@ -1,10 +1,11 @@
-// Astrolabe · drafting · the closing instrument: an astrolabe set to the visitor's sky now, engraved
-// for the latitude the time zone suggests (places.js); maths in sky.js. One sweep into place on
-// arrival, then at most one redraw a minute and none while hidden; parts turn as SVG group transforms,
-// nothing repaints in a loop. Reduced motion arrives set; without JavaScript the static drawing shows.
+// Astrolabe · drafting · the instrument beside the headline: an astrolabe set to the visitor's sky
+// now, engraved for the latitude the time zone suggests (places.js); maths in sky.js. One sweep into
+// place, then at most one redraw a minute and none while hidden; parts turn as SVG transforms, nothing
+// repaints in a loop. Reduced motion arrives set; without JavaScript the static drawing shows.
 
 import Places from "./places.js";
 import Sky from "./sky.js";
+import Twilight from "./twilight.js";
 
 (() => {
   const host = document.querySelector("[data-model]");
@@ -12,6 +13,8 @@ import Sky from "./sky.js";
   const field = host.closest("[data-sight]");
   const art = host.closest(".sky__art");
   const reducedQuery = matchMedia("(prefers-reduced-motion: reduce)");
+  // Turning the instrument hands the page's light back to the sky, over the header's switch.
+  const followSky = () => Twilight.chosen() && Twilight.choose(null);
   const { sin, cos, wrap360, wrap180 } = Sky;
   const f = (v) => (Math.round(v * 10) / 10).toString();
 
@@ -473,9 +476,9 @@ import Sky from "./sky.js";
     // The represented moment, for anything on the page that follows this sky (relight.js).
     field.dispatchEvent(new CustomEvent("astrolabe:time", { bubbles: true, detail: state }));
     if (nowButton) nowButton.disabled = Math.abs(offset) < 30000;
-    // Day and Night read as pressed while the page shows full day or full night (twilight.js).
+    // Day and Night read as pressed while the instrument's sun is up or down.
     for (const b of jumpButtons) {
-      const on = b.dataset.jump === "day" ? state.sunAlt > 0 : state.sunAlt < -18;
+      const on = b.dataset.jump === "day" ? state.sunAlt > 0 : state.sunAlt <= 0;
       b.setAttribute("aria-pressed", String(on));
     }
     if (tipStar !== null) placeTip();
@@ -513,6 +516,7 @@ import Sky from "./sky.js";
   }
 
   function backToNow() {
+    followSky();
     // Whole days first, in one step: a day turns the rete by under a degree, so only the rest moves.
     const day = 86400000;
     offset -= Math.trunc(offset / day) * day;
@@ -570,6 +574,7 @@ import Sky from "./sky.js";
   let lastX = 0;
 
   function begin(event, from) {
+    followSky();
     cancelAnimationFrame(tween);
     tween = 0;
     arriving = false;
@@ -663,6 +668,7 @@ import Sky from "./sky.js";
     }
     if (!(event.key in keys)) return;
     event.preventDefault();
+    followSky();
     cancelAnimationFrame(tween);
     tween = 0;
     arriving = false;
@@ -675,6 +681,7 @@ import Sky from "./sky.js";
   // sun's hour angle is 0° or 180°: for touch, where turning the rete by hand is hard.
   function windTo(hourAngle) {
     if (!current) return;
+    followSky();
     const degrees = ((hourAngle - current.sunHa + 540) % 360) - 180;
     if (Math.abs(degrees) < 0.5) return;
     arriving = false;

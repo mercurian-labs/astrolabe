@@ -23,13 +23,15 @@ vi.mock(import("./languageServerFile"), async (original) => ({
   ...(await original()),
   turnOnLanguageServer: vi.fn(),
   selectInterpreter: vi.fn(),
+  trustLanguageServerProject: vi.fn(),
 }));
 
 import { render } from "../../../test/render";
-import { LanguageServerStatusEntry } from "./LanguageServerStatus";
+import { LanguageServerStatusEntry, LanguageServerTrustBar } from "./LanguageServerStatus";
 import {
   type LanguageServerFile,
   selectInterpreter,
+  trustLanguageServerProject,
   turnOnLanguageServer,
 } from "./languageServerFile";
 import "~/index.css";
@@ -161,4 +163,25 @@ it("says a chosen interpreter waits for trust", async () => {
   );
   await userEvent.click(screen.getByRole("status"));
   await expect.element(page.getByText("Applies once this project is trusted")).toBeVisible();
+});
+
+it("asks for trust under the header, and Not now leaves trust in the server's menu", async () => {
+  const untrusted = file({});
+  const waiting = status({ state: "trust-needed", name: "basedpyright 1.40.2" });
+  const props = { file: untrusted, status: waiting, servers: [route({})] };
+  await using screen = await render(
+    <>
+      <LanguageServerStatusEntry {...props} />
+      <LanguageServerTrustBar {...props} />
+    </>,
+  );
+  await expect.element(screen.getByRole("status")).toHaveTextContent("basedpyright: Not trusted");
+  const bar = screen.getByRole("region", { name: "Project trust" });
+  await userEvent.click(bar.getByRole("button", { name: "Trust project" }));
+  expect(vi.mocked(trustLanguageServerProject)).toHaveBeenCalledWith(untrusted);
+
+  await userEvent.click(bar.getByRole("button", { name: "Not now" }));
+  await expect.element(bar).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("status"));
+  await expect.element(page.getByRole("menuitem", { name: "Trust project" })).toBeVisible();
 });

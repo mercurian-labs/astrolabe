@@ -3,11 +3,11 @@ import {
   allTabs,
   closeTab,
   focusedPane,
-  openBeside,
   replaceTab,
   type Arrangement,
 } from "~/panes/arrangement";
 import type { PaneArrangementStore } from "~/panes/panesHost";
+import { openNear } from "~/panes/placement";
 import { leafWithTab, leaves } from "~/panes/tree";
 import {
   parseRepositoryTabKey,
@@ -97,7 +97,14 @@ export function openLocalGraph(arrangement: Arrangement, file: ProjectFileTab): 
   if (graphPane !== undefined && graphPane.id !== filePane.id) {
     return activateTab(next, graphKey, false);
   }
-  return openBeside(next, graphKey, filePane.id, "right", { focus: false, weight: GRAPH_WEIGHT });
+  // A graph shows the file in front beside it, and opens files in the pane beside it, so it
+  // takes a pane of its own.
+  return openNear(next, graphKey, filePane.id, {
+    focus: false,
+    weight: GRAPH_WEIGHT,
+    ownPane: true,
+    joins: false,
+  });
 }
 
 /**

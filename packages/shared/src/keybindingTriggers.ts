@@ -68,6 +68,12 @@ export const DEFAULT_TRIGGER_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "menu p c", command: "pane.close" },
   { key: "menu p m", command: "pane.toggleMaximized" },
   { key: "menu p f", command: "pane.toggleFullScreen" },
+  // Astrolabe: the pane's tabs trade places with the pane that way, as h/j/k/l move focus.
+  { key: "menu p h", command: "pane.moveLeft" },
+  { key: "menu p j", command: "pane.moveDown" },
+  { key: "menu p k", command: "pane.moveUp" },
+  { key: "menu p l", command: "pane.moveRight" },
+  { key: "menu p =", command: "pane.cycleSize" },
   { key: "menu p r", command: "rightPanel.toggle" },
   { key: "menu s s", command: "sidebar.toggle" },
   { key: "menu w w", command: "section.wikis" },

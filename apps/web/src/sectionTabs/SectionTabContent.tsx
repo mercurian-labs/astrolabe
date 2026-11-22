@@ -41,7 +41,6 @@ import { isTerminalFocused } from "~/lib/terminalFocus";
 import {
   activateTab,
   focusedPane,
-  openBeside,
   openTab,
   placeTabs,
   replaceTab,
@@ -49,6 +48,7 @@ import {
   type Arrangement,
 } from "~/panes/arrangement";
 import type { PaneArrangementStore, PaneTabLabel } from "~/panes/panesHost";
+import { openNear } from "~/panes/placement";
 import { workspace } from "~/panes/workspace";
 import { leafWithTab } from "~/panes/tree";
 import { pullRequestSurface } from "~/rightPanelStore";
@@ -68,7 +68,7 @@ function showKeyIn(
 ): Arrangement {
   if (leafWithTab(arrangement.root, key)) return activateTab(arrangement, key);
   return placement === "beside"
-    ? openBeside(arrangement, key, arrangement.focused, "right")
+    ? openNear(arrangement, key, arrangement.focused)
     : openTab(arrangement, key, arrangement.focused);
 }
 
@@ -173,14 +173,12 @@ export function SectionTabContent({
             if (pane && pane.id !== groupPane?.id && pane.tabs.length === 1) {
               return activateTab(arrangement, key);
             }
-            const beside = openBeside(
-              arrangement,
-              key,
-              groupPane?.id ?? arrangement.focused,
-              "right",
-            );
-            // A new chat opens in front of the group first; moving it out leaves the group in front.
-            return activateTab(beside, tabKey, false);
+            const beside = openNear(arrangement, key, groupPane?.id ?? arrangement.focused);
+            // A new chat opens in front of the group first; moving it out leaves the group in
+            // front, and with no room it stays in front of the group.
+            const together =
+              leafWithTab(beside.root, key)?.id === leafWithTab(beside.root, tabKey)?.id;
+            return together ? beside : activateTab(beside, tabKey, false);
           })
         }
         openAll={
@@ -242,7 +240,7 @@ function openTabGroup(keys: ReadonlyArray<string>, group: EnvironmentChangeGroup
   for (const key of keys) {
     if (parseChatTabKey(key) !== null) continue;
     if (inGroup) workspace.openLinked(key, groupKey);
-    else workspace.open(key, beside ? "beside" : "tab");
+    else workspace.open(key, beside ? "near" : "tab");
     beside = false;
   }
 }

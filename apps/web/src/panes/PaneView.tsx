@@ -25,6 +25,7 @@ import { workspaceAreaProps } from "~/lib/workspaceFocus";
 import { readLocalApi } from "~/localApi";
 import {
   activateTab,
+  columnWithTabs,
   focusPane,
   isEmptyTab,
   moveTabs,
@@ -69,7 +70,13 @@ import {
   useTabSelectionStore,
 } from "./tabSelection";
 import { noteTabGroupRuns, useTabGroupRelease } from "./tabGroupNumbers";
-import { preventTabMiddleButtonDefault, TabCloseButton, TabTitle, TabTitleInput } from "./TabParts";
+import {
+  preventTabMiddleButtonDefault,
+  TabCloseButton,
+  TabMinimizeButton,
+  TabTitle,
+  TabTitleInput,
+} from "./TabParts";
 import { findLeaf, leaves, type Leaf } from "./tree";
 import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
 
@@ -133,7 +140,7 @@ function LabeledTabPill({
   label,
 }: TabPillProps & { readonly label: PaneTabLabel }) {
   const { controller, tabs } = usePanesHost();
-  const { title, icon, tooltip, accessory, trailing, rename } = label;
+  const { title, icon, tooltip, accessory, trailing, rename, minimize } = label;
   const [renaming, setRenaming] = useState(false);
   const navigate = useNavigate();
   const dragging = useDragging(tabKey);
@@ -182,6 +189,7 @@ function LabeledTabPill({
       | "open-elsewhere"
       | "rename"
       | `own:${number}`
+      | "minimize"
       | "close"
       | "close-others"
       | "close-to-right"
@@ -198,6 +206,7 @@ function LabeledTabPill({
         label: item.label,
         ...(item.disabled ? { disabled: true } : {}),
       })),
+      ...(minimize ? [{ id: "minimize" as const, label: "Minimize" }] : []),
       { id: "close", label: "Close", disabled: !closable },
       { id: "close-others", label: "Close others", disabled: only },
       { id: "close-to-right", label: "Close tabs to the right", disabled: last },
@@ -217,6 +226,9 @@ function LabeledTabPill({
         break;
       case "rename":
         setRenaming(true);
+        break;
+      case "minimize":
+        minimize?.();
         break;
       case "close":
         tabs.close(tabKey);
@@ -278,11 +290,13 @@ function LabeledTabPill({
           activate();
         }
       }}
-      // Middle-click closes.
+      // Middle-click closes, or minimizes a linked tab.
       onMouseDown={preventTabMiddleButtonDefault}
       onMouseUp={preventTabMiddleButtonDefault}
       onAuxClick={(event) => {
-        if (event.button === 1 && closable) tabs.close(tabKey);
+        if (event.button !== 1) return;
+        if (minimize) minimize();
+        else if (closable) tabs.close(tabKey);
       }}
       onDoubleClick={(event) => {
         if (rename && !(event.target instanceof Element && event.target.closest("button"))) {
@@ -318,11 +332,19 @@ function LabeledTabPill({
       ) : (
         <TabTitle title={title} tooltip={tooltip} />
       )}
-      {/* Outside the end: a linked tab's ✕ is centred over the end's chain mark on hover. */}
+      {/* Outside the end: a linked tab's minimize is centred over the end's chain mark on hover. */}
       {trailing}
       <span data-tab-end className="relative flex shrink-0 items-center gap-1.5">
         {tabs.Marker ? <tabs.Marker tabKey={tabKey} /> : null}
-        {closable ? (
+        {minimize ? (
+          <TabMinimizeButton
+            label={`Minimize ${title}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              minimize();
+            }}
+          />
+        ) : closable ? (
           <TabCloseButton
             label={`Close ${title}`}
             onClick={(event) => {
@@ -582,6 +604,12 @@ function PaneMenu({ leaf, alone }: { leaf: Leaf; alone: boolean }) {
 
 interface DropTarget {
   readonly zone: DropZone;
+  /** Astrolabe: a new column the panes' whole height, at their edge (`columnWithTabs`). */
+  readonly column?: "left" | "right";
+  /** What dropping there does, written on the highlight; none on the strip's insertion line. */
+  readonly label?: string;
+  /** The highlight is in the window's coordinates, as a column's spans every pane. */
+  readonly fixed?: boolean;
   /** Where a tab joining this pane's strip goes. */
   readonly index: number;
   /** The highlighted region, or the insertion line joining the strip, in pixels within the pane. */
@@ -597,6 +625,7 @@ function sameTarget(a: DropTarget | null, b: DropTarget | null) {
     (a !== null &&
       b !== null &&
       a.zone === b.zone &&
+      a.column === b.column &&
       a.index === b.index &&
       a.top === b.top &&
       a.left === b.left &&
@@ -617,12 +646,16 @@ function dropTargetAt(
   clientX: number,
   clientY: number,
   keptFromPane: PaneTabs["keptFromPane"],
+  columns: number,
 ): DropTarget | null {
-  // Every tab of a pane dragged over that pane has nowhere to go.
-  if (leaf.tabs.every((key) => item.keys.includes(key))) return null;
-  // Nor does what opens no tab, as a wiki's folder on its way to a board.
+  // What opens no tab has nowhere to go, as a wiki's folder on its way to a board.
   if (item.keys.length === 0 && item.place === undefined) return null;
   const rect = pane.getBoundingClientRect();
+  // A pane's own tabs may still leave for a new column at the panes' edge.
+  const column = item.place === undefined ? columnTargetAt(pane, rect, clientX, columns) : null;
+  if (column) return column;
+  // Every tab of a pane dragged over that pane has nowhere else to go.
+  if (leaf.tabs.every((key) => item.keys.includes(key))) return null;
   const stripSize = pane.querySelector("[data-pane-strip]")?.getBoundingClientRect().height ?? 0;
   const zone = paneDropZone(
     clientX - rect.left,
@@ -641,11 +674,56 @@ function dropTargetAt(
   const halfHeight = Math.round(content / 2);
   return {
     zone,
+    label: SPLIT_LABELS[zone],
     index: leaf.tabs.length,
     top: zone === "bottom" ? stripSize + halfHeight : stripSize,
     left: zone === "right" ? halfWidth : 0,
     width: zone === "left" || zone === "right" ? halfWidth : rect.width,
     height: zone === "top" || zone === "bottom" ? halfHeight : content,
+  };
+}
+
+const SPLIT_LABELS = {
+  left: "Split left",
+  right: "Split right",
+  top: "Split up",
+  bottom: "Split down",
+} as const;
+
+/** How near the panes' outer edge a drop opens a new column there. */
+const COLUMN_EDGE_PX = 24;
+
+/**
+ * Astrolabe: a new column at the panes' left or right edge, for a pointer within
+ * `COLUMN_EDGE_PX` of it over a pane that touches it.
+ */
+function columnTargetAt(
+  pane: HTMLElement,
+  rect: DOMRect,
+  clientX: number,
+  columns: number,
+): DropTarget | null {
+  const root = pane.closest("[data-panes-root]")?.getBoundingClientRect();
+  if (!root) return null;
+  const side =
+    rect.left - root.left < 1 && clientX - root.left < COLUMN_EDGE_PX
+      ? "left"
+      : root.right - rect.right < 1 && root.right - clientX < COLUMN_EDGE_PX
+        ? "right"
+        : null;
+  if (side === null) return null;
+  // The share the column takes (`columnWithTabs`).
+  const width = Math.round(root.width / (columns + 1));
+  return {
+    zone: side,
+    column: side,
+    label: "New column",
+    fixed: true,
+    index: 0,
+    top: Math.round(root.top),
+    left: Math.round(side === "left" ? root.left : root.right - width),
+    width,
+    height: Math.round(root.height),
   };
 }
 
@@ -794,6 +872,11 @@ export const PaneView = memo(function PaneView({
       item.keys.length === 0 &&
       event.target instanceof Element &&
       event.target.closest("[data-takes-documents]") !== null;
+    // Columns side by side at the panes' root, which a new edge column joins as one more.
+    const rootColumns = () => {
+      const root = controller.getSnapshot()?.arrangement.root;
+      return root?.type === "branch" && root.direction === "row" ? root.children.length : 1;
+    };
     const onDragEnter = (event: globalThis.DragEvent) => {
       const item = currentDrag();
       if (item && !forBoard(event, item)) event.stopPropagation();
@@ -813,6 +896,7 @@ export const PaneView = memo(function PaneView({
         event.clientX,
         event.clientY,
         tabs.keptFromPane,
+        rootColumns(),
       );
       if (!next) {
         if (latest.current.target) setTarget(null);
@@ -837,6 +921,7 @@ export const PaneView = memo(function PaneView({
         event.clientX,
         event.clientY,
         tabs.keptFromPane,
+        rootColumns(),
       );
       setTarget(null);
       if (!drop) return;
@@ -848,6 +933,12 @@ export const PaneView = memo(function PaneView({
           side: drop.zone === "center" ? null : drop.zone,
           index: drop.index,
         });
+        return;
+      }
+      if (drop.column) {
+        const side = drop.column;
+        controller.update((arrangement) => columnWithTabs(arrangement, item.keys, side, item.key));
+        useTabSelectionStore.getState().change(() => NO_TAB_SELECTION);
         return;
       }
       // A tab group moved along its own strip leaves the tab in front as it was.
@@ -912,14 +1003,23 @@ export const PaneView = memo(function PaneView({
       {target ? (
         <div
           className={cn(
-            "pointer-events-none absolute z-50",
+            "pointer-events-none z-50",
+            target.fixed ? "fixed" : "absolute",
             target.zone === "center"
               ? "rounded-xs bg-primary"
               : "p-0.75 transition-[top,left,width,height] duration-100 ease-in-out",
           )}
           style={{ top: target.top, left: target.left, width: target.width, height: target.height }}
         >
-          {target.zone === "center" ? null : <div className="size-full rounded-md bg-primary/50" />}
+          {target.zone === "center" ? null : (
+            <div className="flex size-full items-center justify-center rounded-md bg-primary/50">
+              {target.label ? (
+                <span className="rounded-md bg-background/90 px-2 py-0.5 text-xs font-medium text-foreground shadow-sm">
+                  {target.label}
+                </span>
+              ) : null}
+            </div>
+          )}
         </div>
       ) : null}
     </section>

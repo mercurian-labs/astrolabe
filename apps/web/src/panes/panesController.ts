@@ -16,7 +16,10 @@ import { activeSurfaceFor, followRecord, hostPaneId, type PanelRecord } from "./
  * surfaces' labels, the ways to add and close them, and (as `children`) the active surface's
  * content.
  */
-export type PanelProps = ComponentProps<typeof RightPanelTabs>;
+export type PanelProps = ComponentProps<typeof RightPanelTabs> & {
+  /** Astrolabe: hides the chat's linked tabs, as its header's toggle does. */
+  readonly onHide?: () => void;
+};
 
 /** Writes are batched so dragging a divider does not write storage on every pointer move. */
 const PERSIST_DELAY_MS = 150;

@@ -17,16 +17,24 @@ import { useComposerDraftStore, type DraftId } from "~/composerDraftStore";
 import { PaneChat, SectionTabContent } from "~/sectionTabs/SectionTabContent";
 import { registerCommands } from "~/shortcuts/dispatcher";
 import { useSidebarPendingFileDropStore } from "~/sidebarPendingFileDropStore";
-import { chatTabKey, parseChatSurfaceKey, parseChatTabKey } from "~/sectionTabs/sectionTabs";
+import {
+  chatTabKey,
+  parseChatSurfaceKey,
+  parseChatTabKey,
+  parseChatTerminalKey,
+} from "~/sectionTabs/sectionTabs";
 import { useChangeGroups } from "~/state/changeGroups";
+import { PersistentThreadTerminalTab } from "~/components/PersistentThreadTerminals";
 import { buildThreadRouteParams, type ThreadRouteTarget } from "~/threadRoutes";
 import { chatTabsSlot, tabHistorySlot } from "~/whichKey/handles";
 import { agentsRoute } from "./agentsRoute";
 import { activateTab, allTabs, focusedPane, isEmptyTab, placeTabs } from "./arrangement";
 import { insertIndex } from "./drag";
+import { useMaximizedPaneId } from "./maximize";
 import { PanesHostContext, PanesLayoutKeyContext } from "./panesHost";
 import { ChatOwnerContext, PaneTabKeyContext, WorkspaceHostContext } from "./PaneSurfaceHost";
 import { PaneTree } from "./PaneTree";
+import { useBusyChats } from "./busyChats";
 import { recentChats } from "./recentChats";
 import { NO_TAB_SELECTION, useTabSelectionStore } from "./tabSelection";
 import { findLeaf, leaves } from "./tree";
@@ -35,6 +43,7 @@ import {
   useWorkspaceArrangement,
   useWorkspaceFront,
   useWorkspaceOpenKeys,
+  useWorkspaceParkedKeys,
   useWorkspaceSnapshot,
   useWorkspaceTabHistory,
   workspace,
@@ -214,7 +223,7 @@ function closeFocusedTab(event: KeyboardEvent) {
   }
   event.preventDefault();
   event.stopPropagation();
-  if (!event.repeat) closeWorkspaceTab(active);
+  if (!event.repeat && !workspace.minimizeLinkedTab(active)) closeWorkspaceTab(active);
 }
 
 /**
@@ -265,6 +274,9 @@ function DraftRouteRedirect({ draftId }: { readonly draftId: DraftId }) {
   );
 }
 
+/** How many threads' terminals stay rendered, set aside, so showing one never replays it. */
+const KEPT_TERMINALS = 10;
+
 /**
  * Every open tab's content, each portaled into its own container, which never changes. A chat
  * renders once it is shown and stays mounted while it is among the most recently shown
@@ -280,20 +292,42 @@ function WorkspaceTabContents() {
   // The chat in front can stand behind another tab, and still renders its linked tabs.
   const frontOwner = useWorkspaceFront();
   const fronts = new Set(panes.map((leaf) => leaf.active));
+  // A pane maximized over a terminal covers it: its screen waits, and so does its focus.
+  const maximizedId = useMaximizedPaneId();
+  const uncovered = maximizedId === null ? null : findLeaf(arrangement.root, maximizedId);
+  const terminalShows = (key: string) =>
+    uncovered ? uncovered.active === key : panes.some((leaf) => leaf.active === key);
   if (frontOwner !== null) fronts.add(frontOwner);
   const onScreen = [...new Set([focusedFront, ...fronts])].filter(
     (key) => parseChatTabKey(key) !== null,
   );
   const [recent, setRecent] = useState<readonly string[]>([]);
-  const kept = recentChats(recent, onScreen, new Set(keys));
+  const busy = useBusyChats(recent);
+  const kept = recentChats(recent, onScreen, new Set(keys), undefined, busy);
   if (kept !== recent) setRecent(kept);
+  // A terminal outlives its tab's being set aside, so what ran in it never starts over; beyond
+  // `KEPT_TERMINALS` one set aside lets go of its screen and replays its output when shown.
+  const parked = useWorkspaceParkedKeys();
+  const openTerminals = keys.filter((key) => parseChatTerminalKey(key) !== null);
+  const [recentTerminals, setRecentTerminals] = useState<readonly string[]>([]);
+  const terminals = recentChats(
+    recentTerminals,
+    openTerminals,
+    new Set([...openTerminals, ...parked.filter((key) => parseChatTerminalKey(key) !== null)]),
+    KEPT_TERMINALS,
+  );
+  if (terminals !== recentTerminals) setRecentTerminals(terminals);
   // Containers of closed tabs go.
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- drops DOM nodes the panes render into
   useLayoutEffect(() => {
-    host.prune(new Set(keys));
-  }, [host, keys]);
+    host.prune(new Set(keys), new Set(terminals));
+  }, [host, keys, terminals]);
   const others = keys.filter(
-    (key) => !isEmptyTab(key) && parseChatSurfaceKey(key) === null && parseChatTabKey(key) === null,
+    (key) =>
+      !isEmptyTab(key) &&
+      parseChatSurfaceKey(key) === null &&
+      parseChatTabKey(key) === null &&
+      parseChatTerminalKey(key) === null,
   );
   return (
     <>
@@ -318,6 +352,14 @@ function WorkspaceTabContents() {
           key,
         ),
       )}
+      {terminals.map((key) =>
+        // Outside `Activity`: hiding would dispose the terminal with its chat.
+        createPortal(
+          <TerminalTab tabKey={key} visible={terminalShows(key)} />,
+          host.containerFor(key),
+          key,
+        ),
+      )}
       {keys.flatMap((key) =>
         parseChatTabKey(key) === null
           ? []
@@ -333,6 +375,18 @@ function WorkspaceTabContents() {
     </>
   );
 }
+
+/** A terminal tab's content; memoized so a divider's drag never re-renders a terminal. */
+const TerminalTab = memo(function TerminalTab({
+  tabKey,
+  visible,
+}: {
+  readonly tabKey: string;
+  readonly visible: boolean;
+}) {
+  const threadRef = parseChatTabKey(parseChatTerminalKey(tabKey) ?? "");
+  return threadRef ? <PersistentThreadTerminalTab threadRef={threadRef} visible={visible} /> : null;
+});
 
 /** One open tab's content: a chat, a repository tab, or a document, group or pull request. */
 const TabContent = memo(function TabContent({

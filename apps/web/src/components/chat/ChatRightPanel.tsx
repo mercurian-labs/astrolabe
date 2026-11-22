@@ -43,7 +43,13 @@ export function ChatRightPanel(props: ChatRightPanelProps) {
   const linked = useWorkspaceHost() !== null;
   if (linked) {
     return (
-      <LinkedPanel {...tabs} mode="inline" maximized={maximized} renderSurface={renderSurface} />
+      <LinkedPanel
+        {...tabs}
+        mode="inline"
+        maximized={maximized}
+        renderSurface={renderSurface}
+        onHide={onCloseSheet}
+      />
     );
   }
   if (!sheet) {

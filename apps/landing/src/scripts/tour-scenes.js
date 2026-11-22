@@ -1,7 +1,7 @@
-// The hero tour's script: three scenarios over one drawn window (HeroWindow.astro); the main one plays
-// on arrival, each example when its prompt chip is clicked. A phase is { at, type, payload } events
-// (`at` ms from phase start). Types: show/hide (data-k keys), swap { from, to }, press (data-p),
-// section, thread, cpane ("group" | "pr"), edits ("live" | "settled" | "accepted"), merge ("off" | "on").
+// The hero tour's script: three scenarios over one drawn window (HeroWindow.astro). A phase is
+// { at, type, payload } events (`at` ms from phase start). Types: show/hide (data-k keys), swap
+// { from, to }, press (data-p), section, thread, cpane ("group" | "pr"),
+// edits ("live" | "settled" | "accepted"), merge ("off" | "on").
 
 const send = (draft) => [
   { at: 0, type: "show", payload: "placeholder" },
@@ -120,6 +120,27 @@ export const scenarios = [
           swap(8600, "grp-sync", "grp-merged"),
           // A merged group leaves the sidebar; its tab stays open.
           { at: 10000, type: "hide", payload: "grp-groups" },
+        ],
+      },
+      {
+        segment: 3,
+        duration: 11000,
+        caption:
+          "Your team’s own verify-checkout skill runs from the composer’s $ menu. Claude reads the wiki’s Testing note and finds where the button is used through Astrolabe’s tools, then runs the team’s checks: all three pass.",
+        events: [
+          { at: 0, type: "section", payload: "agents" },
+          thread(0, "plan"),
+          swap(600, "placeholder", "draft-skill"),
+          press(1500, "send"),
+          swap(1650, "draft-skill", "placeholder"),
+          show(1650, "plan-skill-ask"),
+          swap(1650, "plan-st-now", "plan-st-work"),
+          show(2400, "plan-skill-load"),
+          show(3300, "plan-skill-wiki"),
+          show(4200, "plan-skill-code"),
+          show(5200, "plan-skill-run"),
+          show(7400, "plan-skill-reply"),
+          swap(7400, "plan-st-work", "plan-st-now"),
         ],
       },
     ],

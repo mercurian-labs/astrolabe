@@ -16,7 +16,9 @@ import {
 } from "@t3tools/contracts";
 import {
   DEFAULT_UNIFIED_SETTINGS,
+  DEFAULT_LAYOUT_SETTINGS,
   type DiffLayout,
+  type PaneOpenBeside,
   MAX_SIDEBAR_AUTO_SETTLE_AFTER_DAYS,
   MIN_SIDEBAR_AUTO_SETTLE_AFTER_DAYS,
   type ResponseStreamingMode,
@@ -89,6 +91,7 @@ import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   getChangedBrowserSettingLabels,
+  getChangedPaneSettingLabels,
   getChangedTypographySettingLabels,
   hasChangedBackgroundActivitySettings,
   isProjectGroupingEnabled,
@@ -140,6 +143,11 @@ const TIMESTAMP_FORMAT_LABELS = {
   "12-hour": "12-hour",
   "24-hour": "24-hour",
 } as const;
+
+const PANE_OPEN_BESIDE_LABELS: Record<PaneOpenBeside, string> = {
+  "when-room": "When there's room",
+  "as-tab": "As a tab",
+};
 
 const DIFF_LAYOUT_LABELS: Record<DiffLayout, string> = {
   stacked: "Stacked",
@@ -484,6 +492,7 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(settings.inAppNotificationsEnabled !== DEFAULT_UNIFIED_SETTINGS.inAppNotificationsEnabled
       ? ["In-app notifications"]
       : []),
+    ...getChangedPaneSettingLabels(settings),
     ...(settings.sidebarProjectGroupingMode !== DEFAULT_UNIFIED_SETTINGS.sidebarProjectGroupingMode
       ? ["Project Grouping"]
       : []),
@@ -525,6 +534,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       ? ["Diff whitespace changes"]
       : []),
     ...(settings.diffLayout !== DEFAULT_UNIFIED_SETTINGS.diffLayout ? ["Diff layout"] : []),
+    ...(settings.paneOpenBeside !== DEFAULT_UNIFIED_SETTINGS.paneOpenBeside ? ["Open beside"] : []),
     ...(settings.proactivePanelsEnabled !== DEFAULT_UNIFIED_SETTINGS.proactivePanelsEnabled
       ? ["Open pull requests and changes panels proactively"]
       : []),
@@ -653,6 +663,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       diffFilesCollapsed: DEFAULT_UNIFIED_SETTINGS.diffFilesCollapsed,
       diffIgnoreWhitespace: DEFAULT_UNIFIED_SETTINGS.diffIgnoreWhitespace,
       diffLayout: DEFAULT_UNIFIED_SETTINGS.diffLayout,
+      paneOpenBeside: DEFAULT_UNIFIED_SETTINGS.paneOpenBeside,
       proactivePanelsEnabled: DEFAULT_UNIFIED_SETTINGS.proactivePanelsEnabled,
       showSkillsInSlashMenu: DEFAULT_UNIFIED_SETTINGS.showSkillsInSlashMenu,
       composerRichTextEnabled: DEFAULT_UNIFIED_SETTINGS.composerRichTextEnabled,
@@ -663,6 +674,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       environmentIdentificationMode: DEFAULT_UNIFIED_SETTINGS.environmentIdentificationMode,
       glassOpacity: DEFAULT_UNIFIED_SETTINGS.glassOpacity,
       panelAnimationDurationMs: DEFAULT_UNIFIED_SETTINGS.panelAnimationDurationMs,
+      layout: DEFAULT_UNIFIED_SETTINGS.layout,
       sidebarProjectGroupingMode: DEFAULT_UNIFIED_SETTINGS.sidebarProjectGroupingMode,
       sidebarProjectSortOrder: DEFAULT_UNIFIED_SETTINGS.sidebarProjectSortOrder,
       sidebarWorkingShelfEnabled: DEFAULT_UNIFIED_SETTINGS.sidebarWorkingShelfEnabled,
@@ -757,6 +769,134 @@ function AutoSettleDaysInput({
       onBlur={() => setDraft(String(value))}
       aria-label="Days of inactivity before auto-settle"
     />
+  );
+}
+
+const PANES_OPTIONS = {
+  terminalPlacement: {
+    id: "terminal-placement",
+    label: "terminal placement",
+    description: "Where the terminal opens when you toggle it.",
+    options: { "attached-below": "Below the chat", "new-tab": "As a tab" },
+  },
+  sidePanePlacement: {
+    id: "side-pane-placement",
+    label: "side pane placement",
+    description:
+      "Where a chat's diff, files, browser and pull request open. The terminal has its own setting.",
+    options: { "beside-chat": "Beside the chat", "new-tab": "As a tab" },
+  },
+  sidePaneOpensOn: {
+    id: "side-pane-opens-on",
+    label: "side pane opens on",
+    description: "What the side pane shows for a thread that has nothing in it yet.",
+    options: {
+      "last-used": "Last used",
+      diff: "Diff",
+      files: "Files",
+      browser: "Browser",
+      "pull-request": "Pull request",
+    },
+  },
+  newTabPosition: {
+    id: "new-tab-position",
+    label: "new tab position",
+    description: "Where a pane's + and the new tab shortcut add a tab, and a new linked tab.",
+    options: { end: "At the end", "after-current": "After the current tab" },
+  },
+} as const;
+
+function PaneSettingRow({ setting }: { readonly setting: keyof typeof PANES_OPTIONS }) {
+  const layout = useScopedSettings().layout;
+  const updateSettings = useUpdateScopedSettings();
+  const { id, label, description, options } = PANES_OPTIONS[setting];
+  const labels: Readonly<Record<string, string>> = options;
+  const change = (value: string) => updateSettings({ layout: { ...layout, [setting]: value } });
+  return (
+    <SettingsRow
+      {...searchableSetting(id)}
+      description={description}
+      resetAction={
+        layout[setting] !== DEFAULT_LAYOUT_SETTINGS[setting] ? (
+          <SettingResetButton
+            label={label}
+            onClick={() => change(DEFAULT_LAYOUT_SETTINGS[setting])}
+          />
+        ) : null
+      }
+      control={
+        <Select
+          value={layout[setting]}
+          onValueChange={(value) => {
+            if (value !== null) change(value);
+          }}
+        >
+          <SelectTrigger size="sm" className="w-full sm:w-48" aria-label={label}>
+            <SelectValue>{labels[layout[setting]]}</SelectValue>
+          </SelectTrigger>
+          <SelectPopup align="end" alignItemWithTrigger={false}>
+            {Object.entries(labels).map(([value, text]) => (
+              <SelectItem hideIndicator key={value} value={value}>
+                {text}
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </Select>
+      }
+    />
+  );
+}
+
+function PanesSettings() {
+  const settings = useScopedSettings();
+  const updateSettings = useUpdateScopedSettings();
+  return (
+    <SettingsSection id="panes" title="Panes">
+      <SettingsRow
+        {...searchableSetting("pane-open-beside")}
+        description="Where a note, diff, run or graph opens beside what you're reading: in a pane of its own while both stay wide enough, or as a tab. A chat's diff, files and browser follow Side pane placement."
+        resetAction={
+          settings.paneOpenBeside !== DEFAULT_UNIFIED_SETTINGS.paneOpenBeside ? (
+            <SettingResetButton
+              label="open beside"
+              onClick={() =>
+                updateSettings({ paneOpenBeside: DEFAULT_UNIFIED_SETTINGS.paneOpenBeside })
+              }
+            />
+          ) : null
+        }
+        control={
+          <Select
+            value={settings.paneOpenBeside}
+            onValueChange={(value) => {
+              if (value === "when-room" || value === "as-tab") {
+                updateSettings({ paneOpenBeside: value });
+              }
+            }}
+          >
+            <SelectTrigger size="sm" className="w-full sm:w-40" aria-label="Open beside">
+              <SelectValue>{PANE_OPEN_BESIDE_LABELS[settings.paneOpenBeside]}</SelectValue>
+            </SelectTrigger>
+            <SelectPopup align="end" alignItemWithTrigger={false}>
+              <SelectItem hideIndicator value="when-room">
+                {PANE_OPEN_BESIDE_LABELS["when-room"]}
+              </SelectItem>
+              <SelectItem hideIndicator value="as-tab">
+                {PANE_OPEN_BESIDE_LABELS["as-tab"]}
+              </SelectItem>
+            </SelectPopup>
+          </Select>
+        }
+      />
+      <AdvancedSettings
+        targetIds={Object.values(PANES_OPTIONS).map(({ id }) => searchableSetting(id).id)}
+      >
+        <PaneSettingRow setting="terminalPlacement" />
+        <PaneSettingRow setting="sidePanePlacement" />
+        <PaneSettingRow setting="sidePaneOpensOn" />
+        <PaneSettingRow setting="newTabPosition" />
+      </AdvancedSettings>
+    </SettingsSection>
   );
 }
 
@@ -1050,6 +1190,8 @@ export function GeneralSettingsPanel() {
           }
         />
       </SettingsSection>
+
+      <PanesSettings />
     </SettingsPageContainer>
   );
 }

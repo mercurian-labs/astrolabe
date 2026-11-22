@@ -17,11 +17,16 @@ import {
 import {
   chatSurfaceKey,
   chatTabKey,
+  chatTerminalKey,
   isSectionTabKey,
   parseChatSurfaceKey,
   parseChatTabKey,
+  parseChatTerminalKey,
 } from "~/sectionTabs/sectionTabs";
 import { repositoryFileReveal } from "~/components/repositories/repositoryFileReveal";
+import { selectThreadTerminalUiState, useTerminalUiStateStore } from "~/terminalUiStateStore";
+import { subscribeTerminalFocusWaiting, waitingTerminalFocus } from "~/lib/terminalFocus";
+import { type ClosedPlace, setClosedViewPlaces, useClosedViewStore } from "~/closedViewStore";
 import {
   dropHistoryTarget,
   historyTarget,
@@ -62,7 +67,11 @@ import {
   type LinkedArrangement,
   type LinkedTab,
 } from "./linkedTabs";
+import { chatBridgeOf, handFocusToComposer } from "./chatBridge";
+import { clientLayoutBehavior, type LayoutBehavior } from "./layoutBehavior";
+import { useMaximizedPaneStore } from "./maximize";
 import type { PanelProps } from "./panesController";
+import { openNear, sidePaneOf } from "./placement";
 import type { PaneArrangementSnapshot, PaneArrangementStore } from "./panesHost";
 import {
   arrangementStorageKey,
@@ -119,14 +128,17 @@ const isWorkspaceKey = (key: string) =>
   isEmptyTab(key) ||
   isSectionTabKey(key) ||
   pullRequestTargetOfKey(key) !== null ||
-  parseChatSurfaceKey(key) !== null;
+  parseChatSurfaceKey(key) !== null ||
+  parseChatTerminalKey(key) !== null;
 
 /**
  * Whether a tab can show something else in its place and step back to it. A chat never can, so
  * its linked tabs are never left without their chat; nor can a thread's surface.
  */
 export const navigatesInPlace = (key: string) =>
-  parseChatTabKey(key) === null && parseChatSurfaceKey(key) === null;
+  parseChatTabKey(key) === null &&
+  parseChatSurfaceKey(key) === null &&
+  parseChatTerminalKey(key) === null;
 
 /** Results (a search, problems, places), logs and runs are read, not browsed past: never shown over. */
 const keepsPlace = (key: string) => {
@@ -261,6 +273,13 @@ function dropOldLayouts(storage: StorageLike | null) {
   }
 }
 
+const standsAlone = (key: string) => parseChatTerminalKey(key) !== null;
+
+function terminalRecordOf(ref: ScopedThreadRef) {
+  const state = useTerminalUiStateStore.getState();
+  return selectThreadTerminalUiState(state.terminalUiStateByThreadKey, ref);
+}
+
 function recordOf(ref: ScopedThreadRef): PanelRecord {
   const state = selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, ref);
   return {
@@ -330,15 +349,24 @@ export function standaloneKeyOf(surface: RightPanelSurface, checkout: ThreadChec
 }
 
 /** How the chat `front`'s record's surfaces are named among the shared panes' tabs. */
-function surfaceKeysOf(front: string, state: LinkedArrangement): SurfaceKeys {
+function surfaceKeysOf(
+  front: string,
+  state: LinkedArrangement,
+  behavior: LayoutBehavior,
+): SurfaceKeys {
+  const ownerPane = leafWithTab(state.arrangement.root, front)?.id ?? null;
+  const { sidePanePlacement, newTabPosition } = behavior.read();
+  const asTab = sidePanePlacement === "new-tab";
   return {
     key: (id) => chatSurfaceKey(front, id),
     id: (key) => {
       const parsed = parseChatSurfaceKey(key);
       return parsed?.chatKey === front ? parsed.surfaceId : null;
     },
-    linked: (key) => state.owners[key] === front,
-    splitFrom: leafWithTab(state.arrangement.root, front)?.id ?? null,
+    linked: (key) => state.owners[key] === front && !standsAlone(key),
+    splitFrom: asTab ? null : ownerPane,
+    home: asTab ? ownerPane : null,
+    ...(asTab ? { position: newTabPosition } : {}),
   };
 }
 
@@ -350,7 +378,10 @@ function storage(): StorageLike | null {
   }
 }
 
-export function createWorkspace(storageOf: () => StorageLike | null = storage) {
+export function createWorkspace(
+  storageOf: () => StorageLike | null = storage,
+  behavior: LayoutBehavior = clientLayoutBehavior,
+) {
   let state: LinkedArrangement | null = null;
   let histories: TabHistories = {};
   let snapshot: WorkspaceSnapshot | null = null;
@@ -360,6 +391,11 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
   let recordOwner: string | null = null;
   let writing = false;
   let target: { paneId: string; until: number; replacing: string | null } | null = null;
+  let revealed: { readonly terminalId: string } | null = null;
+  // A pane maximized over the terminal just asked for gives way, or nothing would seem to happen.
+  let uncover = false;
+  // The chat whose terminal just hid, which gets focus back once the change is applied.
+  let handFocusTo: string | null = null;
   let groups: ReadonlyMap<string, ReadonlySet<string>> = new Map();
   let panel: PanelProps | null = null;
   let panelSnapshot: PanelProps | null = null;
@@ -378,6 +414,16 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
       const ref = refOf(front);
       return ref === null ? [] : recordOf(ref).surfaceIds.map((id) => chatSurfaceKey(front, id));
     },
+    standsAlone,
+    joinsOwner: (key) => {
+      const { terminalPlacement, sidePanePlacement } = behavior.read();
+      return (standsAlone(key) ? terminalPlacement : sidePanePlacement) === "new-tab";
+    },
+    placementUnknown: () => !behavior.known(),
+    newTabIndex: (pane) =>
+      behavior.read().newTabPosition === "end"
+        ? pane.tabs.length
+        : pane.tabs.indexOf(pane.active) + 1,
   };
 
   const current = (): LinkedArrangement => {
@@ -387,7 +433,8 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
       histories = loaded.histories;
       record = null;
       recordOwner = null;
-      state = mirror(state, false);
+      state = mirror(mirrorTerminal(state), false);
+      handFocusTo = null;
       // What came in from the old keys, gone now, is kept even if nothing changes before leaving.
       if (loaded.migrated) pending ??= setTimeout(flush, PERSIST_DELAY_MS);
     }
@@ -417,11 +464,92 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
   };
 
   /**
+   * The terminal tab follows T3 Code's terminal record as the surfaces follow the panel's, so
+   * everything that opens or closes the terminal (a shortcut, a script, a sidebar reveal) moves the
+   * tab. It shows while the record is open, and is set aside otherwise, its sessions running. With
+   * no terminals left it closes for good. Hiding it hands focus back to the chat.
+   */
+  function mirrorTerminal(start: LinkedArrangement): LinkedArrangement {
+    const next = forgetEndedTerminals(start);
+    const front = next.front;
+    const ref = refOf(front);
+    if (front === null || ref === null) return next;
+    const key = chatTerminalKey(front);
+    const terminals = terminalRecordOf(ref);
+    const standing = leafWithTab(next.arrangement.root, key);
+    const place = next.parked[key];
+    let out = next;
+    if (!terminals.terminalOpen) {
+      if (terminals.terminalIds.length === 0) {
+        if (!standing && !place) return next;
+        out = unlinkTab(next, key);
+        if (standing) out = { ...out, arrangement: closeTab(out.arrangement, key) };
+      } else {
+        if (!standing && (!place || place.hidden)) return next;
+        out = hideLinkedTab(next, key, front, standsAlone);
+      }
+      if (standing) {
+        // Hiding it hands focus to the chat; its last shell ending takes focus only from itself.
+        const shown = focusedPane(next.arrangement);
+        const handsFocus =
+          terminals.terminalIds.length > 0 || (shown.id === standing.id && shown.active === key);
+        out = { ...out, arrangement: activateTab(out.arrangement, front, handsFocus) };
+        if (handsFocus) handFocusTo = front;
+      }
+      return settleLinks(out, context);
+    }
+    const asked = place ? place.hidden === true : !standing;
+    if (place) {
+      if (place.hidden) {
+        out = showLinkedTabs(next, [key]);
+        const shown = out.parked[key];
+        if (shown) out = { ...out, parked: { ...out.parked, [key]: { ...shown, active: true } } };
+      }
+    } else if (!standing) {
+      out = {
+        ...linkTab(next, key, front),
+        parked: {
+          ...next.parked,
+          [key]: { pane: "", index: Number.MAX_SAFE_INTEGER, active: true },
+        },
+      };
+    }
+    if (out !== next) out = settleLinks(out, context);
+    if (asked) out = { ...out, arrangement: activateTab(out.arrangement, key, false) };
+    // Asked for by name, it comes to the front once; a request that cannot land yet (no grant)
+    // does not hold focus here.
+    const waiting = waitingTerminalFocus(ref);
+    if (
+      waiting === null ||
+      waiting === revealed ||
+      !terminals.terminalIds.includes(waiting.terminalId)
+    ) {
+      return out;
+    }
+    revealed = waiting;
+    uncover = true;
+    return { ...out, arrangement: activateTab(out.arrangement, key) };
+  }
+
+  /** A terminal waiting aside for a closed chat goes once its thread has none left. */
+  function forgetEndedTerminals(linked: LinkedArrangement): LinkedArrangement {
+    let out = linked;
+    for (const key of Object.keys(linked.parked)) {
+      const chat = parseChatTerminalKey(key);
+      const ref = refOf(chat);
+      if (ref === null || chat === linked.front) continue;
+      if (terminalRecordOf(ref).terminalIds.length === 0) out = unlinkTab(out, key);
+    }
+    return out;
+  }
+
+  /**
    * Brings the front chat's surfaces in line with its thread's record, and gives an open panel
    * with nothing in it an empty tab of its own, as T3 Code's empty panel shows its launcher.
    * `closing`: the user just closed the chat's last linked tab, so its panel closes instead.
    */
   function mirror(next: LinkedArrangement, closing: boolean): LinkedArrangement {
+    if (!behavior.known()) return next;
     const front = next.front;
     const ref = refOf(front);
     if (front === null || ref === null) {
@@ -435,7 +563,7 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
     recordOwner = front;
     if (!now.isOpen || closing) return next;
     const asked = target && target.until > Date.now() ? target.paneId : null;
-    const keys = surfaceKeysOf(front, next);
+    const keys = surfaceKeysOf(front, next, behavior);
     const showing = now.surfaceIds.filter((id) => !next.parked[keys.key(id)]?.hidden);
     const followed = followRecord(
       next.arrangement,
@@ -452,7 +580,7 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
         out = linkTab(out, key, front);
       }
     }
-    if (!allTabs(out.arrangement).some((key) => out.owners[key] === front)) {
+    if (!allTabs(out.arrangement).some((key) => out.owners[key] === front && !standsAlone(key))) {
       const hidden = hiddenTabsOf(out, front);
       if (hidden.length === 0) {
         const { arrangement } = out;
@@ -460,6 +588,7 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
         out = openLinked(
           { ...out, arrangement: { ...arrangement, seq: arrangement.seq + 1 } },
           key,
+          { context },
         );
       } else if (!previous?.isOpen) {
         // A panel opening with every tab hidden shows them, not an empty tab. One whose last
@@ -476,7 +605,7 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
   /** The linked tabs of `owner` hidden on their own. */
   const hiddenTabsOf = (linked: LinkedArrangement, owner: string) =>
     Object.keys(linked.parked).filter(
-      (key) => linked.parked[key]?.hidden && linked.owners[key] === owner,
+      (key) => linked.parked[key]?.hidden && linked.owners[key] === owner && !standsAlone(key),
     );
 
   /** Brings the record's active surface in line with the panes, if it says otherwise. */
@@ -484,7 +613,11 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
     const front = state?.front ?? null;
     const ref = refOf(front);
     if (!state || front === null || !ref || !record?.isOpen) return;
-    const wanted = activeSurfaceFor(state.arrangement, record, surfaceKeysOf(front, state));
+    const wanted = activeSurfaceFor(
+      state.arrangement,
+      record,
+      surfaceKeysOf(front, state, behavior),
+    );
     if (wanted === null || wanted === record.activeSurfaceId) return;
     const surface = surfaceOfKey(chatSurfaceKey(front, wanted));
     if (!surface) return;
@@ -504,7 +637,7 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
     const front = linked.front;
     const host =
       front !== null && record !== null && recordOwner === front
-        ? hostPaneId(linked.arrangement, record, surfaceKeysOf(front, linked))
+        ? hostPaneId(linked.arrangement, record, surfaceKeysOf(front, linked, behavior))
         : null;
     if (snapshot && snapshot.linked === linked && snapshot.hostPaneId === host) return false;
     snapshot = { arrangement: linked.arrangement, hostPaneId: host, linked };
@@ -516,6 +649,31 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
     for (const listener of listeners) listener();
   };
 
+  // Astrolabe: where tabs that left the panes stood, newest last, so a reopened one can go back.
+  const leftPlaces = new Map<string, ClosedPlace>();
+  const noteLeft = (before: Arrangement, after: Arrangement) => {
+    const remaining = new Set(allTabs(after));
+    for (const leaf of leaves(before.root)) {
+      leaf.tabs.forEach((key, index) => {
+        if (remaining.has(key)) return;
+        // A neighbour that stayed tells the same pane from a later one given its id.
+        const beside = leaf.tabs.find((other) => other !== key && remaining.has(other));
+        leftPlaces.delete(key);
+        leftPlaces.set(key, { paneId: leaf.id, index, ...(beside ? { beside } : {}) });
+      });
+    }
+    for (const key of [...leftPlaces.keys()].slice(0, Math.max(0, leftPlaces.size - 40))) {
+      leftPlaces.delete(key);
+    }
+  };
+  /** Where `key` stands, or stood when it last left the panes. */
+  const placeOf = (key: string): ClosedPlace | null => {
+    const leaf = leafWithTab(current().arrangement.root, key);
+    return leaf
+      ? { paneId: leaf.id, index: leaf.tabs.indexOf(key) }
+      : (leftPlaces.get(key) ?? null);
+  };
+
   /** Applies a change, the links and the front chat's record following; `history` too. */
   const apply = (
     change: (linked: LinkedArrangement) => LinkedArrangement,
@@ -523,11 +681,12 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
   ) => {
     const before = current();
     const changed = change(before);
-    let next = settleLinks(changed, context);
+    let next = mirrorTerminal(settleLinks(changed, context));
     // The front chat's last linked tab closed by hand: its panel closes rather than refill.
     const front = next.front;
     const ownedIn = (linked: LinkedArrangement) =>
-      front !== null && allTabs(linked.arrangement).some((key) => linked.owners[key] === front);
+      front !== null &&
+      allTabs(linked.arrangement).some((key) => linked.owners[key] === front && !standsAlone(key));
     const closing = front !== null && front === before.front && ownedIn(before) && !ownedIn(next);
     next = mirror(next, closing);
     // The last tab showing went with others hidden on their own: nothing is left to show.
@@ -542,6 +701,7 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
       allTabs(next.arrangement),
     );
     if (next !== before || nextHistories !== histories) {
+      if (next.arrangement !== before.arrangement) noteLeft(before.arrangement, next.arrangement);
       state = next;
       histories = nextHistories;
       pending ??= setTimeout(flush, PERSIST_DELAY_MS);
@@ -550,6 +710,20 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
     publish();
     const ref = refOf(front);
     if ((closing || emptied) && ref) useRightPanelStore.getState().close(ref);
+    if (uncover) {
+      uncover = false;
+      const terminalPane =
+        front === null ? null : leafWithTab(next.arrangement.root, chatTerminalKey(front));
+      const { maximized, restore } = useMaximizedPaneStore.getState();
+      if (maximized?.layoutKey === WORKSPACE_LAYOUT_KEY && maximized.paneId !== terminalPane?.id) {
+        restore();
+      }
+    }
+    if (handFocusTo !== null) {
+      const chat = handFocusTo;
+      handFocusTo = null;
+      handFocusToComposer(chat);
+    }
   };
 
   const update = (change: (arrangement: Arrangement) => Arrangement) =>
@@ -641,7 +815,8 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
       return (
         owner !== undefined &&
         context.shows(owner, front) &&
-        parseChatSurfaceKey(key)?.chatKey !== front
+        parseChatSurfaceKey(key)?.chatKey !== front &&
+        !standsAlone(key)
       );
     });
 
@@ -664,12 +839,14 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
   };
 
   /** Shows `key`: in front where it is open, else in `paneId` (the focused pane), or beside it. */
-  const open = (key: string, placement: "tab" | "beside" = "tab", paneId?: string) =>
+  /** `beside` divides the pane as asked; `near` leaves it to the placement rule (`openNear`). */
+  const open = (key: string, placement: "tab" | "beside" | "near" = "tab", paneId?: string) =>
     update((arrangement) => {
       if (leafWithTab(arrangement.root, key) && placement === "tab") {
         return activateTab(arrangement, key);
       }
       const target = paneId ?? arrangement.focused;
+      if (placement === "near") return openNear(arrangement, key, target);
       return placement === "beside"
         ? openBeside(arrangement, key, target, "right")
         : openTab(arrangement, key, target);
@@ -685,9 +862,9 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
 
   /**
    * Shows `key` as a sidebar row's click does: in the focused pane's tab in front (or `paneId`'s,
-   * which takes focus), which remembers what it showed. One open already comes to the front; an
-   * empty tab, a chat, results, or one with unsaved edits makes way for a new tab, and a linked
-   * tab is left to its owner.
+   * which takes focus), which remembers what it showed. One open already comes to the front; a
+   * chat in front sends it beside the chat; an empty tab, results, or one with unsaved edits makes
+   * way for a new tab, and a linked tab is left to its owner.
    */
   const show = (key: string, paneId?: string) => {
     const linked = current();
@@ -696,6 +873,18 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
       (paneId === undefined ? undefined : findLeaf(arrangement.root, paneId)) ??
       focusedPane(arrangement);
     const active = pane.active;
+    // Astrolabe: a chat in front stays in view. What its pane's click would show goes to the pane
+    // beside it, else divides the pane while there is room (Panes › Where does an opened tab go?).
+    if (
+      paneId === undefined &&
+      parseChatTabKey(active) !== null &&
+      !leafWithTab(arrangement.root, key)
+    ) {
+      const side = sidePaneOf(arrangement, pane.id);
+      if (side) show(key, side.id);
+      else open(key, "near", pane.id);
+      return;
+    }
     const keep =
       leafWithTab(arrangement.root, key) !== undefined ||
       isEmptyTab(active) ||
@@ -782,7 +971,13 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
 
   const close = (key: string) =>
     apply((linked) => {
-      const left = unlinkTab(linked, key);
+      // Set aside first: its chat's pane may close with it, and its place is measured from there.
+      const terminal = parseChatTabKey(key) === null ? null : chatTerminalKey(key);
+      const aside =
+        terminal !== null && leafWithTab(linked.arrangement.root, terminal)
+          ? hideLinkedTab(linked, terminal, key, standsAlone)
+          : linked;
+      const left = unlinkTab(aside, key);
       return { ...left, arrangement: closeTab(left.arrangement, key) };
     });
 
@@ -851,6 +1046,20 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
     });
   };
 
+  /**
+   * Brings the chat `key` back in front of its own linked tab covering it (a terminal or diff the
+   * settings put in its pane), as clicking its thread in the sidebar asks. Anything else stays.
+   */
+  const revealChat = (key: string) => {
+    const linked = current();
+    const pane = leafWithTab(linked.arrangement.root, key);
+    if (focusedChatOf(linked) !== key || !pane) return;
+    // A pane maximized over it, as its own terminal's, gives the room back.
+    const { maximized, restore } = useMaximizedPaneStore.getState();
+    if (maximized?.layoutKey === WORKSPACE_LAYOUT_KEY && maximized.paneId !== pane.id) restore();
+    if (pane.active !== key) update((arrangement) => activateTab(arrangement, key));
+  };
+
   /** Opens chats as tabs after the chat in front, which stays in front. */
   const openChatsBesideFront = (keys: readonly string[]) =>
     apply((linked) => {
@@ -873,7 +1082,7 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
     const linked = current();
     const by = owner ?? linked.front;
     if (by === null) {
-      open(key, "beside");
+      open(key, "near");
       return;
     }
     const ref = refOf(linked.front);
@@ -881,7 +1090,7 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
     apply((before) => {
       const opened = leafWithTab(before.arrangement.root, key)
         ? { ...before, arrangement: activateTab(before.arrangement, key, false) }
-        : openLinked(before, key);
+        : openLinked(before, key, { context });
       return by === before.front ? opened : linkTab(unlinkTab(opened, key), key, by);
     });
   };
@@ -890,13 +1099,16 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
 
   /**
    * Opens a New tab linked to the chat `owner`, its chat coming to the front: in front among its
-   * linked tabs, the hidden ones back first; with none, the empty one its panel opens with.
+   * linked tabs, the hidden ones back first; with none, the empty one its panel opens with. A
+   * thread with no linked tabs showing or to bring back opens what Settings says it opens on.
    */
   const newLinkedTab = (owner: string) => {
     const ref = refOf(owner);
     if (ref === null) return;
     const before = new Set(allTabs(current().arrangement));
     update((arrangement) => activateTab(arrangement, owner));
+    const terminalShows = leafWithTab(current().arrangement.root, chatTerminalKey(owner));
+    if (!terminalShows && sidePaneEmpty(owner) && chatBridgeOf(owner)?.openSidePane()) return;
     if (!recordOf(ref).isOpen) useRightPanelStore.getState().show(ref);
     apply((linked) => {
       const { arrangement } = linked;
@@ -910,6 +1122,7 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
       return openLinked(
         { ...linked, arrangement: { ...arrangement, seq: arrangement.seq + 1 } },
         empty,
+        { context },
       );
     });
   };
@@ -921,13 +1134,19 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
   const setLinkedTabShown = (owner: string, key: string, shown: boolean) => {
     const ref = refOf(owner);
     if (ref === null) return;
+    if (standsAlone(key)) {
+      useTerminalUiStateStore.getState().setTerminalOpen(ref, shown);
+      return;
+    }
     if (!shown) {
       if (isEmptyTab(key)) close(key);
       else apply((linked) => hideLinkedTab(linked, key, owner));
       return;
     }
     const panelOpen = recordOf(ref).isOpen;
-    const others = linkedTabsOf(current(), owner, context).filter((tab) => tab.key !== key);
+    const others = linkedTabsOf(current(), owner, context).filter(
+      (tab) => tab.key !== key && !standsAlone(tab.key),
+    );
     apply((linked) =>
       showLinkedTabs(
         panelOpen
@@ -944,8 +1163,93 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
   const showAllLinkedTabs = (owner: string) => {
     const ref = refOf(owner);
     if (ref === null) return;
+    const inPanel = linkedTabsOf(current(), owner, context).some((tab) => !standsAlone(tab.key));
     apply((linked) => showLinkedTabs(linked, hiddenTabsOf(linked, owner)));
-    useRightPanelStore.getState().show(ref);
+    if (current().parked[chatTerminalKey(owner)]?.hidden) {
+      useTerminalUiStateStore.getState().setTerminalOpen(ref, true);
+    }
+    // With only the terminal to show there is no panel to open, just an empty tab in it.
+    if (inPanel) useRightPanelStore.getState().show(ref);
+  };
+
+  /** Whether the chat `owner` has no side tabs, standing or set aside; its terminal is apart. */
+  const sidePaneEmpty = (owner: string) =>
+    linkedTabsOf(current(), owner, context).every((tab) => standsAlone(tab.key));
+
+  /**
+   * The chat whose terminal stands in the focused pane behind a tab of no chat's, which mod+j can
+   * bring forward though no chat has focus. Null otherwise.
+   */
+  const terminalBehindFocusedTab = () => {
+    const linked = current();
+    const pane = focusedPane(linked.arrangement);
+    if (linked.owners[pane.active] !== undefined || parseChatTabKey(pane.active) !== null) {
+      return null;
+    }
+    const front = linked.front;
+    return front !== null && pane.tabs.includes(chatTerminalKey(front)) ? front : null;
+  };
+
+  /** Whether the chat's terminal can be seen: in front of its pane, under no maximized pane. */
+  const terminalOnScreen = (chatKey: string) => {
+    const key = chatTerminalKey(chatKey);
+    const pane = leafWithTab(current().arrangement.root, key);
+    if (pane?.active !== key) return false;
+    const { maximized } = useMaximizedPaneStore.getState();
+    return maximized?.layoutKey !== WORKSPACE_LAYOUT_KEY || maximized.paneId === pane.id;
+  };
+
+  /**
+   * Brings the chat's terminal into view when it stands where it cannot be seen, its pane taking
+   * focus. False when it needs no bringing: it shows already, or stands nowhere to bring forward.
+   */
+  const revealTerminal = (chatKey: string) => {
+    const key = chatTerminalKey(chatKey);
+    if (terminalOnScreen(chatKey) || !leafWithTab(current().arrangement.root, key)) return false;
+    uncover = true;
+    update((arrangement) => activateTab(arrangement, key));
+    return true;
+  };
+
+  /**
+   * Sets a chat's terminal tab aside, its sessions running and its output kept, and remembers it
+   * for `view.reopenClosed`. Ending them is the linked tabs filter's trash (`endChatTerminals`).
+   */
+  const closeTerminalTab = (key: string) => {
+    const ref = refOf(parseChatTerminalKey(key));
+    if (ref === null) return;
+    useClosedViewStore.getState().remember({ kind: "terminal-tab", threadRef: ref });
+    useTerminalUiStateStore.getState().setTerminalOpen(ref, false);
+  };
+
+  /**
+   * The chat in front, when `key` is one of its linked tabs on screen that minimizing can set
+   * aside for its menu to bring back. An empty New tab holds nothing to bring back: it closes.
+   */
+  const minimizerOf = (key: string): string | null => {
+    const { front, owners } = current();
+    if (!(key in owners) || isEmptyTab(key) || front === null || refOf(front) === null) return null;
+    const listed = linkedTabsOf(current(), front, context).some(
+      (tab) => tab.key === key && tab.shown,
+    );
+    return listed ? front : null;
+  };
+
+  /**
+   * Minimizes the linked tab `key`: it leaves the panes and stays in its chat's linked tabs menu.
+   * The last one showing goes with its chat's panel, as the menu's untick does. False for a tab
+   * that is not one, which closes instead.
+   */
+  const minimizeLinkedTab = (key: string): boolean => {
+    const owner = minimizerOf(key);
+    if (owner === null) return false;
+    const showing = linkedTabsOf(current(), owner, context).filter(
+      (tab) => tab.shown && !standsAlone(tab.key),
+    );
+    const hidePanel = panel?.onHide;
+    if (!standsAlone(key) && showing.length === 1 && hidePanel) hidePanel();
+    else setLinkedTabShown(owner, key, false);
+    return true;
   };
 
   return {
@@ -965,11 +1269,21 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
     updateWithHistory,
     openChat,
     openChatsBesideFront,
+    placeOf,
+    revealChat,
     openLinked: openLinkedTab,
     unlink,
     newLinkedTab,
     setLinkedTabShown,
     showAllLinkedTabs,
+    closeTerminalTab,
+    sidePaneEmpty,
+    terminalBehindFocusedTab,
+    terminalOnScreen,
+    revealTerminal,
+    minimizeLinkedTab,
+    /** Whether `key` is a linked tab that minimizes rather than closes (`minimizeLinkedTab`). */
+    minimizes: (key: string) => minimizerOf(key) !== null,
     /** The chat `owner`'s linked tabs, as its filter lists them. */
     linkedTabsOf: (owner: string): LinkedTab[] => linkedTabsOf(current(), owner, context),
     /** The thread of the chat in front, whose surfaces the panes show. */
@@ -993,12 +1307,22 @@ export function createWorkspace(storageOf: () => StorageLike | null = storage) {
       if (!same && state !== null) apply((linked) => linked);
     },
     /**
-     * Follows T3 Code's changes to the front chat's record until the returned function is called,
-     * first taking in any made since the panes loaded.
+     * Follows T3 Code's changes to the front chat's records and the layout settings until the
+     * returned function is called, first taking in any made since the panes loaded.
      */
     follow() {
       takeRecord();
-      return useRightPanelStore.subscribe(takeRecord);
+      const settle = () => apply((linked) => linked);
+      settle();
+      const stops = [
+        useRightPanelStore.subscribe(takeRecord),
+        useTerminalUiStateStore.subscribe(settle),
+        behavior.subscribe(settle),
+        subscribeTerminalFocusWaiting(settle),
+      ];
+      return () => {
+        for (const stop of stops) stop();
+      };
     },
     /** What the front chat's ChatView last gave its right panel; null before it renders. */
     getPanel: () => panel,
@@ -1068,13 +1392,13 @@ export function focusedChatOf(linked: LinkedArrangement): string | null {
 /** The device's shared panes. */
 export const workspace = createWorkspace();
 
-/**
- * Whether the chat tab `owner`'s ChatView answers the terminal drawer's toggle: only as the
- * focused pane's tab in front. Null is a ChatView outside the shared panes, which always does.
- */
-export function takesTerminalToggle(owner: string | null): boolean {
-  return isFocusedChatTab(owner);
-}
+setClosedViewPlaces((view) => {
+  const chat = chatTabKey(view.threadRef);
+  if (view.kind === "chat-tab") return workspace.placeOf(chat);
+  if (view.kind === "terminal-tab") return workspace.placeOf(chatTerminalKey(chat));
+  if (view.kind === "panel-tab") return workspace.placeOf(chatSurfaceKey(chat, view.surface.id));
+  return null;
+});
 
 /**
  * Whether the chat tab `owner` is the focused pane's tab in front, so its ChatView may move focus
@@ -1082,6 +1406,17 @@ export function takesTerminalToggle(owner: string | null): boolean {
  */
 export function isFocusedChatTab(owner: string | null): boolean {
   return owner === null || focusedPane(workspace.arrangement()).active === owner;
+}
+
+/** Whether the focused pane shows the chat tab `owner`'s terminal tab. */
+export function isTerminalTabFocused(owner: string | null): boolean {
+  if (owner === null) return false;
+  return focusedPane(workspace.arrangement()).active === chatTerminalKey(owner);
+}
+
+/** Whether the chat tab `owner`'s ChatView answers `terminal.toggle`. */
+export function takesTerminalToggle(owner: string | null): boolean {
+  return takesPanelShortcut(owner) || workspace.terminalBehindFocusedTab() === owner;
 }
 
 /**
@@ -1147,6 +1482,12 @@ export function useWorkspaceFocusedKey(): string {
 /** Whether the panes hold nothing yet: one pane with one empty tab. */
 export function useWorkspaceStarting(): boolean {
   return useSyncExternalStore(workspace.store.subscribe, () => isStarting(workspace.arrangement()));
+}
+
+/** The tabs set aside, by key. */
+export function useWorkspaceParkedKeys(): readonly string[] {
+  const parked = useSyncExternalStore(workspace.store.subscribe, () => workspace.linked().parked);
+  return Object.keys(parked);
 }
 
 /** The chat in front, whose linked tabs show. */

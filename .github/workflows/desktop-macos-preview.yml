@@ -86,7 +86,7 @@ jobs:
 
       - name: Install browser secret helper build libraries
         if: steps.bundle_build.outputs.script == 'build:desktop'
-        run: sudo apt-get update && sudo apt-get install -y libsecret-1-dev pkg-config
+        run: sudo apt-get update -o Acquire::AllowReleaseInfoChange::Label=true && sudo apt-get install -y libsecret-1-dev pkg-config
 
       # desktop-macos-preview-publish.yml packages this bundle as the preview
       # channel. The Linux browser secret helper is not part of a macOS app.

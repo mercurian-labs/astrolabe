@@ -294,7 +294,7 @@ jobs:
       - name: Install browser secret helper build libraries
         run: |
           sudo sed -i 's|http://|https://|g' /etc/apt/blacksmith-ubuntu-mirrors.txt /etc/apt/sources.list.d/ubuntu.sources
-          sudo apt-get update && sudo apt-get install -y libsecret-1-dev pkg-config build-essential
+          sudo apt-get update -o Acquire::AllowReleaseInfoChange::Label=true && sudo apt-get install -y libsecret-1-dev pkg-config build-essential
 
       - name: Test
         run: vp run --parallel --concurrency-limit 4 --filter '!t3' --filter '!@t3tools/monorepo' --filter '!@t3tools/web' test
@@ -592,7 +592,7 @@ jobs:
 
       - name: Install browser secret helper build libraries
         if: steps.bundle_build.outputs.script == 'build:desktop'
-        run: sudo apt-get update && sudo apt-get install -y libsecret-1-dev pkg-config
+        run: sudo apt-get update -o Acquire::AllowReleaseInfoChange::Label=true && sudo apt-get install -y libsecret-1-dev pkg-config
 
       # Runs t3#build (which depends on @t3tools/web#build) and the desktop
       # bundle, so apps/server/dist holds the server bundle plus the web client

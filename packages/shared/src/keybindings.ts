@@ -137,6 +137,17 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "ctrl+d", command: "scroll.down", when: "!editableFocus && !terminalFocus" },
   { key: "ctrl+u", command: "scroll.up", when: "!editableFocus && !terminalFocus" },
   { key: "mod+b", command: "sidebar.toggle" },
+  // Astrolabe: panes and tabs without the keyboard menu, as T3 Code's redesign binds them.
+  { key: "mod+\\", command: "pane.splitRight", when: "!terminalFocus" },
+  { key: "mod+alt+\\", command: "pane.splitDown", when: "!terminalFocus" },
+  { key: "ctrl+tab", command: "chatTab.next" },
+  { key: "ctrl+shift+tab", command: "chatTab.previous" },
+  { key: "mod+alt+f", command: "pane.toggleMaximized", when: "!terminalFocus" },
+  { key: "mod+alt+r", command: "pane.cycleSize", when: "!terminalFocus" },
+  { key: "mod+alt+shift+arrowleft", command: "pane.moveLeft", when: "!editableFocus" },
+  { key: "mod+alt+shift+arrowdown", command: "pane.moveDown", when: "!editableFocus" },
+  { key: "mod+alt+shift+arrowup", command: "pane.moveUp", when: "!editableFocus" },
+  { key: "mod+alt+shift+arrowright", command: "pane.moveRight", when: "!editableFocus" },
   { key: "f6", command: "workspace.focusNext" },
   { key: "shift+f6", command: "workspace.focusPrevious" },
   // Some browsers keep plain F6 for their own toolbars; mod+F6 reaches the page in all of them.

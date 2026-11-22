@@ -6,32 +6,85 @@ import { headline } from "../site.js";
 
           <!-- ───────────────────────────────────────── [01] Hero -->
           <section class="hero" id="top" aria-labelledby="hero-title">
-            <div class="hero__head">
-              <h1 id="hero-title" class="hero__title">{headline}</h1>
-              <p class="hero__lede">
-                Run Claude Code, Codex and Cursor side by side. They hand work to each other, keep what they
-                learn in a shared wiki, and ship code and docs together. You see what each one is doing and
-                answer when one needs you, from your desk or your phone.
-              </p>
-              <div class="hero__actions">
-                <a class="btn btn--rust px px--on-rust" href="/download">
-                  <span class="roll"><span>Download Astrolabe</span><span aria-hidden="true">Download Astrolabe</span></span>
-                  <svg class="arw" aria-hidden="true"><use href="#i-arrow" /></svg>
-                </a>
-                <a class="btn px" href="#tour" data-tour-run>
-                  <span class="roll"><span>See it run</span><span aria-hidden="true">See it run</span></span>
-                  <svg class="arw" aria-hidden="true"><use href="#i-arrow" /></svg>
-                </a>
+            <!-- The working astrolabe stands beside the headline; its sun sets the page's theme. -->
+            <div class="hero__top" data-relight>
+              <div class="hero__head">
+                <h1 id="hero-title" class="hero__title">{headline}</h1>
+                <p class="hero__lede">
+                  Run Claude Code, Codex, Cursor and other coding agents side by side in one workspace.
+                  Astrolabe gives them the tools to explain changes as interactive visual stories, back every
+                  step with live evidence from your code index and language servers, and grow a linked git
+                  wiki that powers your skills.
+                </p>
+                <div class="hero__actions">
+                  <a class="btn btn--rust px px--on-rust" href="/download">
+                    <span class="roll"><span>Download Astrolabe</span><span aria-hidden="true">Download Astrolabe</span></span>
+                    <svg class="arw" aria-hidden="true"><use href="#i-arrow" /></svg>
+                  </a>
+                  <a class="btn px" href="#tour" data-tour-run>
+                    <span class="roll"><span>See it run</span><span aria-hidden="true">See it run</span></span>
+                    <svg class="arw" aria-hidden="true"><use href="#i-arrow" /></svg>
+                  </a>
+                </div>
+                <p class="tag hero__note">
+                  Local on macOS and Linux · Uses your own agent accounts · Plain text and git, no sign-in required
+                </p>
+              </div>
+              <div class="sky" id="instrument" data-sight>
+                <canvas class="relight__ground" data-relight-canvas aria-hidden="true"></canvas>
+                <div class="relight__static" aria-hidden="true"><i class="relight__olive"></i><i class="relight__dark"></i><i class="relight__light"></i></div>
+                <i class="ruler ruler--x" aria-hidden="true"></i>
+                <i class="ruler ruler--y" aria-hidden="true"></i>
+                <div class="sky__art">
+                  <i class="sky__plate" aria-hidden="true"></i>
+                  <div class="sky__instrument" data-model>
+                    <noscript><img class="sky__static" src="/assets/art/astrolabe-static.svg" alt="A planispheric astrolabe with a plate for 40° N and a rete of twelve stars" /></noscript>
+                  </div>
+                </div>
+                <span class="cross cross--tl" aria-hidden="true"></span>
+                <span class="cross cross--tr" aria-hidden="true"></span>
+                <span class="cross cross--bl" aria-hidden="true"></span>
+                <span class="cross cross--br" aria-hidden="true"></span>
+                <p class="tag sky__tag sky__tag--tl" aria-hidden="true">Fig. 1 · <span class="wide-only">Planispheric </span>astrolabe</p>
+                <p class="tag sky__tag sky__tag--tr" data-plate>Plate for 40° N · Rete of twelve stars</p>
+                <p class="tag sky__hint" data-time hidden><span class="hover-only">Point to sight<span class="sky__sep"> · </span></span>Drag the rete to wind time</p>
+                <div class="sky__time" data-time hidden>
+                  <p class="tag"><span class="sky__clock" data-clock>00:00</span> <span class="sky__date" data-date></span></p>
+                  <p class="tag sky__desc" data-sky></p>
+                </div>
+                <div class="sky__wind" data-time hidden>
+                  <div class="sky__jumps" role="group" aria-label="Wind the rete to">
+                    <button class="sky__now" type="button" data-jump="day" aria-pressed="false">Day</button>
+                    <button class="sky__now" type="button" data-jump="night" aria-pressed="false">Night</button>
+                    <button class="sky__now" type="button" data-now>Now</button>
+                  </div>
+                </div>
+                <span class="tag star-tip" data-star-tip hidden></span>
+                <div class="sight" aria-hidden="true">
+                  <svg class="sight__rule"><line x1="0" y1="0" x2="0" y2="0" /></svg>
+                  <i class="sight__h"></i>
+                  <i class="sight__v"></i>
+                  <i class="sight__mx"></i>
+                  <i class="sight__my"></i>
+                  <span class="sight__read">ALT 00.0° · AZ 000.0°</span>
+                  <svg class="sight__mark" viewBox="-24 -24 48 48">
+                    <g class="sight__cue"><path d="M-15.6 -9A18 18 0 0 1 3.1 -17.7M-0.8 -21.5L3.1 -17.7L-1.8 -15.6M15.6 9A18 18 0 0 1 -3.1 17.7M0.8 21.5L-3.1 17.7L1.8 15.6" /></g>
+                    <circle class="sight__ring" r="7" />
+                    <path class="sight__ticks" d="M0 -16V-10M0 10V16M-16 0H-10M10 0H16" />
+                    <circle class="sight__pip" r="1.6" />
+                  </svg>
+                </div>
               </div>
             </div>
 
-            <!-- The tour's three phases, one per section. Without script the first is shown; while the tour
+            <!-- The tour's four phases, one per section. Without script the first is shown; while the tour
                  plays the running one fills; once it has played each replays from its phase. -->
             <div class="tour" id="tour" data-tour>
               <ol class="tour__phases" aria-label="The tour's phases">
                 <li><button type="button" class="tour__phase is-on" data-tour-phase disabled aria-current="step"><i aria-hidden="true"><span></span></i><span class="tag"><b>01</b> Agents</span></button></li>
                 <li><button type="button" class="tour__phase" data-tour-phase disabled><i aria-hidden="true"><span></span></i><span class="tag"><b>02</b> Wikis</span></button></li>
                 <li><button type="button" class="tour__phase" data-tour-phase disabled><i aria-hidden="true"><span></span></i><span class="tag"><b>03</b> Changes</span></button></li>
+                <li><button type="button" class="tour__phase" data-tour-phase disabled><i aria-hidden="true"><span></span></i><span class="tag"><b>04</b> Skills</span></button></li>
               </ol>
               <p class="tour__caption" data-tour-caption aria-live="polite">{phases[0].caption}</p>
             </div>
@@ -65,5 +118,10 @@ import { headline } from "../site.js";
           </section>
 
 <script>
+  // The instrument announces each moment it shows; the ground and the observatory plates listen,
+  // so they load first.
+  import "../scripts/relight.js";
+  import "../scripts/plate.js";
+  import "../scripts/instrument.js";
   import "../scripts/tour.js";
 </script>

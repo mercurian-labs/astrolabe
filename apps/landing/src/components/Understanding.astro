@@ -1,0 +1,269 @@
+---
+// A canvas an agent drew of its change and kept in the wiki, as the app's canvas tab shows one while
+// you edit it: the tool row, sections labelled above, cards, sharp, curved and elbow arrows, the
+// changed cards marked, one arrow selected with its bends. Drawn twice: wide, and stacked for a
+// phone-width window.
+const wide = {
+  system: [
+    { id: "a", x: 48, y: 76, w: 180, title: "Checkout", sub: "checkout/PayButtons.tsx", mark: "#513" },
+    { id: "b", x: 264, y: 76, w: 190, title: "Payment intents", sub: "payments/intents.ts", mark: "#512" },
+    { id: "c", x: 490, y: 76, w: 150, title: "Payment provider", sub: "Creates the intent" },
+    { id: "d", x: 264, y: 208, w: 160, title: "Ledger", sub: "ledger/post.ts" },
+    { id: "e", x: 520, y: 208, w: 120, title: "Rounding", sub: "Wiki note", note: true },
+  ],
+  change: [
+    { x: 716, y: 84, title: "#512 Payment intents API", sub: "payments/intents.ts +142 −3" },
+    { x: 716, y: 164, title: "#513 Apple Pay button", sub: "checkout/PayButtons.tsx +88 −6" },
+  ],
+  effect: [
+    { x: 48, title: "Pay in two taps", lines: ["A shopper with a card in Wallet", "pays without typing a card number."] },
+    { x: 360, title: "Totals match", lines: ["Apple Pay totals round once, in", "the ledger, as card totals do."] },
+    { x: 672, title: "The card form stays", lines: ["Where Apple Pay can’t pay, checkout", "shows the card form as before."] },
+  ],
+};
+// The tool row, as the board's editor names its tools; the Arrow tool is in hand.
+const tools = ["Hand", "Select", "Lasso", "Card", "Section", "Arrow", "Pen", "Eraser", "Shape"];
+let at = 292;
+const toolRow = tools.map((name) => {
+  const w = name.length * 6.6 + 16;
+  const tool = { name, x: at, w };
+  at += w + 4;
+  return tool;
+});
+---
+          <!-- ───────────────────────────────────────── [06] Understanding -->
+          <section class="surfaces" id="understanding" aria-labelledby="understanding-title">
+            <div class="head">
+              <div class="head__main">
+                <p class="tag">[06] Canvases</p>
+                <h2 id="understanding-title" class="h2" data-reveal>Visual stories backed by the code.</h2>
+              </div>
+              <p class="body head__aside" data-reveal>
+                A diff shows which lines moved, not what happened. An agent can explain its work as an
+                interactive visual story on a canvas: step by step, showing how the parts fit, what moved
+                and what changes for the people who use it. Keep the board and it lands in the wiki beside
+                the change.
+              </p>
+            </div>
+
+            <article class="surface" aria-labelledby="surface-understanding">
+              <div class="surface__title">
+                <p class="tag">Canvases</p>
+                <h3 id="surface-understanding" class="h3">A change in three views.</h3>
+              </div>
+              <div class="surface__ui">
+          <figure class="window">
+            <div class="app app--poster app--doc app--canvas" role="img" aria-label="A canvas open for editing in the Wikis section of Astrolabe, kept from Claude’s thread in the pull request Add Apple Pay to checkout, with the Arrow tool picked in the tool row. Its System section shows Checkout calling Payment intents, which creates the intent with the payment provider and posts totals to the Ledger; a dashed arrow labelled rounds by runs from the Ledger to the wiki note Rounding. Checkout and Payment intents are marked as changed by #513 and #512. The Change section lists the two pull requests. An elbow arrow from #513 to the card form, selected, shows its two bends. The Effect section says a shopper with a card in Wallet pays in two taps, Apple Pay totals round once in the ledger, and the card form stays where Apple Pay can’t pay.">
+              <div class="tb">
+                <div class="tb__cap">
+                  <span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
+                  <svg class="ico"><use href="#i-panel" /></svg>
+                  <span class="spacer"></span>
+                  <svg class="ico ico--sm"><use href="#i-left" /></svg>
+                  <svg class="ico ico--sm ico--faint"><use href="#i-right" /></svg>
+                </div>
+                <div class="tb__strip tb__strip--pane">
+                  <span class="lights lights--crop" aria-hidden="true"><i></i><i></i><i></i></span>
+                  <span class="tab is-front is-focus"><svg class="ico ico--xs"><use href="#i-canvas" /></svg><span class="tab__title">Apple Pay checkout</span><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
+                  <span class="tab"><svg class="ico ico--xs"><use href="#i-file" /></svg><span class="tab__title">Payments</span><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
+                  <span class="tab tab--narrow-off"><svg class="ico ico--xs"><use href="#i-merge" /></svg><span class="tab__title">Add Apple Pay to checkout</span><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
+                  <svg class="ico ico--muted"><use href="#i-plus" /></svg>
+                  <span class="spacer"></span>
+                  <svg class="ico ico--muted"><use href="#i-more" /></svg>
+                </div>
+              </div>
+              <div class="pb">
+                <nav class="rail" aria-hidden="true">
+                  <span class="rail__mark"><svg><use href="#b-monogram" /></svg></span>
+                  <span class="rail__item"><svg class="ico"><use href="#i-msgs" /></svg></span>
+                  <span class="rail__item is-active"><svg class="ico"><use href="#i-book" /></svg></span>
+                  <span class="rail__item"><svg class="ico"><use href="#i-repo" /></svg></span>
+                  <span class="rail__item"><svg class="ico"><use href="#i-pr" /></svg></span>
+                  <span class="rail__item"><svg class="ico"><use href="#i-usage" /></svg></span>
+                  <span class="rail__fill"></span>
+                  <span class="rail__item"><svg class="ico"><use href="#i-settings" /></svg></span>
+                </nav>
+                <i class="pb__corner" aria-hidden="true"></i>
+                <aside class="side">
+                  <div class="side__head">
+                    <span class="side__title">Wikis</span>
+                    <span class="side__tools"><svg class="ico"><use href="#i-search" /></svg><svg class="ico"><use href="#i-filter" /></svg><svg class="ico"><use href="#i-new" /></svg></span>
+                  </div>
+                  <div class="opens"><svg class="ico ico--xs"><use href="#i-merge" /></svg><span>Open changes · 1</span><svg class="ico ico--xs"><use href="#i-right" /></svg></div>
+                  <ul class="side__list side__list--slim">
+                    <li class="slim is-active"><span class="tile">EN</span><span>Apple Pay checkout</span><svg class="ico ico--xs"><use href="#i-canvas" /></svg><em>now</em></li>
+                    <li class="slim"><span class="tile tile--dim">EN</span><span>Payments</span><em>now</em></li>
+                    <li class="slim"><span class="tile tile--dim">EN</span><span>Checkout</span><em>2d</em></li>
+                    <li class="slim"><span class="tile tile--dim">EN</span><span>Ledger</span><em>3d</em></li>
+                    <li class="slim"><span class="tile tile--dim">EN</span><span>Rounding</span><em>3d</em></li>
+                    <li class="slim"><span class="tile tile--dim">EN</span><span>Testing</span><em>2w</em></li>
+                  </ul>
+                </aside>
+                <div class="pane pane--doc pane--canvas">
+                  <div class="doc__bar">
+                    <span class="doc__name">Apple Pay checkout</span>
+                    <span class="doc__scope">In “Add Apple Pay to checkout” · kept from Claude’s thread</span>
+                    <span class="spacer"></span>
+                    <span class="mini mini--ghost">Jump to section</span>
+                    <span class="mini">Fit</span>
+                  </div>
+                  <div class="board">
+                    <svg class="cv cv--wide" viewBox="0 0 1000 604" aria-hidden="true">
+                      <defs>
+                        <marker id="cv-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                          <path class="cv-head" d="M0 1L9 5L0 9Z" />
+                        </marker>
+                      </defs>
+                      <g class="cv-tools">
+                        <rect class="cv-tools__bar" x={toolRow[0].x - 6} y="4" width={at - toolRow[0].x + 58} height="30" rx="9" />
+                        {
+                          toolRow.map((t) => (
+                            <g class:list={["cv-tool", { "is-on": t.name === "Arrow" }]}>
+                              <rect x={t.x} y="8" width={t.w} height="22" rx="6" />
+                              <text x={t.x + t.w / 2} y="23" text-anchor="middle">{t.name}</text>
+                            </g>
+                          ))
+                        }
+                        <text class="cv-tools__done" x={at + 22} y="23" text-anchor="middle">Done</text>
+                      </g>
+                      <g transform="translate(0 44)">
+                      <g class="cv-group">
+                        <text x="24" y="34">System · how the parts fit</text>
+                        <rect x="24" y="44" width="640" height="256" rx="10" />
+                        <text x="696" y="34">Change · what moved</text>
+                        <rect x="696" y="44" width="280" height="256" rx="10" />
+                        <text x="24" y="330">Effect · what a shopper sees</text>
+                        <rect x="24" y="340" width="952" height="196" rx="10" />
+                      </g>
+                      <g class="cv-edge">
+                        <path d="M230 106H262" marker-start="url(#cv-head)" marker-end="url(#cv-head)" />
+                        <path d="M454 106H488" marker-end="url(#cv-head)" />
+                        <path d="M344 136V206" marker-end="url(#cv-head)" />
+                        <path class="cv-edge--dash" d="M424 238H518" marker-end="url(#cv-head)" />
+                        <path d="M138 136V374" marker-end="url(#cv-head)" />
+                        <path d="M344 268C344 330 470 320 470 374" marker-end="url(#cv-head)" />
+                        <path class="is-selected" d="M956 194H966V318H812V374" marker-end="url(#cv-head)" />
+                      </g>
+                      <g class="cv-handles">
+                        <rect x="952" y="190" width="8" height="8" />
+                        <rect x="962" y="314" width="8" height="8" />
+                        <rect x="808" y="314" width="8" height="8" />
+                        <rect x="808" y="370" width="8" height="8" />
+                        <circle cx="966" cy="256" r="3.5" />
+                        <circle cx="889" cy="318" r="3.5" />
+                      </g>
+                      <g class="cv-label">
+                        <text x="354" y="176">posts totals</text>
+                        <text x="471" y="230" text-anchor="middle">rounds by</text>
+                        <text x="850" y="312" text-anchor="middle">Elbow</text>
+                      </g>
+                      {
+                        wide.system.map((c) => (
+                          <g class:list={["cv-card", { "is-changed": c.mark, "is-note": c.note }]}>
+                            <rect x={c.x} y={c.y} width={c.w} height="60" rx="8" />
+                            <text class="cv-card__title" x={c.x + 12} y={c.y + 25}>{c.title}</text>
+                            <text class="cv-card__sub" x={c.x + 12} y={c.y + 45}>{c.sub}</text>
+                            {c.mark && <text class="cv-card__mark" x={c.x + c.w - 10} y={c.y + 24} text-anchor="end">{c.mark}</text>}
+                          </g>
+                        ))
+                      }
+                      {
+                        wide.change.map((c) => (
+                          <g class="cv-card is-changed">
+                            <rect x={c.x} y={c.y} width="240" height="60" rx="8" />
+                            <text class="cv-card__title" x={c.x + 12} y={c.y + 25}>{c.title}</text>
+                            <text class="cv-card__sub" x={c.x + 12} y={c.y + 45}>{c.sub}</text>
+                          </g>
+                        ))
+                      }
+                      <text class="cv-card__sub" x="716" y="268">Pull requests · harbor/checkout</text>
+                      {
+                        wide.effect.map((c) => (
+                          <g class="cv-card">
+                            <rect x={c.x} y="376" width="280" height="132" rx="8" />
+                            <text class="cv-card__title" x={c.x + 16} y="410">{c.title}</text>
+                            {c.lines.map((line, i) => (
+                              <text class="cv-card__body" x={c.x + 16} y={440 + i * 22}>{line}</text>
+                            ))}
+                          </g>
+                        ))
+                      }
+                      </g>
+                    </svg>
+                    <svg class="cv cv--tall" viewBox="0 0 400 900" aria-hidden="true">
+                      <defs>
+                        <marker id="cv-head-tall" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                          <path class="cv-head" d="M0 1L9 5L0 9Z" />
+                        </marker>
+                      </defs>
+                      <g class="cv-group">
+                        <text x="8" y="22">System · how the parts fit</text>
+                        <rect x="8" y="32" width="384" height="276" rx="10" />
+                        <text x="8" y="340">Change · what moved</text>
+                        <rect x="8" y="350" width="384" height="172" rx="10" />
+                        <text x="8" y="554">Effect · what a shopper sees</text>
+                        <rect x="8" y="564" width="384" height="326" rx="10" />
+                      </g>
+                      <g class="cv-edge">
+                        <path d="M182 78H218" marker-start="url(#cv-head-tall)" marker-end="url(#cv-head-tall)" />
+                        <path d="M300 108V138" marker-end="url(#cv-head-tall)" />
+                        <path d="M240 108C240 130 160 120 140 138" marker-end="url(#cv-head-tall)" />
+                        <path class="cv-edge--dash" d="M100 198V230" marker-end="url(#cv-head-tall)" />
+                        <path class="is-selected" d="M380 474H397V829H382" marker-end="url(#cv-head-tall)" />
+                      </g>
+                      <g class="cv-handles">
+                        <rect x="393" y="470" width="8" height="8" />
+                        <rect x="393" y="825" width="8" height="8" />
+                        <circle cx="397" cy="652" r="3.5" />
+                      </g>
+                      <g class="cv-label">
+                        <text x="110" y="219">rounds by</text>
+                      </g>
+                      <g class="cv-card is-changed"><rect x="20" y="48" width="160" height="60" rx="8" /><text class="cv-card__title" x="32" y="73">Checkout</text><text class="cv-card__mark" x="170" y="72" text-anchor="end">#513</text><text class="cv-card__sub" x="32" y="93">PayButtons.tsx</text></g>
+                      <g class="cv-card is-changed"><rect x="220" y="48" width="160" height="60" rx="8" /><text class="cv-card__title" x="232" y="73">Intents</text><text class="cv-card__mark" x="370" y="72" text-anchor="end">#512</text><text class="cv-card__sub" x="232" y="93">intents.ts</text></g>
+                      <g class="cv-card"><rect x="220" y="140" width="160" height="60" rx="8" /><text class="cv-card__title" x="232" y="165">Payment provider</text><text class="cv-card__sub" x="232" y="185">Creates the intent</text></g>
+                      <g class="cv-card"><rect x="20" y="140" width="160" height="60" rx="8" /><text class="cv-card__title" x="32" y="165">Ledger</text><text class="cv-card__sub" x="32" y="185">ledger/post.ts</text></g>
+                      <g class="cv-card is-note"><rect x="20" y="232" width="160" height="60" rx="8" /><text class="cv-card__title" x="32" y="257">Rounding</text><text class="cv-card__sub" x="32" y="277">Wiki note</text></g>
+                      <g class="cv-card is-changed"><rect x="20" y="366" width="360" height="64" rx="8" /><text class="cv-card__title" x="34" y="392">#512 Payment intents API</text><text class="cv-card__sub" x="34" y="414">payments/intents.ts +142 −3</text></g>
+                      <g class="cv-card is-changed"><rect x="20" y="442" width="360" height="64" rx="8" /><text class="cv-card__title" x="34" y="468">#513 Apple Pay button</text><text class="cv-card__sub" x="34" y="490">checkout/PayButtons.tsx +88 −6</text></g>
+                      {
+                        wide.effect.map((c, n) => (
+                          <g class="cv-card">
+                            <rect x="20" y={580 + n * 102} width="360" height="90" rx="8" />
+                            <text class="cv-card__title" x="34" y={606 + n * 102}>{c.title}</text>
+                            {c.lines.map((line, i) => (
+                              <text class="cv-card__body" x="34" y={630 + n * 102 + i * 20}>{line}</text>
+                            ))}
+                          </g>
+                        ))
+                      }
+                    </svg>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </figure>
+              </div>
+              <div class="surface__desc">
+                <p>
+                  Ask Claude what a change did, and it draws the answer in the thread, on a canvas of cards,
+                  arrows and sections. Here it drew Apple Pay three ways: how the parts fit, what the two pull
+                  requests moved and what a shopper sees.
+                </p>
+                <p>
+                  Every card is backed by evidence. While drawing, the agent queries the code index and
+                  language servers to cite exact files and lines. Click a card to open the code there; once
+                  kept in the wiki, any card whose cited file changes or disappears marks itself stale.
+                </p>
+                <p>
+                  Refine the board by hand on your computer or phone, then keep it in the wiki as a pull
+                  request you merge alongside the code.
+                </p>
+                <p class="surface__note">
+                  Canvases are standard JSON Canvas files, so the same board opens in Obsidian. Verified with
+                  Claude Code today.
+                </p>
+                <a class="link" href="/download">Download Astrolabe<svg class="arw" aria-hidden="true"><use href="#i-arrow" /></svg></a>
+              </div>
+            </article>
+          </section>

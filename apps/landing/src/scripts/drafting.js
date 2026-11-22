@@ -3,6 +3,8 @@
 // thread figure, header). Reduced motion shows every finished state at once with interaction intact;
 // without this script the page reads as a document.
 
+import Twilight from "./twilight.js";
+
 const root = document.documentElement;
 const reducedQuery = matchMedia("(prefers-reduced-motion: reduce)");
 let motion = !reducedQuery.matches;
@@ -35,7 +37,7 @@ addEventListener("scroll", requestFrame, { passive: true });
 addEventListener("resize", requestFrame);
 
 /* ───────────────────────────── Once every section has been laid out (with the fonts), the ones off screen
-   skip their style and paint (drafting.css): a twilight step then restyles only what is in view. */
+   skip their style and paint (drafting.css): a theme flip then restyles only what is in view. */
 
 addEventListener("load", () =>
   document.fonts.ready.then(() =>
@@ -60,6 +62,19 @@ jobs.push(() => {
   lastY = y;
 });
 mast.addEventListener("focusin", () => mast.classList.remove("is-hidden"));
+
+/* The theme switch: flips the page between light and dark and remembers it (twilight.js). */
+
+const skySwitch = $(".mast__sky");
+const showTheme = () => {
+  const dark = document.documentElement.dataset.theme === "dark";
+  skySwitch.setAttribute("aria-pressed", String(dark));
+};
+showTheme();
+document.addEventListener("twilight:change", showTheme);
+skySwitch.addEventListener("click", () =>
+  Twilight.choose(document.documentElement.dataset.theme === "dark" ? "light" : "dark"),
+);
 
 function setMenu(open) {
   menuButton.setAttribute("aria-expanded", String(open));
@@ -260,7 +275,7 @@ if (manifesto && motion) {
 }
 
 /* ───────────────────────────── Scrubbed figures: scroll carries a figure's progress, written to --p on
-   its stage, and the CSS draws each mark in its own window of it (drafting.css, [04]). Only while the
+   its stage, and the CSS draws each mark in its own window of it (drafting.css, [10]). Only while the
    figure is active (wide screens with motion; static otherwise, at --p 1) and near the window. */
 
 const scrubQuery = matchMedia("(min-width: 901px) and (min-height: 560px)");
@@ -294,13 +309,13 @@ scrubQuery.addEventListener("change", () => {
   requestFrame();
 });
 
-/* The thread figure: progress across a 300vh runway, pinned while it is scrubbed. */
+/* The thread figure: progress across a 360vh runway, pinned while it is scrubbed. */
 
 const story = $("[data-story]");
 const storyCount = story && $("[data-story-count]", story);
 const storySteps = story ? $$(".story__steps li", story) : [];
 let storyStep = -1;
-const storyStages = [0.16, 0.32, 0.5, 0.66];
+const storyStages = [0.16, 0.32, 0.5, 0.66, 0.78, 0.86];
 function layoutStory() {
   if (!story) return;
   story.classList.toggle("is-pinned", story.classList.contains("is-scrubbed"));
@@ -315,7 +330,7 @@ if (story) {
     const step = found === -1 ? storyStages.length : found;
     if (step === storyStep) return;
     storyStep = step;
-    storyCount.textContent = `Stage ${step + 1} / 5`;
+    storyCount.textContent = `Stage ${step + 1} / ${storySteps.length}`;
     storySteps.forEach((li, i) => li.classList.toggle("is-on", i === step));
   });
 }

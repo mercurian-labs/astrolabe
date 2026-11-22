@@ -242,7 +242,7 @@ async function printPlate(canvas, plate, palette) {
   gl.uniform3f(u.u_alpha, night ? 0.68 : 0.92, 0.8, 0.62 - 0.42 * palette.night);
   const b = night ? 0.42 : 0;
   gl.uniform4f(u.u_body, ...palette.paper.map((c) => c * 0.62 * b), b);
-  const rust = Twilight.hex(night ? palette.vars["--rust-text"] : "#a0492a");
+  const rust = palette.rust;
   gl.uniform4f(u.u_lamp, ...rust, LIGHT.lamp);
   gl.viewport(0, 0, canvas.width, canvas.height);
   gl.disable(gl.BLEND);

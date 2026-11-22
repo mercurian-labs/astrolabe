@@ -106,7 +106,8 @@ jobs:
             /etc/apt/blacksmith-ubuntu-mirrors.txt /etc/apt/sources.list.d/ubuntu.sources
           (
             set +e
-            sudo apt-get update -o Acquire::Languages=none \
+            # The runner image carries third-party PPAs that rename their release Label (ondrej/php did).
+            sudo apt-get update -o Acquire::AllowReleaseInfoChange::Label=true -o Acquire::Languages=none \
               -o Acquire::IndexTargets::deb::DEP-11::DefaultEnabled=false \
               -o Acquire::IndexTargets::deb::CNF::DefaultEnabled=false &&
               sudo apt-get install -y libsecret-1-dev pkg-config xvfb

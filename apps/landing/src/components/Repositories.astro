@@ -2,29 +2,30 @@
 import Frontispiece from "./Frontispiece.astro";
 import plate from "../data/lasilla-plate.json";
 ---
-          <!-- ───────────────────────────────────────── [06] Repositories -->
+          <!-- ───────────────────────────────────────── [05] Code -->
           <section class="surfaces" id="repositories" aria-labelledby="repositories-title">
             <div class="head head--plate head--plate-left">
               <div class="head__main">
-                <p class="tag">[06] Repositories</p>
-                <h2 id="repositories-title" class="h2" data-reveal>Your code, beside the agents.</h2>
+                <p class="tag">[05] Code</p>
+                <h2 id="repositories-title" class="h2" data-reveal>Live evidence, from the same code intelligence your agents use.</h2>
               </div>
               <p class="body head__aside" data-reveal>
-                Read a repository's files and see what changed, in the same window as the agents doing the
-                work, instead of an editor or GitHub. It has its own section in the app and a tab on your
-                iPhone.
+                An explanation is only useful if you can verify it. You and your agents query the same
+                language servers and branch-aware code index, so every symbol in a work log or canvas card
+                links straight to the code. Reading a program is still the fastest way to be sure, and a
+                small fix by hand stays small.
               </p>
               <Frontispiece plate={plate} />
             </div>
 
             <article class="surface" aria-labelledby="surface-repositories">
               <div class="surface__title">
-                <p class="tag">Checkouts</p>
-                <h3 id="surface-repositories" class="h3">Read the copy an agent is changing.</h3>
+                <p class="tag">Projects</p>
+                <h3 id="surface-repositories" class="h3">Jump straight from the agent’s trace to the code.</h3>
               </div>
               <div class="surface__ui">
           <figure class="window">
-            <div class="app app--poster app--repo" role="img" aria-label="The Repositories section of Astrolabe, on the billing repository, with the checkout of the thread Invoices pass exact totals picked. The sidebar lists its three uncommitted files, a row for its changes against main, and the files changed recently. The file totals.ts is open with line numbers, and its header says an agent is working in this checkout.">
+            <div class="app app--poster app--repo app--split" role="img" aria-label="The Projects section of Astrolabe, on the billing repository, with the checkout of the thread Invoices pass exact totals picked. The sidebar lists its three uncommitted files, a row for its changes against main, and the files changed recently. The file totals.ts is open with line numbers. Its header says an agent is working in this checkout and that TypeScript is its language server, and a hover on total shows its signature. Beside the file, Claude’s thread on the same checkout found the definition of total and its references through the same language server, and explains where the total is rounded.">
               <div class="tb">
                 <div class="tb__cap">
                   <span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
@@ -42,6 +43,10 @@ import plate from "../data/lasilla-plate.json";
                   <span class="spacer"></span>
                   <svg class="ico ico--muted"><use href="#i-more" /></svg>
                 </div>
+                <div class="tb__strip tb__strip--pane split__strip">
+                  <span class="tab is-front"><svg class="logo"><use href="#p-claude" /></svg><span class="tab__title">Invoices pass exact totals</span><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
+                  <span class="spacer"></span>
+                </div>
               </div>
               <div class="pb">
                 <nav class="rail" aria-hidden="true">
@@ -57,7 +62,7 @@ import plate from "../data/lasilla-plate.json";
                 <i class="pb__corner" aria-hidden="true"></i>
                 <aside class="side">
                   <div class="side__head">
-                    <span class="side__title">Repositories</span>
+                    <span class="side__title">Projects</span>
                     <span class="side__tools"><svg class="ico"><use href="#i-search" /></svg><svg class="ico"><use href="#i-filter" /></svg><svg class="ico"><use href="#i-new" /></svg></span>
                   </div>
                   <div class="checkout"><svg class="ico ico--xs"><use href="#i-branch" /></svg><span>Invoices pass exact totals · invoices-exact-totals</span><svg class="ico ico--xs"><use href="#i-chevron" /></svg></div>
@@ -80,6 +85,7 @@ import plate from "../data/lasilla-plate.json";
                   <div class="file__bar">
                     <code>src/invoices/totals.ts</code>
                     <span class="file__working"><svg class="ico ico--xs"><use href="#i-bot" /></svg>An agent is working in this checkout</span>
+                    <span class="file__lsp">TypeScript</span>
                     <span class="file__saved">Saved</span>
                   </div>
                   <div class="code">
@@ -87,7 +93,7 @@ import plate from "../data/lasilla-plate.json";
                     <p><i>2</i><code>import type &#123; Invoice &#125; from <span class="syn-s">"./invoice"</span>;</code></p>
                     <p><i>3</i><code></code></p>
                     <p><i>4</i><code><span class="syn-c">// Unrounded: the ledger rounds once.</span></code></p>
-                    <p><i>5</i><code>export function <span class="syn-d">total</span>(invoice: Invoice) &#123;</code></p>
+                    <p><i>5</i><code>export function <span class="syn-d file__hovered">total</span>(invoice: Invoice) &#123;</code></p>
                     <p><i>6</i><code>  let sum = <span class="syn-n">0</span>;</code></p>
                     <p><i>7</i><code>  for (const line of invoice.lines) &#123;</code></p>
                     <p><i>8</i><code>    sum += line.quantity * line.unitPrice;</code></p>
@@ -102,6 +108,23 @@ import plate from "../data/lasilla-plate.json";
                     <p><i>17</i><code>    amount: total(invoice),</code></p>
                     <p><i>18</i><code>  &#125;);</code></p>
                     <p><i>19</i><code>&#125;</code></p>
+                    <div class="file__hover" aria-hidden="true">
+                      <code>function total(invoice: Invoice): number</code>
+                      <span>Unrounded: the ledger rounds once.</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="pane pane--chat split__chat">
+                  <div class="chat">
+                    <div class="msg msg--user">Where does an invoice total get rounded now?</div>
+                    <ul class="worklog">
+                      <li><svg class="ico ico--xs"><use href="#i-eye" /></svg><span>Found a definition <code>total</code></span></li>
+                      <li><svg class="ico ico--xs"><use href="#i-eye" /></svg><span>Found references <code>total</code></span></li>
+                      <li><svg class="ico ico--xs"><use href="#i-eye" /></svg><span>Found a definition <code>ledger.post</code></span></li>
+                    </ul>
+                    <div class="msg msg--agent">
+                      <p><code>total</code> returns the exact sum, and <code>post</code> is its only caller. <code>ledger.post</code> rounds once, half to even, before it writes the entry.</p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -110,17 +133,22 @@ import plate from "../data/lasilla-plate.json";
               </div>
               <div class="surface__desc">
                 <p>
-                  A thread can work in a checkout of its own. Pick it, and the sidebar leads with what is
-                  moving there: its uncommitted changes, its branch against main, then the files its
-                  latest commits touched.
+                  Point at a name and its language server shows what it is. Go to its definition, or find
+                  every place it is used. An agent that needs the same answer asks the same server at the
+                  same checkout, and its work log shows what it found.
+                </p>
+                <p>
+                  The code index holds each file’s definitions and imports for every branch. Agents search it
+                  in place of grep, and a file’s local graph draws from it what the file imports and what
+                  imports it.
                 </p>
                 <p>
                   Edit a file and it saves a moment after you stop typing. It says when an agent is working
-                  in its checkout, and your edit never overwrites newer changes saved there. Comment on a
-                  line of a diff to send it to that agent's thread.
+                  in the same copy, and your edit never overwrites newer changes saved there.
                 </p>
                 <p class="surface__note">
-                  On your iPhone, the Repositories tab lists the same files, read only.
+                  Language servers for TypeScript, Python, Rust, Go and more. On your iPhone, the Projects tab
+                  lists the same files, read only.
                 </p>
                 <a class="link" href="/download">Download Astrolabe<svg class="arw" aria-hidden="true"><use href="#i-arrow" /></svg></a>
               </div>

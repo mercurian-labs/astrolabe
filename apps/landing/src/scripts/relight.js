@@ -1,4 +1,4 @@
-// Astrolabe · drafting · the instrument's ground ([02]): a crop of Mercury in the two-ink grain under
+// Astrolabe · drafting · the instrument's ground ([01]): a crop of Mercury in the two-ink grain under
 // the astrolabe's sun, redrawn on `astrolabe:time`. The grain thresholds against fixed noise on the
 // canvas's own pixels so a moving light flips only grains crossing it; nothing shimmers. Repaints only
 // on change while on screen in a visible tab; without WebGL (or `?gl=0`) the static print shows.
@@ -26,8 +26,8 @@ import Twilight from "./twilight.js";
 
   const fallback = () => section.classList.add("relight--static");
 
-  /* ─────────── The page's palette follows the sun whether or not the ground can be drawn. While the
-     instrument sweeps in on arrival the page keeps the real sky (`nowAlt`), so it never flickers
+  /* ─────────── The page's theme follows the sun whether or not the ground can be drawn. While the
+     instrument sweeps in on arrival the page keeps the real sky (`nowAlt`), so it never flips
      through the three hours the sweep winds back. */
 
   document.addEventListener("astrolabe:time", (event) => {
@@ -46,6 +46,11 @@ import Twilight from "./twilight.js";
     draw();
   }
 
+  // The header's switch changes the inks and the light without moving the sun.
+  document.addEventListener("twilight:change", () => {
+    dirty = true;
+    paint();
+  });
   document.addEventListener("visibilitychange", paint);
 
   if (!canvas) return;
@@ -382,7 +387,7 @@ import Twilight from "./twilight.js";
   }
 
   function render(meta) {
-    const { alt, az } = sun;
+    const [alt, az] = Twilight.lit(sun.alt, sun.az, south);
     // The grain prints on the paper the page shows, which holds the real sky through the arrival.
     const palette = Twilight.current() || Twilight.at(alt);
     gl.viewport(0, 0, canvas.width, canvas.height);
