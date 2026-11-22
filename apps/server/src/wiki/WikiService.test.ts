@@ -439,6 +439,50 @@ it.effect("runs a base by file, by a note's block, or by source, on the line rea
         source: "views:\n  - type: table\n  - type: table\n    name: B\n    order: [formula.ppu]\n",
       });
       assert.deepEqual(other.warnings, ["No formula named “ppu” in view “B”'s order."]);
+
+      // Code files read the code index's facts at the commit the base reads.
+      yield* write(root, { "src/a.ts": "export const a = 1;\n" });
+      yield* git(root, ["add", "."]);
+      yield* git(root, ["commit", "--quiet", "-m", "Code"]);
+      const asked: Array<string> = [];
+      const facts = new Map([
+        [
+          "src/a.ts",
+          {
+            properties: { language: "typescript" },
+            links: [{ target: "Beta.md", types: ["imports"] }],
+          },
+        ],
+      ]);
+      yield* wikis.useCodeFacts(({ commit }) =>
+        Effect.sync(() => {
+          asked.push(commit);
+          return { state: "ready", files: facts } as const;
+        }),
+      );
+      const typescript =
+        "filters: 'code.language == \"typescript\"'\nviews:\n  - type: table\n    order: [file.path, code.language]\n";
+      assert.deepEqual((yield* wikis.query({ wikiId, source: typescript })).rows, [
+        {
+          name: "a.ts",
+          file: "src/a.ts",
+          values: { "file.path": "src/a.ts", "code.language": "typescript" },
+        },
+      ]);
+      assert.deepEqual(asked, [yield* git(root, ["rev-parse", "main"])]);
+      assert.deepEqual(
+        names(yield* wikis.query({ wikiId, source: 'filters: file.backlinksOfType("imports")' })),
+        ["Beta"],
+      );
+      yield* wikis.query({ wikiId, source: typescript, changeRequestId });
+      assert.equal(asked.at(-1), amended.commit);
+      // Until the index has read the repository, code files are file fields, and the base says so.
+      yield* wikis.useCodeFacts(() => Effect.succeed({ state: "building" }));
+      const building = yield* wikis.query({ wikiId, source: typescript });
+      assert.deepEqual(building.rows, []);
+      assert.deepEqual(building.warnings, [
+        "The code index is still reading this repository, so its code files show only their file fields.",
+      ]);
     }),
   ),
 );

@@ -49,9 +49,9 @@ export const withUnsentEdit = (
 const noteKey = (property: string) =>
   property.startsWith("note.") ? property.slice("note.".length) : property;
 
-/** Whether a column holds a note's own property, as opposed to a file field or a formula. */
+/** Whether a column holds a note's own property, not a file field, a formula or a code fact. */
 export const isNoteProperty = (column: string): boolean =>
-  !column.startsWith("file.") && !column.startsWith("formula.") && !column.startsWith("this.");
+  !/^(file|formula|this|code)\./.test(column);
 
 /** Whether a base's view may edit a row's file: a note, not a skill map. */
 export const isEditableNote = (file: string): boolean =>

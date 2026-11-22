@@ -104,7 +104,7 @@ const under = (path: string, folder: string) => folder === "" || path.startsWith
 
 const TEST_PATH =
   /(^|\/)(__tests__|__mocks__|tests?|spec|testing)\/|\.(test|spec|browser\.test)\.[cm]?[jt]sx?$|_test\.(go|py)$|(^|\/)test_[^/]*\.py$/;
-const isTestPath = (path: string) => TEST_PATH.test(path);
+export const isTestPath = (path: string) => TEST_PATH.test(path);
 
 /** The files a repository path names in a checkout: the file, or every file under a folder. */
 function filesAt(view: View, target: string): ReadonlyArray<string> {

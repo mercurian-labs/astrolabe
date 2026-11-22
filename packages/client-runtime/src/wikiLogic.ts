@@ -3,7 +3,9 @@ import { newNoteFile, type WikiPlacement } from "@mercurian/wiki/placement";
 import {
   isDocumentFile,
   isHidden,
+  isWikiDocument,
   linkFiles,
+  linkPath,
   resolveLink,
   unwrittenFile,
   writtenLink,
@@ -174,6 +176,13 @@ export const wikiLinkFile = (
 ): string =>
   (index === null ? null : resolveWikiLink(index, target, from).file) ??
   unwrittenFile(target, from);
+
+/** The repository file a whole-path link names when it is no document, as a code file's link is. */
+export const linkedFilePath = (target: string): string | null => {
+  if (!target.startsWith("/")) return null;
+  const path = linkPath(target).replace(/^\/+/, "");
+  return path === "" || isWikiDocument(path) ? null : path;
+};
 
 /**
  * The file a click on a link opens: the one it lands on, else where a new note goes. Null for a

@@ -4,8 +4,7 @@ import { rowDocument, type BaseCellValue } from "./baseCells";
 import { BaseLayout, type BaseLayoutHost } from "./baseLayout";
 import type { WikiEditorPage } from "./mobilePageController";
 
-const isNoteProperty = (column: string) =>
-  !column.startsWith("file.") && !column.startsWith("formula.") && !column.startsWith("this.");
+const isNoteProperty = (column: string) => !/^(file|formula|this|code)\./.test(column);
 const isEditableNote = (file: string) => /\.md$/i.test(file) && rowDocument({ file }) !== null;
 
 /** Cells of notes edit in place; a board's cards move between groups. */

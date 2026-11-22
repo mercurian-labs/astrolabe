@@ -27,6 +27,18 @@ export interface BaseDoc {
   /** Epoch milliseconds of the last and the first commit that touched the file, when known. */
   readonly mtime: number | undefined;
   readonly ctime: number | undefined;
+  /** A code file's facts from the code index; absent on every other file. */
+  readonly code?: CodeFile | undefined;
+}
+
+/**
+ * What the code index knows of one code file. Nobody writes these: a base reads its properties
+ * as `code.<name>` and its links as the file's links, each typed by how the files connect.
+ */
+export interface CodeFile {
+  readonly properties: Readonly<Record<string, unknown>>;
+  /** Repository paths of the files it links to, each with every type that holds between them. */
+  readonly links: ReadonlyArray<TypedLink>;
 }
 
 export interface DateValue {

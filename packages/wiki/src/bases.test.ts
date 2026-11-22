@@ -164,6 +164,118 @@ describe("link types", () => {
   });
 });
 
+describe("code files", () => {
+  const facts = (
+    properties: Record<string, unknown>,
+    links: Record<string, ReadonlyArray<string>> = {},
+  ) => ({
+    properties: { language: "typescript", lines: 10, isTest: false, ...properties },
+    links: Object.entries(links).map(([target, types]) => ({ target, types })),
+  });
+  const code = baseCorpus([
+    {
+      file: "Plan.md",
+      source: "---\ncode: written\n---\nSee [[packages/contracts/src/wiki.ts]].\n",
+    },
+    {
+      file: "packages/contracts/src/wiki.ts",
+      size: 120,
+      code: facts(
+        { package: "@t3tools/contracts", exports: ["WikiId"] },
+        { "packages/contracts/src/base.ts": ["imports"], "apps/server/src/leak.ts": ["imports"] },
+      ),
+    },
+    { file: "packages/contracts/src/base.ts", size: 40, code: facts({ exports: [] }) },
+    {
+      file: "apps/server/src/wiki.ts",
+      size: 300,
+      code: facts(
+        { definitions: ["class WikiService", "function query"] },
+        { "packages/contracts/src/wiki.ts": ["imports", "calls"] },
+      ),
+    },
+    { file: "apps/server/src/leak.ts", size: 10, code: facts({}) },
+    {
+      file: "apps/server/src/wiki.test.ts",
+      size: 90,
+      code: facts({ isTest: true }, { "apps/server/src/wiki.ts": ["imports"] }),
+    },
+    { file: "logo.png", size: 2048 },
+  ]);
+  const matching = (statement: string) =>
+    queryBase(code, parseBase(filter(statement)), { now: NOW })
+      .rows.map((row) => row.file)
+      .toSorted();
+
+  it("lists code files no test imports", () => {
+    expect(
+      matching(
+        "code.language && !code.isTest && file.backlinks.filter(value.asFile().code.isTest).isEmpty()",
+      ),
+    ).toEqual([
+      "apps/server/src/leak.ts",
+      "packages/contracts/src/base.ts",
+      "packages/contracts/src/wiki.ts",
+    ]);
+  });
+
+  it("lists what imports a named file, a note's link not among them", () => {
+    expect(
+      matching('file.linksOfType("imports").contains(link("packages/contracts/src/wiki.ts"))'),
+    ).toEqual(["apps/server/src/wiki.ts"]);
+    expect(matching('file.hasLink(link("packages/contracts/src/wiki.ts"))')).toEqual([
+      "Plan.md",
+      "apps/server/src/wiki.ts",
+    ]);
+    expect(matching('file.backlinksOfType("calls").length > 0')).toEqual([
+      "packages/contracts/src/wiki.ts",
+    ]);
+  });
+
+  it("lists crossings a base should find none of", () => {
+    expect(
+      matching(
+        'file.inFolder("packages/contracts") && file.links.filter(value.asFile().path.startsWith("apps/")).length > 0',
+      ),
+    ).toEqual(["packages/contracts/src/wiki.ts"]);
+  });
+
+  it("shows code properties as columns and suggests them, a note keeping its own", () => {
+    const result = queryBase(
+      code,
+      parseBase(
+        "properties:\n  note.code.lines:\n    displayName: Lines\nviews:\n  - type: table\n    order: [file.name, code.package, code.lines, code.definitions, code, file.links]\n",
+      ),
+      { now: NOW },
+    );
+    expect(result.columns.map((column) => column.label)).toEqual([
+      "file name",
+      "code.package",
+      "Lines",
+      "code.definitions",
+      "code",
+      "file links",
+    ]);
+    const byFile = new Map(result.rows.map((row) => [row.file, row.values]));
+    expect(byFile.get("packages/contracts/src/wiki.ts")?.["code.package"]).toBe(
+      "@t3tools/contracts",
+    );
+    expect(byFile.get("apps/server/src/wiki.ts")?.["code.definitions"]).toEqual([
+      "class WikiService",
+      "function query",
+    ]);
+    expect(byFile.get("Plan.md")?.code).toBe("written");
+    expect(byFile.get("packages/contracts/src/base.ts")?.code).toContain('"language":"typescript"');
+    expect(byFile.get("apps/server/src/wiki.test.ts")?.["file.links"]).toEqual([
+      "[[/apps/server/src/wiki.ts|wiki.ts]]",
+    ]);
+    expect(byFile.get("logo.png")?.["code.lines"]).toBeNull();
+    expect(result.properties?.map((property) => property.id)).toEqual(
+      expect.arrayContaining(["note.code", "code.language", "code.isTest", "code.definitions"]),
+    );
+  });
+});
+
 describe("queries", () => {
   it("runs Obsidian's own examples, copied verbatim, over every file in the wiki", () => {
     // Alpha is a book that links the Textbook; Delta is a book that does not.

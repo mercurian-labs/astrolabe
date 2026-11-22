@@ -18,6 +18,7 @@ import {
   wikiDraft,
   wikiLinkFile,
   wikiLinkOpens,
+  linkedFilePath,
   wikiSaveFailure,
 } from "./wikiLogic.ts";
 
@@ -195,6 +196,14 @@ describe("what a link opens", () => {
     ["./Note", "a/L.md", "a/Note.md"],
   ])("%s from %s opens %s", (target, from, file) => {
     expect(wikiLinkOpens(index, target, from, placement)).toBe(file);
+  });
+
+  it.each([
+    ["/src/b.ts", "src/b.ts"],
+    ["/a/Note.md", null],
+    ["src/b.ts", null],
+  ])("%s opens the file %s", (target, file) => {
+    expect(linkedFilePath(target)).toBe(file);
   });
 });
 

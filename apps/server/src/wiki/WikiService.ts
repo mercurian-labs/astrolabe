@@ -47,9 +47,11 @@ import {
   linkFiles,
   resolveLink,
   type BaseCorpus,
+  type CodeFile,
   type WikiLinkFiles,
 } from "@mercurian/wiki";
 import {
+  type CodeIndexError,
   type ProjectId,
   type ThreadId,
   type WikiAmendInput,
@@ -146,8 +148,10 @@ import {
   parseTreeListing,
   EDIT_TIMES_DEPTH,
   EDIT_TIMES_FORMAT,
+  advanceFileTimes,
   parseFileListing,
   parseFileTimes,
+  parseTreeChanges,
   withRecordedMoves,
   type WikiFileTimes,
   parseMergeTree,
@@ -243,10 +247,29 @@ export interface WikiCheckoutWriteResult {
   readonly warnings?: ReadonlyArray<string>;
 }
 
+/** What the code index knows of a wiki's code files at one commit. */
+export type CodeFacts =
+  | { readonly state: "off" }
+  | { readonly state: "building" }
+  | { readonly state: "ready"; readonly files: ReadonlyMap<string, CodeFile> };
+
+export type CodeFactsSource = (input: {
+  readonly root: string;
+  readonly commit: string;
+}) => Effect.Effect<CodeFacts, CodeIndexError>;
+
+const CODE_BUILDING =
+  "The code index is still reading this repository, so its code files show only their file fields.";
+
 export class WikiService extends Context.Service<
   WikiService,
   {
     readonly list: Effect.Effect<WikiListResult, WikiError>;
+    /**
+     * Astrolabe: where bases read code files' facts. The code index hands itself over as it
+     * starts; without one, as in most tests, code files keep their file fields only.
+     */
+    readonly useCodeFacts: (source: CodeFactsSource) => Effect.Effect<void>;
     /** Every change to any wiki, so open views know to read again. */
     readonly subscribe: Stream.Stream<WikiEvent>;
     readonly register: (input: WikiRegisterInput) => Effect.Effect<WikiSummary, WikiError>;
@@ -725,7 +748,12 @@ const make = Effect.gen(function* () {
   const changedFiles = lru<ChangedFiles>(128);
   const metadataRecords = lru<ChangeRequestRecord>(512);
   const editTimes = lru<WikiFileTimes>(24);
-  const corpora = lru<BaseCorpus>(8);
+  const corpora = lru<{
+    readonly corpus: BaseCorpus;
+    readonly code: ReadonlyMap<string, CodeFile> | undefined;
+  }>(8);
+  const codeFacts = yield* Ref.make<CodeFactsSource | null>(null);
+  const corpusLocks = new Map<string, Semaphore.Semaphore>();
   const fileListings = lru<FileListing>(8);
   // A change request's every read asks for its preview, and a canvas's merge reads three blobs.
   const mergePreviews = lru<WikiTreeMerge>(64);
@@ -897,7 +925,14 @@ const make = Effect.gen(function* () {
     listing.forEach((entry, position) => {
       files[entry.file] = contents[position] ?? "";
     });
-    const index = yield* Effect.try({ try: () => indexFiles(files), catch: planningError });
+    const index = yield* Effect.try({
+      try: () =>
+        indexFiles(
+          files,
+          others.map((entry) => entry.file),
+        ),
+      catch: planningError,
+    });
     const snapshot: Snapshot = { files, index, others };
     snapshots.set(treeish, snapshot);
     return snapshot;
@@ -2752,15 +2787,23 @@ const make = Effect.gen(function* () {
     const edits = yield* checkoutEdits(folder, true);
     if (carriedNames(edits).length === 0) return { head, edits, snapshot: committed };
     const files = applyChanges(committed.files, edits.changes);
+    const others = [
+      ...committed.others.filter(({ file }) => !(file in edits.blobs)),
+      ...Object.entries(edits.blobs).flatMap(([file, oid]) =>
+        oid === null ? [] : [{ file, oid }],
+      ),
+    ];
     const snapshot: Snapshot = {
       files,
-      index: yield* Effect.try({ try: () => indexFiles(files), catch: planningError }),
-      others: [
-        ...committed.others.filter(({ file }) => !(file in edits.blobs)),
-        ...Object.entries(edits.blobs).flatMap(([file, oid]) =>
-          oid === null ? [] : [{ file, oid }],
-        ),
-      ],
+      index: yield* Effect.try({
+        try: () =>
+          indexFiles(
+            files,
+            others.map((entry) => entry.file),
+          ),
+        catch: planningError,
+      }),
+      others,
     };
     return { head, edits, snapshot };
   });
@@ -3263,6 +3306,24 @@ const make = Effect.gen(function* () {
   ) {
     const cached = editTimes.get(commit);
     if (cached !== undefined) return cached;
+    // A draft's every save is a commit: from its parent's times, it costs only what it changed.
+    const parent = yield* onlyParent(wiki, commit);
+    const before = parent === null ? undefined : editTimes.get(parent);
+    if (before !== undefined) {
+      const step = yield* runGit("editTimesStep", wiki.root, [
+        "log",
+        "-1",
+        "--find-renames",
+        `--format=${EDIT_TIMES_FORMAT}`,
+        "--name-status",
+        "-z",
+        commit,
+        "--",
+      ]);
+      const times = advanceFileTimes(before, step.stdout);
+      editTimes.set(commit, times);
+      return times;
+    }
     const log = yield* runGit("editTimes", wiki.root, [
       "log",
       "--find-renames",
@@ -3278,6 +3339,55 @@ const make = Effect.gen(function* () {
     return times;
   });
 
+  /** A commit's one parent; null for a root or a merge. */
+  const onlyParent = Effect.fn("WikiService.onlyParent")(function* (
+    wiki: WikiRecord,
+    commit: string,
+  ) {
+    const line = yield* gitOut("parents", wiki.root, ["rev-list", "--parents", "-n", "1", commit]);
+    const parents = line.trim().split(" ");
+    return parents.length === 2 ? (parents[1] ?? null) : null;
+  });
+
+  /** The files at `commit`, from its parent's listing and what the commit changed. */
+  const listingFrom = Effect.fn("WikiService.listingFrom")(function* (
+    wiki: WikiRecord,
+    before: FileListing,
+    parent: string,
+    commit: string,
+  ) {
+    const changes = parseTreeChanges(
+      yield* gitOut("diffTree", wiki.root, [
+        "diff-tree",
+        "-r",
+        "-z",
+        "--no-renames",
+        "--no-commit-id",
+        parent,
+        commit,
+      ]),
+    );
+    const added = changes.filter(
+      (change) => change.oid !== null && (change.mode === "100644" || change.mode === "100755"),
+    );
+    const sizes =
+      added.length === 0
+        ? []
+        : (yield* gitOut("catFileSizes", wiki.root, ["cat-file", "--batch-check=%(objectsize)"], {
+            stdin: `${added.map((change) => change.oid).join("\n")}\n`,
+          })).split("\n");
+    const changed = new Set(changes.map((change) => change.file));
+    const entries = before.entries.filter((entry) => !changed.has(entry.file));
+    added.forEach((change, position) => {
+      const size = Number(sizes[position]);
+      if (change.oid !== null && Number.isFinite(size)) {
+        entries.push({ file: change.file, oid: change.oid, size });
+      }
+    });
+    // As `ls-tree -r` lists them.
+    return entries.toSorted((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
+  });
+
   /** Every file at `commit`, at any depth. */
   const fileListingAt = Effect.fn("WikiService.fileListingAt")(function* (
     wiki: WikiRecord,
@@ -3285,9 +3395,14 @@ const make = Effect.gen(function* () {
   ) {
     const cached = fileListings.get(commit);
     if (cached !== undefined) return cached;
-    const entries = parseFileListing(
-      (yield* runGit("lsTreeAll", wiki.root, ["ls-tree", "-r", "-l", "-z", commit])).stdout,
-    );
+    const parent = yield* onlyParent(wiki, commit);
+    const before = parent === null ? undefined : fileListings.get(parent);
+    const entries =
+      parent !== null && before !== undefined
+        ? yield* listingFrom(wiki, before, parent, commit)
+        : parseFileListing(
+            (yield* runGit("lsTreeAll", wiki.root, ["ls-tree", "-r", "-l", "-z", commit])).stdout,
+          );
     const listing: FileListing = {
       entries,
       byFile: new Map(entries.map((entry) => [entry.file, entry])),
@@ -3297,10 +3412,46 @@ const make = Effect.gen(function* () {
     return listing;
   });
 
-  /** Every file at `commit` as a base lists them; only notes and canvases are read. */
-  const corpusAt = Effect.fn("WikiService.corpusAt")(function* (wiki: WikiRecord, commit: string) {
+  /** What the code index knows of the wiki's code at `commit`; nothing when it can't say. */
+  const codeAt = Effect.fn("WikiService.codeAt")(function* (wiki: WikiRecord, commit: string) {
+    const source = yield* Ref.get(codeFacts);
+    if (source === null) return { state: "off" } satisfies CodeFacts;
+    return yield* source({ root: wiki.root, commit }).pipe(
+      Effect.catchCause((cause) =>
+        Effect.logWarning("bases could not read the code index", { cause }).pipe(
+          Effect.as({ state: "off" } satisfies CodeFacts),
+        ),
+      ),
+    );
+  });
+
+  /**
+   * Every file at `commit` as a base lists them; only notes and canvases are read, and code files
+   * carry `code`'s facts.
+   */
+  const corpusAt = Effect.fn("WikiService.corpusAt")(function* (
+    wiki: WikiRecord,
+    commit: string,
+    code: ReadonlyMap<string, CodeFile> | undefined,
+  ) {
     const cached = corpora.get(commit);
-    if (cached !== undefined) return cached;
+    if (cached !== undefined && cached.code === code) return cached.corpus;
+    let lock = corpusLocks.get(wiki.wikiId);
+    if (lock === undefined) {
+      lock = Semaphore.makeUnsafe(1);
+      corpusLocks.set(wiki.wikiId, lock);
+    }
+    return yield* lock.withPermits(1)(buildCorpus(wiki, commit, code));
+  });
+
+  // Readers asking at once wait for one build, then share it.
+  const buildCorpus = Effect.fn("WikiService.buildCorpus")(function* (
+    wiki: WikiRecord,
+    commit: string,
+    code: ReadonlyMap<string, CodeFile> | undefined,
+  ) {
+    const built = corpora.get(commit);
+    if (built !== undefined && built.code === code) return built.corpus;
     const listing = (yield* fileListingAt(wiki, commit)).entries.filter(
       (entry) => !isHidden(entry.file),
     );
@@ -3312,14 +3463,18 @@ const make = Effect.gen(function* () {
     const sources = new Map(readable.map((entry, position) => [entry.file, contents[position]]));
     const times = yield* editTimesAt(wiki, commit);
     const corpus = baseCorpus(
-      listing.map((entry) => ({
-        file: entry.file,
-        size: entry.size,
-        ...(sources.has(entry.file) ? { source: sources.get(entry.file) ?? "" } : {}),
-      })),
+      listing.map((entry) => {
+        const facts = code?.get(entry.file);
+        return {
+          file: entry.file,
+          size: entry.size,
+          ...(sources.has(entry.file) ? { source: sources.get(entry.file) ?? "" } : {}),
+          ...(facts === undefined ? {} : { code: facts }),
+        };
+      }),
       times,
     );
-    corpora.set(commit, corpus);
+    corpora.set(commit, { corpus, code });
     return corpus;
   });
 
@@ -3367,13 +3522,23 @@ const make = Effect.gen(function* () {
               }),
           });
           const edited = Object.keys(viewed).length > 0;
-          const index = edited ? indexFiles(applyChanges(snapshot.files, viewed)) : snapshot.index;
+          const index = edited
+            ? indexFiles(
+                applyChanges(snapshot.files, viewed),
+                snapshot.others.map((entry) => entry.file),
+              )
+            : snapshot.index;
           const changes = { ...inCheckout?.edits.changes, ...viewed };
           const located = locateBase(index, input);
           if ("problem" in located) {
             return yield* new WikiError({ reason: located.problem, message: located.message });
           }
-          const committed = yield* corpusAt(wiki, commit);
+          const code = yield* codeAt(wiki, commit);
+          const committed = yield* corpusAt(
+            wiki,
+            commit,
+            code.state === "ready" ? code.files : undefined,
+          );
           const corpus =
             Object.keys(changes).length > 0 ? corpusWithChanges(committed, changes) : committed;
           const now = yield* Clock.currentTimeMillis;
@@ -3395,7 +3560,11 @@ const make = Effect.gen(function* () {
           });
           // The view ran, so any error is another view's.
           const { errors, warnings } = checkBase(located.source);
-          const problems = [...errors, ...warnings];
+          const problems = [
+            ...errors,
+            ...warnings,
+            ...(code.state === "building" ? [CODE_BUILDING] : []),
+          ];
           return { commit, ...result, ...(problems.length ? { warnings: problems } : {}) };
         }),
       input.changeRequestId,
@@ -4597,6 +4766,9 @@ const make = Effect.gen(function* () {
     recordHostMerge,
     subscribe: Stream.fromPubSub(events),
     register,
+    useCodeFacts: Effect.fn("WikiService.useCodeFacts")(function* (source) {
+      yield* Ref.set(codeFacts, source);
+    }),
     create,
     remove,
     setMirror,
