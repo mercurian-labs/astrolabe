@@ -964,6 +964,27 @@ describe("a chat's terminal tab", () => {
     stop();
   });
 
+  it("minimizes apart from its chat's panel, which goes with its last tab", () => {
+    const { workspace, stop } = withChats();
+    const diff = chatSurfaceKey(chatA, "diff");
+    useRightPanelStore.getState().open(refA, "diff");
+    terminals().setTerminalOpen(refA, true);
+    let hidden = 0;
+    const hide = () => {
+      hidden += 1;
+      useRightPanelStore.getState().close(refA);
+    };
+    workspace.setPanel({ onHide: hide } as unknown as Parameters<typeof workspace.setPanel>[0]);
+    expect(workspace.minimizeLinkedTab(diff)).toBe(true);
+    expect(hidden).toBe(1);
+    expect(panes(workspace)).toEqual([[chatA, chatB], [terminalA]]);
+    expect(workspace.minimizeLinkedTab(terminalA)).toBe(true);
+    expect(hidden).toBe(1);
+    expect(panes(workspace)).toEqual([[chatA, chatB]]);
+    expect(workspace.linkedTabsOf(chatA)).toContainEqual({ key: terminalA, shown: false });
+    stop();
+  });
+
   it("opens from a stored layout with none, for a thread already left open", () => {
     terminals().setTerminalOpen(refA, true);
     const workspace = createWorkspace(() => chatTabsDevice());
