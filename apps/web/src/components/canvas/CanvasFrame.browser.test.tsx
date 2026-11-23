@@ -169,4 +169,32 @@ describe("the free board", () => {
     await userEvent.keyboard("{ArrowRight}");
     await vi.waitFor(() => expect(transformOf(screen.container)).not.toBe(fitted));
   });
+
+  it("focuses on the requested named group on initial mount under StrictMode", async () => {
+    const { StrictMode } = await import("react");
+    await using whole = await render(
+      <div style={{ width: 800, height: 600 }}>
+        <LazyCanvasBoard data={view.data} mode="free" label={view.title} />
+      </div>,
+      { router: false },
+    );
+    await expect.element(whole.getByText("Server")).toBeVisible();
+    const wholeTransform = transformOf(whole.container);
+
+    await using focused = await render(
+      <StrictMode>
+        <div style={{ width: 800, height: 600 }}>
+          <LazyCanvasBoard
+            data={view.data}
+            mode="free"
+            label={view.title}
+            focus={{ group: "Server", request: 1 }}
+          />
+        </div>
+      </StrictMode>,
+      { router: false },
+    );
+    await expect.element(focused.getByText("Server")).toBeVisible();
+    await vi.waitFor(() => expect(transformOf(focused.container)).not.toBe(wholeTransform));
+  });
 });

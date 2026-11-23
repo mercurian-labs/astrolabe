@@ -56,9 +56,17 @@ let focusRequests = 0;
 
 /** Asks the canvas tab `tabKey` opens to show the frame a link's `#` names, if it names one. */
 export function requestWikiCanvasFrame(tabKey: string, file: string, target: string) {
+  if (!isCanvasFile(file)) return;
   const at = target.indexOf("#");
   const group = at === -1 ? "" : target.slice(at + 1).trim();
-  if (!isCanvasFile(file) || group === "") return;
+  if (group === "") {
+    useWikiCanvasFocus.setState((state) => {
+      if (!(tabKey in state.byTab)) return state;
+      const { [tabKey]: _, ...rest } = state.byTab;
+      return { byTab: rest };
+    });
+    return;
+  }
   focusRequests += 1;
   useWikiCanvasFocus.setState((state) => ({
     byTab: { ...state.byTab, [tabKey]: { group, request: focusRequests } },

@@ -1992,7 +1992,10 @@ export function CanvasBoard({
     live.update({ board, world });
     const detach = view.attach(board, world, live.bounds, FIT_PADDING[mode], show);
     if (live.openingCamera) view.restore(live.openingCamera);
-    return detach;
+    return () => {
+      live.update({ focusedTo: null });
+      detach();
+    };
   }, [view, mode, show, live]);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- new contents reach the view outside React, keeping a reader's camera where it was

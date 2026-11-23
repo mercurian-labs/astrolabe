@@ -39,6 +39,7 @@ export class CanvasView {
   /** The zoom and line step the world was last styled for: a pan restyles nothing. */
   #styled: { zoom: number; line: number } | null = null;
   #onPaint: CanvasPaint | undefined;
+  #pendingFocus: CanvasBounds | null = null;
   readonly #pointers = new Map<number, { readonly x: number; readonly y: number }>();
 
   /** Starts showing `bounds` in `board`. Returns the way to stop. */
@@ -55,8 +56,15 @@ export class CanvasView {
     this.#padding = padding;
     this.#onPaint = onPaint;
     this.#styled = null;
+    this.#pendingFocus = null;
     this.fit();
     const observer = new ResizeObserver(() => {
+      if (this.#pendingFocus !== null && board.clientWidth > 0 && board.clientHeight > 0) {
+        const target = this.#pendingFocus;
+        this.#pendingFocus = null;
+        this.focus(target);
+        return;
+      }
       if (this.#fitted) this.fit();
       else this.#paint();
     });
@@ -69,6 +77,7 @@ export class CanvasView {
       this.#board = null;
       this.#world = null;
       this.#onPaint = undefined;
+      this.#pendingFocus = null;
     };
   }
 
@@ -140,6 +149,7 @@ export class CanvasView {
     const board = this.#board;
     const world = this.#world;
     if (board === null) return;
+    this.#pendingFocus = null;
     this.#camera = this.#fitIn(this.#bounds, board);
     this.#fitted = true;
     if (glide && world !== null && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -153,6 +163,11 @@ export class CanvasView {
   /** Shows `rect` whole, never closer than actual size. */
   focus(rect: CanvasBounds) {
     if (this.#board === null) return;
+    if (this.#board.clientWidth === 0 || this.#board.clientHeight === 0) {
+      this.#pendingFocus = rect;
+      return;
+    }
+    this.#pendingFocus = null;
     this.#move(this.#fitIn(rect, this.#board));
   }
 
@@ -257,6 +272,7 @@ export class CanvasView {
   }
 
   #move(next: CanvasCamera) {
+    this.#pendingFocus = null;
     this.#camera = next;
     this.#fitted = false;
     this.#frame ??= requestAnimationFrame(() => this.#paint());

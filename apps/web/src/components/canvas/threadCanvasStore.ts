@@ -51,6 +51,12 @@ export function showThreadCanvas(
     useThreadCanvasStore.setState((state) => ({
       focusByThread: { ...state.focusByThread, [key]: focus },
     }));
+  } else {
+    useThreadCanvasStore.setState((state) => {
+      if (!(key in state.focusByThread)) return state;
+      const { [key]: _, ...rest } = state.focusByThread;
+      return { focusByThread: rest };
+    });
   }
   useRightPanelStore.getState().open(threadRef, "canvas");
 }
