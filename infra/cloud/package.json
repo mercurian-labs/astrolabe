@@ -4,15 +4,16 @@
   "license": "FSL-1.1-MIT",
   "type": "module",
   "scripts": {
-    "build": "vp pack && mkdir -p dist/migrate/migrations && cp -R ../../apps/cloud/migrations/auth dist/migrate/migrations/auth && cp -R ../relay/migrations/postgres dist/migrate/migrations/relay",
+    "build": "vp pack && mkdir -p dist/migrate/migrations && cp -R ../../apps/cloud/migrations/auth dist/migrate/migrations/auth && cp -R ../relay/migrations/postgres dist/migrate/migrations/relay && cp images/rds-us-east-1.pem dist/migrate/",
     "dev": "vp run --filter @mercurian/auth build && alchemy dev",
-    "deploy": "alchemy deploy",
+    "deploy": "vp run --filter @mercurian/auth build && alchemy deploy",
     "destroy": "alchemy destroy",
     "typecheck": "effect-tsgo tsrs --noEmit",
     "test:integration": "test/integration.sh"
   },
   "dependencies": {
     "@alchemy.run/aws": "catalog:",
+    "@alchemy.run/cloudflare": "catalog:",
     "@alchemy.run/docker": "catalog:",
     "@alchemy.run/drizzle": "catalog:",
     "@distilled.cloud/aws": "catalog:",

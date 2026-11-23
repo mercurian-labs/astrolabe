@@ -1,0 +1,97 @@
+name: Deploy cloud
+
+# Deploys infra/cloud (sign-in, accounts, workspaces) as Alchemy stage `prod` to AWS, with
+# its certificate and origin records in Cloudflare. It does nothing until the repository
+# variable AWS_DEPLOY_ROLE_ARN is set (a job's `if` can't read environment variables);
+# infra/cloud/README.md#deploying lists the setup.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - apps/auth/**
+      - apps/cloud/**
+      - infra/cloud/**
+      - infra/relay/migrations/**
+      - packages/shared/**
+      - pnpm-lock.yaml
+      - .github/workflows/deploy-cloud.yml
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Redeploy every resource, including ones with no detected changes.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: cloud-production
+  cancel-in-progress: false
+
+jobs:
+  deploy_cloud:
+    name: Deploy production cloud
+    # A manual run from another branch would deploy that branch to production.
+    if: github.repository == 'mercurian-labs/astrolabe' && github.ref == 'refs/heads/main' && vars.AWS_DEPLOY_ROLE_ARN != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment:
+      name: production
+    env:
+      AWS_REGION: us-east-1
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUD_APP_URL: ${{ vars.CLOUD_APP_URL }}
+      CLOUD_ORIGIN_DOMAIN: ${{ vars.CLOUD_ORIGIN_DOMAIN }}
+      CLOUD_MAIL_DOMAIN: ${{ vars.CLOUD_MAIL_DOMAIN }}
+      RELAY_URL: ${{ vars.CLOUD_RELAY_URL }}
+      GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+      GITHUB_CLIENT_ID: ${{ vars.CLOUD_GITHUB_CLIENT_ID }}
+      MICROSOFT_CLIENT_ID: ${{ vars.MICROSOFT_CLIENT_ID }}
+      APPLE_CLIENT_ID: ${{ vars.APPLE_CLIENT_ID }}
+      APPLE_KEY_ID: ${{ vars.APPLE_KEY_ID }}
+      TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
+      ALCHEMY_TELEMETRY_DISABLED: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+
+      # The images are ARM64 (Graviton); the runner is x86.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: |
+            args:
+              - --filter=mercurian-cloud-infra...
+
+      - name: Deploy production cloud stage
+        working-directory: infra/cloud
+        run: vp run deploy --stage prod --yes --no-input ${{ inputs.force && '--force' || '' }}
+        # The API's secrets go in as CLOUD_<name>, never <name>: Alchemy copies whatever the API's
+        # code reads while planning into its task definition as plain text (src/deployment.ts).
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUD_ORIGIN_SECRET: ${{ secrets.CLOUD_ORIGIN_SECRET }}
+          CLOUD_GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          CLOUD_GITHUB_CLIENT_SECRET: ${{ secrets.CLOUD_GITHUB_CLIENT_SECRET }}
+          CLOUD_MICROSOFT_CLIENT_SECRET: ${{ secrets.MICROSOFT_CLIENT_SECRET }}
+          CLOUD_APPLE_PRIVATE_KEY: ${{ secrets.APPLE_PRIVATE_KEY }}
+          CLOUD_TURNSTILE_SECRET_KEY: ${{ secrets.TURNSTILE_SECRET_KEY }}
