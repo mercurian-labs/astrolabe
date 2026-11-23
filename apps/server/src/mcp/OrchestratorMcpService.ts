@@ -68,6 +68,7 @@ import {
   resolveProjectProviderInstanceEnabled,
   SECRET_REQUEST_UNSAVED_NOTE,
 } from "@t3tools/contracts";
+import { canvasUniqueTitle } from "@mercurian/wiki/canvas";
 import { getProviderOptionCurrentValue, withLegacyUltracodeEffort } from "@t3tools/shared/model";
 import { runRanAfter } from "@t3tools/shared/orchestrationV2ThreadError";
 import { formatThreadLink } from "@t3tools/shared/threadLinks";
@@ -205,7 +206,10 @@ export interface OrchestratorMcpServiceShape {
       readonly document: unknown;
       readonly code: CanvasShowCode | undefined;
     },
-  ) => Effect.Effect<TurnItemId | undefined, OrchestratorMcpFailure>;
+  ) => Effect.Effect<
+    { readonly turnItemId: TurnItemId; readonly title: string } | undefined,
+    OrchestratorMcpFailure
+  >;
   /** Only status reaches the agent, never this value. */
   readonly requestSecret: (
     scope: McpInvocationScope,
@@ -2146,7 +2150,10 @@ const make = Effect.gen(function* () {
     recordCanvas: Effect.fn("OrchestratorMcpService.recordCanvas")(function* (scope, input) {
       if (scope.thread === undefined) return undefined;
       const threadId = scope.thread.threadId;
-      const parent = yield* loadCallerRecords(threadId, ["runs"]);
+      const parent = yield* loadThreadRecords(threadId, ["runs", "turnItems"], {
+        runStatuses: ThreadManagementService.ACTIVE_RUN_STATUSES,
+        turnItemTypes: ["canvas"],
+      });
       const run = ThreadManagementService.latestActiveRun(parent);
       if (
         run === undefined ||
@@ -2159,6 +2166,15 @@ const make = Effect.gen(function* () {
       const turnItemId = TurnItemId.make(
         `turn-item:canvas:${stablePart(threadId)}:${stablePart(key)}`,
       );
+      // Its file name is its title's, which replies embed it by: unique in the thread, a retry aside.
+      const title = canvasUniqueTitle(
+        input.title,
+        parent.turnItems.flatMap((item) =>
+          item.type === "canvas" && item.id !== turnItemId && item.title !== null
+            ? [item.title]
+            : [],
+        ),
+      );
       yield* threadManagement
         .dispatch({
           type: "canvas.record",
@@ -2167,7 +2183,7 @@ const make = Effect.gen(function* () {
           runId: run.id,
           nodeId: run.rootNodeId,
           turnItemId,
-          title: input.title,
+          title,
           document: input.document,
           ...(input.code === undefined ? {} : { code: input.code }),
         })
@@ -2176,7 +2192,7 @@ const make = Effect.gen(function* () {
             failure("orchestration_error", `Could not record the canvas: ${errorMessage(error)}`),
           ),
         );
-      return turnItemId;
+      return { turnItemId, title };
     }),
     requestSecret: Effect.fn("OrchestratorMcpService.requestSecret")(function* (scope, input) {
       const { scope: threadScope, parent } = yield* loadThreadCaller(scope, "request_secret");

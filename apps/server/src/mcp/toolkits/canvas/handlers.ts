@@ -1,4 +1,9 @@
-import { canvasDocument, canvasDrawingProblems } from "@mercurian/wiki/canvas";
+import {
+  canvasDocument,
+  canvasDrawingProblems,
+  canvasEmbeds,
+  canvasFileName,
+} from "@mercurian/wiki/canvas";
 import {
   OrchestratorMcpFailure,
   ThreadId,
@@ -19,7 +24,7 @@ import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import * as OrchestratorMcpService from "../../OrchestratorMcpService.ts";
 import { loadCaller, readThread, unavailable } from "../../threadAccess.ts";
-import { CanvasToolkit } from "./tools.ts";
+import { CanvasToolkit, canvasShownMessage } from "./tools.ts";
 
 const invalid = (message: string) =>
   new OrchestratorMcpFailure({ code: "invalid_request", message });
@@ -82,7 +87,7 @@ export const layer = McpToolAccess.toLayer(CanvasToolkit, {
       const board = yield* layoutCanvas(input);
       const scope = yield* McpInvocationContext.McpInvocationContext;
       const service = yield* OrchestratorMcpService.OrchestratorMcpService;
-      const canvasItemId = yield* service
+      const recorded = yield* service
         .recordCanvas(scope, { title: input.title, document: canvasDocument(board), code })
         .pipe(
           Effect.catch((error) =>
@@ -91,13 +96,20 @@ export const layer = McpToolAccess.toLayer(CanvasToolkit, {
             }).pipe(Effect.as(undefined)),
           ),
         );
+      if (recorded === undefined) {
+        return {
+          message: "Shown to the reader below your reply.",
+          ...(code === undefined ? {} : { code }),
+        };
+      }
+      const file = canvasFileName(recorded.title);
+      const embeds = canvasEmbeds(file, board);
       return {
-        message:
-          (input.stories ?? []).length > 0
-            ? "Shown to the reader above your reply, with its stories to walk: each step's note is what they read at that step. Don't list the steps again; reply with only what the stories don't already say."
-            : "Shown to the reader above your reply. Don't describe it; reply with only what it doesn't already say.",
+        message: canvasShownMessage(file),
+        canvasItemId: recorded.turnItemId,
+        file,
+        embeds,
         ...(code === undefined ? {} : { code }),
-        ...(canvasItemId === undefined ? {} : { canvasItemId }),
       };
     }),
   ),

@@ -1604,7 +1604,7 @@ const OrchestrationV2SecretRequestFields = {
  */
 const OrchestrationV2CanvasFields = {
   type: Schema.Literal("canvas"),
-  /** A JSON Canvas document: its nodes and edges where the layout put them, and its stories. */
+  /** A JSON Canvas document: its nodes and edges where the layout put them. */
   document: Schema.Unknown,
   /** Where its code cards point, so a kept card can pin that code. */
   code: Schema.optional(CanvasShowCode),

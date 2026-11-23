@@ -72,7 +72,11 @@ const project: Project = {
   deletedAt: null,
 };
 
-const harness = (options: { readonly files?: ReadonlyArray<string>; readonly noGit?: boolean }) => {
+const harness = (options: {
+  readonly files?: ReadonlyArray<string>;
+  readonly noGit?: boolean;
+  readonly recordedTitle?: string;
+}) => {
   const asked: string[] = [];
   const recorded: Array<{ readonly title: string; readonly document: unknown }> = [];
   const kept: Array<{
@@ -96,7 +100,10 @@ const harness = (options: { readonly files?: ReadonlyArray<string>; readonly noG
         Layer.mock(OrchestratorMcpService.OrchestratorMcpService)({
           recordCanvas: (_scope, input) => {
             recorded.push(input);
-            return Effect.succeed(TurnItemId.make("turn-item:canvas:1"));
+            return Effect.succeed({
+              turnItemId: TurnItemId.make("turn-item:canvas:1"),
+              title: options.recordedTitle ?? input.title,
+            });
           },
         }),
         Layer.mock(CanvasKeep.CanvasKeep)({
@@ -156,8 +163,10 @@ describe("canvas toolkit handlers", () => {
       });
       expect(result.isError).not.toBe(true);
       expect(result.structuredContent).toEqual({
-        message: expect.any(String),
+        message: expect.stringContaining("![[Flow.canvas]]"),
         canvasItemId: "turn-item:canvas:1",
+        file: "Flow.canvas",
+        embeds: ["![[Flow.canvas]]"],
       });
       expect(tools.asked).toEqual([]);
       // The board is laid out here, once, for the thread to keep; the agent gets only its id.
@@ -195,10 +204,69 @@ describe("canvas toolkit handlers", () => {
         cards: [{ id: "a", path: "a.ts" }],
       });
       expect(result.isError).not.toBe(true);
-      expect(result.structuredContent).toEqual({
-        message: expect.any(String),
-        canvasItemId: "turn-item:canvas:1",
+      expect(result.structuredContent).toMatchObject({ canvasItemId: "turn-item:canvas:1" });
+    }),
+  );
+
+  it.effect(
+    "names the board by the title it was recorded under, with an embed for each frame",
+    () =>
+      Effect.gen(function* () {
+        // An earlier canvas in the thread took "Checkout", so this one was recorded as "Checkout 2".
+        const tools = harness({ recordedTitle: "Checkout 2" });
+        const result = yield* tools.call({
+          title: "Checkout",
+          cards: [
+            { id: "cart", text: "Cart", group: "shop" },
+            { id: "charge", text: "Charge", group: "pay" },
+            { id: "receipt", text: "Receipt" },
+          ],
+          groups: [
+            { id: "shop", label: "Storefront" },
+            { id: "pay", label: "Payments" },
+            { id: "bare" },
+          ],
+          arrows: [
+            { from: "cart", to: "charge" },
+            { from: "charge", to: "receipt" },
+          ],
+        });
+        expect(result.structuredContent).toMatchObject({
+          file: "Checkout 2.canvas",
+          embeds: [
+            "![[Checkout 2.canvas]]",
+            "![[Checkout 2.canvas#Storefront]]",
+            "![[Checkout 2.canvas#Payments]]",
+          ],
+        });
+        expect(tools.recorded).toMatchObject([{ title: "Checkout" }]);
+      }),
+  );
+
+  it.effect("lays out lanes from its arrows, with no stories to ask for", () =>
+    Effect.gen(function* () {
+      const tools = harness({});
+      const result = yield* tools.call({
+        title: "Login",
+        cards: [
+          { id: "form", text: "Form", group: "browser" },
+          { id: "check", text: "Check", group: "server" },
+        ],
+        groups: [
+          { id: "browser", label: "Browser" },
+          { id: "server", label: "Server" },
+        ],
+        arrows: [{ from: "form", to: "check" }],
+        layout: { kind: "lanes" },
       });
+      expect(result.isError).not.toBe(true);
+      const document = tools.recorded[0]?.document as {
+        nodes: ReadonlyArray<{ id: string; x: number }>;
+        astrolabe?: unknown;
+      };
+      const x = (id: string) => document.nodes.find((node) => node.id === id)?.x ?? NaN;
+      expect(x("check")).toBeGreaterThan(x("form"));
+      expect(document.astrolabe).toBeUndefined();
     }),
   );
 

@@ -18,9 +18,13 @@ import * as CanvasKeep from "../../../wiki/CanvasKeep.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as OrchestratorMcpService from "../../OrchestratorMcpService.ts";
 
+/** What a drawn board's result tells the agent, by the file its reply embeds it as. */
+export const canvasShownMessage = (file: string): string =>
+  `Drawn as ${file}, which the reader can always open below your reply. Write any of \`embeds\` on its own line where it helps the reader: ![[${file}]] shows the whole board, ![[${file}#Group label]] one named group. [[${file}#Group label]] links to it instead. Say around each what the picture can't; don't restate its cards.`;
+
 const CanvasShowTool = Tool.make(CANVAS_SHOW_TOOL_NAME, {
   description:
-    "Draw a diagram of boxes and arrows in this thread: a flow, an architecture, dependencies. Send what is on it, never where: it is laid out for you. Explaining how something works, one stage after another: give it a story, which the reader walks a step at a time, each with its note. Shown above your reply; don't restate it. It stays in the thread unless the user keeps it. Charts, mockups, rich pages: `html_render`. The real code's structure: `astrolabe_code_graph_show`.",
+    "Draw a diagram of boxes and arrows in this thread: a flow, an architecture, dependencies. Send what is on it, never where: it is laid out for you. Name a group for each region or stage of a connected diagram, or leave a small one ungrouped. The result gives its file and embeds: write `![[Name.canvas#Group label]]` in your reply's prose where that part helps, or `![[Name.canvas]]` for the whole board. It stays in the thread unless the user keeps it. Charts, mockups, rich pages: `html_render`. The real code's structure: `astrolabe_code_graph_show`.",
   parameters: CanvasShowInput,
   success: CanvasShowResult,
   failure: OrchestratorMcpFailure,

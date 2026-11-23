@@ -293,6 +293,54 @@ export function canvasFrame(
   return byId;
 }
 
+/** What a canvas's name can't hold: what a file name or a `[[link]]` would break on. */
+const UNSAFE_NAME = /[\\/:*?"<>|#^[\]\p{Cc}]+/gu;
+const MAX_NAME = 100;
+
+/** A canvas's file name, from its title: what a link or an embed calls it, `.canvas` included. */
+export function canvasFileName(title: string): string {
+  const name = title
+    .replace(UNSAFE_NAME, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\.canvas$/i, "")
+    .replace(/^[.\s]+/, "")
+    .slice(0, MAX_NAME)
+    .trim();
+  return `${name === "" ? "Canvas" : name}.canvas`;
+}
+
+/** How a link names a canvas, with or without `.canvas`, ignoring case. */
+export const canvasNameKey = (name: string): string =>
+  name
+    .trim()
+    .replace(/\.canvas$/i, "")
+    .trim()
+    .normalize("NFC")
+    .toLowerCase();
+
+/** The title a new canvas takes so no earlier one shares its file name: its own, else numbered. */
+export function canvasUniqueTitle(title: string, earlier: Iterable<string>): string {
+  const taken = new Set([...earlier].map((each) => canvasNameKey(canvasFileName(each))));
+  const own = canvasFileName(title).replace(/\.canvas$/i, "");
+  if (!taken.has(canvasNameKey(own))) return title;
+  for (let next = 2; ; next++) {
+    if (!taken.has(canvasNameKey(`${own} ${next}`))) return `${title.trim()} ${next}`;
+  }
+}
+
+/** What a link or embed writes after the `#` for a frame: its label, else its id when the label can't be written. */
+export const canvasFrameRef = (group: { readonly id: string; readonly label: string }): string =>
+  /[\]|#^[]/.test(group.label) || group.label.trim() === "" ? group.id : group.label.trim();
+
+/** Ready-to-write embeds of a board: the whole of it, then each of its frames. */
+export function canvasEmbeds(file: string, data: Pick<CanvasData, "nodes">): string[] {
+  return [
+    `![[${file}]]`,
+    ...canvasGroups(data).map((group) => `![[${file}#${canvasFrameRef(group)}]]`),
+  ];
+}
+
 /** The cards a frame holds: those wholly inside its group, groups inside it included. */
 export const canvasFrameCards = (
   data: Pick<CanvasData, "nodes">,

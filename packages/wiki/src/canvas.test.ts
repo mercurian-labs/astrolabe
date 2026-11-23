@@ -11,8 +11,12 @@ import {
   canvasDrawingProblems,
   canvasInkBounds,
   canvasInkEnd,
+  canvasEmbeds,
+  canvasFileName,
   canvasFrame,
   canvasFrameCards,
+  canvasNameKey,
+  canvasUniqueTitle,
   canvasLayoutKind,
   diffCanvas,
   parseCanvas,
@@ -944,6 +948,40 @@ describe("placeCanvas", () => {
       expect([...canvasFrameCards(data, canvasFrame(data, "Checkout Flow")!)].sort()).toEqual([
         "a",
         "b",
+      ]);
+    });
+
+    it.each([
+      ["Checkout Flow", "Checkout Flow.canvas"],
+      ["  Auth: sign-in / out  ", "Auth sign-in out.canvas"],
+      ["[[Weird]] #title|x", "Weird title x.canvas"],
+      ["Board.canvas", "Board.canvas"],
+      ["...", "Canvas.canvas"],
+      ["", "Canvas.canvas"],
+    ])("names a canvas titled %j as %s", (title, file) => {
+      expect(canvasFileName(title)).toBe(file);
+    });
+
+    it("numbers a title whose file name an earlier canvas already has, ignoring case", () => {
+      expect(canvasUniqueTitle("Flow", [])).toBe("Flow");
+      expect(canvasUniqueTitle("Flow", ["Other"])).toBe("Flow");
+      expect(canvasUniqueTitle("flow", ["Flow"])).toBe("flow 2");
+      expect(canvasUniqueTitle("Flow", ["Flow", "flow 2", "Flow: 3"])).toBe("Flow 4");
+      expect(canvasNameKey(" Checkout Flow.CANVAS ")).toBe(canvasNameKey("checkout flow"));
+    });
+
+    it("lists the embeds a board can be stitched in with: the whole of it, then each frame", () => {
+      const data = canvasData({
+        nodes: [
+          { id: "g", type: "group", label: "Pay", x: 0, y: 0, width: 400, height: 140 },
+          { id: "h", type: "group", label: "a|b", x: 600, y: 0, width: 200, height: 140 },
+          { id: "u", type: "group", x: 900, y: 0, width: 200, height: 140 },
+        ],
+      });
+      expect(canvasEmbeds("Flow.canvas", data)).toEqual([
+        "![[Flow.canvas]]",
+        "![[Flow.canvas#Pay]]",
+        "![[Flow.canvas#h]]",
       ]);
     });
 
