@@ -914,21 +914,21 @@ section {
 .tour:not([data-state]) .tour__phase.is-on i span {
   transform: none;
 }
-/* Once it has played, the bar marks the phase on show; the others offer themselves on hover. */
+/* Phase buttons are always clickable; while ready the active one stays full, others hint on hover. */
 .tour[data-state="ready"] .tour__phase:not(.is-on) i span {
   transform: scaleX(0) !important;
 }
 .tour[data-state="ready"] .tour__phase.is-on i span {
   transform: none !important;
 }
-.tour[data-state="ready"] .tour__phase:not(.is-on):is(:hover, :focus-visible) i span {
-  transform: none !important;
-  background: var(--ink-4);
-}
-.tour[data-state="ready"] .tour__phase {
+.tour[data-state] .tour__phase {
   cursor: pointer;
 }
-.tour[data-state="ready"] .tour__phase:hover .tag {
+.tour[data-state] .tour__phase:not(.is-on):is(:hover, :focus-visible) i {
+  background: var(--ink-4);
+}
+.tour[data-state] .tour__phase:hover .tag,
+.tour[data-state] .tour__phase:focus-visible .tag {
   color: var(--ink);
 }
 .tour__phase .tag {
@@ -942,16 +942,64 @@ section {
   font-weight: 500;
   color: var(--ink-3);
 }
-.tour__caption {
+.tour__foot {
   grid-column: span 6;
+  display: flex;
+  align-items: stretch;
+  border-left: 1px solid var(--rule);
+}
+.tour__caption {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   padding: 0.9rem var(--pad);
-  border-left: 1px solid var(--rule);
   font-size: 0.9375rem;
   line-height: 1.45;
   color: var(--ink-2);
   text-wrap: pretty;
+}
+.tour:not([data-state]) .tour__toggle {
+  display: none;
+}
+.tour__toggle {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-width: 6.4rem;
+  margin: 0;
+  padding: 0 1.15rem;
+  border: 0;
+  border-left: 1px solid var(--rule);
+  background: none;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition:
+    color 0.16s,
+    background-color 0.16s;
+}
+.tour__toggle:hover,
+.tour__toggle:focus-visible {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+.tour__toggle:focus-visible {
+  outline-offset: -4px;
+}
+.tour__toggle[aria-pressed="true"] {
+  color: var(--rust-text);
+}
+.tour__ico {
+  width: 0.82rem;
+  height: 0.82rem;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 /* The panel: the print covers it, the window keeps a deliberate inset and is never wider than a
@@ -999,7 +1047,7 @@ section {
   .hero__head,
   .hero__top > .sky,
   .tour__phases,
-  .tour__caption {
+  .tour__foot {
     grid-column: 1 / -1;
   }
   .hero__top > .sky {
@@ -1007,19 +1055,29 @@ section {
     border-top: 1px solid var(--rule);
   }
   .tour__phase {
-    padding-inline: 0 0.75rem;
+    padding: 0.85rem 0.75rem;
     gap: 0.65rem;
   }
-  .tour__phase:first-child {
+  .tour__phases > li:first-child .tour__phase {
     padding-left: var(--pad);
   }
-  .tour__phase + .tour__phase {
+  .tour__phases > li:last-child .tour__phase {
+    padding-right: var(--pad);
+  }
+  .tour__phases > li + li .tour__phase {
     border-left: 0;
   }
-  .tour__caption {
-    padding-top: 0;
+  .tour__foot {
     border-left: 0;
+    border-top: 1px solid var(--rule-soft);
+  }
+  .tour__caption {
+    padding: 0.75rem var(--pad);
     font-size: 0.875rem;
+  }
+  .tour__toggle {
+    min-width: 5.6rem;
+    padding: 0.65rem 0.95rem;
   }
 }
 @media (max-width: 520px) {
@@ -1028,6 +1086,32 @@ section {
   }
   .hero__lede {
     font-size: 1rem;
+  }
+  .tour__phases {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .tour__phases > li .tour__phase {
+    padding: 0.75rem var(--pad);
+  }
+  .tour__phases > li:nth-child(even) .tour__phase {
+    border-left: 1px solid var(--rule-soft);
+  }
+  .tour__phases > li:nth-child(n + 3) .tour__phase {
+    border-top: 1px solid var(--rule-soft);
+  }
+  .tour__caption {
+    padding: 0.7rem 0.85rem 0.7rem var(--pad);
+  }
+  .tour__toggle {
+    min-width: auto;
+    padding: 0.65rem 0.85rem;
+  }
+  .tour__chip {
+    height: auto;
+    min-height: 2.35rem;
+    padding: 0.45rem 0.8rem;
+    font-size: 0.875rem;
+    text-align: left;
   }
 }
 /* Phones get the tall window on the scene, with the basin's floor and the scarp around the crop. */
@@ -2564,6 +2648,7 @@ hidden, leaves the sticky stage working). */
 .app--tour[data-state] [data-k]:not(.is-shown),
 .app--tour [data-off],
 .app--tour:not([data-section="agents"]) [data-in="agents"],
+.app--tour:not([data-section="story"]) [data-in="story"],
 .app--tour:not([data-section="wikis"]) [data-in="wikis"],
 .app--tour:not([data-section="changes"]) [data-in="changes"],
 .app--tour[data-cpane="pr"] .pane--group,
@@ -2596,15 +2681,17 @@ hidden, leaves the sticky stage working). */
     color 0.18s,
     background-color 0.18s;
 }
-.app--tour[data-section="agents"] [data-go="agents"],
-.app--tour[data-section="wikis"] [data-go="wikis"],
-.app--tour[data-section="changes"] [data-go="changes"] {
+.app--tour[data-section="agents"] .rail__item[data-go="agents"],
+.app--tour[data-section="story"] .rail__item[data-go="agents"],
+.app--tour[data-section="wikis"] .rail__item[data-go="wikis"],
+.app--tour[data-section="changes"] .rail__item[data-go="changes"] {
   color: var(--app-text);
   background: var(--app-row-hover);
 }
-.app--tour[data-section="agents"] [data-go="agents"]::before,
-.app--tour[data-section="wikis"] [data-go="wikis"]::before,
-.app--tour[data-section="changes"] [data-go="changes"]::before {
+.app--tour[data-section="agents"] .rail__item[data-go="agents"]::before,
+.app--tour[data-section="story"] .rail__item[data-go="agents"]::before,
+.app--tour[data-section="wikis"] .rail__item[data-go="wikis"]::before,
+.app--tour[data-section="changes"] .rail__item[data-go="changes"]::before {
   content: "";
   position: absolute;
   left: -0.375em;
@@ -3081,23 +3168,274 @@ hidden, leaves the sticky stage working). */
   }
 }
 
-/* Once it has played the window answers the pointer: the rail's sections, the tabs, the rows. */
-.app--tour[data-state="exploring"] :is([data-go], [data-tab], [data-row], [data-cp]) {
+/* Visual Story pane: 3-beat canvas + live code/wiki evidence split. */
+.app--tour .doc .peek__type {
+  font-size: 0.78em;
+  vertical-align: 0.04em;
+}
+.pane--story {
+  min-height: 0;
+  overflow: hidden;
+}
+.story__bar {
+  gap: 0.65em;
+  padding: 0 1.1em;
+}
+.story__steps {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2em;
+  padding: 0.18em;
+  border: 1px solid var(--app-border);
+  border-radius: 0.55em;
+  background: var(--app-canvas);
+}
+.story__step-nav {
+  display: inline-grid;
+  place-items: center;
+  width: 1.5em;
+  height: 1.5em;
+  border-radius: 0.35em;
+  color: var(--app-muted);
+}
+.story__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  padding: 0.16em 0.55em;
+  border-radius: 0.38em;
+  font-size: 0.74em;
+  color: var(--app-muted);
+  white-space: nowrap;
+  transition:
+    background-color 0.16s,
+    color 0.16s;
+}
+.story__pill b {
+  font-family: var(--mono);
+  font-weight: 500;
+  font-size: 0.92em;
+}
+.app--tour .story__kept {
+  gap: 0.35em;
+  padding: 0.22em 0.6em;
+}
+.app--tour[data-beat="1"] .story__pill[data-beat="1"],
+.app--tour[data-beat="2"] .story__pill[data-beat="2"],
+.app--tour[data-beat="3"] .story__pill[data-beat="3"] {
+  background: var(--app-surface);
+  color: var(--app-text);
+  box-shadow: 0 1px 2px oklch(0 0 0 / 0.08);
+}
+.app--tour[data-beat="1"] .story__side-step[data-beat="1"],
+.app--tour[data-beat="2"] .story__side-step[data-beat="2"],
+.app--tour[data-beat="3"] .story__side-step[data-beat="3"],
+.app--tour[data-evidence="intents"] .story__side-ev[data-cite="intents"],
+.app--tour[data-evidence="checkout"] .story__side-ev[data-cite="checkout"],
+.app--tour[data-evidence="rounding"] .story__side-ev[data-cite="rounding"] {
+  background: var(--app-row-active);
+  color: var(--app-text);
+}
+.story__body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  overflow: hidden;
+}
+.app--tour:not([data-evidence="none"]) .story__body {
+  grid-template-columns: minmax(0, 1fr) 22.8em;
+}
+.app--tour .story__board {
+  padding: 0.85em 1.05em;
+  overflow: hidden;
+}
+.app--tour .story__cv {
+  width: 100%;
+  max-height: 100%;
+  height: auto;
+}
+.app--tour .cv-card {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.app--tour .cv-card rect {
+  transition:
+    fill 0.24s var(--ease-out),
+    stroke 0.24s var(--ease-out),
+    stroke-width 0.24s var(--ease-out);
+}
+.cv-stage {
+  transition: opacity 0.28s var(--ease-out);
+}
+.cv-beat-mark {
+  transition: opacity 0.24s var(--ease-out);
+}
+.cv-head--accent {
+  fill: var(--app-agent);
+}
+.app--tour[data-beat="1"] .cv-stage--2,
+.app--tour[data-beat="1"] .cv-stage--3 {
+  opacity: 0.16;
+}
+.app--tour[data-beat="1"] .cv-beat-mark {
+  opacity: 0;
+}
+.app--tour[data-beat="2"] .cv-stage--3 {
+  opacity: 0.2;
+}
+.app--tour:is([data-beat="2"], [data-beat="3"]) .cv-card--touch rect {
+  fill: color-mix(in srgb, var(--app-agent) 9%, var(--app-surface));
+  stroke: color-mix(in srgb, var(--app-agent) 55%, transparent);
+}
+.app--tour[data-evidence="intents"] .cv-card[data-cite="intents"] rect,
+.app--tour[data-evidence="checkout"] .cv-card[data-cite="checkout"] rect,
+.app--tour[data-evidence="rounding"] .cv-card[data-cite="rounding"] rect {
+  stroke: var(--app-agent);
+  stroke-width: 2;
+  fill: color-mix(in srgb, var(--app-agent) 13%, var(--app-surface));
+}
+.app--tour[data-evidence="none"] .story__ev {
+  display: none;
+}
+.story__ev {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--app-border);
+  background: var(--app-surface);
+  overflow: hidden;
+  animation: tour-fade 0.2s var(--ease-out) both;
+}
+.story__ev-pane {
+  grid-column: auto;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.app--tour:not([data-evidence="intents"]) .story__ev-pane[data-ev="intents"],
+.app--tour:not([data-evidence="checkout"]) .story__ev-pane[data-ev="checkout"],
+.app--tour:not([data-evidence="rounding"]) .story__ev-pane[data-ev="rounding"] {
+  display: none;
+}
+.story__ev-close {
+  display: inline-grid;
+  place-items: center;
+  width: 1.65em;
+  height: 1.65em;
+  border-radius: 0.35em;
+  color: var(--app-muted);
+}
+.app--tour .story__code {
+  flex: 1;
+  min-height: 0;
+  padding: 0.6em 0 0.8em;
+  font-size: 0.72em;
+  line-height: 1.62;
+  overflow: hidden;
+}
+.app--tour .story__code i {
+  width: 2.5em;
+  padding-right: 0.8em;
+}
+.story__line-cite {
+  background: color-mix(in srgb, var(--app-agent) 11%, transparent);
+}
+.app--tour .story__hover {
+  left: 1.1em;
+  right: 1.1em;
+  top: calc(0.6em + 5.6 * 1.62em);
+  padding: 0.55em 0.75em;
+  white-space: normal;
+  font-size: 0.94em;
+}
+.app--tour .story__hover--checkout {
+  top: calc(0.6em + 4.6 * 1.62em);
+}
+.app--tour .story__hover code {
+  font-size: 0.95em;
+  word-break: break-word;
+}
+.ev-note {
+  padding: 1.1em 1.25em;
+  font-size: 0.84em;
+  line-height: 1.55;
+}
+.ev-note h4 {
+  font-size: 1.25em;
+  font-weight: 650;
+  margin-bottom: 0.45em;
+}
+.ev-note a {
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+.ev-note__link {
+  display: block;
+  margin-top: 0.8em;
+  padding: 0.4em 0.6em;
+  border-radius: 0.4em;
+  background: var(--app-code);
+  font-size: 0.86em;
+  color: var(--app-muted);
+  overflow-x: auto;
+}
+.ev-note__meta {
+  margin-top: 0.85em;
+  padding-top: 0.75em;
+  border-top: 1px solid var(--app-border);
+  font-size: 0.88em;
+  color: var(--app-muted);
+}
+
+/* Interactive controls inside the window respond to clicks in playing, paused, and exploring states. */
+.app--tour[data-state]:not([data-state="poster"])
+  :is(
+    [data-go],
+    [data-tab],
+    [data-row],
+    [data-cp],
+    [data-beat],
+    [data-beat-step],
+    [data-cite],
+    [data-evidence-close],
+    [data-keep-wiki],
+    [data-p="switch"]
+  ) {
   cursor: pointer;
 }
-.app--tour[data-state="exploring"]
-  :is(.card, .slim, .tab:not(.is-front), .mini, .chip, .sub, .cbar__btn, .divider__act):hover {
+.app--tour[data-state="poster"] [data-p="send"] {
+  cursor: pointer;
+}
+.app--tour:is([data-state="exploring"], [data-state="paused"])
+  :is(
+    .card,
+    .slim,
+    .tab:not(.is-front),
+    .mini,
+    .chip,
+    .sub,
+    .cbar__btn,
+    .divider__act,
+    .story__pill,
+    .story__step-nav,
+    .story__ev-close
+  ):hover {
   background: var(--app-row-active);
 }
-.app--tour[data-state="exploring"] .rail__item:hover {
+.app--tour:is([data-state="exploring"], [data-state="paused"]) .rail__item:hover {
   color: var(--app-text);
   background: var(--app-row-hover);
 }
-.app--tour[data-state="exploring"] .card.is-on:hover {
+.app--tour:is([data-state="exploring"], [data-state="paused"]) .card.is-on:hover {
   background: var(--app-row-hover);
 }
+.app--tour[data-state]:not([data-state="poster"]) .cv-card--cite:hover rect {
+  stroke: var(--app-agent);
+}
 
-/* The example prompts under the window, on the print: paper chips, the one playing marked. */
+/* The example prompts under the window, on the print: paper chips, always ready to switch scenarios. */
 .tour__try {
   display: flex;
   flex-wrap: wrap;
@@ -3176,6 +3514,9 @@ hidden, leaves the sticky stage working). */
   .app--tour .pb {
     grid-template-columns: 0 0 minmax(0, 1fr);
   }
+  .app--tour:not([data-evidence="none"]) .story__body {
+    grid-template-columns: minmax(0, 1fr) 20.5em;
+  }
 }
 /* Phones: one pane at a size that reads; the tabs give way to the one in front. */
 @container (max-width: 560px) {
@@ -3191,7 +3532,8 @@ hidden, leaves the sticky stage working). */
     justify-content: center;
     padding: 0;
   }
-  .app--tour .tb__strip--main .tab:not(.is-front) :is(.tab__title, .ico--xs) {
+  .app--tour .tb__strip--main .tab:not(.is-front) .tab__title,
+  .app--tour .tb__strip--main .tab:not(.is-front) .ico--xs:last-child {
     display: none;
   }
   .app--tour .chat {
@@ -3223,6 +3565,38 @@ hidden, leaves the sticky stage working). */
   .app--tour .member--narrow-off,
   .prv__tabs > span:not(.is-on, .prv__checks) {
     display: none;
+  }
+  .app--tour .story__bar {
+    gap: 0.4em;
+    padding: 0 0.7em;
+  }
+  .app--tour .story__bar .doc__name,
+  .app--tour .story__pill span {
+    display: none;
+  }
+  .app--tour:not([data-evidence="none"]) .story__body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) 16.5em;
+  }
+  .app--tour .story__board {
+    padding: 0.6em;
+  }
+  .app--tour .story__ev {
+    border-left: 0;
+    border-top: 1px solid var(--app-border);
+  }
+  .app--tour .story__code {
+    font-size: 0.68em;
+    line-height: 1.52;
+  }
+  .app--tour .story__hover {
+    left: 0.7em;
+    right: 0.7em;
+    top: calc(0.55em + 5.2 * 1.52em);
+    font-size: 0.88em;
+  }
+  .app--tour .story__hover--checkout {
+    top: calc(0.55em + 4.3 * 1.52em);
   }
 }
 
