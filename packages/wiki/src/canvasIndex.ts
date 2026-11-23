@@ -138,7 +138,7 @@ function overlapLines(data: CanvasData): string[] {
 
 /**
  * A canvas as an agent reads it: cards under the smallest group holding them, in reading order,
- * then the arrows between them, then which overlapping card is on top, then its stories. No
+ * then the arrows between them, then which overlapping card is on top. No
  * coordinates: a position is no use to something that can't see.
  */
 export function canvasOutline(file: string, data: CanvasData): string {
@@ -179,16 +179,6 @@ export function canvasOutline(file: string, data: CanvasData): string {
   }
   const overlaps = overlapLines(data);
   if (overlaps.length > 0) lines.push("", "Overlapping", ...overlaps);
-  for (const story of data.stories ?? []) {
-    lines.push("", `Story: ${story.title}`);
-    story.steps.forEach((step, index) => {
-      const shows = (step.groups ?? (step.group === undefined ? step.cards : [step.group]))
-        .map((id) => `[${id}]`)
-        .join(" ");
-      const label = step.label === undefined ? "" : `${step.label}. `;
-      lines.push(`${index + 1}. ${shows} ${label}${step.note}`);
-    });
-  }
   return lines.join("\n");
 }
 

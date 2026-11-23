@@ -18,8 +18,6 @@ import {
   type CanvasBounds,
   type CanvasData,
   type CanvasEdge,
-  type CanvasGroupNode,
-  type CanvasNode,
   type CanvasRoute,
   type CanvasSide,
   type CanvasStyle,
@@ -29,7 +27,6 @@ import {
   canvasCardSize,
   canvasPlace,
   CANVAS_PRESETS,
-  insideGroup,
   type CanvasNewCard,
   type CanvasNewGroup,
 } from "./canvasPlace.ts";
@@ -152,7 +149,7 @@ export type CanvasHandEdit =
       readonly at?: number | undefined;
     }
   | { readonly op: "remove-arrow"; readonly arrow: string }
-  /** The board's stories, whole, as the file holds them; none removes them. */
+  /** Retired: no client sends it, but recorded thread edits still replay it as they landed. */
   | { readonly op: "set-stories"; readonly stories: ReadonlyArray<unknown> }
   /** A whole drawing: new, or in place of the one with its id. `at` is its place in the list. */
   | {
@@ -1160,236 +1157,6 @@ export function applyCanvasEdits(
   }
   return replay(file, source, edits, seed);
 }
-
-/** A change a person makes to a board's stories, by their places as `canvasData` reads them. */
-export type CanvasStoryChange =
-  /** `story` one past the last starts a new story, titled `title`. */
-  | {
-      readonly kind: "add-step";
-      readonly story: number;
-      readonly at: number;
-      readonly step: CanvasStepPick;
-      readonly title?: string;
-    }
-  | {
-      readonly kind: "edit-step";
-      readonly story: number;
-      readonly step: number;
-      readonly label?: string;
-      readonly note?: string;
-    }
-  | {
-      readonly kind: "move-step";
-      readonly story: number;
-      readonly step: number;
-      readonly to: number;
-    }
-  | { readonly kind: "remove-step"; readonly story: number; readonly step: number }
-  /** A new section, `around` the step's cards, which the step then is. */
-  | {
-      readonly kind: "make-section";
-      readonly story: number;
-      readonly step: number;
-      readonly around: CanvasBounds;
-    }
-  | { readonly kind: "rename-story"; readonly story: number; readonly title: string }
-  | { readonly kind: "remove-story"; readonly story: number };
-
-/**
- * What a new step shows: a group, several (with their cards, for versions that read one), cards
- * across groups, or a new section `around` cards that sit together, which it then is.
- */
-export type CanvasStepPick =
-  | { readonly group: string }
-  | { readonly groups: ReadonlyArray<string>; readonly cards: ReadonlyArray<string> }
-  | { readonly cards: ReadonlyArray<string> }
-  | { readonly around: CanvasBounds };
-
-/** Room a section leaves round what it's made around, as the editor's Section does round a selection. */
-const SECTION_PADDING = 20;
-
-/** The box a section made around `rects` takes. */
-function sectionBox(rects: ReadonlyArray<CanvasBounds>): CanvasBounds {
-  const x = Math.min(...rects.map((rect) => rect.x));
-  const y = Math.min(...rects.map((rect) => rect.y));
-  const right = Math.max(...rects.map((rect) => rect.x + rect.width));
-  const bottom = Math.max(...rects.map((rect) => rect.y + rect.height));
-  return {
-    x: x - SECTION_PADDING,
-    y: y - SECTION_PADDING,
-    width: right - x + SECTION_PADDING * 2,
-    height: bottom - y + SECTION_PADDING * 2,
-  };
-}
-
-const overlapping = (a: CanvasBounds, b: CanvasBounds) =>
-  a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
-
-/**
- * Where a new section round `cards` goes, when two or more sit together: their box holds no other
- * card and crosses no section's edge. Null when they don't.
- */
-export function canvasSectionAround(
-  data: CanvasData,
-  cards: Iterable<string>,
-): CanvasBounds | null {
-  const ids = new Set(cards);
-  const picked = data.nodes.filter((node) => node.type !== "group" && ids.has(node.id));
-  if (picked.length < 2) return null;
-  const box = sectionBox(picked);
-  const crossed = data.nodes.some((node) =>
-    node.type === "group"
-      ? overlapping(node, box) && !insideGroup(node, box) && !insideGroup(box, node)
-      : !ids.has(node.id) && overlapping(node, box),
-  );
-  return crossed ? null : box;
-}
-
-/** The smallest group holding exactly `cards`, and nothing else. */
-function sectionOf(data: CanvasData, cards: ReadonlySet<string>): CanvasGroupNode | undefined {
-  const loose = data.nodes.filter((node) => node.type !== "group");
-  let found: CanvasGroupNode | undefined;
-  for (const group of data.nodes) {
-    if (group.type !== "group") continue;
-    const inside = loose.filter((node) => insideGroup(group, node));
-    if (inside.length !== cards.size || !inside.every((node) => cards.has(node.id))) continue;
-    if (found === undefined || group.width * group.height < found.width * found.height) {
-      found = group;
-    }
-  }
-  return found;
-}
-
-/**
- * What a selection makes a step of. Sections alone are those sections. Otherwise its cards, a
- * picked section bringing those inside it: the section they exactly fill, else a new section round
- * them when they sit together, else the cards as they are. Nothing for a selection that shows none.
- */
-export function canvasStepPick(data: CanvasData, picked: Iterable<string>): CanvasStepPick | null {
-  const ids = new Set(picked);
-  const nodes = data.nodes.filter((node) => ids.has(node.id));
-  const groups = nodes.filter((node): node is CanvasGroupNode => node.type === "group");
-  const inside = (node: CanvasNode) =>
-    node.type !== "group" && groups.some((group) => insideGroup(group, node));
-  const [only, ...more] = groups;
-  if (only !== undefined && groups.length === nodes.length) {
-    if (more.length === 0) return { group: only.id };
-    return {
-      groups: groups.map((group) => group.id),
-      cards: data.nodes.filter(inside).map((node) => node.id),
-    };
-  }
-  const cards = new Set(nodes.filter((node) => node.type !== "group").map((node) => node.id));
-  for (const node of data.nodes) if (inside(node)) cards.add(node.id);
-  if (cards.size === 0) return null;
-  const section = sectionOf(data, cards);
-  if (section !== undefined) return { group: section.id };
-  const around = canvasSectionAround(data, cards);
-  return around === null ? { cards: [...cards] } : { around };
-}
-
-/** The places in `list` of the entries `read` keeps, so places as drawn find their raw entry. */
-const shownPlaces = (list: ReadonlyArray<unknown>, read: (raw: unknown) => boolean) =>
-  list.flatMap((raw, place) => (read(raw) ? [place] : []));
-
-const isStory = (raw: unknown) =>
-  canvasData({ astrolabe: { stories: [raw] } }).stories !== undefined;
-const isStep = (raw: unknown) => isStory({ steps: [raw] });
-
-/**
- * The edits that make `change` to the board `document` holds: a `set-stories`, after the section a
- * change makes, with its id from `mint`. Whatever a story or step holds that this version doesn't
- * read stays as the file has it.
- */
-export function canvasStoryEdit(
-  document: unknown,
-  change: CanvasStoryChange,
-  mint?: () => string,
-): ReadonlyArray<CanvasHandEdit> {
-  const around = change.kind === "make-section" ? change.around : undefined;
-  const made = change.kind === "add-step" && "around" in change.step ? change.step.around : around;
-  if (made === undefined) return [storiesEdit(document, change, undefined)];
-  if (mint === undefined) throw new CanvasEditError("A new section needs an id.");
-  const id = mint();
-  const { x, y, width, height } = made;
-  return [
-    { op: "put-card", node: { id, type: "group", x, y, width, height } },
-    storiesEdit(document, change, id),
-  ];
-}
-
-function storiesEdit(
-  document: unknown,
-  change: CanvasStoryChange,
-  section: string | undefined,
-): CanvasHandEdit {
-  const astrolabe = isRecord(document) && isRecord(document.astrolabe) ? document.astrolabe : {};
-  const stories = given(astrolabe.stories);
-  const storyPlaces = shownPlaces(stories, isStory);
-  const set = (next: unknown[]) => ({ op: "set-stories", stories: next }) as const;
-  const storyAt = storyPlaces[change.story];
-  if (change.kind === "add-step" && storyAt === undefined) {
-    const title = change.title ?? `Story ${storyPlaces.length + 1}`;
-    return set([...stories, { title, steps: [newStep(change.step, section)] }]);
-  }
-  const story = storyAt === undefined ? undefined : stories[storyAt];
-  if (storyAt === undefined || !isRecord(story)) return set(stories);
-  const withStory = (next: Raw | null) =>
-    set(spliced(stories, storyAt, 1, ...(next === null ? [] : [next])));
-  const steps = given(story.steps);
-  const stepPlaces = shownPlaces(steps, isStep);
-  const withSteps = (next: unknown[]) =>
-    withStory(next.some(isStep) ? { ...story, steps: next } : null);
-  switch (change.kind) {
-    case "rename-story":
-      return withStory({ ...story, title: change.title });
-    case "remove-story":
-      return withStory(null);
-    case "add-step": {
-      const before = stepPlaces[change.at] ?? steps.length;
-      return withSteps(spliced(steps, before, 0, newStep(change.step, section)));
-    }
-  }
-  const stepAt = stepPlaces[change.step];
-  const step = stepAt === undefined ? undefined : steps[stepAt];
-  if (stepAt === undefined || !isRecord(step)) return set(stories);
-  switch (change.kind) {
-    case "edit-step": {
-      let next: Raw = step;
-      if (change.note !== undefined) next = withKey(next, "note", change.note);
-      if (change.label !== undefined) {
-        next = withKey(next, "label", change.label.trim() === "" ? null : change.label);
-      }
-      return withSteps(spliced(steps, stepAt, 1, next));
-    }
-    case "remove-step":
-      return withSteps(spliced(steps, stepAt, 1));
-    case "make-section": {
-      if (section === undefined) return set(stories);
-      const { cards: _cards, groups: _groups, ...kept } = step;
-      return withSteps(spliced(steps, stepAt, 1, { ...kept, group: section }));
-    }
-    case "move-step": {
-      const to = stepPlaces[Math.max(0, Math.min(change.to, stepPlaces.length - 1))] ?? stepAt;
-      return withSteps(spliced(spliced(steps, stepAt, 1), to, 0, step));
-    }
-  }
-}
-
-const spliced = (list: ReadonlyArray<unknown>, at: number, remove: number, ...add: unknown[]) => {
-  const next = [...list];
-  next.splice(at, remove, ...add);
-  return next;
-};
-
-const newStep = (pick: CanvasStepPick, section: string | undefined): Raw =>
-  "around" in pick
-    ? { note: "", group: section }
-    : "group" in pick
-      ? { note: "", group: pick.group }
-      : "groups" in pick
-        ? { note: "", groups: [...pick.groups], cards: [...pick.cards] }
-        : { note: "", cards: [...pick.cards] };
 
 /** What an order names: kinds may share an id. A section is a card here, as the file has it. */
 export interface CanvasLayerRef {
