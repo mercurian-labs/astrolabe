@@ -554,12 +554,6 @@ const FIT_ICON = [
   "M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3",
 ];
 
-/** A card with a step's number on its corner, as the board marks one. */
-const STEP_ICON = [
-  "M10 6h9a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-9",
-  "M6 2.5a3.5 3.5 0 1 0 0 7a3.5 3.5 0 1 0 0-7",
-];
-
 /** Strokes for the bar's undo, redo and zoom, on the tools' 24-unit grid. */
 const CANVAS_VIEW_ICONS = {
   undo: ["M9 14 4 9l5-5", "M4 9h10.5a5.5 5.5 0 0 1 0 11H11"],
@@ -600,7 +594,7 @@ export interface CanvasBarHistory {
   readonly redo: () => void;
 }
 
-type BarGroup = "pick" | "draw" | "files" | "step" | "history" | "zoom" | "done";
+type BarGroup = "pick" | "draw" | "files" | "history" | "zoom" | "done";
 type BarUnit = { readonly id: string; readonly group: BarGroup };
 
 /** What leaves the bar first when the board is too narrow for it, in order. */
@@ -608,7 +602,6 @@ const OVERFLOW_ORDER = [
   "zoom",
   "history",
   "files",
-  "step",
   "lasso",
   "shape",
   "eraser",
@@ -736,8 +729,6 @@ export function CanvasToolRow({
   toBoard,
   onAdd,
   files = true,
-  onStep,
-  stepReady,
   onDone,
   history,
   zoom,
@@ -755,9 +746,6 @@ export function CanvasToolRow({
   readonly onAdd: (kind: DragInKind, at: CanvasPoint | null) => void;
   /** Whether there's a wiki to add notes and media from. */
   readonly files?: boolean;
-  /** Adds what's selected to the story; left out where there's no story to add to. */
-  readonly onStep?: (() => void) | undefined;
-  readonly stepReady: boolean;
   /** Stops editing; left out where editing can't be turned off. */
   readonly onDone?: (() => void) | undefined;
   readonly history: CanvasBarHistory;
@@ -784,7 +772,6 @@ export function CanvasToolRow({
       group: PICK_TOOLS.has(kind) ? ("pick" as const) : ("draw" as const),
     })),
     ...(files ? [{ id: "files", group: "files" as const }] : []),
-    ...(onStep === undefined ? [] : [{ id: "step", group: "step" as const }]),
     { id: "history", group: "history" },
     { id: "zoom", group: "zoom" },
     ...(onDone === undefined ? [] : [{ id: "done", group: "done" as const }]),
@@ -895,18 +882,6 @@ export function CanvasToolRow({
             {label}
           </button>
         ));
-      case "step":
-        return (
-          <button
-            type="button"
-            data-step
-            {...named("Step from selection", ["Step from selection"])}
-            disabled={!copy && !stepReady}
-            onClick={onStep}
-          >
-            <ToolIcon strokes={STEP_ICON} />
-          </button>
-        );
       case "history":
         return (
           <>
@@ -994,16 +969,6 @@ export function CanvasToolRow({
           run: () => onAdd(kind, null),
         })),
       );
-    }
-    if (hidden.has("step") && onStep !== undefined) {
-      groups.push([
-        {
-          label: "Step from selection",
-          icon: <ToolIcon strokes={STEP_ICON} />,
-          disabled: !stepReady,
-          run: onStep,
-        },
-      ]);
     }
     if (hidden.has("history")) {
       groups.push([

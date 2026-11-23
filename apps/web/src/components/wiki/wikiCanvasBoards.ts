@@ -1,4 +1,6 @@
-import type { CanvasBoardCommand } from "@mercurian/wiki-editor/canvas-board";
+import { isCanvasFile } from "@mercurian/wiki/canvas";
+import type { CanvasBoardCommand, CanvasBoardFocus } from "@mercurian/wiki-editor/canvas-board";
+import { create } from "zustand";
 
 /** The group a canvas's palette entry can jump to. */
 export interface WikiCanvasGroup {
@@ -41,3 +43,24 @@ export function registerWikiCanvasBoard(tabKey: string, board: WikiCanvasBoard) 
 }
 
 export const wikiCanvasBoard = (tabKey: string) => boards.get(tabKey);
+
+/**
+ * The frame a link or embed asked a canvas tab to show, by tab: `[[Board.canvas#Group]]`. Each ask
+ * is a new request, so asking again brings the camera back; nothing persists.
+ */
+export const useWikiCanvasFocus = create<{
+  readonly byTab: Readonly<Record<string, CanvasBoardFocus>>;
+}>(() => ({ byTab: {} }));
+
+let focusRequests = 0;
+
+/** Asks the canvas tab `tabKey` opens to show the frame a link's `#` names, if it names one. */
+export function requestWikiCanvasFrame(tabKey: string, file: string, target: string) {
+  const at = target.indexOf("#");
+  const group = at === -1 ? "" : target.slice(at + 1).trim();
+  if (!isCanvasFile(file) || group === "") return;
+  focusRequests += 1;
+  useWikiCanvasFocus.setState((state) => ({
+    byTab: { ...state.byTab, [tabKey]: { group, request: focusRequests } },
+  }));
+}

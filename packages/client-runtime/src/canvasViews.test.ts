@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   canvasViewFromItem,
+  canvasViewNamed,
   editedBoardsSinceLastPrompt,
   editedFilesSinceLastPrompt,
 } from "./canvasViews.ts";
@@ -15,6 +16,25 @@ const item = (overrides: Record<string, unknown>) => ({
   input,
   output: { structuredContent: { message: "Shown" } },
   ...overrides,
+});
+
+describe("canvasViewNamed", () => {
+  const views = [
+    { id: "1", title: "Checkout Flow" },
+    { id: "2", title: "Auth: sign-in" },
+    { id: "3", title: "checkout flow" },
+  ];
+  it.each([
+    ["Checkout Flow.canvas", "3"],
+    ["checkout flow", "3"],
+    ["CHECKOUT FLOW.CANVAS", "3"],
+    ["Auth sign-in.canvas", "2"],
+    ["Auth: sign-in", "2"],
+    ["Missing.canvas", undefined],
+    ["", undefined],
+  ])("finds %j as the board %s", (name, id) => {
+    expect(canvasViewNamed(views, name)?.id).toBe(id);
+  });
 });
 
 describe("canvasViewFromItem", () => {
@@ -40,8 +60,8 @@ describe("canvasViewFromItem", () => {
         astrolabe: { stories: [{ title: "Tour", steps: [{ note: "Here", cards: ["a"] }] }] },
       },
     });
-    expect(board?.data.nodes).toMatchObject([{ id: "a", x: 40, y: 80 }]);
-    expect(board?.data.stories?.[0]?.title).toBe("Tour");
+    // An older board's stories are left in its file and drawn as nothing.
+    expect(board?.data).toEqual({ nodes: [expect.objectContaining({ id: "a", x: 40, y: 80 })], edges: [] });
     expect(
       canvasViewFromItem(
         item({

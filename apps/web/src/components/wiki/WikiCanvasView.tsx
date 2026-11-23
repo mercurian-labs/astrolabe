@@ -9,7 +9,6 @@ import {
   type CanvasBoardHandle,
   type CanvasBoardSettings,
 } from "@mercurian/wiki-editor/canvas-board";
-import { canvasStoryEdit } from "@mercurian/wiki/canvas-edits";
 import { CanvasDocument } from "@mercurian/wiki-editor/canvas-document";
 import { useAtomValue } from "@effect/atom-react";
 import { changeRequestCanvasReview } from "@t3tools/client-runtime/wikiLogic";
@@ -34,9 +33,6 @@ import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { Button } from "../ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
 import { Spinner } from "../ui/spinner";
-import { CanvasStoryPill, onStepKey } from "../canvas/CanvasStoryPill";
-import { useCanvasWalk } from "../canvas/useCanvasWalk";
-import { useCanvasDocumentData } from "../canvas/useThreadCanvasDocument";
 import {
   describeWikiFailure,
   documentPath,
@@ -54,6 +50,7 @@ import {
 import {
   canvasReadOnlyKey,
   registerWikiCanvasBoard,
+  useWikiCanvasFocus,
   type WikiCanvasGroup,
 } from "./wikiCanvasBoards";
 import { useWikiAutosaveCommand, useWikiCommand, useWikiTerms } from "./wikiEnvironment";
@@ -122,8 +119,7 @@ function CanvasBoardPane({
 
   const board = useRef<CanvasBoardHandle>(null);
   const editable = canvas !== null && !readOnly;
-  const shown = useCanvasDocumentData(canvas, data);
-  const walk = useCanvasWalk({ title: documentTitle(file), data: shown }, null);
+  const focus = useWikiCanvasFocus((state) => state.byTab[tabKey]);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the command palette reaches this canvas through a registry outside React
   useEffect(
     () =>
@@ -137,10 +133,7 @@ function CanvasBoardPane({
   );
 
   return (
-    <div
-      className="flex min-h-0 min-w-0 flex-1 flex-col"
-      onKeyDown={(event) => onStepKey(event, walk.steps.length, walk.step, walk.go)}
-    >
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="min-h-0 flex-1">
         <CanvasBoard
           ref={board}
@@ -154,23 +147,9 @@ function CanvasBoardPane({
           onReadOnly={onReadOnly}
           settings={settings}
           onSettings={onSettings}
-          story={walk.story}
-          step={walk.step}
-          onPresent={() => walk.go(0)}
-          onStepAdded={(index) => {
-            if (walk.step !== null) walk.go(index);
-          }}
+          focus={focus}
           {...(marks === undefined ? {} : { marks })}
-        >
-          <CanvasStoryPill
-            walk={walk}
-            edit={
-              canvas === null || !editable
-                ? undefined
-                : (change) => canvas.commit(canvasStoryEdit(canvas.document, change, canvas.mint))
-            }
-          />
-        </CanvasBoard>
+        />
       </div>
     </div>
   );

@@ -17,6 +17,7 @@ import {
   remarkCodexDirectives,
 } from "./codexMarkdownDirectives.ts";
 import { isWindowsDrivePathHref, normalizeMarkdownLinkDestination } from "./markdownLinks.ts";
+import { CANVAS_LINK_PROTOCOL, remarkCanvasLinks } from "./canvasLinks.ts";
 import { THREAD_LINK_PROTOCOL } from "./threadLinks.ts";
 
 export { remarkEnableOrderedListNumbers } from "./markdownOrderedListNumbers.ts";
@@ -201,7 +202,7 @@ const CHAT_MARKDOWN_SANITIZE_SCHEMA = {
     ],
     blockquote: [...(defaultSchema.attributes?.blockquote ?? []), "dataAlert"],
     div: [...(defaultSchema.attributes?.div ?? []), ...CODEX_ARTIFACT_TEMPLATE_HAST_PROPERTIES],
-    a: [...(defaultSchema.attributes?.a ?? []), "dataPullRequestAutolink"],
+    a: [...(defaultSchema.attributes?.a ?? []), "dataPullRequestAutolink", "dataMarkdownCopy"],
     img: [
       ...(defaultSchema.attributes?.img ?? []),
       "dataDarkSrc",
@@ -219,6 +220,7 @@ const CHAT_MARKDOWN_SANITIZE_SCHEMA = {
       "t3-citation",
       "t3-context",
       THREAD_LINK_PROTOCOL,
+      CANVAS_LINK_PROTOCOL,
       // Scheme only: the renderer's URL transform checks the rest of the link shape.
       ...LOCAL_FILE_LINK_SCHEMES,
     ],
@@ -236,6 +238,7 @@ export const CHAT_MARKDOWN_REMARK_PLUGINS: PluggableList = [
   remarkKeepOrderedListNumbers,
   remarkNormalizeListItemIndentation,
   remarkCodexDirectives,
+  remarkCanvasLinks,
   remarkBreakAroundImageLines,
   remarkPreserveCodeMeta,
   remarkNormalizeLinksAndTagInlineCode,
@@ -249,6 +252,7 @@ export const CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS: PluggableList = [
   remarkKeepOrderedListNumbers,
   remarkNormalizeListItemIndentation,
   remarkCodexDirectives,
+  remarkCanvasLinks,
   remarkBreakAroundImageLines,
   remarkBreaks,
   remarkPreserveCodeMeta,

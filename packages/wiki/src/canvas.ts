@@ -330,7 +330,7 @@ export function canvasUniqueTitle(title: string, earlier: Iterable<string>): str
 }
 
 /** What a link or embed writes after the `#` for a frame: its label, else its id when the label can't be written. */
-export const canvasFrameRef = (group: { readonly id: string; readonly label: string }): string =>
+const canvasFrameRef = (group: { readonly id: string; readonly label: string }): string =>
   /[\]|#^[]/.test(group.label) || group.label.trim() === "" ? group.id : group.label.trim();
 
 /** Ready-to-write embeds of a board: the whole of it, then each of its frames. */

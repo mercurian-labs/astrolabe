@@ -41,6 +41,7 @@ import {
 } from "./wiki.logic";
 import { useWikiPlacement, useWikiTerms } from "./wikiEnvironment";
 import { WikiDraftPill } from "./WikiDraftPill";
+import { requestWikiCanvasFrame } from "./wikiCanvasBoards";
 import { WikiNoteView, type WikiDraftEdits } from "./WikiNoteView";
 import { hasUnsavedEdits, registerUnsavedCheck } from "~/panes/unsavedEdits";
 import {
@@ -217,8 +218,13 @@ function NoteTab({
       return;
     }
     const file = wikiLinkOpens(index.data, target, from ?? tab.file, placement);
-    if (file !== null) openDocument(file);
-    else toastManager.add({ type: "warning", title: NO_NOTE_FROM_RELATIVE_LINK });
+    if (file === null) {
+      toastManager.add({ type: "warning", title: NO_NOTE_FROM_RELATIVE_LINK });
+      return;
+    }
+    // A canvas's `#Group` is a frame: the tab it opens in shows that group.
+    requestWikiCanvasFrame(wikiTabKey({ ...tab, file }), file, target);
+    openDocument(file);
   };
   // Waits for the list to say whether a draft holds this, or a draft's document would first draw
   // from main and then seem to change.

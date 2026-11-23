@@ -93,9 +93,11 @@ import type { Pluggable, PluggableList } from "unified";
 import { defaultUrlTransform } from "react-markdown";
 import { parseAssistantCitationHref } from "@t3tools/shared/assistantCitations";
 import { parseComposerContextHref } from "@t3tools/shared/composerContextReferences";
+import { parseCanvasLinkHref } from "@t3tools/shared/canvasLinks";
 import { parseThreadLinkHref } from "@t3tools/shared/threadLinks";
 import { AssistantCitationChip } from "./chat/AssistantCitationChip";
 import { MarkdownThreadLink } from "./chat/MarkdownThreadLink";
+import { ChatCanvasReference } from "./canvas/ChatCanvasReference";
 import { mathKind } from "@t3tools/shared/markdownMath";
 import remarkMath from "remark-math";
 import {
@@ -397,6 +399,7 @@ const CHAT_MARKDOWN_LITERAL_HTML_REHYPE_PLUGINS = [
 ] satisfies NonNullable<ReactMarkdownOptions["rehypePlugins"]>;
 
 function markdownUrlTransform(href: string) {
+  if (parseCanvasLinkHref(href)) return href;
   if (parseAssistantCitationHref(href)) return href;
   if (parseComposerContextHref(href)) return href;
   if (parseThreadLinkHref(href)) return href;
@@ -1095,6 +1098,18 @@ const CHAT_MARKDOWN_COMPONENTS = {
       renderContextReference,
     } = use(ChatMarkdownRendererContext);
     const text = use(ChatMarkdownTextContext);
+    const canvasLink = href ? parseCanvasLinkHref(href) : null;
+    if (canvasLink) {
+      const label = hastPlainTextDeep(node);
+      const source = (props as Record<string, unknown>)["data-markdown-copy"];
+      return (
+        <ChatCanvasReference
+          threadRef={threadRef}
+          target={canvasLink}
+          written={{ source: typeof source === "string" ? source : label, text: label }}
+        />
+      );
+    }
     const citation = href ? parseAssistantCitationHref(href) : null;
     if (citation) return <AssistantCitationChip citation={citation} />;
     const threadLink = href ? parseThreadLinkHref(href) : null;

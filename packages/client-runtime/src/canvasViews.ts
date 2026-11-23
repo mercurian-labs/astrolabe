@@ -1,4 +1,10 @@
-import { canvasData, placeCanvas, type CanvasData } from "@mercurian/wiki/canvas";
+import {
+  canvasData,
+  canvasFileName,
+  canvasNameKey,
+  placeCanvas,
+  type CanvasData,
+} from "@mercurian/wiki/canvas";
 import { CANVAS_SHOW_TOOL_NAME, CanvasShowInput } from "@t3tools/contracts";
 import { resolveT3McpToolId } from "@t3tools/shared/t3McpToolPresentation";
 import { compactDynamicToolOutput, toolArguments } from "@t3tools/shared/toolOutput";
@@ -77,6 +83,27 @@ export function canvasViews(
     const view = canvasViewFromItem(item);
     return view === undefined || view === null ? [] : [{ ...view, id: item.id }];
   });
+}
+
+/** What a reply calls a thread's canvas: the file name its title gives, as the tool returned it. */
+export const canvasViewFile = (view: Pick<CanvasView, "title">): string =>
+  canvasFileName(view.title);
+
+/**
+ * The canvas a reply's `[[Name.canvas]]` or `![[Name.canvas#Group]]` names: by file name, with or
+ * without `.canvas` and ignoring case, else by title. Names are unique in a thread from the server;
+ * where older threads repeat one, the latest drawn wins, the one a reply just made.
+ */
+export function canvasViewNamed<View extends Pick<CanvasView, "title">>(
+  views: ReadonlyArray<View>,
+  name: string,
+): View | undefined {
+  const wanted = canvasNameKey(name);
+  if (wanted === "") return undefined;
+  return (
+    views.findLast((view) => canvasNameKey(canvasViewFile(view)) === wanted) ??
+    views.findLast((view) => canvasNameKey(view.title) === wanted)
+  );
 }
 
 /** A board the user edited since the agent's last prompt, at the edit `editedAt` names. */

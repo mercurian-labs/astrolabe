@@ -27,6 +27,11 @@ export const canvasViewsAtom = Atom.family((key: string) => {
   }).pipe(Atom.withLabel(`web-canvas:views:${key}`));
 });
 
+/** A page with no thread holds no canvases. */
+export const noCanvasViewsAtom = Atom.make<ReadonlyArray<CanvasView & { readonly id: string }>>(
+  [],
+).pipe(Atom.keepAlive, Atom.withLabel("web-canvas:views:none"));
+
 export const canvasViewsKey = (ref: {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;

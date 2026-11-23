@@ -1,12 +1,33 @@
 import type { CanvasMenuEntry } from "@mercurian/wiki-editor/canvas-board";
+import type { ThreadId, TurnItemId } from "@t3tools/contracts";
+import { canvasContextRecord } from "@t3tools/shared/composerContextReferences";
 
-import type { useCanvasWalk } from "./useCanvasWalk";
+import { useComposerHandleContext } from "~/composerHandleContext";
 
-/** What a thread's board adds to its menu: asking about it, and keeping it in a wiki. */
-export const canvasMenuItems = (
-  walk: ReturnType<typeof useCanvasWalk>,
+import { toastManager } from "../ui/toast";
+
+/** What a thread's board adds to its menu: asking about it in the composer, and keeping it. */
+export function useCanvasMenuItems(
+  board: { readonly threadId: ThreadId; readonly itemId: TurnItemId; readonly title: string } | null,
   keep: CanvasMenuEntry | undefined,
-): ReadonlyArray<CanvasMenuEntry> => [
-  ...(walk.ask === undefined ? [] : [{ label: walk.ask.label, run: walk.ask.run }]),
-  ...(keep === undefined ? [] : [keep]),
-];
+): ReadonlyArray<CanvasMenuEntry> {
+  const composer = useComposerHandleContext();
+  const ask =
+    composer === null || board === null
+      ? []
+      : [
+          {
+            label: "Ask about this canvas",
+            run: () => {
+              const added = composer.current?.addCanvas(canvasContextRecord(board));
+              if (added !== false) return;
+              toastManager.add({
+                type: "warning",
+                title: "The composer can't take this right now",
+                description: "Answer the agent's question first.",
+              });
+            },
+          },
+        ];
+  return [...ask, ...(keep === undefined ? [] : [keep])];
+}

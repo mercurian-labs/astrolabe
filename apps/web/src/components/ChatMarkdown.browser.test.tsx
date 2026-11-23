@@ -9,6 +9,9 @@ import "../index.css";
 
 import { filesystemEnvironment } from "../state/filesystem";
 import { useRightPanelStore } from "../rightPanelStore";
+import { placeCanvas } from "@mercurian/wiki/canvas";
+import { canvasViewsKey } from "../state/canvasViews";
+import { useThreadCanvasStore } from "./canvas/threadCanvasStore";
 import { remarkEnableOrderedListNumbers } from "@t3tools/shared/markdownPipeline";
 import { setMarkdownTaskChecked } from "@t3tools/shared/markdownTaskList";
 import { HostImageUrlContext } from "./chat/hostImageUrl";
@@ -119,6 +122,15 @@ vi.mock(import("../hooks/useSettings"), async (original) => {
   return { ...actual, useClientSettings };
 });
 
+// A thread's canvases, as the timeline reads them, set by each test that draws one.
+const threadCanvases = vi.hoisted(() => ({ views: [] as Array<Record<string, unknown>> }));
+vi.mock(import("../state/canvasViews"), async (original) => {
+  const actual = await original();
+  const { Atom } = await import("effect/reactivity");
+  const views = Atom.make(() => threadCanvases.views as never);
+  return { ...actual, canvasViewsAtom: (() => views) as never };
+});
+
 import ChatMarkdown from "./ChatMarkdown";
 import { AudioPreview } from "./files/AudioPreview";
 
@@ -145,6 +157,7 @@ it("keeps compact audio playback loaded across signed URL renewals", async () =>
 });
 
 function setup() {
+  threadCanvases.views = [];
   appearance.value = "light";
   parsedSources.length = 0;
   settingsOverrides.mathRenderingEnabled = false;
@@ -586,5 +599,98 @@ describe("ChatMarkdown Windows file links", () => {
       expect(container.innerHTML).not.toContain("d:alert");
       expect(fileHrefs(container)).toEqual([]);
     }
+  });
+});
+
+describe("ChatMarkdown canvas frames", () => {
+  const threadRef = {
+    environmentId: EnvironmentId.make("canvas-env"),
+    threadId: ThreadId.make("canvas-thread"),
+  };
+  const drawCheckout = () => {
+    threadCanvases.views = [
+      {
+        id: "item-1",
+        title: "Checkout Flow",
+        data: placeCanvas({
+          groups: [
+            { id: "shop", label: "Storefront" },
+            { id: "pay", label: "Payments" },
+          ],
+          cards: [
+            { id: "cart", text: "Cart and address", group: "shop" },
+            { id: "charge", text: "Charge the card", group: "pay" },
+            { id: "receipt", text: "Email the receipt", group: "pay" },
+          ],
+          arrows: [
+            { from: "cart", to: "charge" },
+            { from: "charge", to: "receipt" },
+          ],
+        }),
+      },
+    ];
+  };
+
+  it("draws a frame inline as a picture of its group, the rest dimmed, and the whole board as one", async () => {
+    setup();
+    drawCheckout();
+    await using screen = await renderText(
+      "Paying:\n\n![[Checkout Flow.canvas#payments]]\n\nAll of it:\n\n![[checkout flow]]",
+      { threadRef },
+    );
+    const frame = screen.getByRole("button", { name: "Open Checkout Flow › Payments" });
+    await expect.element(frame).toBeVisible();
+    await expect.element(frame.getByText("Charge the card")).toBeVisible();
+    const framed = frame.element();
+    // The storefront's card stays in sight, dimmed, outside the frame.
+    expect(
+      [...framed.querySelectorAll("foreignObject[data-dim]")].map((each) => each.textContent),
+    ).toEqual(["Cart and address"]);
+    const whole = screen.getByRole("button", { name: "Open Checkout Flow", exact: true });
+    await expect.element(whole.getByText("Cart and address")).toBeVisible();
+    expect(whole.element().querySelector("[data-dim]")).toBeNull();
+    // Each is sized by what it frames before its picture loads.
+    expect(framed.querySelector<HTMLElement>("[style*='aspect-ratio']")?.style.aspectRatio).not.toBe(
+      whole.element().querySelector<HTMLElement>("[style*='aspect-ratio']")?.style.aspectRatio,
+    );
+  });
+
+  it("opens the board in a linked tab on the frame a link or picture names", async () => {
+    setup();
+    drawCheckout();
+    using open = vi.spyOn(useRightPanelStore.getState(), "open").mockImplementation(() => {});
+    await using screen = await renderText(
+      "See [[Checkout Flow.canvas#Payments|the payment step]].\n\n![[Checkout Flow.canvas#Storefront]]",
+      { threadRef },
+    );
+    const key = canvasViewsKey(threadRef);
+    await userEvent.click(screen.getByRole("button", { name: "Open Checkout Flow › Payments" }));
+    expect(open).toHaveBeenLastCalledWith(threadRef, "canvas");
+    expect(useThreadCanvasStore.getState().shownByThread[key]).toBe("item-1");
+    expect(useThreadCanvasStore.getState().focusByThread[key]).toMatchObject({
+      id: "item-1",
+      group: "pay",
+    });
+    await expect.element(screen.getByText("the payment step")).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Open Checkout Flow › Storefront" }));
+    expect(useThreadCanvasStore.getState().focusByThread[key]).toMatchObject({ group: "shop" });
+  });
+
+  it("shows the whole board for a frame it doesn't have, and the text for a canvas it doesn't know", async () => {
+    setup();
+    drawCheckout();
+    using open = vi.spyOn(useRightPanelStore.getState(), "open").mockImplementation(() => {});
+    await using screen = await renderText(
+      "![[Checkout Flow.canvas#Shipping]]\n\nAnd ![[Nowhere.canvas#Here]] too.",
+      { threadRef },
+    );
+    const whole = screen.getByRole("button", { name: "Open Checkout Flow", exact: true });
+    await expect.element(whole.getByText('No group named "Shipping": whole board')).toBeVisible();
+    await expect.element(screen.getByText("![[Nowhere.canvas#Here]]")).toBeVisible();
+    const key = canvasViewsKey(threadRef);
+    useThreadCanvasStore.setState({ focusByThread: {} });
+    await userEvent.click(whole);
+    expect(open).toHaveBeenCalledOnce();
+    expect(useThreadCanvasStore.getState().focusByThread[key]).toBeUndefined();
   });
 });

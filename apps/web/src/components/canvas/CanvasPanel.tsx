@@ -1,22 +1,17 @@
 import { useAtomValue } from "@effect/atom-react";
 import type { CanvasView } from "@t3tools/client-runtime/canvasViews";
 import { type ScopedThreadRef, TurnItemId } from "@t3tools/contracts";
-import type { CanvasBoardHandle } from "@mercurian/wiki-editor/canvas-board";
-import { Suspense, useRef } from "react";
-import { canvasStoryEdit } from "@mercurian/wiki/canvas-edits";
+import { Suspense } from "react";
 
 import { TabHeader } from "~/panes/TabHeader";
 
 import { canvasViewsAtom, canvasViewsKey } from "~/state/canvasViews";
 
 import { canvasHost, LazyCanvasBoard } from "./CanvasFrame";
-import { CanvasFramePopover } from "./CanvasFramePopover";
-import { CanvasStoryPill, onStepKey } from "./CanvasStoryPill";
-import { canvasMenuItems } from "./canvasMenuItems";
+import { useCanvasMenuItems } from "./canvasMenuItems";
 import { useKeepCanvas } from "./KeepCanvas";
 import { useThreadCanvasStore } from "./threadCanvasStore";
-import { useCanvasWalk } from "./useCanvasWalk";
-import { useCanvasDocumentData, useThreadCanvasDocument } from "./useThreadCanvasDocument";
+import { useThreadCanvasDocument } from "./useThreadCanvasDocument";
 
 /** A thread's Canvas tab: the canvas opened from the thread, to pan and zoom. */
 export function CanvasPanel({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
@@ -47,22 +42,21 @@ function CanvasPanelBoard({
     threadId: threadRef.threadId,
     itemId,
   });
-  const data = useCanvasDocumentData(canvas, view.data);
-  const walk = useCanvasWalk({ title: view.title, data }, { threadId: threadRef.threadId, itemId });
-  const board = useRef<CanvasBoardHandle>(null);
   const key = canvasViewsKey(threadRef);
   const readOnly = useThreadCanvasStore((store) => store.editingByThread[key] !== view.id);
+  const asked = useThreadCanvasStore((store) => store.focusByThread[key]);
   const keep = useKeepCanvas({
     environmentId: threadRef.environmentId,
     threadId: threadRef.threadId,
     itemId,
     title: view.title,
   });
+  const menuItems = useCanvasMenuItems(
+    { threadId: threadRef.threadId, itemId, title: view.title },
+    keep.item,
+  );
   return (
-    <div
-      className="flex min-h-0 flex-1 flex-col"
-      onKeyDown={(event) => onStepKey(event, walk.steps.length, walk.step, walk.go)}
-    >
+    <div className="flex min-h-0 flex-1 flex-col">
       <TabHeader.Root>
         <TabHeader.Title label="Canvas">{view.title}</TabHeader.Title>
       </TabHeader.Root>
@@ -73,12 +67,8 @@ function CanvasPanelBoard({
             mode="free"
             host={canvasHost(threadRef)}
             label={view.title}
-            story={walk.story}
-            step={walk.step}
-            openFrame={walk.frame?.step ?? null}
-            onFrame={walk.toggleFrame}
-            onPresent={() => walk.go(0)}
-            menuItems={canvasMenuItems(walk, keep.item)}
+            focus={asked?.id === view.id ? asked : null}
+            menuItems={menuItems}
             {...(canvas === null
               ? {}
               : {
@@ -86,24 +76,10 @@ function CanvasPanelBoard({
                   readOnly,
                   onReadOnly: (next: boolean) =>
                     useThreadCanvasStore.getState().setEditing(key, next ? null : view.id),
-                  onStepAdded: (index: number) => {
-                    if (walk.step !== null) walk.go(index);
-                  },
                 })}
-            ref={board}
-          >
-            <CanvasStoryPill
-              walk={walk}
-              edit={
-                canvas === null || readOnly
-                  ? undefined
-                  : (change) => canvas.commit(canvasStoryEdit(canvas.document, change, canvas.mint))
-              }
-            />
-          </LazyCanvasBoard>
+          />
         </Suspense>
       </div>
-      <CanvasFramePopover view={view} walk={walk} onCard={(id) => board.current?.focusCard(id)} />
       {keep.dialog}
     </div>
   );

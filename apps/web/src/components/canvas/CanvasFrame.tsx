@@ -2,21 +2,17 @@ import { canvasBounds, type CanvasCodeReference } from "@mercurian/wiki/canvas";
 import type { CanvasView } from "@t3tools/client-runtime/canvasViews";
 import type { ScopedThreadRef, ThreadId, TurnItemId } from "@t3tools/contracts";
 import { SquareArrowOutUpRightIcon } from "lucide-react";
-import type { CanvasBoardHandle } from "@mercurian/wiki-editor/canvas-board";
-import { lazy, Suspense, useRef } from "react";
+import { lazy, Suspense } from "react";
 
 import { readLocalApi } from "~/localApi";
 import { useRightPanelStore } from "~/rightPanelStore";
 
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { CanvasFramePopover } from "./CanvasFramePopover";
-import { CanvasStoryPill, onStepKey } from "./CanvasStoryPill";
-import { canvasMenuItems } from "./canvasMenuItems";
+import { useCanvasMenuItems } from "./canvasMenuItems";
 import { useKeepCanvas } from "./KeepCanvas";
 import { showThreadCanvas } from "./threadCanvasStore";
-import { useCanvasWalk } from "./useCanvasWalk";
-import { useCanvasDocumentData, useThreadCanvasDocument } from "./useThreadCanvasDocument";
+import { useThreadCanvasDocument } from "./useThreadCanvasDocument";
 
 // The board brings the Markdown parser; a thread with no canvas shouldn't load it.
 export const LazyCanvasBoard = lazy(() =>
@@ -43,8 +39,8 @@ export const canvasHost = (threadRef: ScopedThreadRef | null) => ({
 });
 
 /**
- * A canvas in a thread: the whole board, sized by its own shape so the row never shifts when the
- * board loads. It pans and zooms in place; the wheel scrolls the thread until the board is clicked.
+ * A canvas in a thread, live: the whole board, sized by its own shape so the row never shifts when
+ * the board loads. It pans and zooms in place; the wheel scrolls the thread until it's clicked.
  */
 export function CanvasFrame({
   id,
@@ -63,19 +59,17 @@ export function CanvasFrame({
     view,
     threadRef === null ? null : { environmentId: threadRef.environmentId, ...source },
   );
-  const data = useCanvasDocumentData(canvas, view.data);
-  const walk = useCanvasWalk({ title: view.title, data }, threadRef === null ? null : source);
-  const board = useRef<CanvasBoardHandle>(null);
   const keep = useKeepCanvas(
     threadRef === null
       ? null
       : { environmentId: threadRef.environmentId, ...source, title: view.title },
   );
+  const menuItems = useCanvasMenuItems(
+    threadRef === null ? null : { ...source, title: view.title },
+    keep.item,
+  );
   return (
-    <figure
-      className="m-0 overflow-hidden rounded-lg border border-border"
-      onKeyDown={(event) => onStepKey(event, walk.steps.length, walk.step, walk.go)}
-    >
+    <figure className="m-0 overflow-hidden rounded-lg border border-border">
       <figcaption className="flex h-8 items-center gap-2 border-b border-border pr-1 pl-3 text-xs text-muted-foreground">
         <span className="min-w-0 flex-1 truncate">{view.title}</span>
         <div className="flex shrink-0 items-center gap-0.5">
@@ -98,11 +92,7 @@ export function CanvasFrame({
           )}
         </div>
       </figcaption>
-      {/* A story's note and controls float over the board, which keeps room to show it beside them. */}
-      <div
-        className={`max-h-[520px] w-full ${walk.steps.length === 0 ? "min-h-40" : "min-h-80"}`}
-        style={{ aspectRatio: `${width} / ${height}` }}
-      >
+      <div className="max-h-[520px] min-h-40 w-full" style={{ aspectRatio: `${width} / ${height}` }}>
         <Suspense fallback={null}>
           <LazyCanvasBoard
             data={view.data}
@@ -110,12 +100,7 @@ export function CanvasFrame({
             wheelOnceFocused
             host={canvasHost(threadRef)}
             label={view.title}
-            story={walk.story}
-            step={walk.step}
-            openFrame={walk.frame?.step ?? null}
-            onFrame={walk.toggleFrame}
-            onPresent={() => walk.go(0)}
-            menuItems={canvasMenuItems(walk, keep.item)}
+            menuItems={menuItems}
             {...(canvas === null || threadRef === null
               ? {}
               : {
@@ -123,16 +108,12 @@ export function CanvasFrame({
                   // The chat column is too narrow to edit in: Edit opens the board in its tab.
                   readOnly: true,
                   onReadOnly: (readOnly: boolean) => {
-                    if (!readOnly) showThreadCanvas(threadRef, id, true);
+                    if (!readOnly) showThreadCanvas(threadRef, id, { edit: true });
                   },
                 })}
-            ref={board}
-          >
-            <CanvasStoryPill walk={walk} />
-          </LazyCanvasBoard>
+          />
         </Suspense>
       </div>
-      <CanvasFramePopover view={view} walk={walk} onCard={(id) => board.current?.focusCard(id)} />
       {keep.dialog}
     </figure>
   );
