@@ -26,7 +26,8 @@ import {
   BetterAuthSecret,
   Cluster,
   containerSecrets,
-  DatabaseUrl,
+  DatabaseCa,
+  databaseUrl,
   Electric,
   Mail,
   Migrations,
@@ -52,7 +53,7 @@ const DeployedSettings = Effect.gen(function* () {
 const ApiSecrets = Effect.gen(function* () {
   const optional = (yield* ALCHEMY_DEV) ? {} : (yield* DeploymentSecrets).api;
   return yield* containerSecrets({
-    DATABASE_URL: yield* DatabaseUrl,
+    DATABASE_URL: yield* databaseUrl("verify-full"),
     // Unwrapped: env values are written as JSON, where a Redacted reads "<redacted>".
     BETTER_AUTH_SECRET: Output.map((yield* BetterAuthSecret).text, Redacted.value),
     ...optional,
@@ -69,7 +70,8 @@ export default Api.make(
     return {
       cluster: yield* Cluster,
       main: import.meta.url,
-      image: "oven/bun:1.3",
+      context: "images",
+      dockerfile: "images/api.Dockerfile",
       port: 4310,
       desiredCount: 1,
       runtimePlatform: ARM64,
@@ -82,6 +84,7 @@ export default Api.make(
       ...(Object.keys(secrets).length > 0 ? { secrets } : {}),
       env: {
         ...env,
+        ...(yield* DatabaseCa("NODE_EXTRA_CA_CERTS")),
         ELECTRIC_URL: electric.url,
         MAIL_FROM: mail.from,
         AUTH_URL: ingress.publicUrl,

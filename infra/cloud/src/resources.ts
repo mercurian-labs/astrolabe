@@ -23,7 +23,8 @@ import * as Stream from "effect/Stream";
 import { Deployment, DeploymentSecrets, ORIGIN_SECRET_HEADER } from "./deployment.ts";
 import { PUBLIC_SECURITY_GROUP } from "./firewall.ts";
 
-const ELECTRIC_IMAGE = "electricsql/electric:1.8.1";
+// Every image carries the RDS certificate authorities here (images/*.Dockerfile, Dockerfile).
+const RDS_CA_FILE = "/etc/ssl/certs/rds-us-east-1.pem";
 // Graviton: matches Apple Silicon locally and is the cheaper Fargate platform.
 // Electric's Erlang VM also crashes under x86 emulation on Apple Silicon.
 export const ARM64 = { cpuArchitecture: "ARM64", operatingSystemFamily: "LINUX" } as const;
@@ -110,11 +111,12 @@ export const ServiceNetwork = Effect.gen(function* () {
 });
 
 /**
- * The database URL as containers see it. RDS requires no TLS here: its
- * certificate authority isn't in the images' trust stores, the clients can't
- * all take one, and the traffic never leaves the VPC.
+ * The database URL as containers see it. A deployed stage requires TLS, and
+ * every client verifies RDS's certificate and hostname against RDS_CA_FILE.
+ * Electric rejects `verify-full` but verifies under `require` once given the
+ * CA file; node-postgres plans to stop verifying under `require`.
  */
-export const DatabaseUrl = Effect.gen(function* () {
+export const databaseUrl = Effect.fn("databaseUrl")(function* (sslmode: "verify-full" | "require") {
   if (!(yield* ALCHEMY_DEV)) {
     const network = yield* Network;
     const { stage } = yield* Alchemy.Stack;
@@ -126,11 +128,12 @@ export const DatabaseUrl = Effect.gen(function* () {
     const parameters = yield* AWS.RDS.DBParameterGroup("DatabaseParameters", {
       family: "postgres17",
       description: "Logical replication for Electric",
-      parameters: { "rds.logical_replication": "1", "rds.force_ssl": "0" },
+      parameters: { "rds.logical_replication": "1", "rds.force_ssl": "1" },
     });
     const database = yield* AWS.RDS.DBInstance("Database", {
       engine: "postgres",
       engineVersion: "17",
+      caCertificateIdentifier: "rds-ca-rsa2048-g1",
       dbInstanceClass: "db.t4g.micro",
       allocatedStorage: 20,
       maxAllocatedStorage: 100,
@@ -149,7 +152,7 @@ export const DatabaseUrl = Effect.gen(function* () {
     return Output.all(database.endpointAddress, database.endpointPort, password.text).pipe(
       Output.map(
         ([host, port, secret]) =>
-          `postgresql://${LOCAL_POSTGRES.user}:${secret}@${host}:${port ?? 5432}/${LOCAL_POSTGRES.database}?sslmode=disable`,
+          `postgresql://${LOCAL_POSTGRES.user}:${secret}@${host}:${port ?? 5432}/${LOCAL_POSTGRES.database}?sslmode=${sslmode}`,
       ),
     );
   }
@@ -185,8 +188,16 @@ export const DatabaseUrl = Effect.gen(function* () {
 
 export const Cluster = AWS.ECS.Cluster("Cluster", {});
 
-const parameterId = (name: string) =>
-  `${name.toLowerCase().replace(/(?:^|_)([a-z0-9])/gu, (_, letter: string) => letter.toUpperCase())}Secret`;
+/** Points a container's TLS at the RDS certificate authorities, under the name its client reads. */
+export const DatabaseCa = (
+  variable: "NODE_EXTRA_CA_CERTS" | "ELECTRIC_DATABASE_CA_CERTIFICATE_FILE",
+) =>
+  Effect.map(ALCHEMY_DEV, (dev): Record<string, string> =>
+    dev ? {} : { [variable]: RDS_CA_FILE },
+  );
+
+const parameterId = (owner: string, name: string) =>
+  `${owner}${name.toLowerCase().replace(/(?:^|_)([a-z0-9])/gu, (_, letter: string) => letter.toUpperCase())}Secret`;
 
 /**
  * Splits a container's secrets by stage. Dev passes them as plain env. A deployed stage keeps
@@ -195,11 +206,13 @@ const parameterId = (name: string) =>
  */
 export const containerSecrets = Effect.fn("containerSecrets")(function* (
   values: Record<string, Output.Output<string> | string>,
+  // Separates parameters that share an env name but not a value.
+  owner = "",
 ) {
   if (yield* ALCHEMY_DEV) return { env: values, secrets: {} };
   const secrets: Record<string, Output.Output<string>> = {};
   for (const [name, value] of Object.entries(values)) {
-    const parameter = yield* AWS.SSM.Parameter(parameterId(name), {
+    const parameter = yield* AWS.SSM.Parameter(parameterId(owner, name), {
       type: "SecureString",
       value: typeof value === "string" ? Redacted.make(value) : Output.map(value, Redacted.make),
       description: `${name} for the cloud's containers`,
@@ -375,10 +388,13 @@ export const Migrations = Effect.gen(function* () {
         "package.json",
         "../../apps/cloud/migrations/**",
         "../relay/migrations/**",
+        "images/rds-us-east-1.pem",
       ],
     },
   });
-  const { env, secrets } = yield* containerSecrets({ DATABASE_URL: yield* DatabaseUrl });
+  const { env, secrets } = yield* containerSecrets({
+    DATABASE_URL: yield* databaseUrl("verify-full"),
+  });
   const secretArns = Object.values(secrets);
   // A Task, unlike a Service, doesn't take `secrets`, so its execution role gets read access here.
   const readSecrets =
@@ -395,7 +411,7 @@ export const Migrations = Effect.gen(function* () {
     context: build.outdir,
     dockerfile: "Dockerfile",
     runtimePlatform: ARM64,
-    env,
+    env: { ...env, ...(yield* DatabaseCa("NODE_EXTRA_CA_CERTS")) },
     ...(readSecrets
       ? {
           container: {
@@ -424,10 +440,14 @@ export const Migrations = Effect.gen(function* () {
 /** Electric. Only the API reaches it: deployed stages put it behind an internal load balancer. */
 export const Electric = Effect.gen(function* () {
   const dev = yield* ALCHEMY_DEV;
-  const { env, secrets } = yield* containerSecrets({ DATABASE_URL: yield* DatabaseUrl });
+  const { env, secrets } = yield* containerSecrets(
+    { DATABASE_URL: yield* databaseUrl("require") },
+    "Electric",
+  );
   return yield* AWS.ECS.Service("Electric", {
     cluster: yield* Cluster,
-    image: ELECTRIC_IMAGE,
+    context: "images",
+    dockerfile: "images/electric.Dockerfile",
     port: ELECTRIC_PORT,
     desiredCount: 1,
     runtimePlatform: ARM64,
@@ -441,6 +461,7 @@ export const Electric = Effect.gen(function* () {
     ...(dev ? {} : { secrets }),
     env: {
       ...env,
+      ...(yield* DatabaseCa("ELECTRIC_DATABASE_CA_CERTIFICATE_FILE")),
       // Only the API reaches Electric, so the shared secret stays server-side.
       ELECTRIC_INSECURE: "true",
       // Live shape requests pass through the API, which runs on Bun; Bun closes
