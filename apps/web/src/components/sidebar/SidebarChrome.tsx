@@ -42,6 +42,7 @@ import {
   useSectionPathname,
 } from "./mainAppLocation";
 import { SidebarThreadUndoNotice } from "./SidebarThreadUndoNotice";
+import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
 import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUpdatePill";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
@@ -62,6 +63,8 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
     environmentIdentificationMode === "pill"
       ? resolveEnvironmentIdentificationPillLabel(stageLabel)
       : null;
+  // Narrow, there's no icon rail, so the workspace switcher heads the sidebar instead.
+  const { isMobile, setOpenMobile } = useSidebar();
 
   return (
     // The titlebar row, not a padded SidebarHeader: it aligns to the window controls.
@@ -87,6 +90,9 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
           is the rail's). Astrolabe: the rail's monogram stands for the brand, so the row holds
           no wordmark. */}
       <div className="relative z-10 flex h-8 min-w-0 flex-1 flex-wrap content-start items-center gap-x-2 overflow-hidden py-0.5 md:pl-(--workspace-titlebar-content-left)">
+        {isMobile && hasCloudPublicConfig() ? (
+          <WorkspaceSwitcher inHeader onNavigate={() => setOpenMobile(false)} />
+        ) : null}
         {pillLabel ? (
           <div data-environment-pill className="flex h-7 items-center">
             <Badge data-environment-identification="pill" size="sm" variant="secondary">

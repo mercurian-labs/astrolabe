@@ -22,6 +22,9 @@ people** (only where your role may invite), **Workspace settings** and **Create 
 New workspace's terms), each opening Settings › Workspaces. Signed out it offers **Sign in**.
 The choice is client state in local storage, `astrolabe:selected-workspace:<user id>`, never
 Better Auth's active organization. Search's **Switch workspace** submenu does the same.
+Below the `md` breakpoint there's no rail: the narrow sidebar's title row heads with the same
+switcher (`[data-sidebar-workspace-switcher]`, the tile plus the name and a chevron). A logo sits
+on a white tile in both themes; one with transparency is stored with a margin, an opaque one fills.
 
 ## Setup
 

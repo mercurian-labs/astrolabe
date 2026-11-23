@@ -1,6 +1,13 @@
 import { canInvite } from "@t3tools/client-runtime/workspaces";
 import { useNavigate } from "@tanstack/react-router";
-import { LogInIcon, PlusIcon, SettingsIcon, UserPlusIcon, UserRoundIcon } from "lucide-react";
+import {
+  ChevronDownIcon,
+  LogInIcon,
+  PlusIcon,
+  SettingsIcon,
+  UserPlusIcon,
+  UserRoundIcon,
+} from "lucide-react";
 
 import { startCloudSignIn } from "../../cloud/account";
 import {
@@ -39,47 +46,78 @@ export function PersonalTile() {
 
 /**
  * The rail's head where sign-in is set up: the selected workspace's tile, or Personal when none
- * is, opening a menu to switch. Render it only when `hasCloudPublicConfig()`.
+ * is, opening a menu to switch. In the narrow sidebar's title row (`inHeader`), the tile carries
+ * the name too, as the rail's tooltip would. Render it only when `hasCloudPublicConfig()`.
  */
-export function WorkspaceSwitcher() {
+export function WorkspaceSwitcher({
+  inHeader = false,
+  onNavigate,
+}: {
+  readonly inHeader?: boolean;
+  /** Called before a menu item opens Settings, so the narrow sidebar can close over it. */
+  readonly onNavigate?: () => void;
+}) {
   const navigate = useNavigate();
   const state = useSelectedWorkspace();
   const selected = state.status === "ready" ? state.selected : null;
   const name = selected?.workspace.name ?? "Personal";
 
-  const openSettings = (hash?: string) =>
+  const openSettings = (hash?: string) => {
+    onNavigate?.();
     void navigate({
       to: "/settings/workspaces",
       search: selected ? { w: selected.workspace.slug } : {},
       ...(hash ? { hash, hashScrollIntoView: false } : {}),
     });
+  };
+
+  const tile = selected ? (
+    <WorkspaceTile workspace={selected.workspace} className={inHeader ? "size-6" : "size-8"} />
+  ) : inHeader ? (
+    <UserRoundIcon className="size-4 shrink-0 text-muted-foreground" />
+  ) : (
+    <PersonalTile />
+  );
 
   return (
     <Menu>
-      <Tooltip>
-        <TooltipTrigger
+      {inHeader ? (
+        <MenuTrigger
           render={
-            <MenuTrigger
-              render={
-                <button
-                  type="button"
-                  data-app-rail-switcher=""
-                  aria-label={`Workspace: ${name}`}
-                  className="flex size-8 cursor-pointer items-center justify-center rounded-md outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
-                >
-                  {selected ? (
-                    <WorkspaceTile workspace={selected.workspace} className="size-8" />
-                  ) : (
-                    <PersonalTile />
-                  )}
-                </button>
-              }
-            />
+            <button
+              type="button"
+              data-sidebar-workspace-switcher=""
+              aria-label={`Workspace: ${name}`}
+              className="flex h-8 min-w-0 cursor-pointer items-center gap-2 rounded-md px-1.5 text-sm font-medium outline-none hover:bg-accent focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+            >
+              {tile}
+              <span className="min-w-0 truncate">{name}</span>
+              <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
+            </button>
           }
         />
-        <TooltipPopup side="right">{name}</TooltipPopup>
-      </Tooltip>
-      <MenuPopup side="right" align="start" className="min-w-56">
+      ) : (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <MenuTrigger
+                render={
+                  <button
+                    type="button"
+                    data-app-rail-switcher=""
+                    aria-label={`Workspace: ${name}`}
+                    className="flex size-8 cursor-pointer items-center justify-center rounded-md outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+                  >
+                    {tile}
+                  </button>
+                }
+              />
+            }
+          />
+          <TooltipPopup side="right">{name}</TooltipPopup>
+        </Tooltip>
+      )}
+      <MenuPopup side={inHeader ? "bottom" : "right"} align="start" className="min-w-56">
         {state.status === "signedOut" ? (
           <MenuItem onClick={startCloudSignIn}>
             <LogInIcon />

@@ -13,12 +13,18 @@ export function WorkspaceTile({
   readonly className?: string;
 }) {
   if (workspace.logo) {
+    // Logos are drawn for a light page, so every one sits on white in both themes, edged so a
+    // white logo still reads as a tile.
     return (
-      <img
-        alt=""
-        src={workspace.logo}
-        className={cn("size-4 shrink-0 rounded-[25%] object-cover", className)}
-      />
+      <span
+        aria-hidden="true"
+        className={cn(
+          "inline-flex size-4 shrink-0 overflow-hidden rounded-[25%] border border-black/10 bg-white",
+          className,
+        )}
+      >
+        <img alt="" src={workspace.logo} className="size-full object-cover" />
+      </span>
     );
   }
   return (
