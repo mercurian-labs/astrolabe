@@ -66,7 +66,7 @@ const tabs = [
 ];
 ---
 
-<div class="app app--poster app--tour" data-tour-app data-section="agents" data-thread="plan" data-cpane="group" data-edits="accepted" data-merge="on" aria-hidden="true">
+<div class="app app--poster app--tour" data-tour-app data-section="agents" data-thread="plan" data-cpane="group" data-edits="accepted" data-merge="on" data-beat="3" data-evidence="intents" aria-hidden="true">
   <div class="tb">
     <div class="tb__cap">
       <span class="lights"><i></i><i></i><i></i></span>
@@ -76,7 +76,7 @@ const tabs = [
       <svg class="ico ico--sm ico--faint"><use href="#i-right" /></svg>
     </div>
 
-    <!-- Agents: the chat tabs over the chat. -->
+    <!-- Agents: the chat tabs over the chat, plus the visual story canvas tab once drawn. -->
     <div class="tb__strip tb__strip--pane tb__strip--main" data-in="agents">
       <span class="lights lights--crop"><i></i><i></i><i></i></span>
       {
@@ -88,16 +88,32 @@ const tabs = [
           </span>
         ))
       }
+      <span class="tab tab--narrow-off" data-go="story" data-p="tab-story" data-only="plan intents button" data-off={off("plan intents button")} data-k="tab-story">
+        <svg class="ico ico--xs"><use href="#i-canvas" /></svg>
+        <span class="tab__title">Apple Pay checkout</span>
+        <svg class="ico ico--xs"><use href="#i-x" /></svg>
+      </span>
       <span class="spacer"></span>
       <svg class="ico ico--muted"><use href="#i-panel-r" /></svg>
+    </div>
+
+    <!-- Story: the interactive visual story canvas tab beside the thread and wiki note. -->
+    <div class="tb__strip tb__strip--pane tb__strip--main" data-in="story">
+      <span class="lights lights--crop"><i></i><i></i><i></i></span>
+      <span class="tab is-front is-focus"><svg class="ico ico--xs"><use href="#i-canvas" /></svg><span class="tab__title">Apple Pay checkout</span><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
+      <span class="tab" data-go="agents"><svg class="logo"><use href="#p-claude" /></svg><span class="tab__title">Add Apple Pay to checkout</span><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
+      <span class="tab tab--narrow-off" data-go="wikis"><svg class="ico ico--xs"><use href="#i-file" /></svg><span class="tab__title">Payments</span><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
+      <svg class="ico ico--muted"><use href="#i-plus" /></svg>
+      <span class="spacer"></span>
+      <svg class="ico ico--muted"><use href="#i-more" /></svg>
     </div>
 
     <!-- Wikis and Changes: one pane of tabs across the main area. -->
     <div class="tb__strip tb__strip--pane tb__strip--main" data-in="wikis">
       <span class="lights lights--crop"><i></i><i></i><i></i></span>
       <span class="tab is-front is-focus"><svg class="ico ico--xs"><use href="#i-file" /></svg><span class="tab__title">Payments</span><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
-      <span class="tab"><svg class="ico ico--xs"><use href="#i-file" /></svg><span class="tab__title">Checkout</span><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
-      <span class="tab tab--narrow-off"><svg class="ico ico--xs"><use href="#i-merge" /></svg><span class="tab__title">Add Apple Pay to checkout</span><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
+      <span class="tab" data-go="story"><svg class="ico ico--xs"><use href="#i-canvas" /></svg><span class="tab__title">Apple Pay checkout</span><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
+      <span class="tab tab--narrow-off" data-go="changes"><svg class="ico ico--xs"><use href="#i-merge" /></svg><span class="tab__title">Add Apple Pay to checkout</span><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
       <svg class="ico ico--muted"><use href="#i-plus" /></svg>
       <span class="spacer"></span>
       <svg class="ico ico--muted"><use href="#i-more" /></svg>
@@ -106,7 +122,7 @@ const tabs = [
       <span class="lights lights--crop"><i></i><i></i><i></i></span>
       <span class="tab is-front is-focus" data-cp="group" data-p="cp-group"><svg class="ico ico--xs"><use href="#i-layers" /></svg><span class="tab__title">Add Apple Pay to checkout</span><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
       <span class="tab" data-cp="pr" data-p="cp-pr"><svg class="ico ico--xs"><use href="#i-pr" /></svg><span class="tab__title">#512 Payment intents API</span><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
-      <span class="tab tab--narrow-off"><svg class="ico ico--xs"><use href="#i-pr" /></svg><span class="tab__title">#513 Apple Pay button</span><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
+      <span class="tab tab--narrow-off" data-go="story"><svg class="ico ico--xs"><use href="#i-canvas" /></svg><span class="tab__title">Apple Pay checkout</span><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
       <svg class="ico ico--muted"><use href="#i-plus" /></svg>
       <span class="spacer"></span>
       <svg class="ico ico--muted"><use href="#i-more" /></svg>
@@ -225,24 +241,24 @@ const tabs = [
             <svg class="ico ico--xs ico--muted sub__go"><use href="#i-chevron" /></svg>
           </div>
           <div class="msg msg--agent" data-k="plan-reply-2">
-            <p>Both pieces are in: #512 adds the endpoint and #513 the button. Next, the Payments page in the wiki.</p>
+            <p>Both pieces are in: #512 adds the endpoint and #513 the button. I drew the visual story in <code>Apple Pay checkout</code>.</p>
           </div>
           <ul class="worklog" data-k="plan-wiki">
             <li><svg class="ico ico--xs"><use href="#i-book" /></svg><span>Amended a wiki <code>engineering/Payments</code></span></li>
           </ul>
           <div class="msg msg--agent" data-k="plan-reply-3">
-            <p>The Payments page now covers Apple Pay. The edit waits in the pull request Add Apple Pay to checkout.</p>
+            <p>The Payments page now links to Rounding with <code>depends-on</code>. The edit waits in the pull request Add Apple Pay to checkout.</p>
           </div>
-          <!-- The team's own skill, from the composer's $ menu; its steps use Astrolabe's tools. -->
+          <!-- The team's own skill, from the composer's $ menu; its steps query the wiki Base and code index. -->
           <div class="msg msg--user" data-k="plan-skill-ask" data-gone><span class="skill__chip"><svg><use href="#i-skill" /></svg>verify-checkout</span> the Apple Pay button in #513.</div>
           <ul class="worklog" data-k="plan-skill-load" data-gone>
             <li data-k="plan-skill-load" data-gone><svg class="ico ico--xs"><use href="#i-skill" /></svg><span>Skill: verify-checkout</span></li>
-            <li data-k="plan-skill-wiki" data-gone><svg class="ico ico--xs"><use href="#i-book" /></svg><span>Read a wiki note <code>engineering/Testing</code></span></li>
+            <li data-k="plan-skill-base" data-gone><svg class="ico ico--xs"><use href="#i-table" /></svg><span>Queried base <code>What depends on Payments</code> (4 notes)</span></li>
             <li data-k="plan-skill-code" data-gone><svg class="ico ico--xs"><use href="#i-eye" /></svg><span>Found references <code>ApplePayButton</code></span></li>
             <li data-k="plan-skill-run" data-gone><svg class="ico ico--xs"><use href="#i-terminal" /></svg><code>pnpm e2e checkout --browser webkit</code></li>
           </ul>
           <div class="msg msg--agent" data-k="plan-skill-reply" data-gone>
-            <p>All three checks in verify-checkout pass: the button shows with a card in Wallet, hides where Apple Pay can’t pay, and a declined payment returns to the card form.</p>
+            <p>All checks in verify-checkout pass: the button shows with a card in Wallet, falls back to the card form when unavailable, and matches the Rounding invariant pulled from the Base.</p>
           </div>
         </div>
 
@@ -379,21 +395,245 @@ const tabs = [
       </div>
     </div>
 
+    <!-- ───────────── Story: visual story canvas + live code/wiki evidence split -->
+    <aside class="side" data-in="story">
+      <div class="side__head">
+        <span class="side__title">Visual story</span>
+        <span class="side__tools"><svg class="ico"><use href="#i-canvas" /></svg></span>
+      </div>
+      <div class="shelf"><span>Steps · 3</span><i></i></div>
+      <ul class="side__list side__list--slim">
+        <li class="slim story__side-step" data-beat="1"><span class="tile">01</span><span>System · how parts fit</span></li>
+        <li class="slim story__side-step" data-beat="2"><span class="tile">02</span><span>Change · what moved</span></li>
+        <li class="slim story__side-step" data-beat="3"><span class="tile">03</span><span>Effect · shopper view</span></li>
+      </ul>
+      <div class="shelf"><span>Live evidence · 3</span><i></i></div>
+      <ul class="side__list side__list--slim">
+        <li class="slim story__side-ev" data-cite="intents"><svg class="ico ico--xs"><use href="#i-file" /></svg><span>payments/intents.ts</span><em>#512</em></li>
+        <li class="slim story__side-ev" data-cite="checkout"><svg class="ico ico--xs"><use href="#i-file" /></svg><span>PayButtons.tsx</span><em>#513</em></li>
+        <li class="slim story__side-ev" data-cite="rounding"><svg class="ico ico--xs"><use href="#i-book" /></svg><span>Rounding</span><em>Wiki</em></li>
+      </ul>
+    </aside>
+
+    <div class="pane pane--doc pane--canvas pane--story" data-in="story">
+      <div class="doc__bar story__bar">
+        <span class="doc__name">Apple Pay checkout</span>
+        <div class="story__steps" role="group" aria-label="Story steps">
+          <span class="story__step-nav" data-beat-step="-1" title="Previous step"><svg class="ico ico--xs"><use href="#i-left" /></svg></span>
+          <span class="story__pill" data-beat="1" data-p="beat-1"><b>1 / 3</b><span>System</span></span>
+          <span class="story__pill" data-beat="2" data-p="beat-2"><b>2 / 3</b><span>Change</span></span>
+          <span class="story__pill" data-beat="3" data-p="beat-3"><b>3 / 3</b><span>Effect</span></span>
+          <span class="story__step-nav" data-beat-step="1" title="Next step"><svg class="ico ico--xs"><use href="#i-right" /></svg></span>
+        </div>
+        <span class="spacer"></span>
+        <span class="mini mini--solid story__keep" data-k="story-keep-btn" data-gone data-p="keep-wiki" data-keep-wiki><svg class="ico ico--xs"><use href="#i-book" /></svg>Keep in wiki</span>
+        <span class="state state--done story__kept" data-k="story-kept"><svg class="ico ico--xs"><use href="#i-check" /></svg>Kept in wiki</span>
+      </div>
+      <div class="story__body">
+        <div class="board story__board">
+          <svg class="cv story__cv" viewBox="0 0 760 440" aria-hidden="true">
+            <defs>
+              <marker id="hero-cv-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path class="cv-head" d="M0 1L9 5L0 9Z" />
+              </marker>
+              <marker id="hero-cv-head-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path class="cv-head cv-head--accent" d="M0 1L9 5L0 9Z" />
+              </marker>
+            </defs>
+
+            <!-- Beat 1: System -->
+            <g class="cv-stage cv-stage--1">
+              <g class="cv-group">
+                <text x="12" y="16">System · how the parts fit</text>
+                <rect x="12" y="24" width="500" height="232" rx="10" />
+              </g>
+              <g class="cv-edge">
+                <path d="M174 71H194" marker-start="url(#hero-cv-head)" marker-end="url(#hero-cv-head)" />
+                <path d="M352 71H372" marker-end="url(#hero-cv-head)" />
+                <path d="M268 100V166" marker-end="url(#hero-cv-head)" />
+                <path class="cv-edge--dash" d="M332 197H384" marker-end="url(#hero-cv-head)" />
+              </g>
+              <g class="cv-label">
+                <text x="276" y="138">posts totals</text>
+                <text x="358" y="188" text-anchor="middle">rounds by</text>
+              </g>
+              <g class="cv-card cv-card--cite cv-card--touch" data-cite="checkout" data-p="cite-checkout">
+                <rect x="26" y="42" width="146" height="58" rx="8" />
+                <text class="cv-card__title" x="38" y="66">Checkout</text>
+                <text class="cv-card__sub" x="38" y="85">PayButtons.tsx</text>
+                <text class="cv-card__mark cv-beat-mark" x="162" y="65" text-anchor="end">#513</text>
+              </g>
+              <g class="cv-card cv-card--cite cv-card--touch" data-cite="intents" data-p="cite-intents">
+                <rect x="196" y="42" width="154" height="58" rx="8" />
+                <text class="cv-card__title" x="208" y="66">Payment intents</text>
+                <text class="cv-card__sub" x="208" y="85">payments/intents.ts</text>
+                <text class="cv-card__mark cv-beat-mark" x="340" y="65" text-anchor="end">#512</text>
+              </g>
+              <g class="cv-card">
+                <rect x="374" y="42" width="126" height="58" rx="8" />
+                <text class="cv-card__title" x="386" y="66">Payment provider</text>
+                <text class="cv-card__sub" x="386" y="85">Creates intent</text>
+              </g>
+              <g class="cv-card">
+                <rect x="196" y="168" width="136" height="58" rx="8" />
+                <text class="cv-card__title" x="208" y="192">Ledger</text>
+                <text class="cv-card__sub" x="208" y="211">ledger/post.ts</text>
+              </g>
+              <g class="cv-card is-note cv-card--cite" data-cite="rounding" data-p="cite-rounding">
+                <rect x="386" y="168" width="114" height="58" rx="8" />
+                <text class="cv-card__title" x="398" y="192">Rounding</text>
+                <text class="cv-card__sub" x="398" y="211">Wiki note</text>
+              </g>
+            </g>
+
+            <!-- Beat 2: Change -->
+            <g class="cv-stage cv-stage--2">
+              <g class="cv-group">
+                <text x="528" y="16">Change · what moved</text>
+                <rect x="528" y="24" width="220" height="232" rx="10" />
+              </g>
+              <g class="cv-card is-changed cv-card--cite" data-cite="intents">
+                <rect x="542" y="46" width="192" height="62" rx="8" />
+                <text class="cv-card__title" x="554" y="71">#512 Payment intents API</text>
+                <text class="cv-card__sub" x="554" y="92">payments/intents.ts +142 −3</text>
+              </g>
+              <g class="cv-card is-changed cv-card--cite" data-cite="checkout">
+                <rect x="542" y="126" width="192" height="62" rx="8" />
+                <text class="cv-card__title" x="554" y="151">#513 Apple Pay button</text>
+                <text class="cv-card__sub" x="554" y="172">PayButtons.tsx +88 −6</text>
+              </g>
+              <text class="cv-card__sub" x="542" y="220">Pull requests · harbor/checkout</text>
+            </g>
+
+            <!-- Beat 3: Effect -->
+            <g class="cv-stage cv-stage--3">
+              <g class="cv-group">
+                <text x="12" y="278">Effect · what a shopper sees</text>
+                <rect x="12" y="286" width="736" height="142" rx="10" />
+              </g>
+              <g class="cv-edge">
+                <path d="M98 100V300" marker-end="url(#hero-cv-head)" />
+                <path d="M264 226C264 264 380 258 380 300" marker-end="url(#hero-cv-head)" />
+                <path class="is-selected" d="M734 157H744V268H622V300" marker-end="url(#hero-cv-head-accent)" />
+              </g>
+              <g class="cv-card">
+                <rect x="26" y="302" width="224" height="112" rx="8" />
+                <text class="cv-card__title" x="40" y="332">Pay in two taps</text>
+                <text class="cv-card__body" x="40" y="358">A shopper with a card in Wallet</text>
+                <text class="cv-card__body" x="40" y="378">pays without typing a card number.</text>
+              </g>
+              <g class="cv-card">
+                <rect x="268" y="302" width="224" height="112" rx="8" />
+                <text class="cv-card__title" x="282" y="332">Totals match</text>
+                <text class="cv-card__body" x="282" y="358">Apple Pay totals round once, in</text>
+                <text class="cv-card__body" x="282" y="378">the ledger, as card totals do.</text>
+              </g>
+              <g class="cv-card">
+                <rect x="510" y="302" width="224" height="112" rx="8" />
+                <text class="cv-card__title" x="524" y="332">The card form stays</text>
+                <text class="cv-card__body" x="524" y="358">Where Apple Pay can’t pay, checkout</text>
+                <text class="cv-card__body" x="524" y="378">shows the card form as before.</text>
+              </g>
+            </g>
+          </svg>
+        </div>
+
+        <!-- Live evidence split: switches between cited code files (with LSP hover) and the linked wiki note. -->
+        <div class="story__ev">
+          <div class="pane pane--file story__ev-pane" data-ev="intents">
+            <div class="file__bar">
+              <code>payments/intents.ts</code>
+              <span class="file__lsp">TypeScript</span>
+              <span class="story__ev-close" data-evidence-close title="Close evidence"><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
+            </div>
+            <div class="code story__code">
+              <p><i>1</i><code>import &#123; ledger &#125; from <span class="syn-s">"../ledger/post"</span>;</code></p>
+              <p><i>2</i><code>import &#123; provider &#125; from <span class="syn-s">"./provider"</span>;</code></p>
+              <p><i>3</i><code></code></p>
+              <p><i>4</i><code><span class="syn-c">// Rounds once in ledger; shared with cards.</span></code></p>
+              <p class="story__line-cite"><i>5</i><code>export async function <span class="syn-d file__hovered">createPaymentIntent</span>(</code></p>
+              <p><i>6</i><code>  order: Order,</code></p>
+              <p><i>7</i><code>  method: <span class="syn-s">"card"</span> | <span class="syn-s">"apple_pay"</span>,</code></p>
+              <p><i>8</i><code>) &#123;</code></p>
+              <p class="story__line-cite"><i>9</i><code>  const amount = ledger.round(order.total);</code></p>
+              <p><i>10</i><code>  const intent = await provider.create(&#123;</code></p>
+              <p><i>11</i><code>    amount,</code></p>
+              <p><i>12</i><code>    currency: order.currency,</code></p>
+              <p><i>13</i><code>    method,</code></p>
+              <p><i>14</i><code>  &#125;);</code></p>
+              <p><i>15</i><code>  return &#123; clientSecret: intent.secret &#125;;</code></p>
+              <p><i>16</i><code>&#125;</code></p>
+              <div class="file__hover story__hover" aria-hidden="true">
+                <code>createPaymentIntent(order, method): Promise&lt;Intent&gt;</code>
+                <span>TypeScript LSP · 3 references · Rounds once in ledger</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="pane pane--file story__ev-pane" data-ev="checkout">
+            <div class="file__bar">
+              <code>checkout/PayButtons.tsx</code>
+              <span class="file__lsp">TypeScript</span>
+              <span class="story__ev-close" data-evidence-close title="Close evidence"><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
+            </div>
+            <div class="code story__code">
+              <p><i>1</i><code>import &#123; canMakePayments &#125; from <span class="syn-s">"./wallet"</span>;</code></p>
+              <p><i>2</i><code>import &#123; createIntent &#125; from <span class="syn-s">"./api"</span>;</code></p>
+              <p><i>3</i><code></code></p>
+              <p class="story__line-cite"><i>4</i><code>export function <span class="syn-d file__hovered">ApplePayButton</span>(&#123; order &#125;: Props) &#123;</code></p>
+              <p><i>5</i><code>  if (!canMakePayments()) return null;</code></p>
+              <p><i>6</i><code>  return (</code></p>
+              <p><i>7</i><code>    &lt;button</code></p>
+              <p class="story__line-cite"><i>8</i><code>      onClick=&#123;() =&gt; createIntent(order, <span class="syn-s">"apple_pay"</span>)&#125;</code></p>
+              <p><i>9</i><code>    &gt;</code></p>
+              <p><i>10</i><code>      Pay with Apple Pay</code></p>
+              <p><i>11</i><code>    &lt;/button&gt;</code></p>
+              <p><i>12</i><code>  );</code></p>
+              <p><i>13</i><code>&#125;</code></p>
+              <div class="file__hover story__hover story__hover--checkout" aria-hidden="true">
+                <code>function ApplePayButton(props: Props): JSX.Element | null</code>
+                <span>TypeScript LSP · Falls back to CardForm when unavailable</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="pane pane--file story__ev-pane" data-ev="rounding">
+            <div class="file__bar">
+              <code>engineering/Rounding</code>
+              <span class="file__lsp">Wiki note</span>
+              <span class="story__ev-close" data-evidence-close title="Close evidence"><svg class="ico ico--xs"><use href="#i-x" /></svg></span>
+            </div>
+            <div class="ev-note">
+              <h4>Rounding</h4>
+              <p>
+                Money is stored in minor units. Every amount reaches <a>Ledger</a>
+                <span class="peek__type">depends-on</span> as an integer and rounds once, half to even.
+              </p>
+              <code class="ev-note__link">[[Rounding|rounding @depends-on]]</code>
+              <p class="ev-note__meta">
+                Queried by base <code>What depends on Payments</code> · 4 linked notes (Payments, Ledger, Invoices, Refunds)
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ───────────── Wikis -->
     <aside class="side" data-in="wikis">
       <div class="side__head">
         <span class="side__title">Wikis</span>
         <span class="side__tools"><svg class="ico"><use href="#i-search" /></svg><svg class="ico"><use href="#i-filter" /></svg><svg class="ico"><use href="#i-new" /></svg></span>
       </div>
-      <div class="opens"><svg class="ico ico--xs"><use href="#i-pr" /></svg><span>Open changes · 1</span><svg class="ico ico--xs"><use href="#i-right" /></svg></div>
+      <div class="opens" data-go="changes"><svg class="ico ico--xs"><use href="#i-pr" /></svg><span>Open changes · 1</span><svg class="ico ico--xs"><use href="#i-right" /></svg></div>
       <ul class="side__list side__list--slim">
         <li class="slim is-active"><span class="tile">EN</span><span>Payments</span><svg class="ico ico--xs"><use href="#i-pen" /></svg><em>now</em></li>
+        <li class="slim" data-go="story"><span class="tile tile--dim">EN</span><span>Apple Pay checkout</span><svg class="ico ico--xs"><use href="#i-canvas" /></svg><em>now</em></li>
+        <li class="slim"><span class="tile tile--dim">EN</span><span>Rounding</span><em>3d</em></li>
         <li class="slim"><span class="tile tile--dim">EN</span><span>Checkout</span><em>2d</em></li>
         <li class="slim"><span class="tile tile--dim">EN</span><span>Refunds</span><em>5d</em></li>
         <li class="slim"><span class="tile tile--dim">EN</span><span>Webhooks</span><em>1w</em></li>
-        <li class="slim"><span class="tile tile--dim">EN</span><span>Currencies</span><em>2w</em></li>
         <li class="slim"><span class="tile tile--dim">EN</span><span>Testing</span><em>2w</em></li>
-        <li class="slim"><span class="tile tile--dim">EN</span><span>On call</span><em>1mo</em></li>
       </ul>
     </aside>
 
@@ -410,7 +650,7 @@ const tabs = [
         </p>
         <h5>Payment methods</h5>
         <p class="doc__edit">
-          <span data-k="old" data-gone>Checkout takes cards only. </span><span class="doc__gone" data-k="ghost" data-gone>Checkout takes cards only.</span><span class="doc__typed" data-k="ins-1">Checkout takes cards and Apple Pay.</span><span class="doc__typed" data-k="ins-2"> The Apple Pay button shows only where the browser can make payments,</span><span class="doc__typed" data-k="ins-3"> and asks <code>POST /payments/intents</code> for its intent</span><span class="doc__typed" data-k="ins-4">, the same path the card form uses.</span><span class="cursor" data-k="cursor" data-gone><span class="cursor__flag">claude-opus-5-5</span></span>
+          <span data-k="old" data-gone>Checkout takes cards only. </span><span class="doc__gone" data-k="ghost" data-gone>Checkout takes cards only.</span><span class="doc__typed" data-k="ins-1">Checkout takes cards and Apple Pay.</span><span class="doc__typed" data-k="ins-2"> Totals follow <a>Rounding</a> <span class="peek__type">depends-on</span> so Apple Pay matches card totals,</span><span class="doc__typed" data-k="ins-3"> and calls <code>POST /payments/intents</code> for its intent.</span><span class="cursor" data-k="cursor" data-gone><span class="cursor__flag">claude-opus-5-5</span></span>
         </p>
         <h5>Testing</h5>
         <p>
@@ -419,7 +659,7 @@ const tabs = [
         </p>
       </article>
       <div class="cbar" data-k="change-bar" data-gone>
-        <span class="cbar__count">4 agent changes</span>
+        <span class="cbar__count">3 agent changes</span>
         <span class="cbar__btn">Previous</span>
         <span class="cbar__btn">Next</span>
         <span class="cbar__btn" data-p="accept">Accept all</span>
@@ -447,7 +687,7 @@ const tabs = [
       <ul class="side__list" data-k="cr-st-open cr-st-merged">
         <li class="card">
           <div class="card__title">Add Apple Pay to checkout</div>
-          <div class="card__head"><span class="card__repo"><span data-k="cr-st-open" data-gone>Open</span><span data-k="cr-st-merged">Merged</span> · 4 amendments</span></div>
+          <div class="card__head"><span class="card__repo"><span data-k="cr-st-open" data-gone>Open</span><span data-k="cr-st-merged">Merged</span> · 3 amendments</span></div>
         </li>
       </ul>
       <div class="shelf"><span>Authored · 3</span><i></i></div>
