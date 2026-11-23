@@ -18,13 +18,14 @@ import { HttpServerRequest } from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import * as Redacted from "effect/Redacted";
 
-import { CLIENT_IP_HEADER, Deployment } from "./deployment.ts";
+import { CLIENT_IP_HEADER, Deployment, DeploymentSecrets } from "./deployment.ts";
 import {
   ApiIngress,
   ApiRouting,
   ARM64,
   BetterAuthSecret,
   Cluster,
+  containerSecrets,
   DatabaseUrl,
   Electric,
   Mail,
@@ -47,12 +48,24 @@ const DeployedSettings = Effect.gen(function* () {
   };
 });
 
+/** The database URL, Better Auth's secret and, when deployed, the sign-in providers' secrets. */
+const ApiSecrets = Effect.gen(function* () {
+  const optional = (yield* ALCHEMY_DEV) ? {} : (yield* DeploymentSecrets).api;
+  return yield* containerSecrets({
+    DATABASE_URL: yield* DatabaseUrl,
+    // Unwrapped: env values are written as JSON, where a Redacted reads "<redacted>".
+    BETTER_AUTH_SECRET: Output.map((yield* BetterAuthSecret).text, Redacted.value),
+    ...optional,
+  });
+});
+
 export default Api.make(
   Effect.gen(function* () {
     const electric = yield* Electric;
     const mail = yield* Mail;
     const ingress = yield* ApiIngress;
     const rules = yield* ApiRouting;
+    const { env, secrets } = yield* ApiSecrets;
     return {
       cluster: yield* Cluster,
       main: import.meta.url,
@@ -66,10 +79,9 @@ export default Api.make(
         ...(rules ? { rules } : {}),
         health: { "4310/http": { path: "/health" } },
       },
+      ...(Object.keys(secrets).length > 0 ? { secrets } : {}),
       env: {
-        DATABASE_URL: yield* DatabaseUrl,
-        // Unwrapped: env values are written as JSON, where a Redacted reads "<redacted>".
-        BETTER_AUTH_SECRET: Output.map((yield* BetterAuthSecret).text, Redacted.value),
+        ...env,
         ELECTRIC_URL: electric.url,
         MAIL_FROM: mail.from,
         AUTH_URL: ingress.publicUrl,

@@ -85,11 +85,13 @@ jobs:
       - name: Deploy production cloud stage
         working-directory: infra/cloud
         run: vp run deploy --stage prod --yes --no-input ${{ inputs.force && '--force' || '' }}
+        # The API's secrets go in as CLOUD_<name>, never <name>: Alchemy copies whatever the API's
+        # code reads while planning into its task definition as plain text (src/deployment.ts).
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUD_ORIGIN_SECRET: ${{ secrets.CLOUD_ORIGIN_SECRET }}
-          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-          GITHUB_CLIENT_SECRET: ${{ secrets.CLOUD_GITHUB_CLIENT_SECRET }}
-          MICROSOFT_CLIENT_SECRET: ${{ secrets.MICROSOFT_CLIENT_SECRET }}
-          APPLE_PRIVATE_KEY: ${{ secrets.APPLE_PRIVATE_KEY }}
-          TURNSTILE_SECRET_KEY: ${{ secrets.TURNSTILE_SECRET_KEY }}
+          CLOUD_GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          CLOUD_GITHUB_CLIENT_SECRET: ${{ secrets.CLOUD_GITHUB_CLIENT_SECRET }}
+          CLOUD_MICROSOFT_CLIENT_SECRET: ${{ secrets.MICROSOFT_CLIENT_SECRET }}
+          CLOUD_APPLE_PRIVATE_KEY: ${{ secrets.APPLE_PRIVATE_KEY }}
+          CLOUD_TURNSTILE_SECRET_KEY: ${{ secrets.TURNSTILE_SECRET_KEY }}

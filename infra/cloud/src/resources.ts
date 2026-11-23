@@ -16,10 +16,12 @@ import { adopt } from "alchemy/AdoptPolicy";
 import { ALCHEMY_DEV } from "alchemy/Phase";
 import * as RemovalPolicy from "alchemy/RemovalPolicy";
 import * as Effect from "effect/Effect";
+import * as Redacted from "effect/Redacted";
 import * as Schedule from "effect/Schedule";
 import * as Stream from "effect/Stream";
 
-import { Deployment, ORIGIN_SECRET_HEADER } from "./deployment.ts";
+import { Deployment, DeploymentSecrets, ORIGIN_SECRET_HEADER } from "./deployment.ts";
+import { PUBLIC_SECURITY_GROUP } from "./firewall.ts";
 
 const ELECTRIC_IMAGE = "electricsql/electric:1.8.1";
 // Graviton: matches Apple Silicon locally and is the cheaper Fargate platform.
@@ -37,7 +39,7 @@ const LOCAL_POSTGRES = {
   database: "mercurian_cloud",
 };
 
-const VPC_CIDR = "10.40.0.0/16";
+export const VPC_CIDR = "10.40.0.0/16";
 const API_PORT = 4310;
 const ELECTRIC_PORT = 3000;
 
@@ -69,7 +71,7 @@ export const Network = Effect.gen(function* () {
       fromVpc(5432, "Postgres"),
     ],
   });
-  const publicIngress = yield* AWS.EC2.SecurityGroup("PublicSecurityGroup", {
+  const publicIngress = yield* AWS.EC2.SecurityGroup(PUBLIC_SECURITY_GROUP, {
     vpcId: network.vpcId,
     description: "The API's HTTPS load balancer",
     ingress: [
@@ -183,6 +185,30 @@ export const DatabaseUrl = Effect.gen(function* () {
 
 export const Cluster = AWS.ECS.Cluster("Cluster", {});
 
+const parameterId = (name: string) =>
+  `${name.toLowerCase().replace(/(?:^|_)([a-z0-9])/gu, (_, letter: string) => letter.toUpperCase())}Secret`;
+
+/**
+ * Splits a container's secrets by stage. Dev passes them as plain env. A deployed stage keeps
+ * each in SSM as a SecureString that ECS reads when the task starts, so the task definition
+ * holds only its ARN; the id comes from the env name, so containers share a value's parameter.
+ */
+export const containerSecrets = Effect.fn("containerSecrets")(function* (
+  values: Record<string, Output.Output<string> | string>,
+) {
+  if (yield* ALCHEMY_DEV) return { env: values, secrets: {} };
+  const secrets: Record<string, Output.Output<string>> = {};
+  for (const [name, value] of Object.entries(values)) {
+    const parameter = yield* AWS.SSM.Parameter(parameterId(name), {
+      type: "SecureString",
+      value: typeof value === "string" ? Redacted.make(value) : Output.map(value, Redacted.make),
+      description: `${name} for the cloud's containers`,
+    });
+    secrets[name] = parameter.parameterArn;
+  }
+  return { env: {}, secrets };
+});
+
 /**
  * Better Auth's secret. It encrypts TOTP secrets and the JWKS private keys, so
  * a new logical id (and with it a new value) breaks every stage's 2FA and keys.
@@ -242,7 +268,7 @@ export const ApiIngress = Effect.gen(function* () {
 /** The rule a deployed API's requests must match: the app router's secret header. */
 export const ApiRouting = Effect.gen(function* () {
   if (yield* ALCHEMY_DEV) return undefined;
-  const { originSecret } = yield* Deployment;
+  const { originSecret } = yield* DeploymentSecrets;
   return [{ header: { name: ORIGIN_SECRET_HEADER, values: [originSecret] } }];
 });
 
@@ -352,11 +378,32 @@ export const Migrations = Effect.gen(function* () {
       ],
     },
   });
+  const { env, secrets } = yield* containerSecrets({ DATABASE_URL: yield* DatabaseUrl });
+  const secretArns = Object.values(secrets);
+  // A Task, unlike a Service, doesn't take `secrets`, so its execution role gets read access here.
+  const readSecrets =
+    secretArns.length > 0
+      ? yield* AWS.IAM.Policy("MigrateSecretsPolicy", {
+          description: "Lets the migration task read the database URL from SSM",
+          policyDocument: {
+            Version: "2012-10-17",
+            Statement: [{ Effect: "Allow", Action: ["ssm:GetParameters"], Resource: secretArns }],
+          },
+        })
+      : undefined;
   const migrate = yield* AWS.ECS.Task("Migrate", {
     context: build.outdir,
     dockerfile: "Dockerfile",
     runtimePlatform: ARM64,
-    env: { DATABASE_URL: yield* DatabaseUrl },
+    env,
+    ...(readSecrets
+      ? {
+          container: {
+            secrets: Object.entries(secrets).map(([name, valueFrom]) => ({ name, valueFrom })),
+          },
+          executionRoleManagedPolicyArns: [readSecrets.policyArn],
+        }
+      : {}),
   });
   const network = (yield* ALCHEMY_DEV) ? undefined : yield* Network;
   const migrated = yield* RunMigrations({
@@ -377,6 +424,7 @@ export const Migrations = Effect.gen(function* () {
 /** Electric. Only the API reaches it: deployed stages put it behind an internal load balancer. */
 export const Electric = Effect.gen(function* () {
   const dev = yield* ALCHEMY_DEV;
+  const { env, secrets } = yield* containerSecrets({ DATABASE_URL: yield* DatabaseUrl });
   return yield* AWS.ECS.Service("Electric", {
     cluster: yield* Cluster,
     image: ELECTRIC_IMAGE,
@@ -390,8 +438,9 @@ export const Electric = Effect.gen(function* () {
     },
     cpu: 512,
     memory: 1024,
+    ...(dev ? {} : { secrets }),
     env: {
-      DATABASE_URL: yield* DatabaseUrl,
+      ...env,
       // Only the API reaches Electric, so the shared secret stays server-side.
       ELECTRIC_INSECURE: "true",
       // Live shape requests pass through the API, which runs on Bun; Bun closes
