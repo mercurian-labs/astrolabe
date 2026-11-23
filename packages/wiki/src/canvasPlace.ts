@@ -132,8 +132,18 @@ export const CANVAS_GROUP_INSET = {
 /** How big a card is drawn, by what it says. */
 export const canvasCardBox = (card: CanvasDrawing["cards"][number]) => cardBox(card);
 
+/**
+ * Some models double-escape line breaks as literal `\n` inside JSON tool arguments. When a card
+ * has no actual newlines at all, turn standalone `\n` sequences (outside inline code) into real
+ * line breaks so both card sizing and rendered Markdown behave cleanly.
+ */
+function normalizeCardText(text: string): string {
+  if (text.includes("\n") || !text.includes("\\n")) return text;
+  return text.replace(/`[^`]*`|\\n/g, (match) => (match === "\\n" ? "\n" : match));
+}
+
 function cardBox(card: CanvasDrawing["cards"][number]): Box {
-  const text = card.text ?? "";
+  const text = card.text === undefined ? "" : normalizeCardText(card.text);
   if (card.path !== undefined || card.url !== undefined) {
     const width = 280;
     return { id: card.id, width, height: snap(60 + (text ? textHeight(text, width) : 0)) };
@@ -535,13 +545,14 @@ function cardNodesAt(
     const rect = rects.get(card.id);
     if (rect === undefined) return [];
     const base = { id: card.id, ...rect, ...presetColor(card.color) };
+    const text = card.text === undefined ? undefined : normalizeCardText(card.text);
     if (card.path === undefined && card.url === undefined) {
-      return [{ ...base, type: "text", text: card.text ?? "" }];
+      return [{ ...base, type: "text", text: text ?? "" }];
     }
     const lines =
       card.line === undefined ? undefined : ([card.line, card.endLine ?? card.line] as const);
     const astrolabe = {
-      ...(card.text === undefined ? {} : { caption: card.text }),
+      ...(text === undefined ? {} : { caption: text }),
       ...(card.path === undefined
         ? {}
         : { code: { path: card.path, ...(lines === undefined ? {} : { lines }) } }),
@@ -590,8 +601,9 @@ export function canvasCardSize(card: {
   readonly text?: string | undefined;
 }): Pick<CanvasBounds, "width" | "height"> {
   if (card.text === undefined) return { width: 400, height: 400 };
-  const width = card.text.length > WIDE_TEXT ? 400 : 250;
-  return { width, height: snap(38 + textHeight(card.text, width)) };
+  const text = normalizeCardText(card.text);
+  const width = text.length > WIDE_TEXT ? 400 : 250;
+  return { width, height: snap(38 + textHeight(text, width)) };
 }
 
 /** A card on its way onto a board. */

@@ -30,6 +30,7 @@ const decodeInput = Schema.decodeUnknownOption(CanvasShowInput);
 
 interface CanvasItem {
   readonly type: string;
+  readonly runId?: string | null | undefined;
   readonly title?: string | null | undefined;
   readonly document?: unknown;
   readonly toolName?: string | null | undefined;
@@ -39,22 +40,71 @@ interface CanvasItem {
   readonly updatedAt?: unknown;
 }
 
-// An item changes only as a new object, and timelines re-derive their rows on every thread update.
-const viewsByItem = new WeakMap<CanvasItem, CanvasView | null | undefined>();
+/**
+ * Recorded `canvas` items already present in a thread, used to suppress `dynamic_tool` fallbacks
+ * for providers (such as Antigravity) whose tool output holds a human summary instead of the raw
+ * MCP JSON with `canvasItemId`.
+ */
+export interface RecordedCanvases {
+  readonly runs: ReadonlySet<string>;
+  readonly names: ReadonlySet<string>;
+}
 
-function viewOf(item: CanvasItem): CanvasView | null | undefined {
+/** Collects the runs and normalized canvas names that already have persisted `canvas` items. */
+export function recordedCanvasesIn(items: ReadonlyArray<CanvasItem>): RecordedCanvases {
+  const runs = new Set<string>();
+  const names = new Set<string>();
+  for (const item of items) {
+    if (item.type !== "canvas") continue;
+    if (typeof item.runId === "string" && item.runId.length > 0) runs.add(item.runId);
+    if (typeof item.title === "string" && item.title.trim().length > 0) {
+      const fileKey = canvasNameKey(canvasFileName(item.title));
+      const titleKey = canvasNameKey(item.title);
+      if (fileKey.length > 0) names.add(fileKey);
+      if (titleKey.length > 0) names.add(titleKey);
+    }
+  }
+  return { runs, names };
+}
+
+// An item changes only as a new object, and timelines re-derive their rows on every thread update.
+const viewsByItem = new WeakMap<
+  CanvasItem,
+  {
+    readonly view: CanvasView | null | undefined;
+    readonly inputNames?: ReadonlyArray<string>;
+    readonly isUpdate?: boolean;
+  }
+>();
+
+function viewOf(item: CanvasItem): {
+  readonly view: CanvasView | null | undefined;
+  readonly inputNames?: ReadonlyArray<string>;
+  readonly isUpdate?: boolean;
+} {
   if (item.type === "canvas") {
     return {
-      title: item.title ?? "Canvas",
-      data: canvasData(item.document),
-      recorded: { document: item.document, revision: String(item.updatedAt ?? "") },
+      view: {
+        title: item.title ?? "Canvas",
+        data: canvasData(item.document),
+        recorded: { document: item.document, revision: String(item.updatedAt ?? "") },
+      },
     };
   }
-  if (t3ToolResultIndicatesFailure(item.output)) return undefined;
+  if (t3ToolResultIndicatesFailure(item.output)) return { view: undefined };
   // The board this call drew is its canvas item's, which draws in its place.
-  if (compactDynamicToolOutput(item.output)?.canvasItemId !== undefined) return null;
+  if (compactDynamicToolOutput(item.output)?.canvasItemId !== undefined) return { view: null };
   const input = Option.getOrUndefined(decodeInput(toolArguments(item.input)));
-  return input === undefined ? undefined : { title: input.title, data: placeCanvas(input) };
+  if (input === undefined) return { view: undefined };
+  const isUpdate = input.update !== undefined && input.update.trim().length > 0;
+  const inputNames = [
+    canvasNameKey(canvasFileName(input.title)),
+    canvasNameKey(input.title),
+    ...(isUpdate
+      ? [canvasNameKey(canvasFileName(input.update!)), canvasNameKey(input.update!)]
+      : []),
+  ].filter((name) => name.length > 0);
+  return { view: { title: input.title, data: placeCanvas(input) }, inputNames, isUpdate };
 }
 
 /**
@@ -62,25 +112,47 @@ function viewOf(item: CanvasItem): CanvasView | null | undefined {
  * recorded none. `null` for a call whose canvas item draws it instead, which shows nothing itself;
  * undefined for any other item.
  */
-export function canvasViewFromItem(item: CanvasItem): CanvasView | null | undefined {
+export function canvasViewFromItem(
+  item: CanvasItem,
+  recorded?: RecordedCanvases,
+): CanvasView | null | undefined {
   const drawn =
     item.type === "canvas" ||
     (item.type === "dynamic_tool" &&
       item.status === "completed" &&
       resolveT3McpToolId(item.toolName) === CANVAS_SHOW_TOOL_NAME);
   if (!drawn) return undefined;
-  if (viewsByItem.has(item)) return viewsByItem.get(item);
-  const view = viewOf(item);
-  viewsByItem.set(item, view);
-  return view;
+  let cached = viewsByItem.get(item);
+  if (cached === undefined) {
+    cached = viewOf(item);
+    viewsByItem.set(item, cached);
+  }
+  if (
+    item.type === "dynamic_tool" &&
+    cached.view !== undefined &&
+    cached.view !== null &&
+    recorded
+  ) {
+    if (typeof item.runId === "string" && recorded.runs.has(item.runId)) return null;
+    if (cached.isUpdate === true && (recorded.runs.size > 0 || recorded.names.size > 0))
+      return null;
+    if (
+      recorded.names.size > 0 &&
+      cached.inputNames?.some((name) => recorded.names.has(name)) === true
+    ) {
+      return null;
+    }
+  }
+  return cached.view;
 }
 
 /** The thread's canvases, oldest first, each with the id of the item that draws it. */
 export function canvasViews(
   items: ReadonlyArray<CanvasItem & { readonly id: string }>,
 ): ReadonlyArray<CanvasView & { readonly id: string }> {
+  const recorded = recordedCanvasesIn(items);
   return items.flatMap((item) => {
-    const view = canvasViewFromItem(item);
+    const view = canvasViewFromItem(item, recorded);
     return view === undefined || view === null ? [] : [{ ...view, id: item.id }];
   });
 }

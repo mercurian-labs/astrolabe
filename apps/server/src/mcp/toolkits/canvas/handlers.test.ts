@@ -2,6 +2,7 @@ import * as NodePath from "@effect/platform-node/NodePath";
 import { describe, expect, it } from "@effect/vitest";
 import {
   EnvironmentId,
+  OrchestratorMcpFailure,
   type Project,
   ProjectId,
   ProviderInstanceId,
@@ -76,9 +77,15 @@ const harness = (options: {
   readonly files?: ReadonlyArray<string>;
   readonly noGit?: boolean;
   readonly recordedTitle?: string;
+  readonly recordedUpdated?: boolean;
+  readonly recordError?: OrchestratorMcpFailure;
 }) => {
   const asked: string[] = [];
-  const recorded: Array<{ readonly title: string; readonly document: unknown }> = [];
+  const recorded: Array<{
+    readonly title: string;
+    readonly update?: string | undefined;
+    readonly document: unknown;
+  }> = [];
   const kept: Array<{
     readonly input: WikiKeepCanvasInput;
     readonly author: WikiService.WikiAuthor;
@@ -100,9 +107,13 @@ const harness = (options: {
         Layer.mock(OrchestratorMcpService.OrchestratorMcpService)({
           recordCanvas: (_scope, input) => {
             recorded.push(input);
+            if (options.recordError !== undefined) return Effect.fail(options.recordError);
             return Effect.succeed({
               turnItemId: TurnItemId.make("turn-item:canvas:1"),
               title: options.recordedTitle ?? input.title,
+              ...(options.recordedUpdated === undefined
+                ? {}
+                : { updated: options.recordedUpdated }),
             });
           },
         }),
@@ -177,6 +188,39 @@ describe("canvas toolkit handlers", () => {
         },
       ]);
     }),
+  );
+
+  it.effect(
+    "forwards update targets, reports in-place updates, and surfaces missing-target errors",
+    () =>
+      Effect.gen(function* () {
+        const updatedTools = harness({ recordedUpdated: true });
+        const updated = yield* updatedTools.call({
+          title: "Flow",
+          update: "Flow.canvas",
+          cards: [{ id: "a", text: "Client" }],
+        });
+        expect(updated.isError).not.toBe(true);
+        expect(updatedTools.recorded).toMatchObject([{ title: "Flow", update: "Flow.canvas" }]);
+        expect(updated.structuredContent).toMatchObject({
+          file: "Flow.canvas",
+          message: expect.stringContaining("Updated Flow.canvas in place"),
+        });
+
+        const missingTools = harness({
+          recordError: new OrchestratorMcpFailure({
+            code: "invalid_request",
+            message:
+              'No canvas named "Missing.canvas" exists in this thread. Existing canvases: Flow.canvas.',
+          }),
+        });
+        const missing = yield* missingTools.call({
+          title: "Flow",
+          update: "Missing.canvas",
+          cards: [{ id: "a", text: "Client" }],
+        });
+        expect(failureMessage(missing)).toContain('No canvas named "Missing.canvas"');
+      }),
   );
 
   it.effect("records the commit and repository a kept code card should pin", () =>

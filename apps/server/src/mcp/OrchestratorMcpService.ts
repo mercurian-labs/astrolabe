@@ -68,7 +68,7 @@ import {
   resolveProjectProviderInstanceEnabled,
   SECRET_REQUEST_UNSAVED_NOTE,
 } from "@t3tools/contracts";
-import { canvasUniqueTitle } from "@mercurian/wiki/canvas";
+import { canvasFileName, canvasNameKey, canvasUniqueTitle } from "@mercurian/wiki/canvas";
 import { getProviderOptionCurrentValue, withLegacyUltracodeEffort } from "@t3tools/shared/model";
 import { runRanAfter } from "@t3tools/shared/orchestrationV2ThreadError";
 import { formatThreadLink } from "@t3tools/shared/threadLinks";
@@ -203,11 +203,17 @@ export interface OrchestratorMcpServiceShape {
     scope: McpInvocationScope,
     input: {
       readonly title: string;
+      readonly update?: string | undefined;
       readonly document: unknown;
       readonly code: CanvasShowCode | undefined;
     },
   ) => Effect.Effect<
-    { readonly turnItemId: TurnItemId; readonly title: string } | undefined,
+    | {
+        readonly turnItemId: TurnItemId;
+        readonly title: string;
+        readonly updated?: boolean | undefined;
+      }
+    | undefined,
     OrchestratorMcpFailure
   >;
   /** Only status reaches the agent, never this value. */
@@ -2162,17 +2168,49 @@ const make = Effect.gen(function* () {
       ) {
         return undefined;
       }
+      const canvases = parent.turnItems.filter((item) => item.type === "canvas");
+      const updateTarget = input.update?.trim();
+      let existing = undefined;
+      if (updateTarget !== undefined && updateTarget.length > 0) {
+        const wantedKey = canvasNameKey(updateTarget);
+        existing = canvases.findLast(
+          (item) =>
+            item.id === updateTarget ||
+            (item.title !== null &&
+              (canvasNameKey(canvasFileName(item.title)) === wantedKey ||
+                canvasNameKey(item.title) === wantedKey)),
+        );
+        if (existing === undefined) {
+          const available = canvases
+            .flatMap((item) => (item.title === null ? [] : [canvasFileName(item.title)]))
+            .join(", ");
+          return yield* failure(
+            "invalid_request",
+            available.length > 0
+              ? `No canvas named "${updateTarget}" exists in this thread. Existing canvases: ${available}.`
+              : `No canvas named "${updateTarget}" exists in this thread yet. Leave out \`update\` to draw a new board.`,
+          );
+        }
+      } else {
+        // Across turns, reusing an earlier board's exact title updates that board in place instead
+        // of forking "Title 2.canvas"; within one turn, duplicate titles stay distinct.
+        const wantedKey = canvasNameKey(canvasFileName(input.title));
+        existing = canvases.findLast(
+          (item) =>
+            item.runId !== run.id &&
+            item.title !== null &&
+            canvasNameKey(canvasFileName(item.title)) === wantedKey,
+        );
+      }
       const key = yield* requestKey(undefined);
-      const turnItemId = TurnItemId.make(
-        `turn-item:canvas:${stablePart(threadId)}:${stablePart(key)}`,
-      );
+      const turnItemId =
+        existing?.id ??
+        TurnItemId.make(`turn-item:canvas:${stablePart(threadId)}:${stablePart(key)}`);
       // Its file name is its title's, which replies embed it by: unique in the thread, a retry aside.
       const title = canvasUniqueTitle(
         input.title,
-        parent.turnItems.flatMap((item) =>
-          item.type === "canvas" && item.id !== turnItemId && item.title !== null
-            ? [item.title]
-            : [],
+        canvases.flatMap((item) =>
+          item.id !== turnItemId && item.title !== null ? [item.title] : [],
         ),
       );
       yield* threadManagement
@@ -2186,13 +2224,14 @@ const make = Effect.gen(function* () {
           title,
           document: input.document,
           ...(input.code === undefined ? {} : { code: input.code }),
+          ...(existing === undefined ? {} : { replace: true }),
         })
         .pipe(
           Effect.mapError((error) =>
             failure("orchestration_error", `Could not record the canvas: ${errorMessage(error)}`),
           ),
         );
-      return { turnItemId, title };
+      return { turnItemId, title, updated: existing !== undefined };
     }),
     requestSecret: Effect.fn("OrchestratorMcpService.requestSecret")(function* (scope, input) {
       const { scope: threadScope, parent } = yield* loadThreadCaller(scope, "request_secret");

@@ -1029,6 +1029,23 @@ describe("placeCanvas", () => {
     );
     expect(height).toBeGreaterThan(width);
   });
+
+  it("normalizes double-escaped \\n line breaks in card text while preserving inline code and real newlines", () => {
+    const { nodes } = placeCanvas({
+      cards: [
+        { id: "escaped", text: "**Title**\\nFirst line\\nSecond line" },
+        { id: "code", text: "**Split**\\nUses `\\n` separator" },
+        { id: "real", text: "**Title**\nKeep literal \\n when real newlines exist" },
+      ],
+    });
+    const textOf = (id: string) => {
+      const node = nodes.find((candidate) => candidate.id === id);
+      return node?.type === "text" ? node.text : undefined;
+    };
+    expect(textOf("escaped")).toBe("**Title**\nFirst line\nSecond line");
+    expect(textOf("code")).toBe("**Split**\nUses `\\n` separator");
+    expect(textOf("real")).toBe("**Title**\nKeep literal \\n when real newlines exist");
+  });
 });
 
 describe("canvasDrawingProblems", () => {

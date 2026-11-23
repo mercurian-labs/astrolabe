@@ -2085,6 +2085,52 @@ it.effect(
         },
       });
       assert.isTrue(edited?.type === "canvas" && edited.editedAt !== undefined);
+
+      // Replacing an existing canvas updates its title/document/code in place and clears editedAt.
+      const replacedDocument = {
+        nodes: [
+          { id: "a", type: "text", text: "A v2", x: 10, y: 20, width: 180, height: 60 },
+          { id: "b", type: "text", text: "B", x: 240, y: 20, width: 180, height: 60 },
+        ],
+        edges: [{ id: "e1", fromNode: "a", toNode: "b" }],
+      };
+      yield* orchestrator.dispatch({
+        type: "canvas.record",
+        commandId: CommandId.make("canvas-record:replace"),
+        threadId,
+        runId,
+        nodeId,
+        turnItemId,
+        title: "Flow v2",
+        document: replacedDocument,
+        code: { commit: "deadbee" },
+        replace: true,
+      });
+      const replacedItems = (yield* projections.getThreadRecords(threadId, ["turnItems"], {
+        turnItemTypes: ["canvas"],
+        messageRoles: [],
+      })).turnItems;
+      assert.strictEqual(replacedItems.length, 1);
+      const replaced = replacedItems[0];
+      assert.deepStrictEqual(
+        replaced?.type === "canvas"
+          ? {
+              id: replaced.id,
+              title: replaced.title,
+              document: replaced.document,
+              code: replaced.code,
+              editedAt: replaced.editedAt,
+            }
+          : null,
+        {
+          id: turnItemId,
+          title: "Flow v2",
+          document: replacedDocument,
+          code: { commit: "deadbee" },
+          editedAt: undefined,
+        },
+      );
+
       const refused = yield* edit("missing", TurnItemId.make("turn-item:missing")).pipe(
         Effect.flip,
       );

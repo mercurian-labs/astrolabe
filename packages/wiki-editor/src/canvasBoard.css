@@ -538,6 +538,13 @@ span.cv-wikilink {
   text-align: center;
   overflow-wrap: anywhere;
 }
+.cv-simple-title {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-height: 1.2;
+}
 .cv-simple-text {
   display: flex;
   flex-direction: column;

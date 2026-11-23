@@ -197,6 +197,30 @@ describe("links", () => {
     expect(img?.getAttribute("width")).toBe("200");
     expect(img?.closest<HTMLElement>(".cm-md-image")?.dataset.embed).toBe("pic.png");
   });
+
+  it("opens an inline embed chip directly when clicking its open icon, and hints how to preview a canvas", () => {
+    const opened: string[] = [];
+    const view = mount("See ![[Architecture.canvas#Storage]] inline", {
+      focused: true,
+      selection: [0],
+      options: { openWikilink: (target) => opened.push(target) },
+    });
+    const chip = view.contentDOM.querySelector<HTMLElement>(".cm-md-embed");
+    const icon = chip?.querySelector("svg");
+    const label = chip?.querySelector<HTMLElement>(".cm-md-embed-label");
+    expect(chip?.title).toContain("Put on its own line to preview");
+
+    icon?.dispatchEvent(
+      new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }),
+    );
+    expect(opened).toEqual(["Architecture.canvas#Storage"]);
+
+    label?.dispatchEvent(
+      new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }),
+    );
+    expect(opened).toEqual(["Architecture.canvas#Storage"]);
+    expect(caret(view)).toBe(4);
+  });
 });
 
 describe("multi-line links and images", () => {

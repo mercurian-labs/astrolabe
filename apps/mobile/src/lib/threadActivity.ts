@@ -69,7 +69,11 @@ import { claudeResumeCompactionAge } from "@t3tools/shared/claudeCompaction";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
 import { truncate } from "@t3tools/shared/String";
 import type { HtmlRenderReference } from "@t3tools/shared/htmlRender";
-import { canvasViewFromItem, type CanvasView } from "@t3tools/client-runtime/canvasViews";
+import {
+  canvasViewFromItem,
+  recordedCanvasesIn,
+  type CanvasView,
+} from "@t3tools/client-runtime/canvasViews";
 import type { McpAppReference } from "@t3tools/shared/mcpApp";
 import {
   compactDynamicToolOutput,
@@ -2151,6 +2155,8 @@ interface ThreadFeedBuild {
   readonly checkpointSummaries: ReadonlyArray<ThreadCheckpointSummary> | undefined;
   readonly foldedAnswerMessageIds: ReadonlySet<string>;
   readonly delegatedChildrenByRun: ReadonlyMap<RunId, ReadonlySet<string>>;
+  readonly recordedCanvasRuns: ReadonlySet<string>;
+  readonly recordedCanvasNames: ReadonlySet<string>;
   readonly feed: ReadonlyArray<ThreadFeedEntry>;
   /** Grouping is empty before `row`: the rows before it produced `feed.slice(0, feedLength)`. */
   readonly restarts: ReadonlyArray<{ readonly row: number; readonly feedLength: number }>;
@@ -2252,6 +2258,7 @@ export function buildThreadFeed(
   };
   // Thread-wide facts that change rows anywhere in the feed. A cached prefix
   // is reused only while these match the build that produced it.
+  const recordedCanvases = recordedCanvasesIn(visibleTurnItems.map((row) => row.item));
   const foldedAnswerMessageIds = new Set<string>();
   const delegatedChildrenByRun = new Map<RunId, Set<string>>();
   for (const { item } of visibleTurnItems) {
@@ -2274,7 +2281,9 @@ export function buildThreadFeed(
     previous.nodes === options?.nodes &&
     checkpointSummariesEqual(previous.checkpointSummaries, options?.checkpointSummaries) &&
     setsEqual(previous.foldedAnswerMessageIds, foldedAnswerMessageIds) &&
-    setMapsEqual(previous.delegatedChildrenByRun, delegatedChildrenByRun)
+    setMapsEqual(previous.delegatedChildrenByRun, delegatedChildrenByRun) &&
+    setsEqual(previous.recordedCanvasRuns, recordedCanvases.runs) &&
+    setsEqual(previous.recordedCanvasNames, recordedCanvases.names)
   ) {
     const firstChanged = firstChangedIndex(previous.rows, visibleTurnItems);
     restartIndex = previous.restarts.length - 1;
@@ -2321,6 +2330,9 @@ export function buildThreadFeed(
     ) {
       continue;
     }
+    if (item.type === "dynamic_tool" && canvasViewFromItem(item, recordedCanvases) === null) {
+      continue;
+    }
     const attemptId = resolveAttemptId(item);
     const cached = projectedEntriesCache.get(row);
     if (cached?.attemptId === attemptId) {
@@ -2346,7 +2358,7 @@ export function buildThreadFeed(
       entryRows.push(index);
       continue;
     }
-    const canvas = canvasViewFromItem(item);
+    const canvas = canvasViewFromItem(item, recordedCanvases);
     // The call that drew a recorded board shows nothing: its canvas item draws it.
     if (canvas === null) continue;
     if (canvas) {
@@ -2518,6 +2530,8 @@ export function buildThreadFeed(
             checkpointSummaries: options?.checkpointSummaries,
             foldedAnswerMessageIds,
             delegatedChildrenByRun,
+            recordedCanvasRuns: recordedCanvases.runs,
+            recordedCanvasNames: recordedCanvases.names,
             feed,
             restarts,
           };

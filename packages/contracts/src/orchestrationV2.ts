@@ -3673,6 +3673,8 @@ const OrchestrationV2InternalCommand = Schema.Union([
     title: TrimmedNonEmptyString,
     document: Schema.Unknown,
     code: Schema.optional(CanvasShowCode),
+    /** When true, replaces an existing canvas item's title, document, and code in place. */
+    replace: Schema.optional(Schema.Boolean),
   }),
   /**
    * Records or updates a link an agent asked the user to make. Internal so no

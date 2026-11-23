@@ -88,12 +88,19 @@ export const layer = McpToolAccess.toLayer(CanvasToolkit, {
       const scope = yield* McpInvocationContext.McpInvocationContext;
       const service = yield* OrchestratorMcpService.OrchestratorMcpService;
       const recorded = yield* service
-        .recordCanvas(scope, { title: input.title, document: canvasDocument(board), code })
+        .recordCanvas(scope, {
+          title: input.title,
+          ...(input.update === undefined ? {} : { update: input.update }),
+          document: canvasDocument(board),
+          code,
+        })
         .pipe(
-          Effect.catch((error) =>
-            Effect.logWarning("A canvas was shown without its layout recorded", {
-              error: error.message,
-            }).pipe(Effect.as(undefined)),
+          Effect.catchIf(
+            (error) => error.code !== "invalid_request",
+            (error) =>
+              Effect.logWarning("A canvas was shown without its layout recorded", {
+                error: error.message,
+              }).pipe(Effect.as(undefined)),
           ),
         );
       if (recorded === undefined) {
@@ -105,7 +112,7 @@ export const layer = McpToolAccess.toLayer(CanvasToolkit, {
       const file = canvasFileName(recorded.title);
       const embeds = canvasEmbeds(file, board);
       return {
-        message: canvasShownMessage(file),
+        message: canvasShownMessage(file, recorded.updated === true),
         canvasItemId: recorded.turnItemId,
         file,
         embeds,

@@ -9498,7 +9498,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         cause: `Node ${command.nodeId} is not the root of run ${command.runId}.`,
       });
     }
-    // A board is recorded once and never moves after: recorded again, it stays as it was.
+    // A board is recorded once on retries; explicit `replace: true` updates it in place.
     const existing = projection.turnItems.find((item) => item.id === command.turnItemId);
     if (existing !== undefined && existing.type !== "canvas") {
       return yield* new OrchestratorDispatchError({
@@ -9508,35 +9508,49 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       });
     }
     const now = yield* DateTime.now;
+    const updatedExisting =
+      existing !== undefined && command.replace === true
+        ? (() => {
+            const { editedAt: _editedAt, code: _code, ...kept } = existing;
+            return {
+              ...kept,
+              title: command.title,
+              document: command.document,
+              updatedAt: now,
+              ...(command.code === undefined ? {} : { code: command.code }),
+            };
+          })()
+        : undefined;
     yield* emit(
       events,
       command,
     )({
       type: "turn-item.updated",
       threadId: command.threadId,
-      runId: command.runId,
-      nodeId: command.nodeId,
+      runId: existing?.runId ?? command.runId,
+      nodeId: existing?.nodeId ?? command.nodeId,
       providerInstanceId: run.providerInstanceId,
       occurredAt: now,
-      payload: existing ?? {
-        id: command.turnItemId,
-        threadId: command.threadId,
-        runId: command.runId,
-        nodeId: command.nodeId,
-        providerThreadId: run.providerThreadId,
-        providerTurnId: providerTurnForRun(projection, run)?.id ?? null,
-        nativeItemRef: null,
-        parentItemId: null,
-        ordinal: yield* nextTurnItemOrdinal(projection),
-        status: "completed",
-        title: command.title,
-        startedAt: now,
-        completedAt: now,
-        updatedAt: now,
-        type: "canvas",
-        document: command.document,
-        ...(command.code === undefined ? {} : { code: command.code }),
-      },
+      payload: updatedExisting ??
+        existing ?? {
+          id: command.turnItemId,
+          threadId: command.threadId,
+          runId: command.runId,
+          nodeId: command.nodeId,
+          providerThreadId: run.providerThreadId,
+          providerTurnId: providerTurnForRun(projection, run)?.id ?? null,
+          nativeItemRef: null,
+          parentItemId: null,
+          ordinal: yield* nextTurnItemOrdinal(projection),
+          status: "completed",
+          title: command.title,
+          startedAt: now,
+          completedAt: now,
+          updatedAt: now,
+          type: "canvas",
+          document: command.document,
+          ...(command.code === undefined ? {} : { code: command.code }),
+        },
     });
   });
 

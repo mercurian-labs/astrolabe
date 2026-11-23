@@ -658,13 +658,34 @@ const SimpleFile = ({ file }: { readonly file: string }) => (
   <div className="cv-simple-name">{cardFileName(file)}</div>
 );
 
-const SimpleText = () => (
-  <div className="cv-simple-text" aria-hidden="true">
-    <span />
-    <span />
-    <span />
-  </div>
-);
+function simpleTextTitle(text: string): string {
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw
+      .trim()
+      .replace(/^#{1,6}\s+/, "")
+      .replace(/^[-*+]\s+/, "")
+      .replace(/^\d+\.\s+/, "")
+      .replace(/[*_`~]+/g, "")
+      .trim();
+    if (line.length > 0) return line.length > 48 ? `${line.slice(0, 47).trimEnd()}…` : line;
+  }
+  return "";
+}
+
+const SimpleText = ({ text }: { readonly text: string }) => {
+  const title = simpleTextTitle(text);
+  return title.length > 0 ? (
+    <div className="cv-simple-name">
+      <span className="cv-simple-title">{title}</span>
+    </div>
+  ) : (
+    <div className="cv-simple-text" aria-hidden="true">
+      <span />
+      <span />
+      <span />
+    </div>
+  );
+};
 
 function fileLabel(node: CanvasFileNode) {
   const name = cardFileName(node.file);
@@ -794,7 +815,7 @@ function SimpleCard({ node }: { readonly node: CanvasNode }) {
   const { host } = useBoard();
   switch (node.type) {
     case "text":
-      return <SimpleText />;
+      return <SimpleText text={node.text} />;
     case "file":
       return canvasFileKind(node.file) === "image" ? (
         (host.renderAsset?.({ kind: "image", path: node.file }) ?? <SimpleFile file={node.file} />)

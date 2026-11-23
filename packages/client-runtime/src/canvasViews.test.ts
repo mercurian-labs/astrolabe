@@ -4,8 +4,10 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   canvasViewFromItem,
   canvasViewNamed,
+  canvasViews,
   editedBoardsSinceLastPrompt,
   editedFilesSinceLastPrompt,
+  recordedCanvasesIn,
 } from "./canvasViews.ts";
 
 const input = { title: "Flow", cards: [{ id: "a", text: "A" }] };
@@ -72,6 +74,64 @@ describe("canvasViewFromItem", () => {
         }),
       ),
     ).toBeNull();
+  });
+
+  it("suppresses a summary-only dynamic_tool output when a recorded canvas already covers that run or update", () => {
+    const canvasItem = {
+      id: "turn-item:canvas:1",
+      type: "canvas",
+      runId: "run-1",
+      title: "Command Lifecycle",
+      document: {
+        nodes: [{ id: "a", type: "text", text: "A", x: 0, y: 0, width: 180, height: 60 }],
+        edges: [],
+      },
+    };
+    const sameRunCall = {
+      id: "turn-item:tool:1",
+      ...item({
+        runId: "run-1",
+        input: { title: "Command Lifecycle", cards: [{ id: "a", text: "A" }] },
+        output: "Draw command lifecycle canvas",
+      }),
+    };
+    const crossRunUpdateCall = {
+      id: "turn-item:tool:2",
+      ...item({
+        runId: "run-2",
+        input: {
+          title: "Command Lifecycle v2",
+          update: "Command Lifecycle.canvas",
+          cards: [{ id: "a", text: "A" }],
+        },
+        output: "Update command lifecycle canvas",
+      }),
+    };
+    const crossRunSameTitleCall = {
+      id: "turn-item:tool:3",
+      ...item({
+        runId: "run-3",
+        input: { title: "Command Lifecycle", cards: [{ id: "a", text: "A" }] },
+        output: "Redraw command lifecycle canvas",
+      }),
+    };
+
+    // Without recorded context, the fallback renders; with recorded canvases, all three calls suppress.
+    expect(canvasViewFromItem(sameRunCall)?.title).toBe("Command Lifecycle");
+    const recorded = recordedCanvasesIn([
+      canvasItem,
+      sameRunCall,
+      crossRunUpdateCall,
+      crossRunSameTitleCall,
+    ]);
+    expect(canvasViewFromItem(sameRunCall, recorded)).toBeNull();
+    expect(canvasViewFromItem(crossRunUpdateCall, recorded)).toBeNull();
+    expect(canvasViewFromItem(crossRunSameTitleCall, recorded)).toBeNull();
+    expect(
+      canvasViews([canvasItem, sameRunCall, crossRunUpdateCall, crossRunSameTitleCall]).map(
+        (view) => view.id,
+      ),
+    ).toEqual(["turn-item:canvas:1"]);
   });
 
   it("leaves a call still running, a failed one, another tool or a bad input to its own row", () => {

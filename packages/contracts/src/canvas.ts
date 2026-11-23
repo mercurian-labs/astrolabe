@@ -35,7 +35,8 @@ export const CanvasShowCard = Schema.Struct({
   id: CardReference.annotate({ description: "Unique among this call's cards and groups." }),
   text: Schema.optional(
     Schema.NonEmptyString.annotate({
-      description: "Markdown on the card, or a caption on a url or path card.",
+      description:
+        "Markdown on the card, or a caption on a url or path card. Keep it concise (short heading and one sentence or brief bullets) and use actual line breaks, never literal \\n.",
     }),
   ),
   url: Schema.optional(Schema.NonEmptyString.annotate({ description: "Makes this a link card." })),
@@ -94,6 +95,12 @@ export type CanvasShowLayout = typeof CanvasShowLayout.Type;
 
 export const CanvasShowInput = Schema.Struct({
   title: Schema.NonEmptyString.annotate({ description: "A few words naming the diagram." }),
+  update: Schema.optional(
+    Schema.NonEmptyString.annotate({
+      description:
+        "File name or title of an earlier canvas in this thread to update in place (for example `Architecture.canvas`). Leave out to draw a new board.",
+    }),
+  ),
   cards: Schema.Array(CanvasShowCard)
     .check(Schema.isMinLength(1), Schema.isMaxLength(CANVAS_SHOW_MAX_CARDS))
     .annotate({ description: "Each needs text, url or path." }),
