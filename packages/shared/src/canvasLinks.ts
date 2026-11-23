@@ -113,7 +113,9 @@ function splitText(node: Text): RootContent[] | null {
       url: canvasLinkHref(link),
       children: [{ type: "text", value: link.text }],
       // What a copy of the message keeps: the link as it was written.
-      data: { hProperties: { dataMarkdownCopy: node.value.slice(link.index, link.index + link.length) } },
+      data: {
+        hProperties: { dataMarkdownCopy: node.value.slice(link.index, link.index + link.length) },
+      },
     });
     at = link.index + link.length;
   }

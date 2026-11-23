@@ -34,14 +34,17 @@ describe("canvas links in chat Markdown", () => {
         text: "Checkout Flow.canvas › Storefront",
       },
       { target: { name: "checkout flow", frame: "Payments", embed: false }, text: "pay" },
-      { target: { name: "Checkout Flow.canvas", frame: undefined, embed: true }, text: "Checkout Flow.canvas" },
+      {
+        target: { name: "Checkout Flow.canvas", frame: undefined, embed: true },
+        text: "Checkout Flow.canvas",
+      },
     ]);
   });
 
   it("leaves code, and links already written, as they are", () => {
-    expect(links("`![[A.canvas]]`\n\n```\n[[A.canvas]]\n```\n\n[see [[A.canvas]]](https://x.y)")).toEqual(
-      [{ target: null, text: "see [[A.canvas]]" }],
-    );
+    expect(
+      links("`![[A.canvas]]`\n\n```\n[[A.canvas]]\n```\n\n[see [[A.canvas]]](https://x.y)"),
+    ).toEqual([{ target: null, text: "see [[A.canvas]]" }]);
   });
 
   it("round-trips names and frames that need escaping", () => {

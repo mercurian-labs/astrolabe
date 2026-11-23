@@ -57,10 +57,7 @@ export function ChatCanvasReference({
   const open =
     threadRef === undefined
       ? undefined
-      : () =>
-          showThreadCanvas(threadRef, view.id, {
-            ...(group === undefined ? {} : { frame: group.id }),
-          });
+      : () => showThreadCanvas(threadRef, view.id, group === undefined ? {} : { frame: group.id });
   if (!target.embed) {
     return (
       <button
@@ -68,12 +65,12 @@ export function ChatCanvasReference({
         className="inline-flex cursor-pointer items-baseline gap-1 rounded-sm text-primary underline-offset-2 hover:underline disabled:cursor-default disabled:no-underline"
         disabled={open === undefined}
         aria-label={`Open ${name}`}
-        title={missing ? `${view.title} has no group named "${target.frame}"` : undefined}
         data-markdown-copy={written.source}
         onClick={open}
       >
         <WaypointsIcon aria-hidden className="size-3.5 shrink-0 self-center" />
         {written.text}
+        {missing ? <span className="text-muted-foreground">(whole board)</span> : null}
       </button>
     );
   }
@@ -96,10 +93,7 @@ export function ChatCanvasReference({
         ) : null}
       </span>
       {/* Sized by the frame before the picture loads, so a streaming reply never jumps. */}
-      <span
-        className="block max-h-96 w-full p-2"
-        style={{ aspectRatio: String(aspectOf(box)) }}
-      >
+      <span className="block max-h-96 w-full p-2" style={{ aspectRatio: String(aspectOf(box)) }}>
         <Suspense fallback={null}>
           <LazyCanvasMinimap
             data={view.data}

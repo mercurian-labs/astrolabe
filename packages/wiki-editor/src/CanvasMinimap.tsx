@@ -29,10 +29,7 @@ export interface CanvasFigureView {
 }
 
 /** The box a picture of `data` frames: `frame`'s group, else the whole board. */
-export function canvasFigureView(
-  data: CanvasData,
-  frame: string | undefined,
-): CanvasFigureView {
+export function canvasFigureView(data: CanvasData, frame: string | undefined): CanvasFigureView {
   const group = frame === undefined ? undefined : canvasFrame(data, frame);
   if (group === undefined) {
     return { box: canvasBounds(data), inside: undefined, missing: frame !== undefined };
@@ -143,9 +140,7 @@ export function CanvasMinimap({
           <g key={`arrow:${edge.id}`} data-dim={dimmed}>
             <path className="cv-minimap-edge" d={shape.path} />
             {words
-              ? shape.heads.map((head) => (
-                  <path key={head} className="cv-minimap-head" d={head} />
-                ))
+              ? shape.heads.map((head) => <path key={head} className="cv-minimap-head" d={head} />)
               : null}
             {words && edge.label !== undefined ? (
               <text
@@ -162,7 +157,9 @@ export function CanvasMinimap({
           </g>
         );
       })}
-      {words ? stack.content.map((layer) => (layer.kind === "card" ? cardWords(layer.node) : null)) : null}
+      {words
+        ? stack.content.map((layer) => (layer.kind === "card" ? cardWords(layer.node) : null))
+        : null}
       {data.nodes.flatMap((node) =>
         node.type === "group" && node.label !== undefined
           ? [

@@ -59,12 +59,8 @@ describe("TurnCanvases", () => {
     await expect.element(screen.getByRole("group", { name: "Checkout Flow" })).toBeVisible();
     await expect.element(screen.getByText("Cart", { exact: true })).toBeVisible();
 
-    await userEvent.click(
-      screen.getByRole("button", { name: "Open Aside in a linked tab" }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: "Open Aside in a linked tab" }));
     expect(open).toHaveBeenCalledExactlyOnceWith(threadRef, "canvas");
-    expect(useThreadCanvasStore.getState().shownByThread[canvasViewsKey(threadRef)]).toBe(
-      "item-2",
-    );
+    expect(useThreadCanvasStore.getState().shownByThread[canvasViewsKey(threadRef)]).toBe("item-2");
   });
 });

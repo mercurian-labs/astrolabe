@@ -92,7 +92,10 @@ export function CanvasFrame({
           )}
         </div>
       </figcaption>
-      <div className="max-h-[520px] min-h-40 w-full" style={{ aspectRatio: `${width} / ${height}` }}>
+      <div
+        className="max-h-[520px] min-h-40 w-full"
+        style={{ aspectRatio: `${width} / ${height}` }}
+      >
         <Suspense fallback={null}>
           <LazyCanvasBoard
             data={view.data}

@@ -8,7 +8,11 @@ import { toastManager } from "../ui/toast";
 
 /** What a thread's board adds to its menu: asking about it in the composer, and keeping it. */
 export function useCanvasMenuItems(
-  board: { readonly threadId: ThreadId; readonly itemId: TurnItemId; readonly title: string } | null,
+  board: {
+    readonly threadId: ThreadId;
+    readonly itemId: TurnItemId;
+    readonly title: string;
+  } | null,
   keep: CanvasMenuEntry | undefined,
 ): ReadonlyArray<CanvasMenuEntry> {
   const composer = useComposerHandleContext();

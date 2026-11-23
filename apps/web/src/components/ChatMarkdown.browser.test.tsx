@@ -650,7 +650,9 @@ describe("ChatMarkdown canvas frames", () => {
     await expect.element(whole.getByText("Cart and address")).toBeVisible();
     expect(whole.element().querySelector("[data-dim]")).toBeNull();
     // Each is sized by what it frames before its picture loads.
-    expect(framed.querySelector<HTMLElement>("[style*='aspect-ratio']")?.style.aspectRatio).not.toBe(
+    expect(
+      framed.querySelector<HTMLElement>("[style*='aspect-ratio']")?.style.aspectRatio,
+    ).not.toBe(
       whole.element().querySelector<HTMLElement>("[style*='aspect-ratio']")?.style.aspectRatio,
     );
   });

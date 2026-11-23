@@ -1168,11 +1168,7 @@ function EdgeLabel({
   readonly at: CanvasEdgeShape["labelAt"];
 }) {
   return (
-    <span
-      className="cv-edge-label"
-      data-edge-label={edge.id}
-      style={{ left: at.x, top: at.y }}
-    >
+    <span className="cv-edge-label" data-edge-label={edge.id} style={{ left: at.x, top: at.y }}>
       {edge.label}
     </span>
   );
@@ -2368,8 +2364,7 @@ export function CanvasBoard({
       else if (mod && canEdit) commands.grow(dx, dy, event.shiftKey);
       else if ((selection.cards.size > 0 || drawingsSelected.size > 0) && canEdit) {
         commands.nudge(dx, dy, event.shiftKey);
-      }
-      else view.pan(-dx * PAN_STEP, -dy * PAN_STEP);
+      } else view.pan(-dx * PAN_STEP, -dy * PAN_STEP);
     } else if (mod && (event.code === "BracketRight" || event.code === "BracketLeft")) {
       if (!canEdit || !anything) return;
       const up = event.code === "BracketRight";

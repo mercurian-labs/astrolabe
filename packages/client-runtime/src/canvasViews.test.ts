@@ -61,7 +61,10 @@ describe("canvasViewFromItem", () => {
       },
     });
     // An older board's stories are left in its file and drawn as nothing.
-    expect(board?.data).toEqual({ nodes: [expect.objectContaining({ id: "a", x: 40, y: 80 })], edges: [] });
+    expect(board?.data).toEqual({
+      nodes: [expect.objectContaining({ id: "a", x: 40, y: 80 })],
+      edges: [],
+    });
     expect(
       canvasViewFromItem(
         item({
