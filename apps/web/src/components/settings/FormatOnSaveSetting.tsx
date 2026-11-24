@@ -1,12 +1,16 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
+import { useGT } from "gt-react";
 import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts";
 
 import { updateClientSettings, useClientSettings } from "~/hooks/useSettings";
 import { Switch } from "../ui/switch";
 import { SettingResetButton, SettingsRow } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 
 /** Astrolabe: whether saving a code file formats it with its language server first. */
 export function FormatOnSaveRow() {
+  const gt = useGT();
+  const searchableSetting = useSearchableSetting();
   const on = useClientSettings((settings) => settings.formatOnSave);
   return (
     <SettingsRow
@@ -15,7 +19,7 @@ export function FormatOnSaveRow() {
       resetAction={
         on !== DEFAULT_CLIENT_SETTINGS.formatOnSave ? (
           <SettingResetButton
-            label="format on save"
+            ariaLabel={gt("Reset format on save to default")}
             onClick={() =>
               updateClientSettings({ formatOnSave: DEFAULT_CLIENT_SETTINGS.formatOnSave })
             }

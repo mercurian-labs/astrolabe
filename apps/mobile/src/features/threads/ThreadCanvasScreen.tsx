@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { useAtomValue } from "@effect/atom-react";
 import type { CanvasCamera } from "@mercurian/wiki-editor/canvas-geometry";
 import type { WikiEditorCommand, WikiEditorEvent } from "@mercurian/wiki-editor/protocol";

@@ -188,6 +188,7 @@ const setup = Effect.fn("setup")(function* (threads: ReadonlyArray<string> = [])
           getStatus: notUsed,
           refreshLocalStatus: notUsed,
           refreshStatus: notUsed,
+          refreshAfterCheckout: notUsed,
           refreshPullRequestStatus: notUsed,
           streamBranchStatus: () => Stream.never,
           refreshBranchStatus: notUsed,

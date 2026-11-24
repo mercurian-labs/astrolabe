@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import type { ChangeGroupContextRecord } from "@t3tools/contracts";
 import { CHANGE_GROUP_STATE_LABELS, findChangeGroup } from "@t3tools/shared/changeGroups";
 import { ArrowUpRightIcon, BookOpenIcon, LayersIcon } from "lucide-react";

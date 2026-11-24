@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import type { FileDiffMetadata } from "@pierre/diffs";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
@@ -200,10 +201,11 @@ export function RepositoryDiffView({
               {isCollapsed ? <ChevronRightIcon /> : <ChevronDownIcon />}
             </Button>
           )}
-          onRevealSearchMatch={(fileKey) =>
+          onFileCollapsedChange={(fileKey, collapsed) =>
             setCollapsed((current) => {
               const next = new Set(current);
-              next.delete(fileKey);
+              if (collapsed) next.add(fileKey);
+              else next.delete(fileKey);
               return next;
             })
           }

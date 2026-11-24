@@ -124,6 +124,7 @@ const session: PreviewSessionSnapshot = {
 function audibleOverlay(audioMuted: boolean) {
   return {
     hasWebContents: true,
+    navStatus: { _tag: "Idle" as const },
     canGoBack: false,
     canGoForward: false,
     loading: false,

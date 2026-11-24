@@ -4,6 +4,21 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import { PullRequestFiltersMenu } from "./PullRequestListFilters";
 
+// The menu is called as a plain function here, so GT's hooks become plain English formatters.
+vi.mock("gt-react", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("gt-react")>();
+  const format = (text: string, values?: Record<string, unknown>) =>
+    text.replace(/\{(\w+)\}/g, (match, name: string) =>
+      values?.[name] === undefined ? match : String(values[name]),
+    );
+  return {
+    ...actual,
+    useGT: () => format,
+    useMessages: () => (message: string, values?: Record<string, unknown>) =>
+      format(actual.decodeMsg(message), values),
+  };
+});
+
 function findValueChange(
   node: ReactNode,
 ):

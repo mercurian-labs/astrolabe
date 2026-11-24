@@ -3,6 +3,7 @@ import {
   AuthFilesystemWriteScope,
   EnvironmentId,
   ProjectId,
+  ProjectReadFileError,
   ProjectReadFileInput,
   ProjectReadFileResult,
   ThreadId,
@@ -49,7 +50,7 @@ const makeHarness = Effect.fn("TestProjectCommands.makeHarness")(function* () {
   const metadataRequests: string[][] = [];
   const file = { byteLength: 5 };
   const readResponse = {
-    wait: Effect.void as Effect.Effect<void>,
+    wait: Effect.void as Effect.Effect<void, ProjectReadFileError>,
     missing: false,
   };
   const supervisor = EnvironmentSupervisor.EnvironmentSupervisor.of({
@@ -139,7 +140,7 @@ const makeHarness = Effect.fn("TestProjectCommands.makeHarness")(function* () {
       permissions: [AuthFilesystemWriteScope],
     }),
   );
-  const openScratch = Effect.promise(() =>
+  const openScratch = Effect.exit(
     commands.openScratch.run(registry, { environmentId: ENVIRONMENT_ID, input: {} }),
   );
   return { registry, storedProject, openScratch, commands, metadataRequests, readResponse };
@@ -172,7 +173,7 @@ describe("writeFile metadata", () => {
         yield* AtomRegistry.getResult(h.registry, metadata, { suspendOnWaiting: true }),
       ).toBeNull();
       expect(h.metadataRequests).toEqual([["/repo/foo"]]);
-    }).pipe(Effect.scoped),
+    }),
   );
 
   it.effect("does not restore old metadata from a read completed after a write", () =>
@@ -202,7 +203,7 @@ describe("writeFile metadata", () => {
         { suspendOnWaiting: true },
       ).pipe(Effect.forkChild);
       yield* Deferred.await(started);
-      const write = yield* Effect.promise(() =>
+      const write = yield* Effect.exit(
         h.commands.writeFile.run(h.registry, {
           environmentId: ENVIRONMENT_ID,
           input: { cwd: "/repo", relativePath: "foo", contents: "new" },
@@ -215,7 +216,7 @@ describe("writeFile metadata", () => {
       h.registry.refresh(metadata);
       expect(yield* readMetadata()).toEqual({ kind: "file", byteLength: 10 });
       expect(h.metadataRequests).toHaveLength(2);
-    }).pipe(Effect.scoped),
+    }),
   );
 
   it.effect("refreshes retained canonical and original paths after an aliased write", () =>
@@ -237,7 +238,7 @@ describe("writeFile metadata", () => {
         { kind: "file", byteLength: 5 },
         { kind: "file", byteLength: 5 },
       ]);
-      const result = yield* Effect.promise(() =>
+      const result = yield* Effect.exit(
         h.commands.writeFile.run(h.registry, {
           environmentId: ENVIRONMENT_ID,
           input: { cwd: "/repo", relativePath: "./foo", contents: "new" },
@@ -254,7 +255,7 @@ describe("writeFile metadata", () => {
         "/repo/foo",
         "/repo/./foo",
       ]);
-    }).pipe(Effect.scoped),
+    }),
   );
 });
 
@@ -267,6 +268,6 @@ describe("openScratch", () => {
       registry.set(storedProject, PROJECT);
       const result = yield* Fiber.join(opening);
       expect(result).toMatchObject({ _tag: "Success", value: PROJECT });
-    }).pipe(Effect.scoped),
+    }),
   );
 });

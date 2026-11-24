@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { changeGroupColorIndex, type ChangeGroupMember } from "@t3tools/shared/changeGroups";
 
 /** A group's colour, as web's tab label and card show it. */

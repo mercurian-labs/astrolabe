@@ -11,7 +11,7 @@ import {
 } from "@t3tools/contracts";
 import * as Digest from "effect/crypto/Digest";
 import * as Schema from "effect/Schema";
-import { Tool, Toolkit } from "effect/ai";
+import { McpSchema, Tool, Toolkit } from "effect/ai";
 
 import * as CodeIndex from "../../../codeIndex/CodeIndex.ts";
 import * as LanguageServers from "../../../languageServers/LanguageServers.ts";
@@ -46,7 +46,8 @@ const CodeOutlineTool = Tool.make("astrolabe_code_outline", {
   success: CodeOutline,
 })
   .annotate(Tool.Readonly, true)
-  .annotate(Tool.Destructive, false);
+  .annotate(Tool.Destructive, false)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 
 const CodeFindTool = Tool.make("astrolabe_code_find", {
   ...shared,
@@ -60,7 +61,8 @@ const CodeFindTool = Tool.make("astrolabe_code_find", {
   success: CodeFindResult,
 })
   .annotate(Tool.Readonly, true)
-  .annotate(Tool.Destructive, false);
+  .annotate(Tool.Destructive, false)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 
 const CodeChangesTool = Tool.make("astrolabe_code_changes", {
   ...shared,
@@ -80,7 +82,8 @@ const CodeChangesTool = Tool.make("astrolabe_code_changes", {
   }),
 })
   .annotate(Tool.Readonly, true)
-  .annotate(Tool.Destructive, false);
+  .annotate(Tool.Destructive, false)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 
 const CodeMapTool = Tool.make("astrolabe_code_map", {
   ...shared,
@@ -93,7 +96,8 @@ const CodeMapTool = Tool.make("astrolabe_code_map", {
   success: CodeMap,
 })
   .annotate(Tool.Readonly, true)
-  .annotate(Tool.Destructive, false);
+  .annotate(Tool.Destructive, false)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 
 const CodeDiagnosticsTool = Tool.make("astrolabe_code_diagnostics", {
   ...shared,
@@ -120,7 +124,8 @@ const CodeDiagnosticsTool = Tool.make("astrolabe_code_diagnostics", {
   }),
 })
   .annotate(Tool.Readonly, true)
-  .annotate(Tool.Destructive, false);
+  .annotate(Tool.Destructive, false)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 
 const languageServerDependencies = [
   McpInvocationContext.McpInvocationContext,
@@ -149,7 +154,8 @@ const CodeDefinitionTool = Tool.make("astrolabe_code_definition", {
   success: CodeLocations,
 })
   .annotate(Tool.Readonly, true)
-  .annotate(Tool.Destructive, false);
+  .annotate(Tool.Destructive, false)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 
 const CodeReferencesTool = Tool.make("astrolabe_code_references", {
   ...shared,
@@ -159,7 +165,8 @@ const CodeReferencesTool = Tool.make("astrolabe_code_references", {
   success: CodeLocations,
 })
   .annotate(Tool.Readonly, true)
-  .annotate(Tool.Destructive, false);
+  .annotate(Tool.Destructive, false)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 
 const CodeGraphShowTool = Tool.make("astrolabe_code_graph_show", {
   ...shared,
@@ -168,7 +175,8 @@ const CodeGraphShowTool = Tool.make("astrolabe_code_graph_show", {
   success: CodeGraphShowResult,
 })
   .annotate(Tool.Readonly, true)
-  .annotate(Tool.Destructive, false);
+  .annotate(Tool.Destructive, false)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 
 export const CodeToolkit = Toolkit.make(
   CodeOutlineTool,

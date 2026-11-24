@@ -1,3 +1,5 @@
+import { runAtomCommand } from "@t3tools/client-runtime/state/runtime";
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { textMatcher, replacementsIn, type TextQuery } from "@t3tools/shared/textReplace";
 import { DOCUMENT_REPLACE_ALL_MAX_FILES, type EnvironmentId } from "@t3tools/contracts";
 import { AsyncResult, type AtomRegistry } from "effect/reactivity";
@@ -59,16 +61,21 @@ export async function replaceAll(options: {
   let files = inEditors.length;
   let failed: ReplaceAllDone["failed"] = [];
   if (elsewhere.length > 0) {
-    const result = await documentsEnvironment.replaceAll.run(registry, {
-      environmentId,
-      input: {
-        cwd,
-        clientId: options.clientId,
-        ...options.query,
-        replacement: options.replacement,
-        paths: elsewhere,
+    const result = await runAtomCommand(
+      registry,
+      documentsEnvironment.replaceAll,
+      {
+        environmentId,
+        input: {
+          cwd,
+          clientId: options.clientId,
+          ...options.query,
+          replacement: options.replacement,
+          paths: elsewhere,
+        },
       },
-    });
+      { reportFailure: false, reportDefect: false },
+    );
     if (!AsyncResult.isSuccess(result)) {
       for (const edit of inEditors) edit.undo();
       return { ok: false, message: "Replacing in the files that are not open failed." };
@@ -88,10 +95,15 @@ export async function replaceAll(options: {
         let skipped = 0;
         for (const edit of inEditors) if (!edit.undo()) skipped += 1;
         if (serverId !== undefined) {
-          const result = await documentsEnvironment.undoReplaceAll.run(registry, {
-            environmentId,
-            input: { cwd, id: serverId },
-          });
+          const result = await runAtomCommand(
+            registry,
+            documentsEnvironment.undoReplaceAll,
+            {
+              environmentId,
+              input: { cwd, id: serverId },
+            },
+            { reportFailure: false, reportDefect: false },
+          );
           if (!AsyncResult.isSuccess(result)) {
             return "The files that were not open could not be changed back: the undo has expired.";
           }

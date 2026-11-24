@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { ScrollView } from "react-native";
 
 import { ListFilterMenu } from "../layout/workspace/ListFilterMenu";

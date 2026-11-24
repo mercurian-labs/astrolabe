@@ -1,3 +1,4 @@
+import { T, useGT } from "gt-react";
 /**
  * The sidebar's title row: upstream's search row with the section's name heading the list and
  * search, scope filter and new item as icon buttons. Search swaps in upstream's field while it has
@@ -68,8 +69,10 @@ export function SidebarThreadHeader({
   onClearSearch,
   title,
   searchNoun = "thread",
-  newItemLabel = "New thread",
+  newItemLabel: newItemLabelProp,
 }: SidebarThreadHeaderProps) {
+  const gt = useGT();
+  const newItemLabel = newItemLabelProp ?? gt("New thread");
   // Astrolabe: the field shows from the search button until it loses focus, and while it holds a
   // query, so picking a result or leaving it empty puts the section's name back.
   const { isMobile, open, setOpen } = useSidebar();
@@ -88,7 +91,7 @@ export function SidebarThreadHeader({
     setSearchOpen(true);
     setSearchFocusRequest((request) => request + 1);
   };
-  const searchLabel = `Search ${searchNoun}s`;
+  const searchLabel = gt("Search {noun}s", { noun: searchNoun });
   // Astrolabe: the keyboard menu's `n` is this row's new button, and the list's `/` its search.
   const newItem = useRef(onNewThread);
   const search = useRef(openSearch);
@@ -148,7 +151,7 @@ export function SidebarThreadHeader({
           // Astrolabe: an empty field shows only while it has focus.
           onFocus={() => setSearchOpen(true)}
           onBlur={() => setSearchOpen(false)}
-          placeholder="Search"
+          placeholder={gt("Search", { $context: "search field placeholder" })}
           aria-label={searchLabel}
           role="combobox"
           aria-autocomplete="list"
@@ -167,7 +170,7 @@ export function SidebarThreadHeader({
             size="icon-micro"
             variant="ghost-muted"
             className="shrink-0"
-            aria-label={`Clear ${searchNoun} search`}
+            aria-label={gt("Clear {noun} search", { noun: searchNoun })}
             onClick={() => {
               onClearSearch();
               searchInputRef.current?.focus();
@@ -191,8 +194,11 @@ export function SidebarThreadHeader({
               <span className="flex flex-col gap-0.5">
                 <span>{newThreadLabel}</span>
                 <span className="text-muted-foreground">
-                  New thread in current project: Shift+click
-                  {newThreadInProjectShortcutLabel ? ` (${newThreadInProjectShortcutLabel})` : ""}
+                  {newThreadInProjectShortcutLabel
+                    ? gt("New thread in current project: Shift+click ({shortcut})", {
+                        shortcut: newThreadInProjectShortcutLabel,
+                      })
+                    : gt("New thread in current project: Shift+click")}
                 </span>
               </span>
             ) : (
@@ -229,7 +235,7 @@ export function SidebarNewProjectRow({ onClick }: { onClick: () => void }) {
   return (
     <SidebarPickerFooter>
       <SidebarPickerAction icon={FolderPlusIcon} onClick={onClick}>
-        New project
+        <T>New project</T>
       </SidebarPickerAction>
     </SidebarPickerFooter>
   );

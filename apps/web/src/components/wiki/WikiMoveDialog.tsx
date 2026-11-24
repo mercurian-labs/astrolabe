@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import type { EnvironmentId, WikiId } from "@t3tools/contracts";
 import { isWikiPath } from "@mercurian/wiki/resolve-link";
 import { useId, useState, useSyncExternalStore, type FormEvent } from "react";

@@ -140,4 +140,16 @@ describe("link round trips", () => {
     expect(promptLinkAppPath("astrolabe://app/index.html")).toBeNull();
     expect(promptLinkAppPath("t3code://new?prompt=hi")).toBeNull();
   });
+
+  it("maps links in browsers without URL.canParse, such as Safari before 17", () => {
+    const canParse = URL.canParse;
+    Reflect.deleteProperty(URL, "canParse");
+    try {
+      expect(promptLinkAppPath("https://app.astrolabe.sh/new?prompt=hi")).toBe("/new?prompt=hi");
+      expect(promptLinkAppPath("https://app.astrolabe.sh/")).toBeNull();
+      expect(promptLinkAppPath("not a url")).toBeNull();
+    } finally {
+      URL.canParse = canParse;
+    }
+  });
 });

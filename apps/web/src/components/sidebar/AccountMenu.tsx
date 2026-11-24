@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { useNavigate } from "@tanstack/react-router";
 import { LogInIcon, LogOutIcon, SettingsIcon, UserRoundIcon, UsersIcon } from "lucide-react";
 

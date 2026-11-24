@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import type { WikiMapBackground, WikiQueryResult } from "@t3tools/contracts";

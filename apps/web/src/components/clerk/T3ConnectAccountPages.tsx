@@ -1,3 +1,4 @@
+import { msg } from "gt-react";
 import { ServerIcon, SmartphoneIcon } from "lucide-react";
 import { useSyncExternalStore } from "react";
 
@@ -8,13 +9,13 @@ import { T3ConnectUserProfilePage } from "./T3ConnectUserProfilePage";
 /** Pages in the account dialog after Account, in menu order. */
 export const T3_CONNECT_ACCOUNT_PAGES = [
   {
-    label: "Mobile clients",
+    label: msg("Mobile clients"),
     url: "mobile-clients",
     icon: <SmartphoneIcon className="size-4" />,
     content: <MobileClientsUserProfilePage />,
   },
   {
-    label: "Remote access",
+    label: msg("Remote access"),
     url: "t3-connect",
     icon: <ServerIcon className="size-4" />,
     content: <T3ConnectUserProfilePage />,

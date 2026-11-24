@@ -1,5 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentId, ProviderDriverKind } from "@t3tools/contracts";
+import { T, Var } from "gt-react";
 import { InfoIcon } from "lucide-react";
 
 import { serverEnvironment } from "../../state/server";
@@ -30,7 +31,11 @@ export function MultipleAccountsNote({
     <Alert variant="info" role="note">
       <InfoIcon aria-hidden />
       <AlertDescription>
-        <p>We do not recommend managing multiple {providerName} accounts in Astrolabe.</p>
+        <p>
+          <T>
+            We do not recommend managing multiple <Var>{providerName}</Var> accounts in Astrolabe.
+          </T>
+        </p>
       </AlertDescription>
     </Alert>
   );

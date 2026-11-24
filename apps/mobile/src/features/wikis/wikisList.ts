@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";
 import {
   wikiScopeKey,

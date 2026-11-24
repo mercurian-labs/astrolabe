@@ -1,3 +1,4 @@
+import { msg } from "gt-react-native";
 import {
   NAVIGATION_TAB_ORDER,
   navigationCustomizationAvailable,
@@ -24,18 +25,19 @@ export function registeredWorkspaceTabs(device: "iphone" | "other"): readonly Wo
 
 /** The label each list's search goes by. Usage has no search of its own. */
 export const WORKSPACE_SEARCH_LABELS: Readonly<Record<WorkspaceSearchTab, string>> = {
-  threads: "Search threads",
-  pullRequests: "Search changes",
-  wikis: "Search wikis",
-  repositories: "Search files",
-  usage: "Search threads",
-  settings: "Search settings",
+  threads: msg("Search threads"),
+  pullRequests: msg("Search changes"),
+  wikis: msg("Search wikis"),
+  repositories: msg("Search files"),
+  issues: msg("Search issues"),
+  usage: msg("Search threads"),
+  settings: msg("Search settings"),
 };
 export type WorkspaceSearchMode = "resting" | "active" | "expanded";
 
-/** Settings, Chats and pull requests pair a list with a detail column; Usage is one page. */
+/** Settings, Chats, pull requests and issues pair a list with a detail column. */
 export function workspaceUsesColumns(tab: WorkspaceTab, settingsOpen = false) {
-  return settingsOpen || tab === "threads" || tab === "pullRequests";
+  return settingsOpen || tab === "threads" || tab === "pullRequests" || tab === "issues";
 }
 
 export interface WorkspaceTabState {
@@ -55,15 +57,24 @@ function emptyTab(): WorkspaceTabState {
   return { query: "", searchMode: "resting", scrollOffset: 0, searchEntryOffset: 0 };
 }
 
-export function initialWorkspaceTabsState(): WorkspaceTabsState {
+/** The list a workspace page belongs to. */
+export function workspaceTabOf(routeName: string | undefined): WorkspaceTab {
+  if (routeName === "Issue") return "issues";
+  return routeName === "PullRequest" ? "pullRequests" : "threads";
+}
+
+export function initialWorkspaceTabsState(
+  selectedTab: WorkspaceTab = "threads",
+): WorkspaceTabsState {
   return {
-    selectedTab: "threads",
+    selectedTab,
     selectionRevision: 0,
     tabs: {
       threads: emptyTab(),
       pullRequests: emptyTab(),
       wikis: emptyTab(),
       repositories: emptyTab(),
+      issues: emptyTab(),
       usage: emptyTab(),
       settings: emptyTab(),
     },
@@ -75,7 +86,7 @@ export type WorkspaceTabsAction =
   | { readonly type: "search"; readonly tab?: WorkspaceSearchTab }
   | { readonly type: "query"; readonly query: string; readonly tab?: WorkspaceSearchTab }
   | { readonly type: "expand"; readonly tab?: WorkspaceSearchTab }
-  | { readonly type: "cancel"; readonly tab?: WorkspaceSearchTab }
+  | { readonly type: "cancel"; readonly tab?: WorkspaceSearchTab; readonly scrollToTop?: boolean }
   | { readonly type: "scroll"; readonly tab: WorkspaceSearchTab; readonly offset: number };
 
 export function workspaceTabsReducer(
@@ -115,7 +126,8 @@ export function workspaceTabsReducer(
         ...current,
         query: "",
         searchMode: "resting",
-        scrollOffset: current.searchEntryOffset,
+        scrollOffset: action.scrollToTop ? 0 : current.searchEntryOffset,
+        searchEntryOffset: action.scrollToTop ? 0 : current.searchEntryOffset,
       };
       break;
     case "scroll":

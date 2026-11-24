@@ -479,12 +479,11 @@ describe("code toolkit handlers", () => {
   it.effect("needs a calling thread to know which checkout to read", () =>
     Effect.gen(function* () {
       const tools = harness();
-      const result = yield* tools.call(
-        "astrolabe_code_outline",
-        { path: "src" },
-        { ...scope, thread: undefined },
-      );
-      expect(declaredFailure(result)).toMatchObject({ code: "thread_credential_required" });
+      // Outside clients are not offered tools that act as their calling thread.
+      const error = yield* tools
+        .call("astrolabe_code_outline", { path: "src" }, { ...scope, thread: undefined })
+        .pipe(Effect.flip);
+      expect(error.message).toContain("not found");
       expect(tools.calls).toEqual([]);
     }),
   );

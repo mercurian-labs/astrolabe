@@ -1,5 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
-import { findErrorTraceId } from "@t3tools/client-runtime/errors";
+import { findErrorTraceId, thrownErrorMessage } from "@t3tools/client-runtime/errors";
 import { AuthRelayReadScope, AuthRelayWriteScope, type EnvironmentId } from "@t3tools/contracts";
 import { ManagedRelay } from "@t3tools/client-runtime/relay";
 import {
@@ -9,12 +9,18 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import * as Schema from "effect/Schema";
 import { useState } from "react";
+import { msg } from "gt-react";
 
 import { toastManager } from "../components/ui/toast";
+import { m } from "../i18n/messages";
 import { stackedThreadToast } from "../components/ui/toastHelpers";
 import { relayFailureReason } from "./relayFailureReason";
 import { relayEnvironmentDiscovery } from "../state/relay";
-import { readEnvironmentScope } from "../state/session";
+import {
+  readEnvironmentCanConfigureRelay,
+  readEnvironmentScope,
+  useEnvironmentCanConfigureRelay,
+} from "../state/session";
 import { useAtomCommand } from "../state/use-atom-command";
 import { isCloudEnvironmentLinkError } from "./linkEnvironment";
 import { refreshManagedTunnelUsage } from "./managedRelayState";
@@ -25,7 +31,7 @@ import {
 } from "./linkEnvironmentAtoms";
 import { readCachedCloudLinkState, useCloudLinkState } from "./cloudLinkState";
 import { useCloudAccount } from "./account";
-import { isManagedTunnelActive } from "./t3ConnectState";
+import { cloudChangeReplacesLink, isManagedTunnelActive } from "./t3ConnectState";
 
 export interface CloudLinkDesiredState {
   readonly managedTunnel: boolean;
@@ -69,19 +75,21 @@ export function useCloudLinkController(environmentId: EnvironmentId | null) {
   const [tunnelLimit, setTunnelLimit] = useState<number | null>(null);
 
   const reportUpdateFailure = (cause: unknown, reason?: string) => {
-    const message = cause instanceof Error ? cause.message : "Could not update remote access.";
+    const message = thrownErrorMessage(cause, m) ?? m(msg("Could not update remote access."));
     const traceId = findErrorTraceId(cause);
     console.error("[t3-connect] Could not update remote access", { message, traceId, cause });
-    setOperationError(traceId ? `${message} Trace ID: ${traceId}` : message);
+    setOperationError(
+      traceId ? m(msg("{message} Trace ID: {traceId}", { message, traceId })) : message,
+    );
     toastManager.add(
       stackedThreadToast({
         type: "error",
-        title: "Could not update remote access",
+        title: m(msg("Could not update remote access")),
         description: reason ?? relayFailureReason(cause) ?? message,
         ...(traceId
           ? {
               actionProps: {
-                children: "Copy trace ID",
+                children: m(msg("Copy trace ID")),
                 onClick: () => void navigator.clipboard?.writeText(traceId),
               },
               actionVariant: "outline",
@@ -100,13 +108,18 @@ export function useCloudLinkController(environmentId: EnvironmentId | null) {
   const publishAgentActivity = cloudLinkState.data?.publishAgentActivity ?? false;
   const holdWebhooksWhileOffline = cloudLinkState.data?.holdWebhooksWhileOffline ?? false;
   const linked = !linkRevoked && (cloudLinkState.data?.linked ?? false);
+  const canConfigureRelay = useEnvironmentCanConfigureRelay(environmentId);
+  const needsRelayConfiguration = (desired: CloudLinkDesiredState) =>
+    !canConfigureRelay &&
+    linkData !== null &&
+    cloudChangeReplacesLink(linkData, relayProviderKind, desired);
 
   const reconcileCloudState = async (desired: CloudLinkDesiredState): Promise<boolean> => {
     setOperationError(null);
     setTunnelLimit(null);
     const target = cloudLinkState.target;
     if (!target) {
-      reportUpdateFailure(new Error("Choose an environment first."));
+      reportUpdateFailure(new Error(m(msg("Choose an environment first."))));
       return false;
     }
     const environmentId = target.environmentId;
@@ -116,7 +129,9 @@ export function useCloudLinkController(environmentId: EnvironmentId | null) {
         !readEnvironmentScope(environmentId, AuthRelayWriteScope)
       ) {
         reportUpdateFailure(
-          new Error("This connection needs permission to view and manage remote access settings."),
+          new Error(
+            m(msg("This connection needs permission to view and manage remote access settings.")),
+          ),
         );
         return false;
       }
@@ -126,7 +141,7 @@ export function useCloudLinkController(environmentId: EnvironmentId | null) {
       const state = readCachedCloudLinkState(target);
       if (state === null) {
         reportUpdateFailure(
-          new Error("Wait until the current remote access settings can be read."),
+          new Error(m(msg("Wait until the current remote access settings can be read."))),
         );
       }
       return state;
@@ -154,7 +169,7 @@ export function useCloudLinkController(environmentId: EnvironmentId | null) {
           reportUpdateFailure(
             cause,
             relayKeptLink
-              ? "Disconnected here, but remote access still lists it. Remove it in Account."
+              ? m(msg("Disconnected here, but remote access still lists it. Remove it in Account."))
               : undefined,
           );
         }
@@ -171,15 +186,22 @@ export function useCloudLinkController(environmentId: EnvironmentId | null) {
       }
       const clerkToken = tokenResult.value;
       if (!clerkToken) {
-        reportUpdateFailure(new Error("Sign in before turning this on."));
+        reportUpdateFailure(new Error(m(msg("Sign in before turning this on."))));
         return false;
       }
-      const currentManagedTunnel = isManagedTunnelActive(currentLinkState, relayProviderKind);
-      if (
-        !currentLinkState.linked ||
-        currentLinkState.linkRevoked === true ||
-        currentManagedTunnel !== desired.managedTunnel
-      ) {
+      if (cloudChangeReplacesLink(currentLinkState, relayProviderKind, desired)) {
+        if (!readEnvironmentCanConfigureRelay(environmentId)) {
+          reportUpdateFailure(
+            new Error(
+              m(
+                msg(
+                  "This connection needs the remote access configuration permission to set up remote access.",
+                ),
+              ),
+            ),
+          );
+          return false;
+        }
         const linkResult = await linkEnvironment({
           target,
           clerkToken,
@@ -239,6 +261,7 @@ export function useCloudLinkController(environmentId: EnvironmentId | null) {
     holdWebhooksWhileOffline,
     operationError,
     tunnelLimit,
+    needsRelayConfiguration,
     reconcileCloudState,
   };
 }

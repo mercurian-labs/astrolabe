@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { LayersIcon } from "lucide-react";
 import type { ReactNode } from "react";
 

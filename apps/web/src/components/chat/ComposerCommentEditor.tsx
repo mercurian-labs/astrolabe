@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import type { EnvironmentId } from "@t3tools/contracts";
 import { use, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 
@@ -199,26 +200,31 @@ function CommentEditorBody({
             <TextFieldSpeechControls speech={speech} />
           </div>
         ) : null}
-        <Button
-          variant="outline"
-          size="xs"
-          onPointerDown={(event) => event.preventDefault()}
-          onClick={onCancel}
-        >
-          Cancel
-        </Button>
-        <Button
-          size="xs"
-          disabled={
-            speech
-              ? speech.preparing || (commentTooLong && !speech.blocksSubmission)
-              : commentTooLong
-          }
-          onPointerDown={(event) => event.preventDefault()}
-          onClick={submit}
-        >
-          {commentTooLong ? "Shorten comment" : saveLabel}
-        </Button>
+        {/* Wrap as a pair so the recording pill never pushes Save alone onto a new row under Cancel. */}
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="xs"
+            // Escape cancels; keep Tab from the comment on Save so Enter cannot discard a new comment.
+            tabIndex={-1}
+            onPointerDown={(event) => event.preventDefault()}
+            onClick={onCancel}
+          >
+            Cancel
+          </Button>
+          <Button
+            size="xs"
+            disabled={
+              speech
+                ? speech.preparing || (commentTooLong && !speech.blocksSubmission)
+                : commentTooLong
+            }
+            onPointerDown={(event) => event.preventDefault()}
+            onClick={submit}
+          >
+            {commentTooLong ? "Shorten comment" : saveLabel}
+          </Button>
+        </div>
       </div>
     </div>
   );

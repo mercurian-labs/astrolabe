@@ -12,11 +12,14 @@ real model, and ask for a diagram of boxes and arrows that cites a file.
 - **Phone:** the feed shows the layout as a thumbnail. Tapping opens the board, which pans by
   touch. A swipe from the left edge goes back, and doesn't pan. A code card opens its file. A
   killed page (`onContentProcessDidTerminate`) comes back with the camera where it was.
-- **Keep:** the board's Keep button (`Keep <title>`: a bookmark in the timeline, **Keep** in the
-  Canvas tab, the phone's header) opens a comment box (`components/canvas/KeepCanvas.tsx`). Enter
-  adds a board chip to the composer; Cmd/Ctrl+Enter adds and sends. **Place in wiki** shows the
-  wiki and name form, where a folder prefix such as `ops/Board` files it in that folder. **Place
-  it** files it, then says it's in a pull request, with **Done** and **Open it**. Check the
+- **Keep:** on web, the timeline's bookmark (`button "Keep <title> in a wiki"`, in the turn's
+  "N canvas" list, `TurnCanvases.tsx`) and the board's **Canvas menu** → **Keep in a wiki…** (the
+  Canvas tab and the inline board) open the `Keep <title>` dialog straight on the wiki and name
+  form (`components/canvas/KeepCanvas.tsx`; no comment step on web). A folder prefix such as
+  `ops/Board` files it in that folder. **Place it** files it, then says it's in a pull request,
+  with **Done** and **Open it** (which opens the board inside the pull request, cards marked
+  Added). The phone's header **Keep** still opens a comment box first: Enter adds a board chip to
+  the composer, Cmd/Ctrl+Enter adds and sends, **Place in wiki** goes to the same form. Check the
   file opens at the coordinates the thread showed, ids are 16 hex, and closing the pull request
   leaves the thread's board. Code cards: a pushed commit gives a link pinned to it, with `astrolabe`
   holding repository, commit, path and lines; an unpushed commit links to the nearest pushed one

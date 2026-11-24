@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { RegistryContext } from "@effect/atom-react";
 import { FileDiff } from "@pierre/diffs/react";
 import {

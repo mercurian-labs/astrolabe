@@ -1,3 +1,4 @@
+import { T } from "gt-react";
 import { cn } from "~/lib/utils";
 
 import { CommandBlock } from "./CommandBlock";
@@ -19,12 +20,16 @@ export function InstallT3Commands({
       <CommandBlock command="curl -fsSL https://raw.githubusercontent.com/mercurian-labs/astrolabe/main/scripts/install.sh | sh" />
       <p className="text-xs text-muted-foreground">Windows (PowerShell)</p>
       <CommandBlock command="irm https://raw.githubusercontent.com/mercurian-labs/astrolabe/main/scripts/install.ps1 | iex" />
-      <p className="text-xs text-muted-foreground">Then</p>
+      <p className="text-xs text-muted-foreground">
+        <T>Then</T>
+      </p>
       <CommandBlock command={command} />
       <p className="text-xs text-muted-foreground">
-        Skip the install if you already have <code className="font-mono">astrolabe</code>. If{" "}
-        <code className="font-mono">astrolabe</code> is not found after installing, add the folder
-        the installer names to your PATH.
+        <T>
+          Skip the install if you already have <code className="font-mono">astrolabe</code>. If{" "}
+          <code className="font-mono">astrolabe</code> is not found after installing, add the folder
+          the installer names to your PATH.
+        </T>
       </p>
     </div>
   );

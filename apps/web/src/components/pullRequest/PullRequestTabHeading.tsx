@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { canEditPullRequestChangeRequest } from "@t3tools/client-runtime/pull-request-editing";
 import type { PullRequestDetail, PullRequestState } from "@t3tools/contracts";
 import { ListIcon, PencilIcon } from "lucide-react";

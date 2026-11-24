@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import {
   COMPOSER_CONTEXT_CANVAS_COMMENT_MAX_CHARS,
   type CanvasContextRecord,

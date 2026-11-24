@@ -1,7 +1,9 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { WikiChangeEntry, WikiDocumentEntry } from "@t3tools/client-runtime/wikiList";
 import { isTurnRunning, wikiTerms } from "@t3tools/client-runtime/wikiLogic";
 import type { EnvironmentId, ThreadId, WikiSummary } from "@t3tools/contracts";
+import { useMessages } from "gt-react-native";
 import { memo, type ReactNode } from "react";
 import { View } from "react-native";
 
@@ -58,6 +60,7 @@ function WikiRowFrame(props: {
   readonly onPress: () => void;
   readonly footer: ReactNode;
 }) {
+  const m = useMessages();
   return (
     <RowPressable
       accessibilityRole="button"
@@ -87,7 +90,7 @@ function WikiRowFrame(props: {
                   weight="semibold"
                 />
                 <Text className={cn("text-xs font-t3-bold", WORKING.className)}>
-                  {WORKING.label}
+                  {m(WORKING.label)}
                 </Text>
               </View>
             ) : props.timestamp ? (

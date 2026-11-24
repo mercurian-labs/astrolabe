@@ -101,6 +101,7 @@ export const ASTROLABE_KEYBINDING_COMMANDS = [
   "section.wikis",
   "section.repositories",
   "section.pullRequests",
+  "section.issues",
   "section.usage",
   "section.settings",
   "chatTab.next",
@@ -228,6 +229,7 @@ export const STATIC_KEYBINDING_COMMANDS = [
   "preview.zoomIn",
   "preview.zoomOut",
   "preview.resetZoom",
+  "preview.find",
   "commandPalette.toggle",
   // Astrolabe: the keyboard (which-key) menu, which `mod+k` opens; the palette is inside it.
   "whichKey.open",
@@ -324,8 +326,14 @@ export const KeybindingsConfig = Schema.Array(KeybindingRule).check(
 );
 export type KeybindingsConfig = typeof KeybindingsConfig.Type;
 
+// Untrimmed: the `space` token resolves to the key " ".
+const KeybindingShortcutKey = Schema.String.check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(MAX_KEYBINDING_VALUE_LENGTH),
+);
+
 export const KeybindingShortcut = Schema.Struct({
-  key: KeybindingValue,
+  key: KeybindingShortcutKey,
   metaKey: Schema.Boolean,
   ctrlKey: Schema.Boolean,
   shiftKey: Schema.Boolean,

@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { FoldVerticalIcon, LocateFixedIcon, ScanIcon, SlidersHorizontalIcon } from "lucide-react";
 import { useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
 

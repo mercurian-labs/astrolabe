@@ -1,4 +1,5 @@
 import { TriangleAlertIcon } from "lucide-react";
+import { T, useGT } from "gt-react";
 import type { ReactNode } from "react";
 
 import { cn } from "../../lib/utils";
@@ -20,19 +21,20 @@ export function TunnelUsageMeter({
   readonly action?: ReactNode;
   readonly className?: string;
 }) {
+  const gt = useGT();
   const full = used >= limit;
   const fill = full ? "bg-warning" : "bg-foreground/72";
   return (
     <div className={cn("flex max-w-sm flex-col gap-1.5", className)}>
       <div className="flex items-baseline justify-between gap-3 text-xs">
         <span className={cn("tabular-nums", full ? "text-warning-foreground" : "text-foreground")}>
-          {used} of {limit} tunnels in use
+          {gt("{used} of {limit} tunnels in use", { used, limit })}
         </span>
         {action}
       </div>
       <div
         role="meter"
-        aria-label="Remote access tunnels in use"
+        aria-label={gt("Remote access tunnels in use")}
         aria-valuemin={0}
         aria-valuemax={limit}
         aria-valuenow={used}
@@ -67,14 +69,16 @@ export function TunnelLimitAlert({
   return (
     <Alert variant="warning">
       <TriangleAlertIcon />
-      <AlertTitle>You&apos;re out of tunnels (they cost us money).</AlertTitle>
+      <AlertTitle>
+        <T>You&apos;re out of tunnels (they cost us money).</T>
+      </AlertTitle>
       <AlertDescription>
-        Switch to Tailscale or deregister an environment you no longer use (sorry!)
+        <T>Switch to Tailscale or deregister an environment you no longer use (sorry!)</T>
       </AlertDescription>
       {onManageTunnels ? (
         <AlertAction>
           <Button size="sm" variant="outline" onClick={() => onManageTunnels()}>
-            Manage tunnels
+            <T>Manage tunnels</T>
           </Button>
         </AlertAction>
       ) : null}

@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import type { ContextMenuItem } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { Columns2, Maximize2, Minimize2, MoreHorizontal, Rows2, SquareX } from "lucide-react";
@@ -173,6 +174,7 @@ function LabeledTabPill({
     }
     changeSelection(() => anchorAt(paneId, tabKey));
     activate();
+    tabs.selected?.(tabKey);
   };
 
   const showContextMenu = async (event: MouseEvent) => {

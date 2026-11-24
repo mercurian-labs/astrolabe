@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import type { ProjectWorktree, ProjectWorktreeMaker } from "@t3tools/contracts";
 
 import type { RepositoryCheckout } from "./repositoryTabs";

@@ -177,6 +177,7 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod++", command: "preview.zoomIn", when: "previewFocus" },
   { key: "mod+-", command: "preview.zoomOut", when: "previewFocus" },
   { key: "mod+0", command: "preview.resetZoom", when: "previewFocus" },
+  { key: "mod+f", command: "preview.find", when: "previewFocus" },
   // Astrolabe: mod+k opens the keyboard menu, whose `/` (or a second mod+k) is Search, as mod+/
   // is. mod+p is the Command Palette, and the file picker is the menu's `f`
   // (`DEFAULT_TRIGGER_KEYBINDINGS`).

@@ -17,8 +17,14 @@ describe("buildRuntimeInstructions", () => {
   it("links PRs the agent creates, takes over, or pushes to, and no others", () => {
     const instructions = buildRuntimeInstructions({ harness: "Codex" });
 
-    assert.include(instructions, "Link each PR you create, take over, or push to");
+    assert.include(
+      instructions,
+      "Link each PR you create outside pull_request_create, take over, or push to",
+    );
+    // pull_request_create links what it opens, so a second link would only repeat it.
+    assert.include(instructions, "pull_request_create does, so don't link what it opened");
     assert.include(instructions, "every stack layer");
+    assert.include(instructions, "link_issue");
     assert.include(instructions, "Skip PRs you only read or review");
     assert.include(instructions, "If linking fails, say so.");
     assert.notInclude(instructions, "git log -1");

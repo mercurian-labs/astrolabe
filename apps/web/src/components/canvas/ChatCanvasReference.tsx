@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { useAtomValue } from "@effect/atom-react";
 import { canvasBounds, canvasFrame, type CanvasBounds } from "@mercurian/wiki/canvas";
 import { canvasViewNamed } from "@t3tools/client-runtime/canvasViews";

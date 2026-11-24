@@ -6,7 +6,11 @@ import { ListRow } from "../../../components/ui/ListRow";
 import { ListRowLayout } from "../../../components/ui/ListRowLayout";
 import { RowPressable } from "../../../components/ui/RowPressable";
 import { cn } from "../../../lib/cn";
-import type { SettingsLegalDocumentTarget, SettingsPageTarget } from "./settings-page-targets";
+import {
+  isAstrolabeSettingsPageTarget,
+  type SettingsLegalDocumentTarget,
+  type SettingsPageTarget,
+} from "./settings-page-targets";
 import { SettingsSidebarContext } from "./SettingsSection";
 import { openSettings } from "../settings-navigation";
 
@@ -37,6 +41,8 @@ export function SettingsRow(props: {
   const onPress = () => {
     if (props.target) {
       if (inList) openSettings(navigation, props.target);
+      // One navigate over every page's name exceeds the checker's union limit, so split it.
+      else if (isAstrolabeSettingsPageTarget(props.target)) navigation.navigate(props.target);
       else navigation.navigate(props.target);
     } else if (props.fullScreenTarget) {
       navigation.navigate(props.fullScreenTarget);

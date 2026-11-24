@@ -59,6 +59,7 @@ const statusEvents = Effect.gen(function* () {
     getStatus: notUsed,
     refreshLocalStatus: notUsed,
     refreshStatus: notUsed,
+    refreshAfterCheckout: notUsed,
     refreshPullRequestStatus: notUsed,
     streamBranchStatus: () => Stream.never,
     refreshBranchStatus: notUsed,

@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import "@mercurian/wiki-editor/base-layout.css";
 
 import { useAtomValue } from "@effect/atom-react";

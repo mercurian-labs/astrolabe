@@ -1,3 +1,5 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
+import { useGT } from "gt-react";
 import { useAtomValue } from "@effect/atom-react";
 import {
   DEFAULT_CLIENT_SETTINGS,
@@ -17,7 +19,7 @@ import { NumberField, NumberFieldGroup, NumberFieldInput } from "../ui/number-fi
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
 import { SettingResetButton, SettingsRow, SettingsSection } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 import { VimModeSettingsRow } from "./VimModeSetting";
 
 /**
@@ -33,6 +35,8 @@ const UNLEADING_KEYS = new Set(["Escape", "Enter", "Tab", "Backspace", "Delete"]
 const MODIFIER_KEYS = new Set(["Shift", "Control", "Alt", "AltGraph", "Meta", "CapsLock", "Fn"]);
 
 function LeaderKeySettingsRow() {
+  const gt = useGT();
+  const searchableSetting = useSearchableSetting();
   const leaderKey = useClientSettings(resolveLeaderKey);
   const [recording, setRecording] = useState(false);
   // The menu's own chord, as the menu names it.
@@ -60,7 +64,7 @@ function LeaderKeySettingsRow() {
       resetAction={
         leaderKey !== " " ? (
           <SettingResetButton
-            label="leader key"
+            ariaLabel={gt("Reset leader key to default")}
             onClick={() => updateClientSettings({ leaderKey: " " })}
           />
         ) : null
@@ -111,6 +115,8 @@ function LeaderKeySettingsRow() {
 
 /** Whether Vim's j and k move by screen line, a line that wraps being as many as it shows. */
 function ScreenLinesSettingsRow() {
+  const gt = useGT();
+  const searchableSetting = useSearchableSetting();
   const on = useClientSettings((settings) => settings.vimScreenLinesEnabled);
   const vim = useClientSettings((settings) => settings.vimModeEnabled);
   return (
@@ -120,7 +126,7 @@ function ScreenLinesSettingsRow() {
       resetAction={
         on !== DEFAULT_CLIENT_SETTINGS.vimScreenLinesEnabled ? (
           <SettingResetButton
-            label="screen line movement"
+            ariaLabel={gt("Reset screen line movement to default")}
             onClick={() =>
               updateClientSettings({
                 vimScreenLinesEnabled: DEFAULT_CLIENT_SETTINGS.vimScreenLinesEnabled,
@@ -146,6 +152,8 @@ const NO_GROUPING = { useGrouping: false } as const;
 
 /** How long the menu's focus moves and scrolls keep their keys after one ran from the menu. */
 function RepeatWindowSettingsRow() {
+  const gt = useGT();
+  const searchableSetting = useSearchableSetting();
   const windowMs = useClientSettings((settings) => settings.menuRepeatWindowMs);
   return (
     <SettingsRow
@@ -154,7 +162,7 @@ function RepeatWindowSettingsRow() {
       resetAction={
         windowMs !== DEFAULT_MENU_REPEAT_WINDOW_MS ? (
           <SettingResetButton
-            label="repeat window"
+            ariaLabel={gt("Reset repeat window to default")}
             onClick={() =>
               updateClientSettings({ menuRepeatWindowMs: DEFAULT_MENU_REPEAT_WINDOW_MS })
             }

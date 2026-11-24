@@ -128,6 +128,7 @@ function isUsable(element: Element | null, region: Element): element is HTMLElem
     element instanceof HTMLElement &&
     element.isConnected &&
     region.contains(element) &&
+    !element.matches(":disabled") &&
     !element.closest("[inert]") &&
     element.getClientRects().length > 0
   );

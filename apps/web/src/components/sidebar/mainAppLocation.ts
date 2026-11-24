@@ -1,17 +1,18 @@
-import { useMatches, useNavigate, type AnyRouter } from "@tanstack/react-router";
+import { useMatches, useNavigate, useRouter, type AnyRouter } from "@tanstack/react-router";
 
 import { chatRouteOf } from "~/chatTabs/chatTabLabel";
 import { agentsRoute } from "~/panes/agentsRoute";
 import { workspace } from "~/panes/workspace";
 import { GUEST_PAGE_PATH } from "../../guestPage";
 import { withoutAssistantCitationHash } from "../../lib/assistantCitationNavigation";
+import { resolveThreadRouteTarget, type ThreadRouteTarget } from "../../threadRoutes";
 
 /** Settings and Usage open as modals over the last main-app view. */
 export function isAppModalPage(pathname: string) {
   return pathname === "/settings" || pathname.startsWith("/settings/") || pathname === "/usage";
 }
 
-// Astrolabe: `/pull-requests` is the Changes section, not a utility page.
+// Astrolabe: `/pull-requests` (Changes) and `/issues` are sections, not utility pages.
 export function isSidebarUtilityPage(pathname: string) {
   return pathname.startsWith("/projects/");
 }
@@ -19,6 +20,11 @@ export function isSidebarUtilityPage(pathname: string) {
 /** Astrolabe: Pull Requests, a section of its own beside the threads and wikis. */
 export function isPullRequestsPath(pathname: string) {
   return pathname === "/pull-requests";
+}
+
+/** Astrolabe: Issues, a section of its own beside Changes. */
+export function isIssuesPath(pathname: string) {
+  return pathname === "/issues";
 }
 
 /** Astrolabe: Repositories, a section of its own beside the wikis. */
@@ -38,18 +44,33 @@ const SHELL_LESS_PATHS = new Set(["/pair", "/connect", "/connect-agent", GUEST_P
 
 let appModalReturnHref: string | null = null;
 let appModalReturnPathname = "/";
+let appModalReturnHistoryIndex: number | null = null;
+let appModalReturnThreadTarget: ThreadRouteTarget | null = null;
+let initialHistoryIndex = 0;
 
 /** Remembers where Settings and Usage lead back to. */
 export function startMainAppLocationTracking(router: AnyRouter): () => void {
+  initialHistoryIndex = router.state.location.state.__TSR_index;
   const record = () => {
     const { pathname } = router.state.location;
     if (isAppModalPage(pathname) || SHELL_LESS_PATHS.has(pathname)) return;
     const href = withoutAssistantCitationHash(router.state.location.href);
     appModalReturnHref = href;
     appModalReturnPathname = pathname;
+    // Only an entry that is exactly the return location can be stepped back to.
+    appModalReturnHistoryIndex =
+      href === router.state.location.href ? router.state.location.state.__TSR_index : null;
+    appModalReturnThreadTarget = resolveThreadRouteTarget(
+      router.state.matches.at(-1)?.params ?? {},
+    );
   };
   record();
   return router.subscribe("onResolved", record);
+}
+
+/** The thread Settings or Usage opened over, for views mounted while the modal is open. */
+export function getAppModalReturnThreadTarget() {
+  return appModalReturnThreadTarget;
 }
 
 /**
@@ -79,5 +100,20 @@ export function useNavigateToAgents() {
 /** Leaves Settings or Usage for the page that opened it. */
 export function useCloseAppModal() {
   const navigate = useNavigate();
-  return () => navigate({ href: appModalReturnHref ?? "/" });
+  const router = useRouter();
+  return () => {
+    const href = appModalReturnHref ?? "/";
+    const returnIndex = appModalReturnHistoryIndex ?? 0;
+    const steps = router.state.location.state.__TSR_index - returnIndex;
+    // Stepping back past this document's first entry reloads the page. Written as a negated
+    // comparison so a missing (NaN) history index also falls back to client navigation.
+    if (!(returnIndex > initialHistoryIndex && steps > 0)) return navigate({ href, replace: true });
+    // Go back to the entry before the return page and push it again: only a push drops the
+    // modal's entries from forward history, and reusing the old entry avoids a duplicate stop.
+    const unsubscribe = router.history.subscribe(() => {
+      unsubscribe();
+      void navigate({ href });
+    });
+    router.history.go(-(steps + 1));
+  };
 }

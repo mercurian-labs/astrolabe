@@ -89,7 +89,8 @@ composer. Never anything inside one (no stop for a tab strip, the timeline or th
   gap, not a regression): the list keys do nothing there, and focus moving in lands on
   its first focusable control, not the current file.
 - **Rail list** (focus on a rail button, `[data-app-rail] [data-sidebar=menu-button]`;
-  each is a tooltip trigger, so its `data-slot` reads `tooltip-trigger`): the sections,
+  each is a tooltip trigger, so its `data-slot` reads `tooltip-trigger`): the sections
+  (Agents, Wikis, Projects, Changes, Issues where supported),
   then at the foot the update control when shown (`Check for updates`, or the providers'
   "Update N providers" pill), **Usage**, and **Settings**. With cloud sign-in configured the
   Settings slot is the account menu: signed in it is named after the user, uses the solid

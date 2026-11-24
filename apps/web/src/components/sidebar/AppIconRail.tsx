@@ -1,3 +1,4 @@
+import { useGT } from "gt-react";
 import { useAtomValue } from "@effect/atom-react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import {
@@ -20,8 +21,10 @@ import { workspaceAreaProps } from "~/lib/workspaceFocus";
 import { primaryServerKeybindingsAtom } from "~/state/server";
 import { AstrolabeMarkSmall } from "../brand/AstrolabeMarks";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
-import { usePullRequestsSupported } from "~/state/environments";
+import { useIssuesSupported, usePullRequestsSupported } from "~/state/environments";
 import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
+import { readIssueListPreferences } from "../issue/issueListPreferences";
+import { IssueGlyph } from "../issue/issuePresentation";
 import {
   SidebarMenu,
   SidebarMenuButton,
@@ -32,6 +35,7 @@ import {
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { AccountMenu } from "./AccountMenu";
 import {
+  isIssuesPath,
   isPullRequestsPath,
   isRepositoriesPath,
   isWikisPath,
@@ -42,7 +46,14 @@ import { SidebarUpdatePill } from "./SidebarUpdatePill";
 
 /** One of the app's sections, as the icon rail and the keyboard menu's Go to offer it. */
 interface AppSection {
-  readonly id: "threads" | "wikis" | "repositories" | "pull-requests" | "usage" | "settings";
+  readonly id:
+    | "threads"
+    | "wikis"
+    | "repositories"
+    | "pull-requests"
+    | "issues"
+    | "usage"
+    | "settings";
   readonly label: string;
   readonly icon: ReactNode;
   readonly active: boolean;
@@ -57,25 +68,32 @@ interface AppSection {
  * Usage, and Settings. Each opens as the rail's button does.
  */
 export function useAppSections(): readonly AppSection[] {
+  const gt = useGT();
   const pathname = useLocation({ select: (location) => location.pathname });
   // Settings and Usage open over a section, which stays the one its button marks.
   const sectionPathname = useSectionPathname();
   const navigate = useNavigate();
   const navigateToAgents = useNavigateToAgents();
   const pullRequestsSupported = usePullRequestsSupported();
+  const issuesSupported = useIssuesSupported();
 
   const onSettings = pathname === "/settings" || pathname.startsWith("/settings/");
   const onUsage = pathname === "/usage";
   const onPullRequests = isPullRequestsPath(sectionPathname);
   const onWikis = isWikisPath(sectionPathname);
   const onRepositories = isRepositoriesPath(sectionPathname);
+  const onIssues = isIssuesPath(sectionPathname);
   const onThreads =
-    !onPullRequests && !onWikis && !onRepositories && !sectionPathname.startsWith("/projects/");
+    !onPullRequests &&
+    !onIssues &&
+    !onWikis &&
+    !onRepositories &&
+    !sectionPathname.startsWith("/projects/");
 
   return [
     {
       id: "threads",
-      label: "Agents",
+      label: gt("Agents"),
       icon: <MessagesSquare />,
       active: onThreads,
       open: () => void navigateToAgents(),
@@ -83,7 +101,7 @@ export function useAppSections(): readonly AppSection[] {
     },
     {
       id: "wikis",
-      label: "Wikis",
+      label: gt("Wikis"),
       icon: <BookOpenIcon />,
       active: onWikis,
       open: () => void navigate({ to: "/wikis" }),
@@ -91,7 +109,7 @@ export function useAppSections(): readonly AppSection[] {
     },
     {
       id: "repositories",
-      label: "Projects",
+      label: gt("Projects"),
       icon: <FolderGit2Icon />,
       active: onRepositories,
       open: () => void navigate({ to: "/repositories" }),
@@ -101,7 +119,7 @@ export function useAppSections(): readonly AppSection[] {
       ? [
           {
             id: "pull-requests" as const,
-            label: "Changes",
+            label: gt("Changes"),
             icon: <PullRequestGlyph.pullRequest />,
             active: onPullRequests,
             open: () =>
@@ -110,9 +128,21 @@ export function useAppSections(): readonly AppSection[] {
           },
         ]
       : []),
+    ...(issuesSupported
+      ? [
+          {
+            id: "issues" as const,
+            label: gt("Issues"),
+            icon: <IssueGlyph.issue />,
+            active: onIssues,
+            open: () => void navigate({ to: "/issues", search: readIssueListPreferences() }),
+            foot: false,
+          },
+        ]
+      : []),
     {
       id: "usage",
-      label: "Usage",
+      label: gt("Usage"),
       icon: <ChartNoAxesColumnIcon />,
       active: onUsage,
       open: () => void navigate({ to: "/usage" }),
@@ -120,7 +150,7 @@ export function useAppSections(): readonly AppSection[] {
     },
     {
       id: "settings",
-      label: "Settings",
+      label: gt("Settings"),
       icon: <SettingsIcon />,
       active: onSettings,
       open: () => void navigate({ to: "/settings" }),
@@ -238,6 +268,7 @@ function RailMark() {
 
 /** The sidebar's toggle (`sidebar.toggle`), in the title bar's corner above the rail. */
 function SidebarToggleItem() {
+  const gt = useGT();
   const { toggleSidebar } = useSidebar();
   const open = useSidebarVisibility();
   const usagePageOpen = useLocation({ select: (location) => location.pathname === "/usage" });
@@ -249,8 +280,12 @@ function SidebarToggleItem() {
   if (usagePageOpen) return null;
   return (
     <RailItem
-      label="Toggle main sidebar"
-      tooltip={`Toggle main sidebar${shortcutLabel ? ` (${shortcutLabel})` : ""}`}
+      label={gt("Toggle main sidebar")}
+      tooltip={
+        shortcutLabel
+          ? gt("Toggle main sidebar ({shortcut})", { shortcut: shortcutLabel })
+          : gt("Toggle main sidebar")
+      }
       icon={open ? <PanelLeftCloseIcon className="size-4" /> : <PanelLeftIcon className="size-4" />}
       active={false}
       pressed={open}

@@ -1,3 +1,5 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
+import { useGT } from "gt-react";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts";
@@ -7,7 +9,7 @@ import { updateClientSettings, useClientSettings } from "~/hooks/useSettings";
 import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
 import { SettingResetButton, SettingsRow } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 import { vimQuitGate } from "./vimQuitGate";
 
 /**
@@ -16,6 +18,8 @@ import { vimQuitGate } from "./vimQuitGate";
  * row, so whoever turns it on has shown they know the way out.
  */
 export function VimModeSettingsRow() {
+  const gt = useGT();
+  const searchableSetting = useSearchableSetting();
   const on = useClientSettings((settings) => settings.vimModeEnabled);
   const [asking, setAsking] = useState(false);
   const switchRef = useRef<HTMLButtonElement>(null);
@@ -45,7 +49,7 @@ export function VimModeSettingsRow() {
       resetAction={
         on !== DEFAULT_CLIENT_SETTINGS.vimModeEnabled ? (
           <SettingResetButton
-            label="Vim keybindings"
+            ariaLabel={gt("Reset Vim keybindings to default")}
             onClick={() =>
               updateClientSettings({ vimModeEnabled: DEFAULT_CLIENT_SETTINGS.vimModeEnabled })
             }

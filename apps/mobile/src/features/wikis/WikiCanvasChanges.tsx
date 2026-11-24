@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import {
   canvasChangeSections,
   canvasChangeSummary,
@@ -6,7 +7,9 @@ import {
   type CanvasReview,
 } from "@mercurian/wiki/canvas";
 import { useState } from "react";
-import { FlatList, Pressable, View } from "react-native";
+import { LegendList } from "@legendapp/list/react-native";
+import { NativeScrollView } from "../../native/NativeScrollViewMarker";
+import { Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppText as Text } from "../../components/ui/AppText";
@@ -79,8 +82,11 @@ export function WikiCanvasChanges({
   ];
   return (
     <View className="bg-screen" style={{ maxHeight: "40%" }}>
-      <FlatList
+      <LegendList
+        renderScrollComponent={NativeScrollView}
         data={rows}
+        extraData={{ movesOpen, onPick }}
+        estimatedItemSize={44}
         contentContainerStyle={{ paddingBottom: insets.bottom }}
         keyExtractor={(row) => (row === FOLD ? FOLD : `${row.item}:${row.id}`)}
         ListHeaderComponent={

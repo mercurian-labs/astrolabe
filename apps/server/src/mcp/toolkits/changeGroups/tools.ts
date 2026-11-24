@@ -4,7 +4,7 @@ import {
   OrchestratorMcpFailure,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
-import { Tool, Toolkit } from "effect/ai";
+import { McpSchema, Tool, Toolkit } from "effect/ai";
 
 import * as ChangeGroupService from "../../../changeGroups/ChangeGroupService.ts";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
@@ -107,7 +107,8 @@ const ChangeGroupSuggestTool = Tool.make("astrolabe_change_group_suggest", {
   success: ChangeGroupDecisions,
 })
   .annotate(Tool.Readonly, false)
-  .annotate(Tool.Destructive, false);
+  .annotate(Tool.Destructive, false)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 
 const ChangeGroupUpdateTool = Tool.make("astrolabe_change_group_update", {
   ...shared,
@@ -124,7 +125,8 @@ const ChangeGroupUpdateTool = Tool.make("astrolabe_change_group_update", {
   success: ChangeGroupDecisions,
 })
   .annotate(Tool.Readonly, false)
-  .annotate(Tool.Destructive, false);
+  .annotate(Tool.Destructive, false)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 
 export const ChangeGroupToolkit = Toolkit.make(
   ChangeGroupsTool,

@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import type { WikiEditorCommand, WikiEditorEvent } from "@mercurian/wiki-editor/protocol";
 import { StackActions, useNavigation } from "@react-navigation/native";
 import { WIKI_BASE_AUTOSAVE_DELAY_MS } from "@t3tools/client-runtime/wikiAutosave";

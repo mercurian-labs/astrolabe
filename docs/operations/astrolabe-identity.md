@@ -36,10 +36,12 @@ Environment variables get both treatments: people set `ASTROLABE_*`, and the cod
 | Desktop app id                       | `com.t3tools.t3code{,.dev}`                                                                           | `com.mercurian.astrolabe{,.dev}`                                                            |
 | Desktop schemes                      | `t3code://app`, `t3code-dev://app`                                                                    | `astrolabe://app`, `astrolabe-dev://app`                                                    |
 | Linux desktop entry                  | `com.t3tools.T3Code{,.Development}`                                                                   | `com.mercurian.Astrolabe{,.Development}`                                                    |
-| Linux executable, WM class           | `t3code`                                                                                              | `astrolabe`                                                                                 |
+| Linux executable                     | `t3code`                                                                                              | `astrolabe`                                                                                 |
+| Linux WM class                       | `com.t3tools.T3Code`                                                                                  | `com.mercurian.Astrolabe`                                                                   |
 | Electron profile folder              | `t3code-v2`, `t3code-dev`                                                                             | `astrolabe`, `astrolabe-dev`                                                                |
 | macOS keychain item                  | `t3code Safe Storage`                                                                                 | `astrolabe Safe Storage`                                                                    |
 | Background service                   | `t3code.service`, `com.t3tools.t3code.service`                                                        | `astrolabe.service`, `com.mercurian.astrolabe.service`                                      |
+| Windows service task                 | `t3code-<domain>-<user>`, `%LOCALAPPDATA%\t3code`                                                     | `astrolabe-<domain>-<user>`, `%LOCALAPPDATA%\astrolabe`                                     |
 | systemd protect drop-in              | `90-t3code-protect.conf`                                                                              | `90-astrolabe-protect.conf`                                                                 |
 | Home folder                          | `~/.t3`                                                                                               | `~/.astrolabe`                                                                              |
 | CLI command                          | `t3`                                                                                                  | `astrolabe`                                                                                 |
@@ -115,8 +117,31 @@ Astrolabe's own feature modules rarely conflict. These upstream files carry its 
   routes, listed in the nav groups in `settingsSearch.ts`. Regenerate `routeTree.gen.ts` after
   renaming one.
 - `apps/web/src/components/KeybindingsUpdateToast.tsx`: the vimrc toasts.
-- `apps/mobile/src/features/workspace/workspace-tabs-state.ts`: upstream's configurable tab model,
-  with Astrolabe's Wikis, Projects and Changes tabs added to it.
+- `apps/mobile/src/features/layout/workspace/workspace-tabs-state.ts`, `navigation-tab-order.ts`,
+  `WorkspaceTabsContext.tsx` and the native `T3SidebarTabBarView.swift`: upstream's configurable
+  tab model, with Astrolabe's Wikis, Projects and Changes tabs added to it. Changes stays pinned;
+  Issues is an overflow tab like Wikis and Projects.
+- `apps/web/src/components/sidebar/AppIconRail.tsx` and `mainAppLocation.ts`: the icon rail holds
+  the sections (Issues right after Changes). Upstream links a section from the sidebar footer
+  (`SidebarChrome.tsx`); drop that link and add the section to the rail and the which-key Go-to
+  menu instead.
+- `apps/web/src/rightPanelStore.ts`: both forks bump `RIGHT_PANEL_STORAGE_VERSION`; a sync takes
+  one past the larger of the two.
+- `apps/server/src/orchestration-v2/Orchestrator.ts`: Astrolabe's canvas and edited-file deciders
+  live in `AstrolabeDeciders.ts`; only the wiring stays in the orchestrator.
+- `apps/server/src/mcp/toolkits/{canvas,changeGroups,code,wiki}/tools.ts`: tools whose handlers act
+  as the calling thread (`readsAsCaller`, `actsAsCaller`) must carry
+  `McpSchema.EnabledWhen: hiddenFromOutsideClients`, or `McpToolAccess.toLayer` dies at startup.
+- `apps/server/src/mcp/toolkits/toolSearch/tools.ts`: the description names Astrolabe's tool
+  prefixes so a search for one stays under the result cap.
+- `apps/server/src/mcp/toolkits/pullRequests/handlers.ts`: `pull_request_merge` and
+  `pull_request_update` refuse a host wiki's change request, which merges through the wiki.
+- `packages/client-runtime/src/relay/mercurianAccountSource.ts`: the cloud account service waits
+  for a `client` with an id before it trusts a sign-out (Clerk's offline guard), so the Mercurian
+  source sends one whenever its session is loaded.
+- Language: Astrolabe ships in English. `vp run i18n:generate`, then
+  `node scripts/astrolabe-rekey-catalogs.ts --upstream <ref>`, carries upstream's translations onto
+  rebranded keys; Astrolabe-only UI files carry a file-level `no-untranslated-copy` disable.
 - `packages/client-runtime/src/relay/cloudAccountService.ts` and
   `apps/mobile/src/features/cloud/cloudAccountService.ts`: upstream types the account service on
   Clerk. Astrolabe adapts it to the Mercurian account and keeps `@clerk/*` out of the dependency
@@ -127,8 +152,10 @@ Astrolabe's own feature modules rarely conflict. These upstream files carry its 
 - `apps/server/src/os-jank.ts` (`resolveBaseDir`), `apps/server/src/cli/browser.ts`,
   `apps/desktop/src/app/DesktopStatePaths.ts`, `scripts/dev-runner.ts` (`DEFAULT_T3_HOME`),
   `scripts/install.sh`, `scripts/install.ps1`: the `~/.astrolabe` default.
-- `apps/server/src/device/sshDeviceScript.ts`, `apps/desktop/src/wsl/DesktopWslEnvironment.ts`:
+- `apps/server/src/device/sshDeviceScript.ts`, `apps/desktop/src/wsl/DesktopWslEnvironment.ts`,
+  `packages/ssh/src/tunnel.ts` (the launch scripts, including the dangling-symlink guard):
   remote-host folders under `~/.astrolabe`.
+- `scripts/dev-runner.ts`: the "explicit live home" check compares against `~/.astrolabe`.
 - `apps/server/src/project/AgentSessionScanner.ts`: recognises both `.astrolabe/worktrees` and
   `.t3/worktrees`.
 - Left on purpose: `apps/server/scripts/migrate-dev-db.ts`, `t3-sqlite-state.ts` and the first
@@ -174,6 +201,11 @@ is read from or written for carries Astrolabe's name.
   `apps/server/src/cloud/*`, `apps/web/src/versionSkew.ts`, `ServerUpdateAction.tsx`, the Connect
   and onboarding surfaces, `packages/client-runtime`, the mobile pairing screen, and the docs.
   `.github/triage/PLAYBOOK.md` must stay byte-identical to `apps/server/src/triage/triagePrompt.ts`.
+- Upstream's launcher and runtime tests (`cli/update`, `cli/invocation`, `cli/install`,
+  `cloud/pinnedRuntime`, `cloud/selfUpdate`, `cloud/bootService`, `cloud/serviceLauncherClient`)
+  name the runtime entry `versions/<v>/t3`, launchers `bin/t3` and the launchd plist
+  `com.t3tools.t3code.service.plist`. Rename them together to Astrolabe's names: prune and launcher
+  lookup match an entry to a launcher by name, so renaming only one side fails quietly.
 - Release archives keep upstream's `t3-<version>-<platform>` names but contain `astrolabe`.
   Where they are downloaded from is in [Upstream services](#upstream-services).
 

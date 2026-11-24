@@ -9,7 +9,7 @@ import {
 } from "@t3tools/contracts";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
-import { Tool, Toolkit } from "effect/ai";
+import { McpSchema, Tool, Toolkit } from "effect/ai";
 
 import * as ServerConfig from "../../../config.ts";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
@@ -169,7 +169,9 @@ const WikiTransformTool = Tool.make("astrolabe_wiki_transform", {
     ),
   }),
   success: Schema.Union([WikiAmendResult, WikiCheckoutTransformResult]),
-}).annotate(Tool.Destructive, false);
+})
+  .annotate(Tool.Destructive, false)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 
 // Every agent sees these; only a session whose file tools can't reach its checkout uses them.
 const FALLBACK =
@@ -249,7 +251,9 @@ const WikiWriteTool = Tool.make("astrolabe_wiki_write", {
     warnings: Schema.optional(Schema.Array(Schema.String)),
     syntax,
   }),
-}).annotate(Tool.Destructive, false);
+})
+  .annotate(Tool.Destructive, false)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 
 const WikiChangeRequestTool = Tool.make("astrolabe_wiki_change_request", {
   ...shared,

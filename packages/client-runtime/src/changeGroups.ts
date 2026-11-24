@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import {
   DEFAULT_CHANGE_GROUP_GROUPING_SETTINGS,
   type ChangeGroupDecisions,

@@ -6,6 +6,9 @@ import * as Hex from "effect/encoding/Hex";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as ExpoCrypto from "expo-crypto";
+import { msg } from "gt-react-native";
+
+import { m } from "../../i18n/messages";
 import * as SecureStore from "expo-secure-store";
 import { DpopProof } from "@t3tools/client-runtime/relay";
 import { DpopPublicJwk } from "@t3tools/shared/dpopCommon";
@@ -94,7 +97,7 @@ function base64UrlToBytes(value: string): Uint8Array {
 function coordinateBytes(value: string): Uint8Array {
   const bytes = base64UrlToBytes(value);
   if (bytes.length !== 32 || Base64Url.encode(bytes) !== value) {
-    throw new Error("DPoP key coordinate is not 32 canonical bytes.");
+    throw new Error(m(msg("DPoP key coordinate is not 32 canonical bytes.")));
   }
   return bytes;
 }
@@ -109,7 +112,7 @@ function uncompressedPublicKeyFromJwk(jwk: DpopPublicJwk): Uint8Array {
 
 function publicJwkFromUncompressedPublicKey(publicKey: Uint8Array): DpopPublicJwk {
   if (publicKey.length !== 65 || publicKey[0] !== 0x04) {
-    throw new Error("The new public signing key is not an uncompressed P-256 point.");
+    throw new Error(m(msg("The new public signing key is not an uncompressed P-256 point.")));
   }
   return {
     kty: "EC",
@@ -130,11 +133,11 @@ export const generateDpopProofKeyPair = Effect.fn("dpop.generateDpopProofKeyPair
   function* (): Effect.fn.Return<DpopProofKeyPair, CloudDpopError> {
     const key = yield* Effect.tryPromise({
       try: async () => (await nativeDpopKeys()).generateDpopKey(),
-      catch: cloudDpopError("Could not generate a new signing key."),
+      catch: cloudDpopError(m(msg("Could not generate a new signing key."))),
     });
     const publicJwk = yield* Effect.try({
       try: () => publicJwkFromUncompressedPublicKey(key.slice(32)),
-      catch: cloudDpopError("The new public signing key is invalid."),
+      catch: cloudDpopError(m(msg("The new public signing key is invalid."))),
     });
     return { privateJwk: privateJwkFromPrivateKey(key.slice(0, 32), publicJwk), publicJwk };
   },
@@ -144,11 +147,11 @@ export const loadOrCreateDpopProofKeyPair = Effect.fn("dpop.loadOrCreateDpopProo
   function* (): Effect.fn.Return<DpopProofKeyPair, CloudDpopError> {
     const stored = yield* Effect.tryPromise({
       try: () => SecureStore.getItemAsync(DPOP_PROOF_KEY_STORAGE_KEY),
-      catch: cloudDpopError("Could not load this device's remote access signing key."),
+      catch: cloudDpopError(m(msg("Could not load this device's remote access signing key."))),
     });
     if (stored) {
       const storedPrivateJwk = yield* decodeDpopPrivateJwkJson(stored).pipe(
-        Effect.mapError(cloudDpopError("This device's saved signing key is invalid.")),
+        Effect.mapError(cloudDpopError(m(msg("This device's saved signing key is invalid.")))),
       );
       const { d, ...publicJwk } = storedPrivateJwk;
       const matches = yield* Effect.tryPromise({
@@ -157,22 +160,22 @@ export const loadOrCreateDpopProofKeyPair = Effect.fn("dpop.loadOrCreateDpopProo
             base64UrlToBytes(d),
             uncompressedPublicKeyFromJwk(publicJwk),
           ),
-        catch: cloudDpopError("This device's saved signing key is invalid."),
+        catch: cloudDpopError(m(msg("This device's saved signing key is invalid."))),
       });
       if (!matches) {
         return yield* new CloudDpopError({
-          message: "This device's saved signing key is invalid.",
+          message: m(msg("This device's saved signing key is invalid.")),
         });
       }
       return { privateJwk: storedPrivateJwk, publicJwk };
     }
     const generated = yield* generateDpopProofKeyPair();
     const encodedPrivateJwk = yield* encodeDpopPrivateJwkJson(generated.privateJwk).pipe(
-      Effect.mapError(cloudDpopError("Could not encode the new signing key.")),
+      Effect.mapError(cloudDpopError(m(msg("Could not encode the new signing key.")))),
     );
     yield* Effect.tryPromise({
       try: () => SecureStore.setItemAsync(DPOP_PROOF_KEY_STORAGE_KEY, encodedPrivateJwk),
-      catch: cloudDpopError("Could not save this device's remote access signing key."),
+      catch: cloudDpopError(m(msg("Could not save this device's remote access signing key."))),
     });
     return generated;
   },
@@ -183,7 +186,7 @@ export const loadOrCreateProofKey = Effect.fn("dpop.loadOrCreateProofKey")(funct
   const keyPair = yield* loadOrCreateDpopProofKeyPair();
   const privateKey = yield* Effect.try({
     try: () => base64UrlToBytes(keyPair.privateJwk.d),
-    catch: cloudDpopError("Could not load the private signing key."),
+    catch: cloudDpopError(m(msg("Could not load the private signing key."))),
   });
   return {
     publicJwk: keyPair.publicJwk,
@@ -191,7 +194,7 @@ export const loadOrCreateProofKey = Effect.fn("dpop.loadOrCreateProofKey")(funct
       Effect.tryPromise({
         try: async () => (await nativeDpopKeys()).signDpop(privateKey, signingInput),
         catch: (cause) =>
-          new DpopProof.DpopProofError({ message: "Could not sign the request.", cause }),
+          new DpopProof.DpopProofError({ message: m(msg("Could not sign the request.")), cause }),
       }),
   } satisfies DpopProof.DpopProofKey;
 });

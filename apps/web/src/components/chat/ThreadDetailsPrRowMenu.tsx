@@ -1,3 +1,5 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
+import { msg } from "gt-react";
 import type { ScopedThreadRef, ThreadPullRequestLink } from "@t3tools/contracts";
 import { ArrowUpRightIcon, EyeIcon, EyeOffIcon, LinkIcon, PlusIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
@@ -52,7 +54,15 @@ export function ThreadDetailsPrRowMenu({
             <ArrowUpRightIcon className="size-3.5" />
             Open
           </MenuItem>
-          <MenuItem onClick={() => void writeTextToClipboard(link.url, "link")}>
+          <MenuItem
+            onClick={() =>
+              void writeTextToClipboard(link.url, {
+                target: "link",
+                unavailableMessage: msg("Clipboard API is unavailable while copying link."),
+                failureMessage: msg("Failed to copy link to the clipboard."),
+              })
+            }
+          >
             <LinkIcon className="size-3.5" />
             Copy link
           </MenuItem>

@@ -9,7 +9,7 @@ import {
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
-import { Tool, Toolkit } from "effect/ai";
+import { McpSchema, Tool, Toolkit } from "effect/ai";
 
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as ProjectService from "../../../project/ProjectService.ts";
@@ -49,7 +49,8 @@ const CanvasShowTool = Tool.make(CANVAS_SHOW_TOOL_NAME, {
 })
   .annotate(Tool.Title, "Draw a canvas")
   .annotate(Tool.Readonly, true)
-  .annotate(Tool.Destructive, false);
+  .annotate(Tool.Destructive, false)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 
 const CanvasKeepTool = Tool.make(CANVAS_KEEP_TOOL_NAME, {
   description:
@@ -84,6 +85,7 @@ const CanvasKeepTool = Tool.make(CANVAS_KEEP_TOOL_NAME, {
 })
   .annotate(Tool.Title, "Keep a canvas")
   .annotate(Tool.Readonly, false)
-  .annotate(Tool.Destructive, false);
+  .annotate(Tool.Destructive, false)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 
 export const CanvasToolkit = Toolkit.make(CanvasShowTool, CanvasKeepTool);

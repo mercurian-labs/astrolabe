@@ -135,8 +135,9 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   `role=toolbar[name=Change]`: **Restore this change**, **Previous change**, **Next change**;
   Cmd+Shift+' shows every change; Cmd+F8 / Cmd+Shift+F8 step.
 - **Language server** (`apps/server/src/languageServers/`, client `packages/editor/src/lsp/`):
-  the header's `span[role=status]` reads `TypeScript <version>`, `… starting…`, `… needs this
-  project trusted` (**Trust project**), or failed / stopped / paused to save memory (**Restart**).
+  the header's `span[role=status]` reads `TypeScript <version>`, `… starting…`, `TypeScript: Not
+  trusted` (with a notice under the header, **Not now** and **Trust project**; `LABELS` in
+  `LanguageServerStatus.tsx`), or failed / stopped / paused to save memory (**Restart**).
   Clicking it opens its menu: each server on the file (`+N` in the status counts the companions:
   Ruff, and ESLint or Tailwind where the project uses them) with state, memory, Restart, Stop, View
   logs (a `repo-lsp-logs:` tab with Server log, RPC trace, Server info), then **Language server
@@ -215,7 +216,10 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   (`LinkedFileEditor.tsx`), carrying the revealed line; its header's pressed **Preview file**
   goes back. A host file, an attachment, a folder, a draft thread or a non-text file has no Edit.
   Each save of your own edits there dispatches `thread.file-edit.record`, which shows an
-  **Edited · <file>** pill in the composer (`ComposerEditedBoards.tsx`) beside edited boards.
+  **Edited · <file>** pill in the composer (`ComposerEditedBoards.tsx`, `button "Edited file
+  <name>. Open it"`) beside edited boards. Hovering it shows `button "Revert <name> to the agent's
+  version…"`: a confirm (`RevertEditedFileDialog.tsx`), then **Revert** writes the agent's text
+  back to disk with a "Reverted <name> to the agent's version" toast and **Undo**.
 - **Manage projects** (the filter's foot) opens Settings → Projects.
 - **Open in Projects**: a thread's right-panel **Files**, a file opened there, and
   **Diff** offer it in the tab's context menu; it opens the same file or its uncommitted
@@ -319,9 +323,10 @@ now**. With the **server** project that makes two projects.
    the right with the file's chain mark. Prove it paints: `document.elementFromPoint` at the
    graph canvas's centre returns a `CANVAS`. Open another file with **Following** pressed and
    the graph re-roots on it; unpress it and it stays.
-10. Language server: in the `.ts` file wait for the header status `TypeScript <version>` (a
-    an untrusted project reads `TypeScript <version> needs this project trusted` with **Trust
-    project** first). Type `const x: number = "a";`: Saving… → Saved and a wavy underline
+10. Language server: in the `.ts` file wait for the header status `TypeScript <version>` (an
+    untrusted project reads `TypeScript: Not trusted` with **Trust project** first, which can sit
+    in a hidden pane copy: scope it with `>> visible=true`). Hover a call: `.cm-lsp-hover-tooltip`
+    shows its signature. Type `const x: number = "a";`: Saving… → Saved and a wavy underline
     (`cm-lintRange-error`, gutter `cm-lint-marker-error`); `.atlas-diagnostic-messages` shows only
     with the cursor on that line.
 11. Right-click a call: the cursor moves there and the menu lists the language rows; choose

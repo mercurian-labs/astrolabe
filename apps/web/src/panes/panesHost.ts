@@ -74,6 +74,8 @@ export interface PaneTabs {
   readonly menuItems?: (tabKey: string) => readonly PaneTabMenuItem[];
   /** Closes a tab, which may ask first. */
   readonly close: (tabKey: string) => void;
+  /** Astrolabe: after a click brings a tab to the front, as a side chat's composer taking focus. */
+  readonly selected?: (tabKey: string) => void;
   /** Astrolabe: minimizes a linked tab (see `PaneTabLabel.minimize`); false for any other tab. */
   readonly minimize?: (tabKey: string) => boolean;
   /** The control after a pane's tabs that opens another tab there. */

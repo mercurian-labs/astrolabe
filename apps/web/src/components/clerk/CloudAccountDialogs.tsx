@@ -1,3 +1,5 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
+import { msg, useMessages } from "gt-react";
 import { LogOutIcon, UserRoundIcon } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
@@ -97,12 +99,13 @@ function CloudAccountDialog() {
   const account = useCloudAccountState();
   const page = useOpenPage();
   const user = account.status === "signedIn" ? account.user : null;
+  const m = useMessages();
   const pages: ReadonlyArray<{
     readonly url: CloudAccountPage;
     readonly label: string;
     readonly icon: ReactNode;
   }> = [
-    { url: "account", label: "Account", icon: <UserRoundIcon className="size-4" /> },
+    { url: "account", label: msg("Account"), icon: <UserRoundIcon className="size-4" /> },
     ...T3_CONNECT_ACCOUNT_PAGES,
   ];
   const current = T3_CONNECT_ACCOUNT_PAGES.find((entry) => entry.url === page);
@@ -125,7 +128,7 @@ function CloudAccountDialog() {
                 onClick={() => setOpenPage(entry.url)}
               >
                 {entry.icon}
-                {entry.label}
+                {m(entry.label)}
               </Button>
             ))}
           </nav>

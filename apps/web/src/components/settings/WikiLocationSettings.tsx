@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { settingsFolder } from "@mercurian/wiki/placement";
 import type {
   EnvironmentId,

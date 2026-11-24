@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import type { EnvironmentId, WikiSummary } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { TriangleAlertIcon } from "lucide-react";

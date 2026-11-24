@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import {
   ASTROLABE_KEYBINDING_COMMANDS,
   CODE_EDITOR_KEYBINDING_COMMANDS,
@@ -158,6 +159,7 @@ const SECTION_IDS: Partial<Record<AstrolabeKeybindingCommand, string>> = {
   "section.wikis": "wikis",
   "section.repositories": "repositories",
   "section.pullRequests": "pull-requests",
+  "section.issues": "issues",
   "section.usage": "usage",
   "section.settings": "settings",
 };
@@ -423,6 +425,7 @@ function astrolabeCommand(
     case "section.wikis":
     case "section.repositories":
     case "section.pullRequests":
+    case "section.issues":
     case "section.usage":
     case "section.settings": {
       const target = context.sections.find((candidate) => candidate.id === SECTION_IDS[command]);

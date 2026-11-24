@@ -64,6 +64,10 @@ const DEFINITIONS = [
     kind: "change-group",
     capabilities: { details: "popover", expanded: "none", defaultDraftView: "compact" },
   },
+  {
+    kind: "response",
+    capabilities: { details: "none", expanded: "inline-block", defaultDraftView: "compact" },
+  },
 ] as const satisfies ReadonlyArray<ContextPresentationDefinition>;
 
 function buildDefinitionRegistry(

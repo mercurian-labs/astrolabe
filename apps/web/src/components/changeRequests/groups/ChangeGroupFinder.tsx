@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { useAtomValue } from "@effect/atom-react";
 import { CHANGE_GROUP_STATE_LABELS } from "@t3tools/shared/changeGroups";
 import { LayersIcon } from "lucide-react";

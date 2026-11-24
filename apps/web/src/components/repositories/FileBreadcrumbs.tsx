@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import type { EditorView } from "@codemirror/view";
 import { outlinePath, revealOutlineItem, type OutlineItem } from "@mercurian/editor/outline";
 import { ChevronRightIcon } from "lucide-react";

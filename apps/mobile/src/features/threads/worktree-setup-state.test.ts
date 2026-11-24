@@ -1,6 +1,7 @@
 import { ThreadId, type WorktreeSetupSnapshot } from "@t3tools/contracts";
 import { resolveVisibleWorktreeSetup } from "@t3tools/client-runtime/worktree-setup";
 import { describe, expect, it } from "vite-plus/test";
+import * as DateTime from "effect/DateTime";
 import { resolveWorktreeSetupSnapshot } from "./worktree-setup-state";
 
 const threadId = ThreadId.make("setup-thread");
@@ -27,7 +28,7 @@ describe("mobile worktree setup handoff", () => {
       resolveVisibleWorktreeSetup({
         live: held,
         recorded: null,
-        turnStarted: false,
+        runs: [],
         followUpSent: false,
       }),
     ).toBe(done);
@@ -35,10 +36,17 @@ describe("mobile worktree setup handoff", () => {
       resolveVisibleWorktreeSetup({
         live: held,
         recorded: null,
-        turnStarted: true,
+        runs: [{ startedAt: DateTime.makeUnsafe(running.startedAt) }],
         followUpSent: false,
       }),
     ).toBeNull();
+    const afterFirstMessageEdit = {
+      live: held,
+      recorded: null,
+      followUpSent: false,
+      runs: [{ startedAt: DateTime.makeUnsafe(running.startedAt) }, { startedAt: null }],
+    };
+    expect(resolveVisibleWorktreeSetup(afterFirstMessageEdit)).toBeNull();
     expect(resolveWorktreeSetupSnapshot(threadId, undefined, held)).toBe(done);
     // The server drops a setup only after it ends, so a held running snapshot missed its finish.
     expect(resolveWorktreeSetupSnapshot(threadId, null, running)).toBeNull();
@@ -55,7 +63,7 @@ describe("mobile worktree setup handoff", () => {
         resolveVisibleWorktreeSetup({
           live: held,
           recorded: null,
-          turnStarted: false,
+          runs: [],
           followUpSent: false,
         }),
       ).toBe(settled);
@@ -63,7 +71,7 @@ describe("mobile worktree setup handoff", () => {
         resolveVisibleWorktreeSetup({
           live: held,
           recorded: null,
-          turnStarted: false,
+          runs: [],
           followUpSent: true,
         }),
       ).toBeNull();

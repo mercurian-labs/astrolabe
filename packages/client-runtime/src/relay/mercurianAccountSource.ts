@@ -19,6 +19,8 @@ export function createMercurianAccountSource(
       const emit = () => {
         const state = client.getState();
         listener({
+          // Offline the session stays loading, so a sign-out here is one the account API answered.
+          ...(state.status === "loading" ? {} : { client: { id: "mercurian-account" } }),
           user:
             state.status === "loading"
               ? undefined

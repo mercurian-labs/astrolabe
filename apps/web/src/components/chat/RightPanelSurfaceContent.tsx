@@ -1,6 +1,8 @@
 import { CanvasPanel } from "../canvas/CanvasPanel";
+import { useGT } from "gt-react";
 import type {
   EnvironmentId,
+  IssueTrackerKind,
   PreviewAnnotationPayload,
   ProjectId,
   ScopedThreadRef,
@@ -20,6 +22,7 @@ import {
   PersistentThreadTerminalPanel,
   type PersistentThreadTerminalPanelProps,
 } from "../PersistentThreadTerminals";
+import { IssueDetailPanel } from "../issue/IssueDetailPanel";
 import { pullRequestPanelContext } from "../pullRequest/pullRequestDetail.logic";
 import { linkedFileEditorPath } from "../repositories/fileView";
 import { PullRequestDetailPanel } from "../pullRequest/PullRequestDetailPanel";
@@ -84,11 +87,13 @@ export function RightPanelSurfaceContent(props: {
   };
   readonly terminal: RightPanelTerminalProps;
   readonly pullRequest: RightPanelPullRequestProps;
+  readonly issuesSupported: boolean;
   readonly files: RightPanelFileProps;
   readonly sideChatParentPanel: SideChatParentPanel;
 }) {
   const { surface, threadRef, visible, onCloseSurface } = props;
   const covered = useLiveSurfaceCovered();
+  const gt = useGT();
   if (surface === null) return null;
   // The shared panes show several surfaces at once; only the active one answers shortcuts.
   const shortcutsEnabled = visible && props.activeSurfaceId === surface.id;
@@ -134,8 +139,8 @@ export function RightPanelSurfaceContent(props: {
       if (!pullRequest.supported) {
         return (
           <PullRequestsUnavailableState
-            title="Pull requests unavailable"
-            error="Update this environment's Astrolabe server to browse pull requests."
+            title={gt("Pull requests unavailable")}
+            error={gt("Update this environment's Astrolabe server to browse pull requests.")}
           />
         );
       }
@@ -182,6 +187,40 @@ export function RightPanelSurfaceContent(props: {
         />
       );
     }
+    case "issue":
+      if (!props.pullRequest.capabilityKnown) return <PullRequestDetailGhost />;
+      if (!props.issuesSupported) {
+        return (
+          <PullRequestsUnavailableState
+            title={gt("Issues unavailable")}
+            error={gt("Update this environment's Astrolabe server to browse issues.")}
+          />
+        );
+      }
+      return (
+        <IssueDetailPanel
+          key={`${surface.environmentId ?? props.environmentId}:${surface.id}`}
+          environmentId={
+            (surface.environmentId as EnvironmentId | undefined) ?? props.environmentId
+          }
+          reference={{
+            projectId: surface.projectId as ProjectId,
+            tracker: surface.tracker as IssueTrackerKind,
+            ...(surface.host ? { host: surface.host } : {}),
+            scope: surface.scope,
+            key: surface.key,
+          }}
+          threadRef={threadRef}
+          onSelectPullRequest={(reference) => {
+            useRightPanelStore.getState().openPullRequest(threadRef, {
+              projectId: reference.projectId,
+              repository: reference.repository,
+              number: reference.number,
+              ...(reference.host ? { host: reference.host } : {}),
+            });
+          }}
+        />
+      );
     // Astrolabe: nothing opens this list now (the change group replaces it); restored tabs still show.
     case "pull-requests":
       return <ThreadPullRequestsPanel threadRef={threadRef} />;

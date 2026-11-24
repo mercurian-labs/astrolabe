@@ -112,6 +112,12 @@ const THREAD_CONTENT_TABLES = [
   "mcp_app_model_context",
 ] as const;
 
+// Kept by triggers on turn items, a row per run; WITHOUT ROWID, so not deleted in rowid batches.
+const THREAD_COUNT_TABLES = [
+  "orchestration_v2_projection_turn_item_counts",
+  "orchestration_v2_projection_thread_item_counts",
+] as const;
+
 const decodeThreadJson = Schema.decodeUnknownEffect(
   Schema.fromJsonString(OrchestrationV2AppThreadJson),
 );
@@ -372,6 +378,9 @@ const make = Effect.gen(function* () {
         Effect.gen(function* () {
           for (const table of THREAD_CONTENT_TABLES) {
             yield* deleteInBatches(table, sql`thread_id = ${threadId}`);
+          }
+          for (const table of THREAD_COUNT_TABLES) {
+            yield* sql`DELETE FROM ${sql(table)} WHERE thread_id = ${threadId}`;
           }
           // Transfers live in their target's stream; one this thread sent
           // belongs to the thread that received it.

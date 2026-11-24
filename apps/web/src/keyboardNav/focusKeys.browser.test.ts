@@ -2,7 +2,7 @@ import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
 import { describe, expect, it } from "vite-plus/test";
 
 import { resolveShortcutCommand } from "~/keybindings";
-import { noteFocus } from "./regions";
+import { focusRegion, noteFocus } from "./regions";
 import { isEditableFocused } from "~/lib/editableFocus";
 
 /** Empties the page as a test ends. */
@@ -100,5 +100,16 @@ describe("the place keys act from", () => {
     expect(document.querySelector("[data-focused-place]")).toBe(
       document.querySelector("[data-pane-id]"),
     );
+  });
+
+  it("is entered past a disabled control that keeps a tab stop, as on Issues", () => {
+    using _cleanup = cleanup();
+    document.body.innerHTML = `
+      <main data-slot="sidebar-inset">
+        <button disabled tabindex="0">Toggle right panel</button>
+        <a href="#issue">Issue</a>
+      </main>`;
+    focusRegion(document.querySelector<HTMLElement>("[data-slot='sidebar-inset']")!);
+    expect(document.activeElement).toBe(document.querySelector("a"));
   });
 });

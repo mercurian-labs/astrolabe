@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { wikiScopeKey } from "@t3tools/client-runtime/wikiList";
 import { useMemo } from "react";
