@@ -1,3 +1,5 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
+import { useGT } from "gt-react";
 import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
 import { describeCodeIndexStatus } from "@t3tools/client-runtime/state/codeIndex";
 import { useAtomValue } from "@effect/atom-react";
@@ -20,7 +22,7 @@ import { ScopedSwitch } from "./ScopedSwitch";
 import { SettingResetButton, SettingsRow, SettingsSection } from "./settingsLayout";
 import { settingsScopeEnvironmentLabel } from "./settingsScopeAxis";
 import { useSettingsScope } from "./SettingsScopeContext";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 import {
   useScopedSettings,
   useScopedSettingsMixed,
@@ -48,6 +50,8 @@ export function CodeIndexProjectSettings({
     readonly environmentLabel: string | null;
   }>;
 }) {
+  const searchableSetting = useSearchableSetting();
+  const gt = useGT();
   const nowMinute = useNowMinute();
   const nowMs = Date.parse(`${nowMinute}:00.000Z`);
   const { targets } = useSettingsScope();
@@ -152,7 +156,7 @@ export function CodeIndexProjectSettings({
         resetAction={
           codeIndex.skippedPaths.length > 0 ? (
             <SettingResetButton
-              label="skipped paths"
+              ariaLabel={gt("Reset skipped paths to default")}
               onClick={() => updateSettings({ codeIndex: { ...codeIndex, skippedPaths: [] } })}
             />
           ) : null
@@ -201,6 +205,7 @@ const clearPermissionsAtom = environmentAtomList(
 
 /** Settings → Maintenance: what the code indexes hold on disk, with Clean up and Clear all. */
 export function CodeIndexStorageSection() {
+  const searchableSetting = useSearchableSetting();
   const { scope, connectedEnvironments } = useSettingsScope();
   const environmentIds = connectedEnvironments.map(({ environmentId }) => environmentId);
   const key = environmentIdsKey(environmentIds);

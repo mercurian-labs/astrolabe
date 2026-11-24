@@ -1,3 +1,5 @@
+import { msg } from "gt-react";
+import { m } from "../i18n/messages";
 import { DpopProof } from "@t3tools/client-runtime/relay";
 import { computeDpopJwkThumbprint, DpopPublicJwk } from "@t3tools/shared/dpop";
 import * as Digest from "effect/crypto/Digest";
@@ -41,7 +43,7 @@ function openDpopDatabase(): Effect.Effect<IDBDatabase, BrowserDpopError> {
       resume(
         Effect.fail(
           dpopError(
-            "Could not open this browser's remote access key storage.",
+            m(msg("Could not open this browser's remote access key storage.")),
             request.error ?? undefined,
           ),
         ),
@@ -72,7 +74,7 @@ function readStoredBrowserDpopKey(): Effect.Effect<BrowserDpopKey | null, Browse
           resume(
             Effect.fail(
               dpopError(
-                "Could not read this browser's remote access signing key.",
+                m(msg("Could not read this browser's remote access signing key.")),
                 request.error ?? undefined,
               ),
             ),
@@ -99,7 +101,7 @@ function writeStoredBrowserDpopKey(key: BrowserDpopKey): Effect.Effect<void, Bro
           resume(
             Effect.fail(
               dpopError(
-                "Could not save this browser's remote access signing key.",
+                m(msg("Could not save this browser's remote access signing key.")),
                 transaction.error ?? undefined,
               ),
             ),
@@ -119,21 +121,21 @@ const generateBrowserDpopKey = Effect.gen(function* () {
         "sign",
         "verify",
       ]) as Promise<CryptoKeyPair>,
-    catch: (cause) => dpopError("Could not create a remote access signing key.", cause),
+    catch: (cause) => dpopError(m(msg("Could not create a remote access signing key.")), cause),
   });
   const privateJwk = yield* Effect.tryPromise({
     try: () => crypto.subtle.exportKey("jwk", generated.privateKey),
-    catch: (cause) => dpopError("Could not export the private signing key.", cause),
+    catch: (cause) => dpopError(m(msg("Could not export the private signing key.")), cause),
   });
   const publicJwk = yield* Effect.tryPromise({
     try: () => crypto.subtle.exportKey("jwk", generated.publicKey),
-    catch: (cause) => dpopError("Could not export the public signing key.", cause),
+    catch: (cause) => dpopError(m(msg("Could not export the public signing key.")), cause),
   }).pipe(
     Effect.flatMap((jwk) => decodeDpopPublicJwk(jwk)),
     Effect.mapError((cause) =>
       isBrowserDpopError(cause)
         ? cause
-        : dpopError("The new public signing key is invalid.", cause),
+        : dpopError(m(msg("The new public signing key is invalid.")), cause),
     ),
   );
   const privateKey = yield* Effect.tryPromise({
@@ -141,7 +143,7 @@ const generateBrowserDpopKey = Effect.gen(function* () {
       crypto.subtle.importKey("jwk", privateJwk, { name: "ECDSA", namedCurve: "P-256" }, false, [
         "sign",
       ]),
-    catch: (cause) => dpopError("Could not load the private signing key.", cause),
+    catch: (cause) => dpopError(m(msg("Could not load the private signing key.")), cause),
   });
   return {
     privateKey,
@@ -159,17 +161,20 @@ export const loadOrCreateProofKey = Effect.fn("dpop.loadOrCreateProofKey")(funct
   const privateKey = yield* Signature.privateKeyFromCryptoKey(
     Signature.ecdsaP256,
     browserKey.privateKey,
-  ).pipe(Effect.mapError((cause) => dpopError("Could not load the request signing key.", cause)));
+  ).pipe(
+    Effect.mapError((cause) => dpopError(m(msg("Could not load the request signing key.")), cause)),
+  );
   return {
     publicJwk: browserKey.publicJwk,
     sign: (signingInput) =>
-      signature
-        .sign(privateKey, signingInput)
-        .pipe(
-          Effect.mapError(
-            (cause) =>
-              new DpopProof.DpopProofError({ message: "Could not sign the request.", cause }),
-          ),
+      signature.sign(privateKey, signingInput).pipe(
+        Effect.mapError(
+          (cause) =>
+            new DpopProof.DpopProofError({
+              message: m(msg("Could not sign the request.")),
+              cause,
+            }),
         ),
+      ),
   } satisfies DpopProof.DpopProofKey;
 });

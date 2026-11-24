@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { parseCanvas } from "@mercurian/wiki/canvas";
 import { CanvasMinimap, canvasFigureView } from "@mercurian/wiki-editor/canvas-minimap";
 import type { EnvironmentId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";

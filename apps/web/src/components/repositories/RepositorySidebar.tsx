@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import type { ProjectWorktree, ProjectWorktreeListResult } from "@t3tools/contracts";
 import { ArchiveXIcon, ArrowRightIcon, FileDiffIcon, FileIcon, FolderPlusIcon } from "lucide-react";

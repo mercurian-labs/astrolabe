@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { isolateHistory } from "@codemirror/commands";
 import { EditorState, Transaction } from "@codemirror/state";
 import {

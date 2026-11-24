@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import type { MultibufferFileInput } from "@mercurian/editor/multibuffer";
 import type { NavigationLocation, PlacesKind } from "@mercurian/editor/lsp/navigation";
 import type { FileDiagnostics, ProjectContentMatch } from "@t3tools/contracts";

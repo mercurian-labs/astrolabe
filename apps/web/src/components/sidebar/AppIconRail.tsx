@@ -1,3 +1,4 @@
+import { useGT } from "gt-react";
 import { useAtomValue } from "@effect/atom-react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import {
@@ -67,6 +68,7 @@ interface AppSection {
  * Usage, and Settings. Each opens as the rail's button does.
  */
 export function useAppSections(): readonly AppSection[] {
+  const gt = useGT();
   const pathname = useLocation({ select: (location) => location.pathname });
   // Settings and Usage open over a section, which stays the one its button marks.
   const sectionPathname = useSectionPathname();
@@ -91,7 +93,7 @@ export function useAppSections(): readonly AppSection[] {
   return [
     {
       id: "threads",
-      label: "Agents",
+      label: gt("Agents"),
       icon: <MessagesSquare />,
       active: onThreads,
       open: () => void navigateToAgents(),
@@ -99,7 +101,7 @@ export function useAppSections(): readonly AppSection[] {
     },
     {
       id: "wikis",
-      label: "Wikis",
+      label: gt("Wikis"),
       icon: <BookOpenIcon />,
       active: onWikis,
       open: () => void navigate({ to: "/wikis" }),
@@ -107,7 +109,7 @@ export function useAppSections(): readonly AppSection[] {
     },
     {
       id: "repositories",
-      label: "Projects",
+      label: gt("Projects"),
       icon: <FolderGit2Icon />,
       active: onRepositories,
       open: () => void navigate({ to: "/repositories" }),
@@ -117,7 +119,7 @@ export function useAppSections(): readonly AppSection[] {
       ? [
           {
             id: "pull-requests" as const,
-            label: "Changes",
+            label: gt("Changes"),
             icon: <PullRequestGlyph.pullRequest />,
             active: onPullRequests,
             open: () =>
@@ -130,7 +132,7 @@ export function useAppSections(): readonly AppSection[] {
       ? [
           {
             id: "issues" as const,
-            label: "Issues",
+            label: gt("Issues"),
             icon: <IssueGlyph.issue />,
             active: onIssues,
             open: () => void navigate({ to: "/issues", search: readIssueListPreferences() }),
@@ -140,7 +142,7 @@ export function useAppSections(): readonly AppSection[] {
       : []),
     {
       id: "usage",
-      label: "Usage",
+      label: gt("Usage"),
       icon: <ChartNoAxesColumnIcon />,
       active: onUsage,
       open: () => void navigate({ to: "/usage" }),
@@ -148,7 +150,7 @@ export function useAppSections(): readonly AppSection[] {
     },
     {
       id: "settings",
-      label: "Settings",
+      label: gt("Settings"),
       icon: <SettingsIcon />,
       active: onSettings,
       open: () => void navigate({ to: "/settings" }),
@@ -266,6 +268,7 @@ function RailMark() {
 
 /** The sidebar's toggle (`sidebar.toggle`), in the title bar's corner above the rail. */
 function SidebarToggleItem() {
+  const gt = useGT();
   const { toggleSidebar } = useSidebar();
   const open = useSidebarVisibility();
   const usagePageOpen = useLocation({ select: (location) => location.pathname === "/usage" });
@@ -277,8 +280,12 @@ function SidebarToggleItem() {
   if (usagePageOpen) return null;
   return (
     <RailItem
-      label="Toggle main sidebar"
-      tooltip={`Toggle main sidebar${shortcutLabel ? ` (${shortcutLabel})` : ""}`}
+      label={gt("Toggle main sidebar")}
+      tooltip={
+        shortcutLabel
+          ? gt("Toggle main sidebar ({shortcut})", { shortcut: shortcutLabel })
+          : gt("Toggle main sidebar")
+      }
       icon={open ? <PanelLeftCloseIcon className="size-4" /> : <PanelLeftIcon className="size-4" />}
       active={false}
       pressed={open}

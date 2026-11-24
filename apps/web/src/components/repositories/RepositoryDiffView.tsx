@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import type { FileDiffMetadata } from "@pierre/diffs";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";

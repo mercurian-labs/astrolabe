@@ -1,3 +1,5 @@
+import { m } from "../i18n/messages";
+import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
 import { useAtomValue } from "@effect/atom-react";
 import {
   scopeProjectRef,
@@ -6,6 +8,7 @@ import {
 } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate, useParams } from "@tanstack/react-router";
+import { useGT } from "gt-react";
 import { useEffect, useEffectEvent, useRef } from "react";
 
 import { isCommandPaletteOpen } from "../commandPaletteBus";
@@ -86,6 +89,7 @@ const isGlobalIssues = (ref: ScopedThreadRef) =>
   scopedThreadKey(ref) === scopedThreadKey(ISSUES_PANEL_REF);
 
 export function ReopenClosedViewShortcut() {
+  const gt = useGT();
   const navigate = useNavigate();
   const params = useParams({ strict: false });
   const target = resolveThreadRouteTarget(params);
@@ -185,8 +189,8 @@ export function ReopenClosedViewShortcut() {
       .catch((error: unknown) => {
         toastManager.add({
           type: "error",
-          title: "Could not reopen view",
-          description: error instanceof Error ? error.message : String(error),
+          title: gt("Could not reopen view"),
+          description: thrownErrorMessage(error, m) ?? String(error),
         });
       });
   });

@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import type { WorkspaceSync } from "@t3tools/client-runtime/workspaces";
 import { administers } from "@t3tools/shared/mercurianWorkspaces";
 import { useState, type ReactNode } from "react";

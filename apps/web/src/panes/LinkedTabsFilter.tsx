@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { EyeIcon, EyeOffIcon, SquarePlus, Trash2Icon } from "lucide-react";
 import { useState, useSyncExternalStore, type ReactNode } from "react";
 

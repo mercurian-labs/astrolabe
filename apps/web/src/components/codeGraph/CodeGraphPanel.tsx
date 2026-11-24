@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { FILE_GRAPH_RANGES, GROUP_SLOTS, type FileGraphRangeKey } from "@mercurian/graph/file";
 import { ChevronRightIcon, RotateCcwIcon, SearchIcon, XIcon } from "lucide-react";
 import { useId, type ComponentProps, type CSSProperties, type ReactNode } from "react";

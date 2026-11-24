@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { RegistryContext, useAtomMount } from "@effect/atom-react";
 import { matchHighlight, problemMarks } from "@mercurian/editor/multibuffer/highlights";
 import type { MultibufferFile } from "@mercurian/editor/multibuffer";

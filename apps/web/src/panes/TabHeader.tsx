@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { useAtomValue } from "@effect/atom-react";
 import { ArrowLeftIcon, ArrowRightIcon } from "lucide-react";
 import { useContext, type ComponentProps, type ReactNode } from "react";

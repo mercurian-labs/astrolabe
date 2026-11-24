@@ -1,3 +1,5 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
+import { useGT } from "gt-react";
 import { useAtomValue } from "@effect/atom-react";
 import {
   AuthOrchestrationOperateScope,
@@ -38,7 +40,7 @@ import { toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { SettingResetButton, SettingsRow, SettingsSection } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 import {
   VIM_MAPPING_MODE_LABELS,
   vimKeycaps,
@@ -59,6 +61,8 @@ const MODES: ReadonlyArray<VimMappingMode> = ["normal", "visual", "insert", "all
 type Editing = { readonly row: VimrcMappingRow } | "new" | null;
 
 export function VimrcSection() {
+  const gt = useGT();
+  const searchableSetting = useSearchableSetting();
   const { environment: primaryEnvironment, connectedEnvironments } = useSettingsScope();
   const serverConfig = primaryEnvironment?.serverConfig;
   const text = serverConfig?.vimrc?.text ?? "";
@@ -200,7 +204,7 @@ export function VimrcSection() {
         resetAction={
           options.pcre !== undefined ? (
             <SettingResetButton
-              label="search patterns"
+              ariaLabel={gt("Reset search patterns to default")}
               disabled={disabled}
               onClick={() => saveOption({ name: "pcre", value: null })}
             />
@@ -535,6 +539,7 @@ function VimNumberOptionRow({
   disabled: boolean;
   onSave: (value: number | null) => void;
 }) {
+  const gt = useGT();
   const current = typeof value === "number" ? value : VIM_OPTION_DEFAULT_VALUES[name];
   return (
     <SettingsRow
@@ -543,7 +548,7 @@ function VimNumberOptionRow({
       resetAction={
         value !== undefined ? (
           <SettingResetButton
-            label={title.toLowerCase()}
+            ariaLabel={gt("Reset {setting} to default", { setting: title.toLowerCase() })}
             disabled={disabled}
             onClick={() => onSave(null)}
           />

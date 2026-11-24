@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import type { VimMapping, VimMappingMode, VimMappingTarget } from "@t3tools/contracts";
 
 /** Astrolabe: the pure parts of Settings › Keybindings › Vim (`VimrcSettings.tsx`). */

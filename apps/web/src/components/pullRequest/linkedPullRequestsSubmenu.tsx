@@ -1,3 +1,5 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
+import { msg } from "gt-react";
 import { threadPullRequestKeyOf } from "@t3tools/client-runtime/thread-pull-requests";
 import type { ScopedThreadRef, ThreadPullRequestLink } from "@t3tools/contracts";
 import { ArrowUpRightIcon, EyeIcon, EyeOffIcon, LinkIcon } from "lucide-react";
@@ -56,7 +58,11 @@ export function linkedPullRequestsSubmenu(
             openThreadPullRequest(threadRef, link),
           ),
           item("copy", `Copy link to ${name}`, <LinkIcon className={ITEM_ICON_CLASS} />, () => {
-            void writeTextToClipboard(link.url, "link");
+            void writeTextToClipboard(link.url, {
+              target: "link",
+              unavailableMessage: msg("Clipboard API is unavailable while copying link."),
+              failureMessage: msg("Failed to copy link to the clipboard."),
+            });
           }),
           ...(actions.setWatching !== null && open
             ? [

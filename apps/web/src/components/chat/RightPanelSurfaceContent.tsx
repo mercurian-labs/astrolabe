@@ -1,4 +1,5 @@
 import { CanvasPanel } from "../canvas/CanvasPanel";
+import { useGT } from "gt-react";
 import type {
   EnvironmentId,
   IssueTrackerKind,
@@ -92,6 +93,7 @@ export function RightPanelSurfaceContent(props: {
 }) {
   const { surface, threadRef, visible, onCloseSurface } = props;
   const covered = useLiveSurfaceCovered();
+  const gt = useGT();
   if (surface === null) return null;
   // The shared panes show several surfaces at once; only the active one answers shortcuts.
   const shortcutsEnabled = visible && props.activeSurfaceId === surface.id;
@@ -137,8 +139,8 @@ export function RightPanelSurfaceContent(props: {
       if (!pullRequest.supported) {
         return (
           <PullRequestsUnavailableState
-            title="Pull requests unavailable"
-            error="Update this environment's Astrolabe server to browse pull requests."
+            title={gt("Pull requests unavailable")}
+            error={gt("Update this environment's Astrolabe server to browse pull requests.")}
           />
         );
       }
@@ -190,8 +192,8 @@ export function RightPanelSurfaceContent(props: {
       if (!props.issuesSupported) {
         return (
           <PullRequestsUnavailableState
-            title="Issues unavailable"
-            error="Update this environment's Astrolabe server to browse issues."
+            title={gt("Issues unavailable")}
+            error={gt("Update this environment's Astrolabe server to browse issues.")}
           />
         );
       }

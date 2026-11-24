@@ -1,3 +1,4 @@
+import { useGT } from "gt-react";
 import type { ReactNode } from "react";
 
 import { AstrolabeWordmark } from "../brand/AstrolabeMarks";
@@ -20,10 +21,11 @@ export function StandalonePageHeader({
   readonly title: ReactNode;
   readonly description: ReactNode;
 }) {
+  const gt = useGT();
   return (
     <>
       <div className="flex items-baseline justify-between gap-3 text-muted-foreground">
-        <AstrolabeWordmark small label="Astrolabe" className="h-4 shrink-0" />
+        <AstrolabeWordmark small label={gt("Astrolabe")} className="h-4 shrink-0" />
         {context ? <span className="text-sm">{context}</span> : null}
       </div>
       <h1 className="mt-6 text-xl leading-tight font-semibold">{title}</h1>

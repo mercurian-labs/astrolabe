@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import type { EnvironmentChangeGroup } from "@t3tools/client-runtime/changeGroups";
 import { CHANGE_GROUP_STATE_LABELS, type ChangeGroupMember } from "@t3tools/shared/changeGroups";
 import { LayersIcon } from "lucide-react";

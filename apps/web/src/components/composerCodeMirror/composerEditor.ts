@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { isProviderSkillUserInvocable } from "@t3tools/client-runtime/providerSkills";
 import type { ComposerContextClipboardFragment, ServerProviderSkill } from "@t3tools/contracts";
 import {

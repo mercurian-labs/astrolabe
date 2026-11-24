@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { XIcon } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 

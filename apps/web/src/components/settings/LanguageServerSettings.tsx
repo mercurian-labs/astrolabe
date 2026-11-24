@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import {
   type BuiltInLanguageServerId,
@@ -38,7 +39,7 @@ import {
   serverFormFields,
 } from "./LanguageServerSettings.logic";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 
 interface Checkout {
   readonly environmentId: EnvironmentId;
@@ -401,6 +402,7 @@ function ServerControls({
  * changed about it. Checking starts and downloads nothing; a change restarts what it reaches.
  */
 export function LanguageServerProjectSettings({ members }: { members: ReadonlyArray<Checkout> }) {
+  const searchableSetting = useSearchableSetting();
   const key = JSON.stringify(members.map((member) => [member.environmentId, member.workspaceRoot]));
   const registry = useContext(RegistryContext);
   const checks = useAtomValue(checksAtom(key));

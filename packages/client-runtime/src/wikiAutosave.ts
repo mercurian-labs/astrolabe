@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 // @effect-diagnostics globalTimers:off globalDate:off - A pause in typing, timed outside an Effect runtime.
 /**
  * Astrolabe: when a wiki document's edits land, shared by web and mobile. A store with no

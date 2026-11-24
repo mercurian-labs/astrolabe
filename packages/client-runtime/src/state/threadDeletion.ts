@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 /**
  * What deleting threads removes, for every client's delete confirmation, so
  * the copy says what the server erases. Subagent threads go with their

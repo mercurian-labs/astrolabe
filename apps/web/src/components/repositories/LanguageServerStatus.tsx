@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { selectEnvironmentQueryData } from "@t3tools/client-runtime/state/runtime";
 import type {

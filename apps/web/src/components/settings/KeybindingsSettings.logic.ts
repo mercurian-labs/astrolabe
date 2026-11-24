@@ -12,7 +12,9 @@ import {
   parseKeybindingWhenExpression,
   US_SHIFTED_TO_UNSHIFTED_KEYS,
 } from "@t3tools/shared/keybindings";
+import { msg } from "gt-react";
 
+import { m, type MessageResolver } from "../../i18n/messages";
 import { shortcutConflictKey, shortcutKeyFromEvent } from "../../keybindings";
 import { isMacPlatform } from "../../lib/utils";
 import { METRIC_OPTIONS, WINDOW_OPTIONS } from "../usage/usageShortcuts";
@@ -104,12 +106,16 @@ export function whenAstToExpression(node: KeybindingWhenNode | undefined): strin
   }
 }
 
-export function whenNodeRemoveLabel(node: KeybindingWhenNode, depth: number): string {
-  if (depth === 0) return "Clear all conditions";
+export function whenNodeRemoveLabel(
+  node: KeybindingWhenNode,
+  depth: number,
+  resolve: MessageResolver = m,
+): string {
+  if (depth === 0) return resolve(msg("Clear all conditions"));
   if (node.type === "identifier" || (node.type === "not" && node.node.type === "identifier")) {
-    return "Remove condition";
+    return resolve(msg("Remove condition"));
   }
-  return "Remove group and its conditions";
+  return resolve(msg("Remove group and its conditions"));
 }
 
 function wrapWhenExpression(node: KeybindingWhenNode): string {
@@ -119,6 +125,7 @@ function wrapWhenExpression(node: KeybindingWhenNode): string {
 
 export function parseWhenExpressionDraft(
   expression: string,
+  resolve: MessageResolver = m,
 ): { ok: true; value: KeybindingWhenNode | undefined } | { ok: false; message: string } {
   const trimmed = expression.trim();
   if (trimmed.length === 0) return { ok: true, value: undefined };
@@ -127,7 +134,7 @@ export function parseWhenExpressionDraft(
   if (!ast) {
     return {
       ok: false,
-      message: "Use variables with !, &&, ||, and parentheses.",
+      message: resolve(msg("Use variables with !, &&, ||, and parentheses.")),
     };
   }
 
@@ -136,7 +143,8 @@ export function parseWhenExpressionDraft(
 
 function sourceForBinding(binding: ResolvedKeybindingRule): KeybindingSource {
   if (String(binding.command).startsWith("script.")) {
-    return "Project";
+    const source: KeybindingSource = "Project";
+    return source;
   }
 
   const bindingKey = shortcutToKeybindingInput(binding.shortcut);
@@ -148,7 +156,8 @@ function sourceForBinding(binding: ResolvedKeybindingRule): KeybindingSource {
       whenAstToExpression(entry.whenAst) === bindingWhen,
   );
 
-  return isDefault ? "Default" : "Custom";
+  const source: KeybindingSource = isDefault ? "Default" : "Custom";
+  return source;
 }
 
 function defaultBindingForBinding(
@@ -192,6 +201,7 @@ export function keybindingConflictLabels(
   rows: ReadonlyArray<KeybindingRow>,
   input: { readonly rowId: string; readonly key: string; readonly when: string },
   platform = navigator.platform,
+  resolve: MessageResolver = m,
 ): ReadonlyArray<string> {
   if (input.key.trim().length === 0) return [];
   const shortcut = parseKeybindingShortcut(input.key);
@@ -205,7 +215,7 @@ export function keybindingConflictLabels(
       shortcutConflictKey(candidate.binding.shortcut, platform) === conflictKey &&
       conflictsWithWhen(candidate.when, input.when)
     ) {
-      conflicts.push(commandLabel(candidate.command));
+      conflicts.push(commandLabel(candidate.command, resolve));
     }
   }
   return [...new Set(conflicts)].toSorted();
@@ -222,7 +232,7 @@ export interface KeybindingGroup<
 const KEYBINDING_GROUPS = [
   {
     id: "navigation",
-    title: "Navigation",
+    title: msg("Navigation"),
     prefixes: [
       "sidebar",
       "rightPanel",
@@ -242,15 +252,15 @@ const KEYBINDING_GROUPS = [
       "editor",
     ],
   },
-  { id: "threads", title: "Threads", prefixes: ["thread", "chat", "pullRequest"] },
+  { id: "threads", title: msg("Threads"), prefixes: ["thread", "chat", "pullRequest"] },
   // Astrolabe: `draft` is the command line's `:w`.
-  { id: "composer", title: "Composer", prefixes: ["composer", "modelPicker", "draft"] },
+  { id: "composer", title: msg("Composer"), prefixes: ["composer", "modelPicker", "draft"] },
   // Astrolabe: the editors' own keys: formatting, finding and Vim's search highlight, a code
   // file's editing, its changes since its last commit, the outline picker, and its language
   // server's problems and features.
   {
     id: "editor",
-    title: "Editors",
+    title: msg("Editors"),
     prefixes: [
       "markdown",
       "search",
@@ -264,12 +274,19 @@ const KEYBINDING_GROUPS = [
       "file",
     ],
   },
-  { id: "terminal", title: "Terminal", prefixes: ["terminal"] },
-  { id: "preview", title: "Preview & diff", prefixes: ["preview", "diff"] },
-  { id: "appearance", title: "Appearance", prefixes: ["theme", "appearance", "themeEditor"] },
-  { id: "scripts", title: "Project scripts", prefixes: ["script"] },
+  { id: "terminal", title: msg("Terminal"), prefixes: ["terminal"] },
+  { id: "preview", title: msg("Preview & diff"), prefixes: ["preview", "diff"] },
+  {
+    id: "appearance",
+    title: msg("Appearance"),
+    prefixes: ["theme", "appearance", "themeEditor"],
+  },
+  { id: "scripts", title: msg("Project scripts"), prefixes: ["script"] },
 ] as const;
-const OTHER_KEYBINDING_GROUP = { id: "other", title: "Other" } as const;
+const OTHER_KEYBINDING_GROUP = {
+  id: "other",
+  title: msg("Other", { $context: "keybinding group" }),
+} as const;
 
 function keybindingGroupFor(command: KeybindingCommand): { id: string; title: string } {
   const prefix = String(command).split(".")[0] ?? "";
@@ -311,6 +328,7 @@ export function mergeKeybindingRows<Other extends { readonly command: Keybinding
 export function buildKeybindingRows(
   keybindings: ResolvedKeybindingsConfig,
   platform = navigator.platform,
+  resolve: MessageResolver = m,
 ): ReadonlyArray<KeybindingRow> {
   const rowsById = new Map<string, KeybindingRow>();
   for (const binding of keybindings) {
@@ -345,6 +363,7 @@ export function buildKeybindingRows(
         when: row.when,
       },
       platform,
+      resolve,
     );
     return conflicts.length > 0
       ? Object.assign({}, row, { conflicts: [...new Set(conflicts)].toSorted() })
@@ -408,108 +427,195 @@ export function buildWhenVariableOptions(): ReadonlyArray<WhenVariableOption> {
 
 export function buildKeybindingCommandOptions(
   keybindings: ResolvedKeybindingsConfig,
+  resolve: MessageResolver = m,
 ): ReadonlyArray<KeybindingCommandOption> {
   const commands = new Set<KeybindingCommand>(STATIC_KEYBINDING_COMMANDS);
   for (const binding of keybindings) {
     commands.add(binding.command);
   }
-  return [...commands].toSorted((left, right) => compareCommands(left, right, commandLabel));
+  return [...commands].toSorted((left, right) =>
+    compareCommands(left, right, (command) => commandLabel(command, resolve)),
+  );
 }
 
 /** Astrolabe: labels the command ids do not spell out well. */
 const ASTROLABE_COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
-  "commandPalette.toggle": "Search",
-  "commandLine.open": "Command Palette",
-  "section.new": "New Thread or Document",
-  "section.threads": "Section: Agents",
-  "section.repositories": "Section: Projects",
-  "section.pullRequests": "Section: Changes",
-  "section.issues": "Section: Issues",
-  "tab.close": "Close Tab or Pane Tab",
-  "rightPanel.close": "Close Focused Tab",
-  "draft.write": "Send Draft or Save Note",
-  "buffer.open": "Switch to Thread",
-  "document.open": "Open Document",
-  "focus.left": "Focus Left",
-  "focus.down": "Focus Down",
-  "focus.up": "Focus Up",
-  "focus.right": "Focus Right",
-  "scroll.down": "Scroll Down",
-  "scroll.up": "Scroll Up",
-  "search.find": "Find in Editor",
-  "hunk.toggle": "Show or Hide Change",
-  "hunk.expandAll": "Show All Changes",
-  "hunk.restore": "Restore Change",
-  "hunk.next": "Next Change",
-  "hunk.previous": "Previous Change",
-  "hunk.toggleBase": "Compare With HEAD or This Turn",
-  "outline.open": "Go to Symbol in File",
-  "lsp.projectSymbols": "Go to Symbol in Project",
-  "diagnostic.next": "Next Problem",
-  "diagnostic.previous": "Previous Problem",
-  "lsp.complete": "Show Completions",
-  "lsp.hover": "Show Hover",
-  "lsp.signatureHelp": "Show Signature Help",
-  "lsp.definition": "Go to Definition",
-  "lsp.declaration": "Go to Declaration",
-  "lsp.typeDefinition": "Go to Type Definition",
-  "lsp.implementation": "Go to Implementation",
-  "lsp.references": "Find References",
-  "lsp.incomingCalls": "Show Incoming Calls",
-  "lsp.outgoingCalls": "Show Outgoing Calls",
-  "lsp.rename": "Rename Symbol",
-  "lsp.undoRename": "Undo Rename or Code Action",
-  "lsp.format": "Format Document",
-  "lsp.codeActions": "Show Code Actions",
-  "lsp.restartServer": "Restart Language Server",
-  "lsp.stopServer": "Stop Language Server",
-  "lsp.trustProject": "Trust Project",
-  "lsp.checkServers": "Check Language Servers",
-  "lsp.viewLogs": "View Language Server Logs",
-  "lsp.selectInterpreter": "Select Python Interpreter",
-  "lsp.toggleInlayHints": "Toggle Inlay Hints",
-  "lsp.toggleInlineDiagnostics": "Toggle Inline Diagnostics",
-  "run.atCursor": "Run at Cursor",
-  "run.last": "Run Last",
-  "file.save": "Save File",
-  "file.toggleEdit": "Files: Edit or Preview File",
-  "edit.undo": "Undo",
-  "edit.redo": "Redo",
-  "multibuffer.expand": "Show More Lines Around Excerpt",
-  "multibuffer.openExcerpt": "Open Excerpt in Its File",
-  "multibuffer.nextFile": "Next File in Results",
-  "multibuffer.previousFile": "Previous File in Results",
-  "multibuffer.problems": "Projects: Show Problems",
-  "projectSearch.openInEditor": "Open Search Results in Editor",
-  "repository.localGraph": "Projects: Open Local Graph",
-  "tab.toggleLink": "Tabs: Link or Unlink Tab",
-  "tab.newLinked": "Tabs: New Linked Tab",
+  "commandPalette.toggle": msg("Search"),
+  "commandLine.open": msg("Command Palette"),
+  "section.new": msg("New Thread or Document"),
+  "section.threads": msg("Section: Agents"),
+  "section.repositories": msg("Section: Projects"),
+  "section.pullRequests": msg("Section: Changes"),
+  "section.issues": msg("Section: Issues"),
+  "tab.close": msg("Close Tab or Pane Tab"),
+  "rightPanel.close": msg("Close Focused Tab"),
+  "draft.write": msg("Send Draft or Save Note"),
+  "buffer.open": msg("Switch to Thread"),
+  "document.open": msg("Open Document"),
+  "focus.left": msg("Focus Left"),
+  "focus.down": msg("Focus Down"),
+  "focus.up": msg("Focus Up"),
+  "focus.right": msg("Focus Right"),
+  "scroll.down": msg("Scroll Down"),
+  "scroll.up": msg("Scroll Up"),
+  "search.find": msg("Find in Editor"),
+  "hunk.toggle": msg("Show or Hide Change"),
+  "hunk.expandAll": msg("Show All Changes"),
+  "hunk.restore": msg("Restore Change"),
+  "hunk.next": msg("Next Change"),
+  "hunk.previous": msg("Previous Change"),
+  "hunk.toggleBase": msg("Compare With HEAD or This Turn"),
+  "outline.open": msg("Go to Symbol in File"),
+  "lsp.projectSymbols": msg("Go to Symbol in Project"),
+  "diagnostic.next": msg("Next Problem"),
+  "diagnostic.previous": msg("Previous Problem"),
+  "lsp.complete": msg("Show Completions"),
+  "lsp.hover": msg("Show Hover"),
+  "lsp.signatureHelp": msg("Show Signature Help"),
+  "lsp.definition": msg("Go to Definition"),
+  "lsp.declaration": msg("Go to Declaration"),
+  "lsp.typeDefinition": msg("Go to Type Definition"),
+  "lsp.implementation": msg("Go to Implementation"),
+  "lsp.references": msg("Find References"),
+  "lsp.incomingCalls": msg("Show Incoming Calls"),
+  "lsp.outgoingCalls": msg("Show Outgoing Calls"),
+  "lsp.rename": msg("Rename Symbol"),
+  "lsp.undoRename": msg("Undo Rename or Code Action"),
+  "lsp.format": msg("Format Document"),
+  "lsp.codeActions": msg("Show Code Actions"),
+  "lsp.restartServer": msg("Restart Language Server"),
+  "lsp.stopServer": msg("Stop Language Server"),
+  "lsp.trustProject": msg("Trust Project"),
+  "lsp.checkServers": msg("Check Language Servers"),
+  "lsp.viewLogs": msg("View Language Server Logs"),
+  "lsp.selectInterpreter": msg("Select Python Interpreter"),
+  "lsp.toggleInlayHints": msg("Toggle Inlay Hints"),
+  "lsp.toggleInlineDiagnostics": msg("Toggle Inline Diagnostics"),
+  "run.atCursor": msg("Run at Cursor"),
+  "run.last": msg("Run Last"),
+  "file.save": msg("Save File"),
+  "file.toggleEdit": msg("Files: Edit or Preview File"),
+  "edit.undo": msg("Undo"),
+  "edit.redo": msg("Redo"),
+  "multibuffer.expand": msg("Show More Lines Around Excerpt"),
+  "multibuffer.openExcerpt": msg("Open Excerpt in Its File"),
+  "multibuffer.nextFile": msg("Next File in Results"),
+  "multibuffer.previousFile": msg("Previous File in Results"),
+  "multibuffer.problems": msg("Projects: Show Problems"),
+  "projectSearch.openInEditor": msg("Open Search Results in Editor"),
+  "repository.localGraph": msg("Projects: Open Local Graph"),
+  "tab.toggleLink": msg("Tabs: Link or Unlink Tab"),
+  "tab.newLinked": msg("Tabs: New Linked Tab"),
 };
 
-export function commandLabel(command: KeybindingCommand): string {
-  if (command === "workspace.focusNext") return "Focus Next Workspace Area";
-  if (command === "workspace.focusPrevious") return "Focus Previous Workspace Area";
-  if (command === "composer.sendAlternate") return "Composer: Opposite Queue or Steer Action";
-  if (command === "composer.sendBackground") return "Composer: Start in Background";
-  if (command === "composer.sendAndNewThread") return "Composer: Send and Start New Thread";
-  if (command === "composer.dictation") return "Composer: Start or Finish Dictation";
-  if (command === "thread.steerQueuedMessage") return "Queue: Send First Queued Message";
-  if (command === "thread.editQueuedMessage") return "Queue: Edit Last Queued Message";
-  if (command === "thread.copyReference") return "Pull Request: Copy Link or Thread";
-  const usageMetric = METRIC_OPTIONS.find((option) => option.command === command);
-  if (usageMetric) return `Usage: ${usageMetric.label}`;
-  const usagePeriod = WINDOW_OPTIONS.find((option) => option.command === command);
-  if (usagePeriod) return `Usage: Period: ${usagePeriod.label}`;
-  if (command === "view.reopenClosed") return "Reopen Closed Tab";
+const COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
+  "workspace.focusNext": msg("Focus Next Workspace Area"),
+  "workspace.focusPrevious": msg("Focus Previous Workspace Area"),
+  "composer.sendAlternate": msg("Composer: Opposite Queue or Steer Action"),
+  "composer.sendBackground": msg("Composer: Start in Background"),
+  "composer.sendAndNewThread": msg("Composer: Send and Start New Thread"),
+  "composer.dictation": msg("Composer: Start or Finish Dictation"),
+  "thread.steerQueuedMessage": msg("Queue: Send First Queued Message"),
+  "thread.editQueuedMessage": msg("Queue: Edit Last Queued Message"),
+  "thread.copyReference": msg("Pull Request: Copy Link or Thread"),
+  "sidebar.toggle": msg("Sidebar: Toggle"),
+  "navigation.back": msg("Navigation: Back"),
+  "navigation.forward": msg("Navigation: Forward"),
+  "terminal.toggle": msg("Terminal: Toggle"),
+  "terminal.split": msg("Terminal: Split"),
+  "terminal.splitVertical": msg("Terminal: Split Vertical"),
+  "terminal.new": msg("Terminal: New"),
+  "terminal.close": msg("Terminal: Close"),
+  "rightPanel.toggle": msg("Right Panel: Toggle"),
+  "rightPanel.new": msg("Right Panel: New"),
+  "threadPanel.toggle": msg("Thread Panel: Toggle"),
+  "rightPanel.toggleMaximized": msg("Right Panel: Toggle Maximized"),
+  "rightPanel.close": msg("Right Panel: Close"),
+  "pullRequest.copyNumber": msg("Pull Request: Copy Number"),
+  "diff.toggle": msg("Diff: Toggle"),
+  "preview.toggle": msg("Preview: Toggle"),
+  "preview.refresh": msg("Preview: Refresh"),
+  "preview.zoomIn": msg("Preview: Zoom In"),
+  "preview.zoomOut": msg("Preview: Zoom Out"),
+  "preview.resetZoom": msg("Preview: Reset Zoom"),
+  "commandPalette.toggle": msg("Command Palette: Toggle"),
+  "filePicker.toggle": msg("File Picker: Toggle"),
+  "projectSearch.toggle": msg("Project Search: Toggle"),
+  "usage.open": msg("Usage: Open"),
+  "theme.select": msg("Theme: Select"),
+  "appearance.cycle": msg("Appearance: Cycle"),
+  "themeEditor.toggle": msg("Theme Editor: Toggle"),
+  "composer.stash": msg("Composer: Stash"),
+  "composer.host": msg("Composer: Host"),
+  "composer.cycleHost": msg("Composer: Cycle Host"),
+  "composer.effort": msg("Composer: Effort"),
+  "composer.increaseEffort": msg("Composer: Increase Effort"),
+  "composer.decreaseEffort": msg("Composer: Decrease Effort"),
+  "composer.mode": msg("Composer: Mode"),
+  "composer.workspace": msg("Composer: Workspace"),
+  "composer.previousWorktree": msg("Composer: Previous Worktree"),
+  "composer.branch": msg("Composer: Branch"),
+  "chat.new": msg("Chat: New"),
+  "chat.newLocal": msg("Chat: New Local"),
+  "chat.newWithoutProject": msg("Chat: New Without Project"),
+  "chat.find": msg("Chat: Find"),
+  "editor.openFavorite": msg("Editor: Open Favorite"),
+  "modelPicker.toggle": msg("Model Picker: Toggle"),
+  "modelPicker.previousProvider": msg("Model Picker: Previous Provider"),
+  "modelPicker.nextProvider": msg("Model Picker: Next Provider"),
+  "thread.stop": msg("Thread: Stop"),
+  "thread.previous": msg("Thread: Previous"),
+  "thread.next": msg("Thread: Next"),
+  "thread.settle": msg("Thread: Settle"),
+  "thread.pin": msg("Thread: Pin"),
+  "thread.regenerateTitle": msg("Thread: Regenerate Title"),
+  "thread.undo": msg("Thread: Undo"),
+};
+
+// Whole labels: search titles keep the encoded message, which cannot nest another one.
+const USAGE_COMMAND_LABELS: Record<
+  (typeof METRIC_OPTIONS)[number]["command"] | (typeof WINDOW_OPTIONS)[number]["command"],
+  string
+> = {
+  "usage.cost": msg("Usage: Cost"),
+  "usage.tokens": msg("Usage: Tokens"),
+  "usage.limits": msg("Usage: Limits"),
+  "usage.period.day": msg("Usage: Period: Past 24h"),
+  "usage.period.week": msg("Usage: Period: 7 days"),
+  "usage.period.month": msg("Usage: Period: 30 days"),
+  "usage.period.quarter": msg("Usage: Period: 90 days"),
+};
+
+const LATE_COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
+  "view.reopenClosed": msg("Reopen Closed Tab"),
+  "preview.focusUrl": msg("Preview: Focus URL"),
+  "preview.find": msg("Preview: Find on Page"),
+};
+
+export function commandLabel(command: KeybindingCommand, resolve: MessageResolver = m): string {
   // Astrolabe: the which-key menu, Search (upstream's palette), and the Command Palette.
-  if (command === "whichKey.open") return "Keyboard Menu: Open";
+  if (command === "whichKey.open") return resolve(msg("Keyboard Menu: Open"));
   const astrolabeLabel = ASTROLABE_COMMAND_LABELS[command];
-  if (astrolabeLabel) return astrolabeLabel;
-  if (command === "preview.focusUrl") return "Preview: Focus URL";
-  if (command === "preview.find") return "Preview: Find on Page";
+  if (astrolabeLabel) return resolve(astrolabeLabel);
+  const label = COMMAND_LABELS[command];
+  if (label) return resolve(label);
+  const usageLabel = USAGE_COMMAND_LABELS[command as keyof typeof USAGE_COMMAND_LABELS];
+  if (usageLabel) return resolve(usageLabel);
+  const lateLabel = LATE_COMMAND_LABELS[command];
+  if (lateLabel) return resolve(lateLabel);
   const raw = String(command);
+  if (raw.startsWith("thread.jump.")) {
+    return resolve(msg("Thread: Jump: {n}", { n: raw.slice("thread.jump.".length) }));
+  }
+  if (raw.startsWith("modelPicker.jump.")) {
+    return resolve(msg("Model Picker: Jump: {n}", { n: raw.slice("modelPicker.jump.".length) }));
+  }
   if (raw.startsWith("script.") && raw.endsWith(".run")) {
-    return `Run Script: ${titleCaseCommandSegment(raw.slice("script.".length, -".run".length))}`;
+    return resolve(
+      msg("Run Script: {name}", {
+        name: titleCaseCommandSegment(raw.slice("script.".length, -".run".length)),
+      }),
+    );
   }
   return raw.split(".").map(titleCaseCommandSegment).join(": ");
 }

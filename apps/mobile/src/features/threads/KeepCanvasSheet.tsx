@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { canvasFile } from "@mercurian/wiki/placement";
 import { useNavigation } from "@react-navigation/native";
 import {

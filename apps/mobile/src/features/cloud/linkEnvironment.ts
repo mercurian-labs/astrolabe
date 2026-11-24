@@ -17,6 +17,9 @@ import { findErrorTraceId } from "@t3tools/client-runtime/errors";
 import { ManagedRelay, relayRequestFailureDetail } from "@t3tools/client-runtime/relay";
 import { makeEnvironmentHttpApiClient } from "@t3tools/client-runtime/rpc";
 
+import { msg } from "gt-react-native";
+
+import { m } from "../../i18n/messages";
 import type { SavedRemoteConnection } from "../../lib/connection";
 import * as MobileStorage from "../../persistence/mobile-storage";
 import { resolveCloudPublicConfig } from "./publicConfig";
@@ -48,12 +51,12 @@ const isEnvironmentCloudApiError = Schema.is(
 const MANAGED_ENDPOINT_PROVIDER_KIND =
   "cloudflare_tunnel" satisfies RelayManagedEndpointProviderKind;
 
-function cloudEnvironmentLinkError(message: string) {
+function cloudEnvironmentLinkError(message: string, withDetail: (detail: string) => string) {
   return (cause: unknown) => {
     const environmentError = findEnvironmentCloudApiError(cause);
     const traceId = findErrorTraceId(cause);
     const detail = environmentError
-      ? `${message.replace(/[.:]$/, "")}: ${environmentError.message}`
+      ? withDetail(environmentError.message)
       : withDevCause(message, cause);
     return new CloudEnvironmentLinkError({
       message: detail,
@@ -89,13 +92,15 @@ function withDevCause(message: string, cause: unknown): string {
   return detail ? `${message} (${detail})` : message;
 }
 
-function decodedRelayClientError(message: string) {
+function decodedRelayClientError(url: string) {
   return (cause: ManagedRelay.ManagedRelayClientError) => {
     const failed = cause._tag === "ManagedRelayRequestFailedError" ? cause : undefined;
     const traceId = failed?.traceId;
-    const detail = failed ? relayRequestFailureDetail(failed) : null;
+    const detail = failed ? relayRequestFailureDetail(failed, m) : null;
     return new CloudEnvironmentLinkError({
-      message: detail ? `${message}: ${detail}` : message,
+      message: detail
+        ? m(msg("{url} failed: {detail}", { url, detail }))
+        : m(msg("{url} failed", { url })),
       cause,
       ...(traceId ? { traceId } : {}),
     });
@@ -117,7 +122,7 @@ function requireRelayUrl(): Effect.Effect<string, CloudEnvironmentLinkError> {
   return relayUrl
     ? Effect.succeed(relayUrl)
     : Effect.fail(
-        new CloudEnvironmentLinkError({ message: "Remote access URL is not configured." }),
+        new CloudEnvironmentLinkError({ message: m(msg("Remote access URL is not configured.")) }),
       );
 }
 
@@ -136,12 +141,12 @@ function ensureLinkedEnvironmentMatches(input: {
 }): Effect.Effect<void, CloudEnvironmentLinkError> {
   if (input.link.environmentId !== input.expectedEnvironmentId) {
     return new CloudEnvironmentLinkError({
-      message: "Remote access returned credentials for a different environment.",
+      message: m(msg("Remote access returned credentials for a different environment.")),
     });
   }
   if (input.link.endpoint.providerKind !== input.expectedProviderKind) {
     return new CloudEnvironmentLinkError({
-      message: "Remote access returned credentials for a different tunnel type.",
+      message: m(msg("Remote access returned credentials for a different tunnel type.")),
     });
   }
   return Effect.void;
@@ -164,7 +169,7 @@ export const linkEnvironmentToCloudWithPreference = Effect.fn(
 ): Effect.fn.Return<void, CloudEnvironmentLinkError, LinkEnvironmentToCloudRequirements> {
   if (!input.connection.bearerToken) {
     return yield* new CloudEnvironmentLinkError({
-      message: "Remote access can only be turned on for a locally paired connection.",
+      message: m(msg("Remote access can only be turned on for a locally paired connection.")),
     });
   }
   const localBearerToken = input.connection.bearerToken;
@@ -172,7 +177,11 @@ export const linkEnvironmentToCloudWithPreference = Effect.fn(
   const relayClient = yield* ManagedRelay.ManagedRelayClient;
   const storage = yield* MobileStorage.MobileStorage;
   const deviceId = yield* storage.loadOrCreateAgentAwarenessDeviceId.pipe(
-    Effect.mapError(cloudEnvironmentLinkError("Could not load the mobile device id.")),
+    Effect.mapError(
+      cloudEnvironmentLinkError(m(msg("Could not load the mobile device id.")), (detail) =>
+        m(msg("Could not load the mobile device id: {detail}", { detail })),
+      ),
+    ),
   );
   const liveActivitiesEnabled = input.liveActivitiesEnabled;
   const challenge = yield* relayClient
@@ -206,7 +215,11 @@ export const linkEnvironmentToCloudWithPreference = Effect.fn(
     })
     .pipe(
       Effect.mapError(
-        cloudEnvironmentLinkError("Could not get remote access proof from the environment."),
+        cloudEnvironmentLinkError(
+          m(msg("Could not get remote access proof from the environment.")),
+          (detail) =>
+            m(msg("Could not get remote access proof from the environment: {detail}", { detail })),
+        ),
       ),
     );
   const link = yield* relayClient
@@ -243,7 +256,11 @@ export const linkEnvironmentToCloudWithPreference = Effect.fn(
     })
     .pipe(
       Effect.mapError(
-        cloudEnvironmentLinkError("Could not set up remote access on the environment."),
+        cloudEnvironmentLinkError(
+          m(msg("Could not set up remote access on the environment.")),
+          (detail) =>
+            m(msg("Could not set up remote access on the environment: {detail}", { detail })),
+        ),
       ),
     );
 });

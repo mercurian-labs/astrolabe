@@ -8,6 +8,7 @@ import {
 } from "../hooks/useSettings";
 import { initializeI18n } from "./initializeI18n";
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES } from "./locales";
+import { setActiveLocale } from "./messages";
 
 type LocaleTranslations = Awaited<ReturnType<typeof getTranslationsSnapshot>>;
 
@@ -46,15 +47,17 @@ function activateLocale(locale: string): void {
     return;
   }
   snapshot = { locale, translations: { ...loadedTranslations } };
+  setActiveLocale(locale);
   document.documentElement.lang = locale;
   for (const listener of listeners) listener();
 }
 
 function applyLanguageSetting(): void {
-  // Not desktopBridge.getSystemLocale(): that is the regional/time locale, not the UI language.
+  // Astrolabe ships in English: "system" resolves to it rather than the browser's language, since
+  // the language picker only shows to reset a language saved before.
   requestedLocale = resolveLocale(
     getClientSettings().language,
-    navigator.languages,
+    [],
     SUPPORTED_LOCALES,
     DEFAULT_LOCALE,
   );

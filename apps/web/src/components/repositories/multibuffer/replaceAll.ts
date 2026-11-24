@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { textMatcher, replacementsIn, type TextQuery } from "@t3tools/shared/textReplace";
 import { DOCUMENT_REPLACE_ALL_MAX_FILES, type EnvironmentId } from "@t3tools/contracts";
 import { AsyncResult, type AtomRegistry } from "effect/reactivity";

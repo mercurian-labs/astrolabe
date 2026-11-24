@@ -6,7 +6,8 @@ import {
 } from "@t3tools/contracts";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { projectScriptCwd, projectScriptRuntimeEnv } from "@t3tools/shared/projectScripts";
-import { resolveTerminalSessionLabel } from "@t3tools/shared/terminalLabels";
+import { resolveTerminalSessionLabel } from "@t3tools/shared/terminalLabelsCopy";
+import { useMessages } from "gt-react";
 import { memo, useEffect } from "react";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { useStableCallback } from "../hooks/useStableCallback";
@@ -127,6 +128,7 @@ export const PersistentThreadTerminalTab = memo(function PersistentThreadTermina
     environmentId: threadRef.environmentId,
     threadId,
   });
+  const messages = useMessages();
   const panelSurfaces = useRightPanelStore(
     (state) => selectThreadRightPanelState(state.byThreadKey, threadRef).surfaces,
   );
@@ -140,7 +142,7 @@ export const PersistentThreadTerminalTab = memo(function PersistentThreadTermina
   for (const session of drawerTerminalSessions) {
     terminalLabelsById.set(
       session.target.terminalId,
-      resolveTerminalSessionLabel(session.target.terminalId, session.state.summary),
+      resolveTerminalSessionLabel(session.target.terminalId, session.state.summary, messages),
     );
   }
   const terminalLaunchLocationsById = new Map<string, TerminalLaunchLocationWithEnv>();
@@ -307,6 +309,7 @@ export const PersistentThreadTerminalPanel = memo(function PersistentThreadTermi
   newShortcutLabel,
   closeShortcutLabel,
 }: PersistentThreadTerminalPanelProps) {
+  const messages = useMessages();
   const serverThread = useQuietThreadShell(threadRef);
   const draftThread = useComposerDraftStore((store) => store.getDraftThreadByRef(threadRef));
   const projectRef = serverThread
@@ -341,7 +344,7 @@ export const PersistentThreadTerminalPanel = memo(function PersistentThreadTermi
     const summary =
       knownTerminalSessions?.find((session) => session.target.terminalId === terminalId)?.state
         .summary ?? null;
-    terminalLabelsById.set(terminalId, resolveTerminalSessionLabel(terminalId, summary));
+    terminalLabelsById.set(terminalId, resolveTerminalSessionLabel(terminalId, summary, messages));
     if (!project) continue;
     const terminalWorktreePath = resolveTerminalWorktreePath({
       launchContext,

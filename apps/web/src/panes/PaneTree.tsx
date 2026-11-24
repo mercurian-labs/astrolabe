@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { Fragment, useContext, useEffect, useRef, useState, type PointerEvent } from "react";
 
 import { BackgroundThreadContext } from "../components/chat/backgroundThread";

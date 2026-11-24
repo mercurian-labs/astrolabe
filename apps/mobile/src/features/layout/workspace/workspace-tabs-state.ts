@@ -1,3 +1,4 @@
+import { msg } from "gt-react-native";
 import {
   NAVIGATION_TAB_ORDER,
   navigationCustomizationAvailable,
@@ -24,13 +25,13 @@ export function registeredWorkspaceTabs(device: "iphone" | "other"): readonly Wo
 
 /** The label each list's search goes by. Usage has no search of its own. */
 export const WORKSPACE_SEARCH_LABELS: Readonly<Record<WorkspaceSearchTab, string>> = {
-  threads: "Search threads",
-  pullRequests: "Search changes",
-  wikis: "Search wikis",
-  repositories: "Search files",
-  issues: "Search issues",
-  usage: "Search threads",
-  settings: "Search settings",
+  threads: msg("Search threads"),
+  pullRequests: msg("Search changes"),
+  wikis: msg("Search wikis"),
+  repositories: msg("Search files"),
+  issues: msg("Search issues"),
+  usage: msg("Search threads"),
+  settings: msg("Search settings"),
 };
 export type WorkspaceSearchMode = "resting" | "active" | "expanded";
 

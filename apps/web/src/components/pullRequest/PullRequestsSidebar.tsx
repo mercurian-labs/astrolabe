@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 

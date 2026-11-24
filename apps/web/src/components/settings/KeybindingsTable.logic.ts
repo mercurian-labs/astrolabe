@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import type { KeybindingCommand } from "@t3tools/contracts";
 
 import { formatShortcutLabel } from "~/keybindings";

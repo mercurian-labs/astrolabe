@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { reviewCanvasFiles, type CanvasReview } from "@mercurian/wiki/canvas";
 import { newNoteFile, type WikiPlacement } from "@mercurian/wiki/placement";
 import {

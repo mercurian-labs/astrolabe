@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { canvasFile, typedNoteFile, type WikiPlacement } from "@mercurian/wiki/placement";
 import { isHidden } from "@mercurian/wiki/resolve-link";
 import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";

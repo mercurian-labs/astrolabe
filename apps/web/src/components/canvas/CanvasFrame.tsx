@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { canvasBounds, type CanvasCodeReference } from "@mercurian/wiki/canvas";
 import type { CanvasView } from "@t3tools/client-runtime/canvasViews";
 import type { ScopedThreadRef, ThreadId, TurnItemId } from "@t3tools/contracts";

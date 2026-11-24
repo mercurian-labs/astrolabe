@@ -11,7 +11,9 @@ import * as Schema from "effect/Schema";
 import { Command, Flag } from "effect/cli";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
-export type Catalog = Readonly<Record<string, string>>;
+/** A catalog value: a string, or the array or object a `<T>` entry compiles to. */
+export type Entry = unknown;
+export type Catalog = Readonly<Record<string, Entry>>;
 
 export interface RebrandRule {
   readonly from: string;
@@ -60,7 +62,7 @@ export interface RekeyInput {
 }
 
 export interface RekeyResult {
-  readonly catalog: Record<string, string>;
+  readonly catalog: Record<string, Entry>;
   /** Current keys that took a translation. */
   readonly carried: ReadonlyArray<string>;
   /** Current keys whose rebranded translation fell back to English. */
@@ -71,16 +73,53 @@ export interface RekeyResult {
   readonly ambiguous: ReadonlyArray<string>;
 }
 
-export const rebrandEnglish = (text: string, rules: ReadonlyArray<RebrandRule>): string =>
-  rules.reduce((value, rule) => value.replaceAll(rule.from, rule.to), text);
+const mapStrings = (entry: Entry, f: (text: string) => string): Entry =>
+  typeof entry === "string"
+    ? f(entry)
+    : Array.isArray(entry)
+      ? entry.map((item) => mapStrings(item, f))
+      : entry !== null && typeof entry === "object"
+        ? Object.fromEntries(
+            Object.entries(entry).map(([key, value]) => [key, mapStrings(value, f)]),
+          )
+        : entry;
+
+const textOf = (entry: Entry): string => JSON.stringify(entry);
+
+export const rebrandEnglish = <E extends Entry>(text: E, rules: ReadonlyArray<RebrandRule>): E =>
+  mapStrings(text, (value) =>
+    rules.reduce((current, rule) => current.replaceAll(rule.from, rule.to), value),
+  ) as E;
 
 const rebrandTranslation = (
   locale: string,
-  upstreamText: string,
-  translated: string,
-  rebranded: string,
+  upstreamText: Entry,
+  translated: Entry,
+  rebranded: Entry,
   rules: ReadonlyArray<RebrandRule>,
-): { readonly value: string; readonly english: boolean } => {
+): { readonly value: Entry; readonly english: boolean } => {
+  if (typeof upstreamText !== "string" || typeof translated !== "string") {
+    // A `<T>` entry: carry it with "replace" names swapped, or fall back to English.
+    if (textOf(translated) === textOf(upstreamText)) return { value: rebranded, english: false };
+    const upstream = textOf(upstreamText);
+    const translatedText = textOf(translated);
+    for (const rule of rules) {
+      if (!upstream.includes(rule.from)) continue;
+      if (rule.translation !== "replace" || !translatedText.includes(rule.from)) {
+        return { value: rebranded, english: true };
+      }
+    }
+    return {
+      value: mapStrings(translated, (value) =>
+        rules.reduce(
+          (current, rule) =>
+            rule.translation === "replace" ? current.replaceAll(rule.from, rule.to) : current,
+          value,
+        ),
+      ),
+      english: false,
+    };
+  }
   for (const rule of rules) {
     const word = rule.glossary?.[locale];
     if (
@@ -120,8 +159,8 @@ export const rekeyCatalog = (input: RekeyInput): RekeyResult => {
   const rules = input.rules ?? ASTROLABE_REBRAND_RULES;
   const upstreamByRebrand = new Map<string, Array<string>>();
   for (const [key, text] of Object.entries(input.upstreamEn)) {
-    const rebranded = rebrandEnglish(text, rules);
-    if (rebranded === text) continue;
+    const rebranded = textOf(rebrandEnglish(text, rules));
+    if (rebranded === textOf(text)) continue;
     const keys = upstreamByRebrand.get(rebranded) ?? [];
     keys.push(key);
     upstreamByRebrand.set(rebranded, keys);
@@ -130,12 +169,12 @@ export const rekeyCatalog = (input: RekeyInput): RekeyResult => {
   const newKeysByText = new Map<string, Array<string>>();
   for (const [key, text] of Object.entries(input.currentEn)) {
     if (key in input.upstreamEn) continue;
-    const keys = newKeysByText.get(text) ?? [];
+    const keys = newKeysByText.get(textOf(text)) ?? [];
     keys.push(key);
-    newKeysByText.set(text, keys);
+    newKeysByText.set(textOf(text), keys);
   }
 
-  const catalog: Record<string, string> = { ...input.currentLocale };
+  const catalog: Record<string, Entry> = { ...input.currentLocale };
   const carried: Array<string> = [];
   const english: Array<string> = [];
   const unmatched: Array<string> = [];
@@ -144,8 +183,13 @@ export const rekeyCatalog = (input: RekeyInput): RekeyResult => {
   for (const [key, text] of Object.entries(input.currentEn)) {
     if (key in input.upstreamEn) continue;
     // A translation already here was written by hand, never by generate.
-    if (input.currentLocale[key] !== undefined && input.currentLocale[key] !== text) continue;
-    let candidates = upstreamByRebrand.get(text) ?? [];
+    if (
+      input.currentLocale[key] !== undefined &&
+      textOf(input.currentLocale[key]) !== textOf(text)
+    ) {
+      continue;
+    }
+    let candidates = upstreamByRebrand.get(textOf(text)) ?? [];
     if (candidates.length === 0) {
       unmatched.push(key);
       continue;
@@ -153,29 +197,28 @@ export const rekeyCatalog = (input: RekeyInput): RekeyResult => {
     if (input.hashKey !== undefined && input.contexts !== undefined) {
       const { hashKey, contexts } = input;
       const exact = candidates.filter((candidate) => {
-        const upstreamContext = contextOf(
-          candidate,
-          input.upstreamEn[candidate]!,
-          hashKey,
-          contexts,
-        );
+        const upstreamEntry = input.upstreamEn[candidate];
+        if (typeof upstreamEntry !== "string" || typeof text !== "string") return false;
+        const upstreamContext = contextOf(candidate, upstreamEntry, hashKey, contexts);
         return upstreamContext.found && hashKey(text, upstreamContext.context) === key;
       });
       if (exact.length > 0) candidates = exact;
     }
-    const translations = new Set(candidates.map((candidate) => input.upstreamLocale[candidate]));
+    const translations = new Set(
+      candidates.map((candidate) => textOf(input.upstreamLocale[candidate])),
+    );
     let source = candidates[0]!;
     if (translations.size > 1) {
       // Same English, different `$context`: both catalogs list keys in source order, so the
       // n-th new key with this text pairs with the n-th upstream key it rebrands from.
-      const siblings = newKeysByText.get(text) ?? [];
+      const siblings = newKeysByText.get(textOf(text)) ?? [];
       if (siblings.length !== candidates.length) {
         ambiguous.push(key);
         continue;
       }
       source = candidates[siblings.indexOf(key)]!;
     }
-    const upstreamText = input.upstreamEn[source]!;
+    const upstreamText = input.upstreamEn[source];
     const translated = input.upstreamLocale[source];
     if (translated === undefined) {
       unmatched.push(key);
@@ -193,10 +236,10 @@ export const rekeyCatalog = (input: RekeyInput): RekeyResult => {
 const APPS = ["web", "mobile", "desktop"] as const;
 type App = (typeof APPS)[number];
 
-const CatalogJson = Schema.fromJsonString(Schema.Record(Schema.String, Schema.String));
+const CatalogJson = Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown));
 const decodeCatalog = Schema.decodeEffect(CatalogJson);
 const encodeCatalog = Schema.encodeEffect(
-  Schema.fromJsonString(Schema.Record(Schema.String, Schema.String), { space: 2 }),
+  Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown), { space: 2 }),
 );
 
 export const rekeyCatalogs = Effect.fn("rekeyCatalogs")(function* (
@@ -238,7 +281,7 @@ export const rekeyCatalogs = Effect.fn("rekeyCatalogs")(function* (
       );
       if (locale === "de") {
         for (const key of [...result.unmatched, ...result.ambiguous]) {
-          yield* Effect.log(`  ${key}: ${currentEn[key]}`);
+          yield* Effect.log(`  ${key}: ${textOf(currentEn[key])}`);
         }
       }
     }

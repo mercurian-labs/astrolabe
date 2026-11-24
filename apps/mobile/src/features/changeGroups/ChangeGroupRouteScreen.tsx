@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { EnvironmentId } from "@t3tools/contracts";
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/models";
 import {

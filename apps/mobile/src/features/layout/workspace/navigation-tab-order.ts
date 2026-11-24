@@ -1,3 +1,5 @@
+import { msg } from "gt-react-native";
+
 // Astrolabe: Changes stays pinned beside Agents; Issues comes after Wikis and Projects.
 export const NAVIGATION_TAB_ORDER = [
   "threads",
@@ -16,13 +18,13 @@ export function navigationCustomizationAvailable(
 }
 
 export const NAVIGATION_TAB_LABELS: Readonly<Record<NavigationTab, string>> = {
-  threads: "Agents",
+  threads: msg("Agents", { $context: "navigation tab, list of chat threads" }),
   // Astrolabe: pull requests and the wikis' change requests, as web's Changes section.
-  pullRequests: "Changes",
-  wikis: "Wikis",
-  repositories: "Projects",
-  issues: "Issues",
-  usage: "Usage",
+  pullRequests: msg("Changes", { $context: "navigation tab, pull requests" }),
+  wikis: msg("Wikis", { $context: "navigation tab, wikis" }),
+  repositories: msg("Projects", { $context: "navigation tab, projects" }),
+  issues: msg("Issues", { $context: "navigation tab, issues from an issue tracker" }),
+  usage: msg("Usage", { $context: "navigation tab, provider usage limits" }),
 };
 
 function isNavigationTab(value: unknown): value is NavigationTab {

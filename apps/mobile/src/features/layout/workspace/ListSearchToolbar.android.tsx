@@ -1,4 +1,5 @@
 import { useNavigation } from "@react-navigation/native";
+import { useGT } from "gt-react-native";
 import { useEffect } from "react";
 import { BackHandler, Keyboard } from "react-native";
 import { AppBar } from "../../../components/ui/AppBar";
@@ -9,17 +10,15 @@ import { useWorkspaceTabs } from "./WorkspaceTabsContext";
 import type { PullRequestFilterMenu } from "../../pull-requests/PullRequestListFilters";
 import { openSettings } from "../../settings/settings-navigation";
 
-const NOUNS = { pullRequests: "changes", issues: "issues" } as const;
-
 /** Pull request and issue search share the thread list's Android header. */
 export function ListSearchToolbar(props: {
-  readonly tab: keyof typeof NOUNS;
+  readonly tab: "pullRequests" | "issues";
   readonly filters?: PullRequestFilterMenu | null;
   readonly onRequestVisibility?: () => void;
 }) {
+  const gt = useGT();
   const navigation = useNavigation();
   const { filters, tab: section } = props;
-  const noun = NOUNS[section];
   const workspace = useWorkspaceTabs()!;
   const { dispatch, getScrollOffset, recordScrollOffset, isTabActive } = workspace;
   const { onRequestVisibility } = props;
@@ -58,17 +57,19 @@ export function ListSearchToolbar(props: {
   }, [searching, closeSearch, navigation, isTabActive, section]);
   return (
     <AppBar
-      title="Astrolabe"
+      title={gt("Astrolabe")}
       titleContent={
         <WorkspaceBrandTitle
-          accessibilityLabel={section === "issues" ? "Astrolabe, Issues" : "Astrolabe, Changes"}
+          accessibilityLabel={
+            section === "issues" ? gt("Astrolabe, Issues") : gt("Astrolabe, Changes")
+          }
           onOpenEnvironments={() => openSettings(navigation, "SettingsEnvironments")}
         />
       }
       search={{
         value: tab.query,
         onChangeText: (query) => dispatch({ type: "query", tab: section, query }),
-        placeholder: `Search ${noun}`,
+        placeholder: section === "issues" ? gt("Search issues") : gt("Search changes"),
         active: searching,
         onOpen: openSearch,
         onClose: closeSearch,
@@ -77,7 +78,7 @@ export function ListSearchToolbar(props: {
         filters
           ? [
               {
-                title: `Filter ${noun}`,
+                title: section === "issues" ? gt("Filter issues") : gt("Filter changes"),
                 icon: filters.customized
                   ? "line.3.horizontal.decrease.circle.fill"
                   : "line.3.horizontal.decrease.circle",

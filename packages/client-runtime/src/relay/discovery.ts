@@ -1,3 +1,5 @@
+import { msg } from "gt-i18n";
+import { translatableDetail } from "../errors/translatable.ts";
 import type {
   RelayClientEnvironmentRecord,
   RelayEnvironmentStatusResponse,
@@ -75,7 +77,7 @@ function validateStatus(
     return Effect.fail(
       new ConnectionBlockedError({
         reason: "configuration",
-        detail: "Remote access returned status for a different environment.",
+        ...translatableDetail(msg("Remote access returned status for a different environment.")),
       }),
     );
   }
@@ -87,7 +89,9 @@ function validateStatus(
     return Effect.fail(
       new ConnectionBlockedError({
         reason: "configuration",
-        detail: "Remote access returned status for a different environment address.",
+        ...translatableDetail(
+          msg("Remote access returned status for a different environment address."),
+        ),
       }),
     );
   }
@@ -98,7 +102,7 @@ function validateStatus(
     return Effect.fail(
       new ConnectionBlockedError({
         reason: "configuration",
-        detail: "Remote access returned details for a different environment.",
+        ...translatableDetail(msg("Remote access returned details for a different environment.")),
       }),
     );
   }

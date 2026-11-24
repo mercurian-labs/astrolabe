@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import {
   ASTROLABE_KEYBINDING_COMMANDS,
   CODE_EDITOR_KEYBINDING_COMMANDS,

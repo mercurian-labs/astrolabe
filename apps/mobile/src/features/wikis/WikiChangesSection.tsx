@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { useNavigation } from "@react-navigation/native";
 import { wikiTerms } from "@t3tools/client-runtime/wikiLogic";
 import {

@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import type { EnvironmentId, ProjectId, WikiId, WikiSummary } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { Link } from "@tanstack/react-router";

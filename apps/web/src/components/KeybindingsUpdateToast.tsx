@@ -1,3 +1,6 @@
+import { msg } from "gt-react";
+
+import { m } from "../i18n/messages";
 import { appAtomRegistry, subscribeAtomChanges } from "../rpc/atomRegistry";
 import { primaryEnvironmentIdAtom } from "../state/primaryEnvironment";
 import { primaryServerConfigAtom, primaryServerConfigEventAtom } from "../state/server";
@@ -17,8 +20,8 @@ export function startKeybindingsUpdateToasts(): () => void {
     if (decision._tag === "VimrcSuccess") {
       toastManager.add({
         type: "success",
-        title: "Vim configuration updated",
-        description: "The vimrc reloaded.",
+        title: m(msg("Vim configuration updated")),
+        description: m(msg("The vimrc reloaded.")),
       });
       return;
     }
@@ -28,7 +31,7 @@ export function startKeybindingsUpdateToasts(): () => void {
       toastManager.add(
         stackedThreadToast({
           type: "warning",
-          title: "Vim configuration has lines it cannot apply",
+          title: m(msg("Vim configuration has lines it cannot apply")),
           description: (
             <KeybindingsConfigWarning
               message={decision.message}
@@ -46,7 +49,7 @@ export function startKeybindingsUpdateToasts(): () => void {
     toastManager.add(
       stackedThreadToast({
         type: "warning",
-        title: "Invalid keybindings configuration",
+        title: m(msg("Invalid keybindings configuration")),
         description: (
           <KeybindingsConfigWarning
             message={decision.message}

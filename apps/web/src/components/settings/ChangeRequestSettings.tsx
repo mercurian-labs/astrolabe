@@ -1,8 +1,9 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import type { ChangeGroupGroupingSettings } from "@t3tools/contracts";
 
 import { Switch } from "../ui/switch";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings";
 
@@ -63,6 +64,7 @@ const GROUPING_ROWS: ReadonlyArray<{
  * joining by it; members already in a group stay until taken out by hand.
  */
 export function ChangeRequestSettingsPanel() {
+  const searchableSetting = useSearchableSetting();
   const { targets } = useSettingsScope();
   const settings = useScopedSettings().changeGroupGrouping;
   const updateSettings = useUpdateScopedSettings();

@@ -1,4 +1,5 @@
 import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
+import { useGT } from "gt-react";
 import { useEffect, useRef, type ReactNode, type RefObject, type ComponentProps } from "react";
 import { Button } from "../ui/button";
 import { RefreshIcon } from "../ui/refresh-icon";
@@ -98,11 +99,12 @@ export function PullRequestRefreshControl({
   refreshing: boolean;
   onRefresh: () => void;
 }) {
+  const gt = useGT();
   return (
     <Button
       size={compact ? "icon-sm" : "icon"}
       variant={compact ? "ghost" : "outline"}
-      aria-label="Refresh pull requests"
+      aria-label={gt("Refresh pull requests")}
       onClick={onRefresh}
       disabled={refreshing}
     >

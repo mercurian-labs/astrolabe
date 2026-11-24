@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import type { EnvironmentId, ProjectId, ScopedThreadRef } from "@t3tools/contracts";
 import type { NavigateFn } from "@tanstack/react-router";
 

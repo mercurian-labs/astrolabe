@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import type { EnvironmentId } from "@t3tools/contracts";
 import { use, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 

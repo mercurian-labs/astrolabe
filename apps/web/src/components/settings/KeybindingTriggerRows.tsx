@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import type { ResolvedKeybindingTrigger, ServerUpsertKeybindingInput } from "@t3tools/contracts";
 import { formatMenuKeys, isMenuKey, parseMenuKeys } from "@t3tools/shared/keybindingTriggers";
 import { useState, type KeyboardEvent, type ReactNode } from "react";

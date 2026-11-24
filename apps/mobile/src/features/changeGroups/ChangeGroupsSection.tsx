@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { useNavigation } from "@react-navigation/native";
 import { CHANGE_GROUP_STATE_LABELS } from "@t3tools/shared/changeGroups";
 import { Pressable, View } from "react-native";

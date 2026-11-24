@@ -273,6 +273,7 @@ export function showBootError(error: unknown) {
       details,
       () => {
         copyDetails.textContent = "Copied";
+        // oxlint-disable-next-line t3code/no-untranslated-copy -- boot failure page renders before the i18n runtime loads
         announce("Copied to clipboard.");
       },
       (hint) => {

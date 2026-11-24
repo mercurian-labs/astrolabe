@@ -1,9 +1,11 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
+import { useGT } from "gt-react";
 import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts";
 
 import { updateClientSettings, useClientSettings } from "~/hooks/useSettings";
 import { Switch } from "../ui/switch";
 import { SettingResetButton, SettingsRow } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { type SettingsSearchItemId, useSearchableSetting } from "./settingsSearch";
 
 type Feature =
   | "inlayHints"
@@ -18,9 +20,11 @@ function FeatureRow(props: {
   readonly feature: Feature;
   readonly label: string;
   readonly description: string;
-  readonly settingId?: Parameters<typeof searchableSetting>[0];
+  readonly settingId?: SettingsSearchItemId;
   readonly disabled?: boolean;
 }) {
+  const gt = useGT();
+  const searchableSetting = useSearchableSetting();
   const { feature, label } = props;
   const on = useClientSettings((settings) => settings[feature]);
   return (
@@ -30,7 +34,7 @@ function FeatureRow(props: {
       resetAction={
         on !== DEFAULT_CLIENT_SETTINGS[feature] ? (
           <SettingResetButton
-            label={label.toLowerCase()}
+            ariaLabel={gt("Reset {setting} to default", { setting: label.toLowerCase() })}
             onClick={() => updateClientSettings({ [feature]: DEFAULT_CLIENT_SETTINGS[feature] })}
           />
         ) : null

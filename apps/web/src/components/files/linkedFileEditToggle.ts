@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { resolvePathLinkTarget } from "@t3tools/shared/fileLinks";
 
 import { selectThreadRightPanelState, useRightPanelStore } from "~/rightPanelStore";

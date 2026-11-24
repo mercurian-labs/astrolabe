@@ -4,9 +4,9 @@ import { AsyncResult } from "effect/reactivity";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useGT } from "gt-react-native";
-import { I18nProvider, useLanguagePreference } from "../../i18n/I18nProvider";
+import { useLanguagePreference } from "../../i18n/I18nProvider";
 import { SYSTEM_LANGUAGE, nativeLanguageName } from "@t3tools/client-runtime/locales";
-import { SUPPORTED_LOCALES } from "../../i18n/locales";
+import { DEFAULT_LOCALE, SUPPORTED_LOCALES } from "../../i18n/locales";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
 import { ListChoiceRow as SettingsChoiceRow } from "../../components/ui/ListChoiceRow";
 import { SettingsRow } from "./components/SettingsRow";
@@ -15,16 +15,10 @@ import { SettingsScreen } from "./components/SettingsScreen";
 
 /** General's row that opens the language picker, showing the current choice. */
 export function LanguageSettingsSection() {
-  return (
-    <I18nProvider>
-      <LanguageRow />
-    </I18nProvider>
-  );
-}
-
-function LanguageRow() {
   const gt = useGT();
   const language = useLanguagePreference();
+  // Astrolabe ships in English; the row shows only to reset a language saved before.
+  if (language === SYSTEM_LANGUAGE || language === DEFAULT_LOCALE) return null;
   return (
     <SettingsSection>
       <SettingsRow
@@ -40,14 +34,6 @@ function LanguageRow() {
 }
 
 export function SettingsLanguageRouteScreen() {
-  return (
-    <I18nProvider>
-      <LanguageSettings />
-    </I18nProvider>
-  );
-}
-
-function LanguageSettings() {
   const gt = useGT();
   const insets = useSafeAreaInsets();
   const preferencesResult = useAtomValue(mobilePreferencesAtom);

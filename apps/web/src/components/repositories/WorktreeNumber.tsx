@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 /** Astrolabe: a worktree's number, as its sidebar header and its tabs show it. */
 export function WorktreeNumber({ number }: { readonly number: number }) {
   return (

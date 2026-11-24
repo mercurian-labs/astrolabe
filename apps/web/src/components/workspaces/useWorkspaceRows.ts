@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import type { WorkspaceSync } from "@t3tools/client-runtime/workspaces";
 import { WorkspaceWriteRefused } from "@t3tools/client-runtime/workspaces";
 import { useLiveQuery } from "@tanstack/react-db";

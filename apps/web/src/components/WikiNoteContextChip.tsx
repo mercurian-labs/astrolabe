@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import type { EnvironmentId, WikiNoteContextRecord } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { FileTextIcon } from "lucide-react";

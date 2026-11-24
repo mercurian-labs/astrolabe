@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import "@mercurian/graph/styles.css";
 import {
   FileGraph,

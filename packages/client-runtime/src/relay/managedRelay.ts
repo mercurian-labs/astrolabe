@@ -46,8 +46,10 @@ import * as SynchronizedRef from "effect/SynchronizedRef";
 import * as HttpClientError from "effect/http/HttpClientError";
 import type * as HttpMethod from "effect/http/HttpMethod";
 import * as HttpApiClient from "effect/http-api/HttpApiClient";
+import { msg } from "gt-i18n";
 import { NETWORK_BLOCKING_HINT } from "../errors/network.ts";
-import { relayRequestFailureDetail } from "./errorPresentation.ts";
+import { type MarkedText, markedTextEnglish } from "../errors/translatable.ts";
+import { relayRequestFailureText } from "./errorPresentation.ts";
 
 export interface ManagedRelayDpopProofInput {
   readonly method: HttpMethod.HttpMethod;
@@ -63,7 +65,11 @@ export class ManagedRelayDpopKeyLoadError extends Schema.TaggedError<ManagedRela
   },
 ) {
   override get message(): string {
-    return "Could not load this device's remote access signing key.";
+    return markedTextEnglish(this.i18nMessage);
+  }
+
+  get i18nMessage(): MarkedText {
+    return [msg("Could not load this device's remote access signing key.")];
   }
 }
 
@@ -105,24 +111,6 @@ export const ManagedRelayRequestAction = Schema.Literals([
 ]);
 export type ManagedRelayRequestAction = typeof ManagedRelayRequestAction.Type;
 
-const requestActionDisplay: Record<ManagedRelayRequestAction, string> = {
-  "exchange relay DPoP access token": "sign in to remote access",
-  "list relay-managed environments": "list your remote environments",
-  "list relay client devices": "list your devices",
-  "create relay environment link challenge": "start turning on remote access",
-  "link relay environment": "turn on remote access for this environment",
-  "unlink relay environment": "turn off remote access for this environment",
-  "get relay environment status": "check this environment's remote access status",
-  "connect relay environment": "connect through remote access",
-  "register relay mobile device": "register this device for notifications",
-  "unregister relay mobile device": "unregister this device from notifications",
-  "register relay live activity": "register the Live Activity",
-  "read relay agent activity snapshot": "read agent activity",
-  "read linked T3 Chat account": "read your linked account",
-  "start T3 Chat linking": "start linking an account",
-  "unlink T3 Chat account": "unlink your linked account",
-};
-
 export const ManagedRelayRequestActivity = Schema.Literals([
   "Relay DPoP access token exchange",
   "Relay environment listing",
@@ -142,22 +130,24 @@ export const ManagedRelayRequestActivity = Schema.Literals([
 ]);
 export type ManagedRelayRequestActivity = typeof ManagedRelayRequestActivity.Type;
 
-const requestActivityDisplay: Record<ManagedRelayRequestActivity, string> = {
-  "Relay DPoP access token exchange": "Signing in to remote access",
-  "Relay environment listing": "Listing your remote environments",
-  "Relay client device listing": "Listing your devices",
-  "Relay environment link challenge": "Starting remote access",
-  "Relay environment linking": "Turning on remote access",
-  "Relay environment unlinking": "Turning off remote access",
-  "Relay environment status request": "Checking remote access status",
-  "Relay environment connection": "Connecting through remote access",
-  "Relay mobile device registration": "Registering this device for notifications",
-  "Relay mobile device unregistration": "Unregistering this device from notifications",
-  "Relay Live Activity registration": "Registering the Live Activity",
-  "Relay agent activity snapshot": "Reading agent activity",
-  "Relay T3 Chat link lookup": "Reading your linked account",
-  "Relay T3 Chat link request": "Starting account linking",
-  "Relay T3 Chat unlinking": "Unlinking your linked account",
+const REQUEST_TIMED_OUT_TEXT: Record<ManagedRelayRequestActivity, string> = {
+  "Relay DPoP access token exchange": msg("Signing in to remote access timed out."),
+  "Relay environment listing": msg("Listing your remote environments timed out."),
+  "Relay client device listing": msg("Listing your devices timed out."),
+  "Relay environment link challenge": msg("Starting remote access timed out."),
+  "Relay environment linking": msg("Turning on remote access timed out."),
+  "Relay environment unlinking": msg("Turning off remote access timed out."),
+  "Relay environment status request": msg("Checking remote access status timed out."),
+  "Relay environment connection": msg("Connecting through remote access timed out."),
+  "Relay mobile device registration": msg("Registering this device for notifications timed out."),
+  "Relay mobile device unregistration": msg(
+    "Unregistering this device from notifications timed out.",
+  ),
+  "Relay Live Activity registration": msg("Registering the Live Activity timed out."),
+  "Relay agent activity snapshot": msg("Reading agent activity timed out."),
+  "Relay T3 Chat link lookup": msg("Reading your linked account timed out."),
+  "Relay T3 Chat link request": msg("Starting account linking timed out."),
+  "Relay T3 Chat unlinking": msg("Unlinking your linked account timed out."),
 };
 
 export class ManagedRelayRequestTimeoutError extends Schema.TaggedError<ManagedRelayRequestTimeoutError>()(
@@ -169,7 +159,11 @@ export class ManagedRelayRequestTimeoutError extends Schema.TaggedError<ManagedR
   },
 ) {
   override get message(): string {
-    return `${requestActivityDisplay[this.activity]} timed out. ${NETWORK_BLOCKING_HINT}`;
+    return markedTextEnglish(this.i18nMessage);
+  }
+
+  get i18nMessage(): MarkedText {
+    return [REQUEST_TIMED_OUT_TEXT[this.activity], NETWORK_BLOCKING_HINT];
   }
 }
 
@@ -180,9 +174,79 @@ export class ManagedRelayUrlInvalidError extends Schema.TaggedError<ManagedRelay
   },
 ) {
   override get message(): string {
-    return "Remote access URL must be a secure absolute HTTPS origin.";
+    return markedTextEnglish(this.i18nMessage);
+  }
+
+  get i18nMessage(): MarkedText {
+    return [msg("Remote access URL must be a secure absolute HTTPS origin.")];
   }
 }
+
+const REQUEST_FAILED_TEXT: Record<
+  ManagedRelayRequestAction,
+  { readonly failed: string; readonly failedWithDetail: string }
+> = {
+  "exchange relay DPoP access token": {
+    failed: msg("Could not sign in to remote access."),
+    failedWithDetail: msg("Could not sign in to remote access:"),
+  },
+  "list relay-managed environments": {
+    failed: msg("Could not list your remote environments."),
+    failedWithDetail: msg("Could not list your remote environments:"),
+  },
+  "list relay client devices": {
+    failed: msg("Could not list your devices."),
+    failedWithDetail: msg("Could not list your devices:"),
+  },
+  "create relay environment link challenge": {
+    failed: msg("Could not start turning on remote access."),
+    failedWithDetail: msg("Could not start turning on remote access:"),
+  },
+  "link relay environment": {
+    failed: msg("Could not turn on remote access for this environment."),
+    failedWithDetail: msg("Could not turn on remote access for this environment:"),
+  },
+  "unlink relay environment": {
+    failed: msg("Could not turn off remote access for this environment."),
+    failedWithDetail: msg("Could not turn off remote access for this environment:"),
+  },
+  "get relay environment status": {
+    failed: msg("Could not check this environment's remote access status."),
+    failedWithDetail: msg("Could not check this environment's remote access status:"),
+  },
+  "connect relay environment": {
+    failed: msg("Could not connect through remote access."),
+    failedWithDetail: msg("Could not connect through remote access:"),
+  },
+  "register relay mobile device": {
+    failed: msg("Could not register this device for notifications."),
+    failedWithDetail: msg("Could not register this device for notifications:"),
+  },
+  "unregister relay mobile device": {
+    failed: msg("Could not unregister this device from notifications."),
+    failedWithDetail: msg("Could not unregister this device from notifications:"),
+  },
+  "register relay live activity": {
+    failed: msg("Could not register the Live Activity."),
+    failedWithDetail: msg("Could not register the Live Activity:"),
+  },
+  "read relay agent activity snapshot": {
+    failed: msg("Could not read agent activity."),
+    failedWithDetail: msg("Could not read agent activity:"),
+  },
+  "read linked T3 Chat account": {
+    failed: msg("Could not read your linked account."),
+    failedWithDetail: msg("Could not read your linked account:"),
+  },
+  "start T3 Chat linking": {
+    failed: msg("Could not start linking an account."),
+    failedWithDetail: msg("Could not start linking an account:"),
+  },
+  "unlink T3 Chat account": {
+    failed: msg("Could not unlink your linked account."),
+    failedWithDetail: msg("Could not unlink your linked account:"),
+  },
+};
 
 export class ManagedRelayRequestFailedError extends Schema.TaggedError<ManagedRelayRequestFailedError>()(
   "ManagedRelayRequestFailedError",
@@ -196,10 +260,14 @@ export class ManagedRelayRequestFailedError extends Schema.TaggedError<ManagedRe
   },
 ) {
   override get message(): string {
-    const action = requestActionDisplay[this.action];
-    if (this.transportFailed) return `Could not ${action}. ${NETWORK_BLOCKING_HINT}`;
-    const detail = relayRequestFailureDetail(this);
-    return detail ? `Could not ${action}: ${detail}` : `Could not ${action}.`;
+    return markedTextEnglish(this.i18nMessage);
+  }
+
+  get i18nMessage(): MarkedText {
+    const text = REQUEST_FAILED_TEXT[this.action];
+    if (this.transportFailed) return [text.failed, NETWORK_BLOCKING_HINT];
+    const detail = relayRequestFailureText(this);
+    return detail ? [text.failedWithDetail, ...detail] : [text.failed];
   }
 }
 
@@ -211,7 +279,11 @@ export class ManagedRelayAccessTokenScopesUnexpectedError extends Schema.TaggedE
   },
 ) {
   override get message(): string {
-    return "Remote access granted unexpected access token scopes.";
+    return markedTextEnglish(this.i18nMessage);
+  }
+
+  get i18nMessage(): MarkedText {
+    return [msg("Remote access granted unexpected access token scopes.")];
   }
 }
 
@@ -224,7 +296,11 @@ export class ManagedRelayTokenProofCreationError extends Schema.TaggedError<Mana
   },
 ) {
   override get message(): string {
-    return "Could not create the remote access sign-in signature.";
+    return markedTextEnglish(this.i18nMessage);
+  }
+
+  get i18nMessage(): MarkedText {
+    return [msg("Could not create the remote access sign-in signature.")];
   }
 }
 
@@ -237,7 +313,11 @@ export class ManagedRelayRequestProofCreationError extends Schema.TaggedError<Ma
   },
 ) {
   override get message(): string {
-    return "Could not create the remote access request signature.";
+    return markedTextEnglish(this.i18nMessage);
+  }
+
+  get i18nMessage(): MarkedText {
+    return [msg("Could not create the remote access request signature.")];
   }
 }
 

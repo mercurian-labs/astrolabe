@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { AuthSourceControlWriteScope } from "@t3tools/contracts";
 import type { EnvironmentId, ProjectId, WikiId } from "@t3tools/contracts";
 import { BookOpenIcon, FolderGit2Icon, XIcon } from "lucide-react";

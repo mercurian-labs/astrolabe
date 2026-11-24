@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { repositoryMoveOfSurface } from "~/components/repositories/openInRepositories";
 import {
   Link2,

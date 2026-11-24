@@ -6,13 +6,38 @@ describe("rekeyCatalog", () => {
   it("carries translations onto rebranded keys and rewrites the product name", () => {
     const result = rekeyCatalog({
       locale: "de",
-      upstreamEn: { a: "Restart T3 Code", same: "Thread", gone: "Old" },
-      upstreamLocale: { a: "T3 Code neu starten", same: "Thread", gone: "Alt" },
-      currentEn: { same: "Thread", b: "Restart Astrolabe", own: "Wikis" },
-      currentLocale: { same: "Thread", b: "Restart Astrolabe", own: "Wikis" },
+      upstreamEn: {
+        a: "Restart T3 Code",
+        same: "Thread",
+        gone: "Old",
+        t: ["Open ", { c: "T3 Code" }],
+      },
+      upstreamLocale: {
+        a: "T3 Code neu starten",
+        same: "Thread",
+        gone: "Alt",
+        t: [{ c: "T3 Code" }, " öffnen"],
+      },
+      currentEn: {
+        same: "Thread",
+        b: "Restart Astrolabe",
+        own: "Wikis",
+        u: ["Open ", { c: "Astrolabe" }],
+      },
+      currentLocale: {
+        same: "Thread",
+        b: "Restart Astrolabe",
+        own: "Wikis",
+        u: ["Open ", { c: "Astrolabe" }],
+      },
     });
-    expect(result.catalog).toEqual({ same: "Thread", b: "Astrolabe neu starten", own: "Wikis" });
-    expect(result.carried).toEqual(["b"]);
+    expect(result.catalog).toEqual({
+      same: "Thread",
+      b: "Astrolabe neu starten",
+      own: "Wikis",
+      u: [{ c: "Astrolabe" }, " öffnen"],
+    });
+    expect(result.carried).toEqual(["b", "u"]);
     expect(result.unmatched).toEqual(["own"]);
   });
 

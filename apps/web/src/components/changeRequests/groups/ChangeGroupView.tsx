@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import type { EnvironmentChangeGroup } from "@t3tools/client-runtime/changeGroups";
 import { changeGroupMemberKey } from "@t3tools/contracts";
 import {

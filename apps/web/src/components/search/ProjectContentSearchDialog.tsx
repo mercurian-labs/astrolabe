@@ -4,6 +4,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { useNavigate } from "@tanstack/react-router";
 import { ListFilterIcon } from "lucide-react";
 
+import { T, useGT, useMessages } from "gt-react";
 import { useState, type KeyboardEvent, type ReactNode } from "react";
 
 import { useActiveProjectTarget } from "~/hooks/useActiveProjectTarget";
@@ -78,19 +79,20 @@ function SearchOptionButton(props: {
 }
 
 function EmptyContentSearchDialog() {
+  const gt = useGT();
   return (
     <CommandPaletteContent
-      aria-label="Search project contents"
-      escapeLabel="Back"
-      footerActionLabel="Open file"
-      inputProps={{ disabled: true, placeholder: "Search project contents…" }}
+      aria-label={gt("Search project contents")}
+      escapeLabel={gt("Back")}
+      footerActionLabel={gt("Open file")}
+      inputProps={{ disabled: true, placeholder: gt("Search project contents…") }}
       mode="none"
       panelSize="fill"
       testId="project-content-search"
       value=""
     >
       <p className="m-auto px-6 text-center text-muted-foreground text-sm">
-        Open a project to search its files.
+        <T>Open a project to search its files.</T>
       </p>
     </CommandPaletteContent>
   );
@@ -105,6 +107,8 @@ function OpenContentSearchDialog(props: {
   readonly target: ContentSearchTarget;
 }) {
   const { target } = props;
+  const gt = useGT();
+  const messages = useMessages();
   const { resolvedTheme } = useTheme();
   const renderedAppearance = useRenderedAppearance();
   const [query, setQuery] = useState("");
@@ -121,16 +125,19 @@ function OpenContentSearchDialog(props: {
   const [visibleCount, setVisibleCount] = useState(VISIBLE_MATCH_WINDOW);
 
   // Hidden filters don't apply, whatever their fields hold.
-  const search = useProjectContentSearch({
-    environmentId: target.environmentId,
-    cwd: target.cwd,
-    query,
-    caseSensitive,
-    wholeWord,
-    useRegex,
-    contextLines: CONTEXT_LINES,
-    ...(showFilters ? { include, exclude, includeIgnored } : {}),
-  });
+  const search = useProjectContentSearch(
+    {
+      environmentId: target.environmentId,
+      cwd: target.cwd,
+      query,
+      caseSensitive,
+      wholeWord,
+      useRegex,
+      contextLines: CONTEXT_LINES,
+      ...(showFilters ? { include, exclude, includeIgnored } : {}),
+    },
+    messages,
+  );
   const canOpenMatches = search.canReadFiles && !search.isPending && search.error === null;
   const matches = search.matches;
   const [resultsFor, setResultsFor] = useState(search.searchKey);
@@ -235,23 +242,24 @@ function OpenContentSearchDialog(props: {
 
   return (
     <CommandPaletteContent
-      aria-label={`Search file contents in ${target.projectName}`}
-      escapeLabel="Back"
-      footerActionLabel="Open file"
+      aria-label={gt("Search file contents in {project}", { project: target.projectName })}
+      escapeLabel={gt("Back")}
+      footerActionLabel={gt("Open file")}
       inputAccessory={
         <div className="absolute inset-e-2.5 top-1/2 flex shrink-0 -translate-y-1/2 items-center gap-0.5 rounded-lg border bg-muted/30 p-0.5">
           <SearchOptionButton
             active={caseSensitive}
             disabled={!search.canReadFiles}
-            label="Match case"
+            label={gt("Match case")}
             onClick={() => setCaseSensitive((current) => !current)}
           >
-            Aa
+            {/* oxlint-disable-next-line t3code/no-untranslated-copy -- match-case glyph; the label carries the meaning */}
+            {"Aa"}
           </SearchOptionButton>
           <SearchOptionButton
             active={wholeWord}
             disabled={!search.canReadFiles}
-            label="Match whole word"
+            label={gt("Match whole word")}
             onClick={() => setWholeWord((current) => !current)}
           >
             <span className="underline decoration-2 underline-offset-2">ab</span>
@@ -259,7 +267,7 @@ function OpenContentSearchDialog(props: {
           <SearchOptionButton
             active={useRegex}
             disabled={!search.canReadFiles}
-            label="Use regular expression"
+            label={gt("Use regular expression")}
             onClick={() => setUseRegex((current) => !current)}
           >
             .*
@@ -267,7 +275,7 @@ function OpenContentSearchDialog(props: {
           <SearchOptionButton
             active={showFilters}
             disabled={!search.canReadFiles}
-            label={filtersActive ? "Filters (on)" : "Filters"}
+            label={filtersActive ? gt("Filters (on)") : gt("Filters")}
             onClick={() => setShowFilters((current) => !current)}
           >
             <ListFilterIcon className={cn("size-3.5", filtersActive && "text-primary")} />
@@ -277,7 +285,7 @@ function OpenContentSearchDialog(props: {
       inputProps={{
         className: "pe-38",
         disabled: !search.canReadFiles,
-        placeholder: `Search in ${target.projectName}`,
+        placeholder: gt("Search in {project}", { project: target.projectName }),
         onKeyDown: handleListKeyDown,
       }}
       mode="none"
@@ -289,34 +297,36 @@ function OpenContentSearchDialog(props: {
       {showFilters ? (
         <div className="flex shrink-0 items-center gap-2 border-b px-3 py-2">
           <Input
-            aria-label="Files to include"
+            aria-label={gt("Files to include")}
             className="min-w-0 flex-1"
             disabled={!search.canReadFiles}
             onChange={(event) => setInclude(event.target.value)}
             onKeyDown={handleListKeyDown}
-            placeholder="Include: e.g. src/**/*.ts"
+            placeholder={gt("Include: e.g. src/**/*.ts")}
             size="compact"
             value={include}
           />
           <Input
-            aria-label="Files to exclude"
+            aria-label={gt("Files to exclude")}
             className="min-w-0 flex-1"
             disabled={!search.canReadFiles}
             onChange={(event) => setExclude(event.target.value)}
             onKeyDown={handleListKeyDown}
-            placeholder="Exclude: e.g. vendor/*, *.lock"
+            placeholder={gt("Exclude: e.g. vendor/*, *.lock")}
             size="compact"
             value={exclude}
           />
           <Toggle
-            aria-label="Include gitignored files"
+            aria-label={gt("Include gitignored files")}
             disabled={!search.canReadFiles}
             pressed={includeIgnored}
             size="compact"
             variant="outline"
             onClick={() => setIncludeIgnored((current) => !current)}
           >
-            <span className="px-1">Ignored files</span>
+            <span className="px-1">
+              <T>Ignored files</T>
+            </span>
           </Toggle>
         </div>
       ) : null}
@@ -324,21 +334,36 @@ function OpenContentSearchDialog(props: {
         <div className="flex h-9 shrink-0 items-center border-b px-3 text-xs text-muted-foreground">
           {search.isPending ? (
             <span className="flex items-center gap-2">
-              <Spinner size="sm" /> Searching…
+              <Spinner size="sm" /> <T>Searching…</T>
             </span>
           ) : search.error ? (
             <span className="text-destructive">{search.error}</span>
           ) : search.invalidRegex ? (
-            <span className="text-destructive">Invalid regular expression</span>
+            <span className="text-destructive">
+              <T>Invalid regular expression</T>
+            </span>
+          ) : search.truncated ? (
+            gt("{results}+ results in {files} files", {
+              results: matches.length.toLocaleString(),
+              files: fileCount.toLocaleString(),
+            })
           ) : (
             <span className="flex items-center gap-2">
-              {`${matches.length.toLocaleString()}${search.limited ? "+" : ""} results in ${fileCount.toLocaleString()} files${search.truncated && !search.limited ? " so far" : ""}`}
+              {search.truncated && !search.limited
+                ? gt("{results} results in {files} files so far", {
+                    results: matches.length.toLocaleString(),
+                    files: fileCount.toLocaleString(),
+                  })
+                : gt("{results} results in {files} files", {
+                    results: `${matches.length.toLocaleString()}${search.limited ? "+" : ""}`,
+                    files: fileCount.toLocaleString(),
+                  })}
               {search.isLoadingMore ? <Spinner size="sm" /> : null}
             </span>
           )}
           {matches.length > 0 && canOpenMatches ? (
             <Button className="ml-auto" size="compact" variant="ghost-muted" onClick={openInEditor}>
-              Open results in editor
+              <T>Open results in editor</T>
               {openInEditorLabel ? (
                 <span className="text-muted-foreground">{openInEditorLabel}</span>
               ) : null}
@@ -350,12 +375,12 @@ function OpenContentSearchDialog(props: {
       {matches.length === 0 ? (
         <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">
           {search.isCheckingAccess
-            ? "Checking file access…"
+            ? gt("Checking file access…")
             : !search.canReadFiles
               ? search.error
               : search.hasQuery && !search.isPending && !search.error
-                ? "No results found."
-                : "Type to search across your project."}
+                ? gt("No results found.")
+                : gt("Type to search across your project.")}
         </div>
       ) : (
         <ScrollArea className="min-h-0 flex-1" scrollFade>
@@ -451,9 +476,9 @@ function OpenContentSearchDialog(props: {
                   {search.isLoadingMore ? (
                     <Spinner size="sm" />
                   ) : search.limited ? (
-                    "Load more results"
+                    gt("Load more results")
                   ) : (
-                    "Keep searching"
+                    gt("Keep searching")
                   )}
                 </Button>
               </div>

@@ -7,6 +7,7 @@ import {
   SettingsIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { T, useGT } from "gt-react";
 import { memo } from "react";
 import { useNavigate } from "@tanstack/react-router";
 
@@ -54,6 +55,7 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
 }) {
   const stageLabel = useEnvironmentStageLabel();
   const environmentIdentificationMode = useEnvironmentIdentificationMode();
+  const gt = useGT();
   const backdropVariant = resolveSidebarStageBackdropVariant(
     stageLabel,
     environmentIdentificationMode,
@@ -79,7 +81,7 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
         <SidebarTrigger
           variant={backdropVariant ? "media-navigation" : "ghost"}
           className="relative top-auto translate-y-0"
-          aria-label="Toggle main sidebar"
+          aria-label={gt("Toggle main sidebar")}
         />
       </div>
       {/* One visible line: the pill wraps onto the clipped second line once it no longer fits.
@@ -153,6 +155,7 @@ function SidebarUtilityItem({
 const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   const navigate = useNavigate();
   const navigateToAgents = useNavigateToAgents();
+  const gt = useGT();
   const { isMobile, setOpenMobile } = useSidebar();
   // Settings and Usage open over a section, which keeps its footer.
   const sectionPathname = useSectionPathname();
@@ -223,7 +226,9 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
           <SidebarMenuItem className="min-w-0 flex-1">
             <SidebarMenuButton onClick={handleBackClick}>
               <ArrowLeftIcon />
-              <span>Back</span>
+              <span>
+                <T>Back</T>
+              </span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           {accountMenu}
@@ -233,48 +238,52 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
           {accountMenu ?? (
             <SidebarUtilityItem
               icon={<SettingsIcon />}
-              label="Settings"
+              label={gt("Settings")}
               onClick={handleSettingsClick}
             />
           )}
           {isOnWikis ? (
             <SidebarUtilityItem
               icon={<MessagesSquare />}
-              label="Agents"
+              label={gt("Agents")}
               onClick={handleBackClick}
             />
           ) : (
-            <SidebarUtilityItem icon={<BookOpenIcon />} label="Wikis" onClick={handleWikisClick} />
+            <SidebarUtilityItem
+              icon={<BookOpenIcon />}
+              label={gt("Wikis")}
+              onClick={handleWikisClick}
+            />
           )}
           {isOnRepositories ? (
             <SidebarUtilityItem
               icon={<MessagesSquare />}
-              label="Agents"
+              label={gt("Agents")}
               onClick={handleBackClick}
             />
           ) : (
             <SidebarUtilityItem
               icon={<FolderGit2Icon />}
-              label="Projects"
+              label={gt("Projects")}
               onClick={handleRepositoriesClick}
             />
           )}
           {isOnPullRequests ? (
             <SidebarUtilityItem
               icon={<MessagesSquare />}
-              label="Agents"
+              label={gt("Agents")}
               onClick={handleBackClick}
             />
           ) : pullRequestsSupported ? (
             <SidebarUtilityItem
               icon={<PullRequestGlyph.pullRequest />}
-              label="Changes"
+              label={gt("Changes")}
               onClick={handlePullRequestsClick}
             />
           ) : null}
           <SidebarUtilityItem
             icon={<ChartNoAxesColumnIcon />}
-            label="Usage"
+            label={gt("Usage")}
             onClick={handleUsageClick}
           />
         </>

@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { selectEnvironmentQueryData, runAtomCommand } from "@t3tools/client-runtime/state/runtime";
 import { isRunnableText } from "@mercurian/editor/run/command";
 import { runTerminalThreadId, ThreadId, type EnvironmentId } from "@t3tools/contracts";

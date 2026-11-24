@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import "@mercurian/editor/markdown/theme.css";
 import "@mercurian/editor/code/theme.css";
 
@@ -40,7 +41,7 @@ import {
 } from "@mercurian/editor/lsp/code-actions";
 import { fileSave } from "./fileSave";
 import { languageServersEnvironment } from "~/state/languageServers";
-import { searchableSetting } from "../settings/settingsSearch";
+import { useSearchableSetting } from "../settings/settingsSearch";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { lastRename, undoableEdit } from "./renameUndo";
 import { inFileSearch } from "@mercurian/editor/search";
@@ -251,6 +252,7 @@ function RepositoryFile({
   readonly rendered: RenderedForm | null;
   readonly linked?: LinkedFileEdit;
 }) {
+  const searchableSetting = useSearchableSetting();
   const { environmentId, cwd, path } = tab;
   const renderedForm = useRenderedForm(rendered, tabKey);
   const editorView = useRef<EditorView | null>(null);

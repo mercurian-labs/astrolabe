@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { reviewCanvasFiles } from "@mercurian/wiki/canvas";
 import { documentTitle, wikiTerms } from "@t3tools/client-runtime/wikiLogic";
 import type { EnvironmentId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";

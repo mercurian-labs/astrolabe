@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { mediaFileReference } from "@t3tools/client-runtime/media-reference";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { filePreviewDelimiter } from "@t3tools/shared/delimitedPreview";
@@ -6,7 +7,7 @@ import { CheckIcon, CopyIcon, DownloadIcon, GitBranchIcon } from "lucide-react";
 import { lazy, Suspense, useRef, useState } from "react";
 
 import { useAssetUrlRefresh, useAssetUrlState } from "~/assets/assetUrls";
-import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
+import { namedClipboardTarget, useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { TabHeader } from "~/panes/TabHeader";
 import { toastManager } from "../ui/toast";
 import { AttachmentFilePreview } from "../files/AttachmentFilePreview";
@@ -148,7 +149,9 @@ function LargeFileViewer(props: {
   const assetUrl = useAssetUrlState(target.environmentId, resource);
   const refresh = useAssetUrlRefresh(target.environmentId, resource);
   const copyContents = useRef<(() => Promise<string>) | null>(null);
-  const { copyToClipboard, isCopied } = useCopyToClipboard({ target: target.path });
+  const { copyToClipboard, isCopied } = useCopyToClipboard({
+    target: namedClipboardTarget(target.path),
+  });
   const [saving, setSaving] = useState(false);
   const [retries, setRetries] = useState(0);
   const showError = (cause: unknown) =>

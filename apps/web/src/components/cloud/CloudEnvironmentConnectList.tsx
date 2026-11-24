@@ -1,5 +1,10 @@
-import { findErrorTraceId } from "@t3tools/client-runtime/errors";
 import {
+  errorDisplayMessage,
+  findErrorTraceId,
+  thrownErrorMessage,
+} from "@t3tools/client-runtime/errors";
+import {
+  connectionErrorText,
   type ConnectionTarget,
   type EnvironmentConnectionPresentation,
   RelayConnectionRegistration,
@@ -22,6 +27,7 @@ import type {
   RelayEnvironmentStatusResponse,
 } from "@t3tools/contracts/relay";
 import * as Option from "effect/Option";
+import { T, useGT, useMessages } from "gt-react";
 import { type ReactNode, useEffect, useEffectEvent, useState } from "react";
 
 import { environmentCatalog } from "~/connection/catalog";
@@ -92,6 +98,8 @@ export function CloudEnvironmentConnectRows({
     readonly onChange: (environmentId: EnvironmentId, selected: boolean) => void;
   };
 }) {
+  const gt = useGT();
+  const m = useMessages();
   const environmentsState = useRelayEnvironmentDiscovery();
   const registerEnvironment = useAtomCommand(environmentCatalog.register, {
     reportFailure: false,
@@ -162,11 +170,15 @@ export function CloudEnvironmentConnectRows({
       toastManager.add({
         type: "success",
         title: savedWithoutRelay.has(environment.environmentId)
-          ? "Remote access route added"
-          : "Environment added",
+          ? gt("Remote access route added")
+          : gt("Environment added"),
         description: savedWithoutRelay.has(environment.environmentId)
-          ? `${environment.label} falls back to remote access when its other routes are unreachable.`
-          : `Connecting to ${environment.label} through remote access.`,
+          ? gt("{environment} falls back to remote access when its other routes are unreachable.", {
+              environment: environment.label,
+            })
+          : gt("Connecting to {environment} through remote access.", {
+              environment: environment.label,
+            }),
       });
       return true;
     }
@@ -174,18 +186,17 @@ export function CloudEnvironmentConnectRows({
       return false;
     }
     const cause = squashAtomCommandFailure(result);
-    const message =
-      cause instanceof Error ? cause.message : "Could not connect the remote environment.";
+    const message = thrownErrorMessage(cause, m) ?? gt("Could not connect the remote environment.");
     const traceId = findErrorTraceId(cause);
     console.error("[t3-connect] Could not connect environment", { message, traceId, cause });
     toastManager.add({
       type: "error",
-      title: "Could not connect environment",
+      title: gt("Could not connect environment"),
       description: message,
       data: traceId
         ? {
             secondaryActionProps: {
-              children: "Copy trace ID",
+              children: gt("Copy trace ID"),
               onClick: () => void navigator.clipboard?.writeText(traceId),
             },
           }
@@ -292,13 +303,13 @@ export function CloudEnvironmentConnectRows({
 
   if (standalone && visibleEnvironments.length === 0) {
     const discoveryProblem = environmentsState.offline
-      ? "You appear to be offline."
-      : (Option.getOrNull(environmentsState.error)?.message ?? null);
+      ? gt("You appear to be offline.")
+      : thrownErrorMessage(Option.getOrNull(environmentsState.error), m);
     if (discoveryProblem !== null && !environmentsState.refreshing) {
       return (
         <div className={ITEM_ROW_CLASSNAME}>
           <p className="text-sm font-medium text-destructive">
-            Could not load your remote environments
+            <T>Could not load your remote environments</T>
           </p>
           <p className="mt-1 text-xs text-muted-foreground">{discoveryProblem}</p>
           <Button
@@ -307,7 +318,7 @@ export function CloudEnvironmentConnectRows({
             className="mt-3"
             onClick={() => void refreshRelayEnvironments()}
           >
-            Try again
+            <T>Try again</T>
           </Button>
         </div>
       );
@@ -321,21 +332,25 @@ export function CloudEnvironmentConnectRows({
     const unsupported =
       compatibilityError !== null || savedEnvironment?.connection.phase === "unsupported";
     const unsupportedDetail =
-      compatibilityError?.message ?? savedEnvironment?.connection.error ?? null;
+      thrownErrorMessage(compatibilityError, m) ??
+      (savedEnvironment ? connectionErrorText(savedEnvironment.connection, m) : null);
     const savedConnection = unsupported
-      ? presentSavedCloudEnvironmentConnection({
-          phase: "unsupported",
-          error: unsupportedDetail,
-          traceId: null,
-        })
+      ? presentSavedCloudEnvironmentConnection(
+          {
+            phase: "unsupported",
+            error: unsupportedDetail,
+            traceId: null,
+          },
+          m,
+        )
       : savedEnvironment
-        ? presentSavedCloudEnvironmentConnection(savedEnvironment.connection)
+        ? presentSavedCloudEnvironmentConnection(savedEnvironment.connection, m)
         : null;
     const relayStatus = status === undefined ? null : Option.getOrNull(status);
     const descriptor = relayStatus?.descriptor;
     const offlineReason =
       availability === "offline" && relayStatus !== null
-        ? relayOfflineReasonMessage(relayStatus)
+        ? relayOfflineReasonMessage(relayStatus, m)
         : null;
     const machineKind = resolveEnvironmentMachineKind(
       savedEnvironment?.serverConfig ??
@@ -357,23 +372,23 @@ export function CloudEnvironmentConnectRows({
             ? "bg-warning"
             : "bg-muted-foreground/35";
     const notAdded = savedWithoutRelay.has(environment.environmentId)
-      ? "Saved without remote access"
-      : "Not added";
+      ? gt("Saved without remote access")
+      : gt("Not added");
     const statusText =
       unsupported && !savedEnvironment
-        ? `Remote access · ${notAdded} · Client not supported`
+        ? `Remote access · ${notAdded} · ${gt("Client not supported")}`
         : offlineReason !== null
           ? offlineReason
           : savedConnection
             ? savedConnection.statusText
             : availability === "online"
-              ? `Remote access · ${notAdded} · Online`
+              ? `${gt("Remote access")} · ${notAdded} · ${gt("Online")}`
               : availability === "offline"
-                ? `Remote access · ${notAdded} · Offline`
+                ? `${gt("Remote access")} · ${notAdded} · ${gt("Offline")}`
                 : availability === "checking"
-                  ? `Remote access · ${notAdded} · Checking status…`
-                  : (Option.getOrNull(error)?.message ??
-                    `Remote access · ${notAdded} · Status unavailable`);
+                  ? `${gt("Remote access")} · ${notAdded} · ${gt("Checking status…")}`
+                  : (errorDisplayMessage(Option.getOrNull(error), m) ??
+                    `${gt("Remote access")} · ${notAdded} · ${gt("Status unavailable")}`);
     if (selection) {
       return (
         <label
@@ -414,15 +429,15 @@ export function CloudEnvironmentConnectRows({
               )}
             >
               {connectingEnvironmentIds.has(environment.environmentId)
-                ? "Connecting…"
+                ? gt("Connecting…")
                 : (savedConnection?.buttonLabel ??
                   (availability === "online"
-                    ? "Available"
+                    ? gt("Available")
                     : availability === "offline"
-                      ? "Offline"
+                      ? gt("Offline")
                       : availability === "error"
-                        ? "Unavailable"
-                        : "Checking…"))}
+                        ? gt("Unavailable")
+                        : gt("Checking…")))}
             </TooltipTrigger>
             <TooltipPopup>{unsupportedDetail ?? statusText}</TooltipPopup>
           </Tooltip>
@@ -450,13 +465,13 @@ export function CloudEnvironmentConnectRows({
                       : savedConnection
                         ? savedConnection.statusText
                         : availability === "online"
-                          ? "Remote access online"
+                          ? gt("Remote access online")
                           : availability === "offline"
-                            ? "Remote access offline"
+                            ? gt("Remote access offline")
                             : availability === "checking"
-                              ? "Checking remote access status"
-                              : (Option.getOrNull(error)?.message ??
-                                "Remote access status unavailable")
+                              ? gt("Checking remote access status")
+                              : (errorDisplayMessage(Option.getOrNull(error), m) ??
+                                gt("Remote access status unavailable"))
                 }
               />
               <EnvironmentMachineIcon
@@ -485,10 +500,10 @@ export function CloudEnvironmentConnectRows({
             <Tooltip>
               <TooltipTrigger render={<span className="inline-flex" tabIndex={0} />}>
                 <Button size="sm" disabled>
-                  Add
+                  <T context="verb, adds an environment">Add</T>
                 </Button>
               </TooltipTrigger>
-              <TooltipPopup>{unsupportedDetail ?? "Client not supported"}</TooltipPopup>
+              <TooltipPopup>{unsupportedDetail ?? gt("Client not supported")}</TooltipPopup>
             </Tooltip>
           ) : savedConnection ? (
             <Button size="sm" variant="outline" disabled>
@@ -501,10 +516,10 @@ export function CloudEnvironmentConnectRows({
               onClick={() => void connectEnvironment(environment)}
             >
               {connectingEnvironmentIds.has(environment.environmentId)
-                ? "Adding…"
+                ? gt("Adding…")
                 : savedWithoutRelay.has(environment.environmentId)
-                  ? "Add route"
-                  : "Add"}
+                  ? gt("Add route")
+                  : gt("Add", { $context: "verb, adds an environment" })}
             </Button>
           )}
         </div>

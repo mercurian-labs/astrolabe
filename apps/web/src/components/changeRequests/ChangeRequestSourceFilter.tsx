@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
 import { ChevronDownIcon } from "lucide-react";
 import { useState } from "react";
