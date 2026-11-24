@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { defaultThemeGeneration, defaultThemeToApply, themeSetsOwnMode } from "./useDefaultTheme";
+import { MERCURIAN_THEME_ID } from "@t3tools/shared/themePalettes";
+
+import {
+  defaultThemeGeneration,
+  defaultThemeToApply,
+  stockThemeOf,
+  themeSetsOwnMode,
+} from "./useDefaultTheme";
 
 const BASE = {
   environmentId: "env-1",
@@ -30,6 +37,8 @@ describe("default theme adoption", () => {
   it("applies the stock theme only when the environment set it", () => {
     expect(defaultThemeToApply({ ...BASE, defaultTheme: "", defaultThemeSetAt: "" })).toBe(null);
     expect(defaultThemeToApply({ ...BASE, defaultTheme: "" })).not.toBe(null);
+    expect(stockThemeOf("")).toBe(MERCURIAN_THEME_ID);
+    expect(stockThemeOf("nightfall")).toBe("nightfall");
   });
 });
 

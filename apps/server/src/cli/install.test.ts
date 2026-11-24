@@ -86,8 +86,8 @@ it.layer(NodeServices.layer)("astrolabe install", (it) => {
       assert.isFalse(shadowed.onPath);
       assert.equal(shadowed.shadowedBy, path.join(otherBin, "astrolabe"));
       assert.isUndefined(shadowed.pathCommand);
-      yield* fs.remove(path.join(otherBin, "t3"));
-      yield* fs.makeDirectory(path.join(otherBin, "t3"));
+      yield* fs.remove(path.join(otherBin, "astrolabe"));
+      yield* fs.makeDirectory(path.join(otherBin, "astrolabe"));
       const directory = yield* provide(installCli(), {
         PATH: `${otherBin}:${path.join(root, "bin")}`,
       });

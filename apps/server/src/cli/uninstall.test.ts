@@ -169,7 +169,7 @@ it.layer(NodeServices.layer)("astrolabe uninstall launcher", (it) => {
       assert.isUndefined(yield* findOwnedLauncher({ launchedAs: undefined, versionsDir }));
       // A script launcher execs by absolute path, so argv0 names the executable.
       const scriptDir = path.join(root, "script-bin");
-      const script = path.join(scriptDir, "t3");
+      const script = path.join(scriptDir, "astrolabe");
       yield* fs.makeDirectory(scriptDir);
       yield* fs.writeFileString(script, posixLauncherScript(exe), { mode: 0o755 });
       assert.equal(

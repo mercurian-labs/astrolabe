@@ -2,7 +2,8 @@ import { appAtomRegistry } from "../rpc/atomRegistry";
 import { themeEnvironmentIdAtom } from "../state/primaryEnvironment";
 import { themeServerSettingsAtom } from "../state/server";
 import { getThemeDefinition, singleAppearanceOf, subscribeToCustomThemes } from "../themePalette";
-import { getThemeSnapshot, setAppearanceMode, setTheme } from "./useTheme";
+import { MERCURIAN_THEME_ID } from "@t3tools/shared/themePalettes";
+import { setAppearanceMode, setTheme } from "./useTheme";
 
 const APPLIED_DEFAULT_THEME_STORAGE_PREFIX = "t3code:default-theme-applied:v2:";
 const APPLIED_DEFAULT_APPEARANCE_STORAGE_PREFIX = "t3code:default-appearance-applied:v1:";
@@ -29,6 +30,11 @@ export function defaultThemeToApply(input: {
   // published set changes.
   if (!input.resolves) return null;
   return generation;
+}
+
+/** An empty default names the stock theme, which in Astrolabe is Mercurian. */
+export function stockThemeOf(defaultTheme: string): string {
+  return defaultTheme.length === 0 ? MERCURIAN_THEME_ID : defaultTheme;
 }
 
 /** A single-appearance theme sets its own mode unless a mode was set with it or after it. */
@@ -73,8 +79,8 @@ function adoptDefaultTheme(): void {
   });
   if (generation === null) return;
   if (definition === null) {
-    // The stock theme keeps the client's own light, dark, or system mode.
-    if (setTheme(getThemeSnapshot().appearanceMode)) writeAppliedGeneration(storageKey, generation);
+    // The stock theme keeps the client's own light, dark, or system mode; setTheme saves it first.
+    if (setTheme(stockThemeOf(defaultTheme))) writeAppliedGeneration(storageKey, generation);
     return;
   }
 

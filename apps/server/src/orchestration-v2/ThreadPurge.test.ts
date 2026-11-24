@@ -285,6 +285,13 @@ it.effect("leaves a content-free tombstone and every other thread untouched", ()
     // A provider event that lands after the deletion, as the newest event.
     yield* sink.write({ events: [message(deletedId, "message:late")] });
 
+    for (const threadId of [deletedId, keptId]) {
+      yield* sql`
+        INSERT INTO orchestration_v2_projection_turn_item_counts (thread_id, run_key, item_count)
+        VALUES (${threadId}, '', 1)
+      `;
+    }
+
     const secureDelete = sql<{ readonly secure_delete: number }>`PRAGMA secure_delete`;
     const secureDeleteBefore = (yield* secureDelete)[0]?.secure_delete;
     yield* purge(deletedId);
@@ -326,7 +333,7 @@ it.effect("leaves a content-free tombstone and every other thread untouched", ()
       WHERE thread_id = ${threadId}
     `;
     assert.equal((yield* itemCounts(deletedId))[0]?.count, 0);
-    assert.isAbove((yield* itemCounts(keptId))[0]?.count ?? 0, 0);
+    assert.equal((yield* itemCounts(keptId))[0]?.count, 1);
 
     assert.equal((yield* secureDelete)[0]?.secure_delete, secureDeleteBefore);
     assert.isTrue((yield* maintenance.verify).valid);

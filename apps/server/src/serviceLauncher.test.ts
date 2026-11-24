@@ -748,7 +748,7 @@ process.exit(0);
 
       yield* Effect.promise(() =>
         expect(runLauncher(root)).rejects.toThrow(
-          "Selected t3@1.0.0 runtime is missing or incomplete.",
+          "Selected astrolabe@1.0.0 runtime is missing or incomplete.",
         ),
       );
       assert.equal(yield* fs.readFileString(statePath), contents);
@@ -928,7 +928,7 @@ process.exit(0);
       yield* Effect.acquireRelease(
         Effect.sync(() =>
           vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
-            if (String(chunk).includes("owns this T3 home")) refused.resolve();
+            if (String(chunk).includes("owns this Astrolabe home")) refused.resolve();
             return true;
           }),
         ),
@@ -1019,7 +1019,7 @@ process.exit(0);
         yield* Effect.acquireRelease(
           Effect.sync(() =>
             vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
-              if (String(chunk).includes("owns this T3 home")) refused.resolve();
+              if (String(chunk).includes("owns this Astrolabe home")) refused.resolve();
               return true;
             }),
           ),

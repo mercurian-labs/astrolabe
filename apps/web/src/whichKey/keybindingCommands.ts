@@ -10,13 +10,19 @@ export function isSyntheticKeybinding(event: Event) {
 
 /**
  * The shortcut a command answers to, as the latest binding for it says: the one a keypress
- * would reach first.
+ * would reach first. An unassigned default (`when: "false"`) answers to nothing.
  */
 export function shortcutForCommand(
   keybindings: ResolvedKeybindingsConfig,
   command: KeybindingCommand,
 ) {
-  return keybindings.findLast((binding) => binding.command === command)?.shortcut ?? null;
+  return (
+    keybindings.findLast(
+      (binding) =>
+        binding.command === command &&
+        !(binding.whenAst?.type === "identifier" && binding.whenAst.name === "false"),
+    )?.shortcut ?? null
+  );
 }
 
 /**

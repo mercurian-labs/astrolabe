@@ -1378,7 +1378,7 @@ export class Launcher {
       }
     } catch (error) {
       process.stderr.write(
-        `[service-launcher] Could not point ${unit.path} at t3@${version}: ${error instanceof Error ? error.message : String(error)}\n`,
+        `[service-launcher] Could not point ${unit.path} at astrolabe@${version}: ${error instanceof Error ? error.message : String(error)}\n`,
       );
     }
   }
@@ -1550,7 +1550,9 @@ export async function main(options: LauncherOptions = {}): Promise<void> {
       state = adoptLegacyServiceState(contents);
       if (state === undefined) throw new Error("Service state is invalid or unsupported.");
       if (!(await runtimeExists(baseDir, state.activeVersion))) {
-        throw new Error(`Selected t3@${state.activeVersion} runtime is missing or incomplete.`);
+        throw new Error(
+          `Selected astrolabe@${state.activeVersion} runtime is missing or incomplete.`,
+        );
       }
     }
     const serviceUnit = await serviceUnitFromEnvironment(managerEnvironment);
