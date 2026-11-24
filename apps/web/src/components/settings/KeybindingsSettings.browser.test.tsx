@@ -138,7 +138,7 @@ it("unassigns a default shortcut and restores its condition when one is assigned
 
       await screen.getByRole("button", { name: "Actions for Sidebar: Toggle" }).click();
       // Astrolabe: the row's menu names the shortcut it unassigns.
-      await page.getByRole("menuitem", { name: "Unassign ⌘B" }).click();
+      await page.getByRole("menuitem", { name: /^Unassign (⌘B|Ctrl\+B)$/ }).click();
       expect(mutate).toHaveBeenLastCalledWith({
         environmentId: "env",
         input: {
