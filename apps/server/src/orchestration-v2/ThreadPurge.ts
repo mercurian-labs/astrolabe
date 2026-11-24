@@ -94,6 +94,8 @@ const THREAD_CONTENT_TABLES = [
   "orchestration_v2_projection_messages",
   "orchestration_v2_projection_plans",
   "orchestration_v2_projection_turn_items",
+  // Kept by triggers on turn items; listed so a purge leaves no count behind either way.
+  "orchestration_v2_projection_turn_item_counts",
   "orchestration_v2_projection_checkpoints",
   "orchestration_v2_projection_checkpoint_scopes",
   "orchestration_v2_projection_context_handoffs",

@@ -82,6 +82,12 @@ Fix:
 1. Make sure the host is awake and online.
 2. On the host, run `astrolabe connect status`.
 3. If the check fails only on the host, check the host's DNS, VPN, or proxy.
+   If it says the host's network has an old cached answer, wait: it usually
+   clears within about 30 minutes.
+4. If it says the address no longer points to this machine's tunnel, the
+   environment was likely removed from T3 Connect. Link it again: on a desktop
+   host, turn **T3 Connect** off and on in **Settings > Sharing & access**. On a
+   command-line host, run `t3 connect link`, then restart T3 Code.
 
 ## This device can't reach T3 Connect
 
@@ -120,6 +126,10 @@ have an active link between your Astrolabe account and the host.
 - **This device is still loading its remote access sign-in.** Wait a moment;
   Astrolabe retries on its own. If it keeps waiting, reload or restart Astrolabe on
   this device.
+- **The host is waiting for you to approve this device.** The host requires
+  approval for new devices. Approve the code this device shows from a device
+  that is already connected, or run `t3 auth connect-device approve <code>` on
+  the host. See [Approve new devices](./remote-access.md#approve-new-devices).
 - **Your account reached its tunnel limit.** Remove an environment you do not
   use from your account menu's **Remote access** page, then restart Astrolabe on the host.
 
@@ -136,13 +146,13 @@ This app needs a newer version of Astrolabe on the host. Update Astrolabe on the
 
 ## T3 Connect returned an error
 
-| Error                                                     | Fix                                                                                                                                                              |
-| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `environment_link_limit_exceeded` or managed tunnel limit | Remove an unused environment, then restart Astrolabe on the host.                                                                                                |
-| `auth_invalid` or `invalid_bearer`                        | Run `astrolabe connect login`. If credentials were revoked, run `astrolabe connect logout`, then `astrolabe connect` again. Restart the server after signing in. |
-| Expired or invalid link proof                             | Check the host's date and time, update Astrolabe, then restart it.                                                                                               |
-| HTTP 403 without a recognized error                       | Check relay access, proxies, and firewall rules. Keep any Cloudflare Ray ID for a bug report.                                                                    |
-| HTTP 408, 429, or 5xx                                     | Wait a few minutes. Astrolabe retries temporary failures on its own.                                                                                             |
+| Error                                                     | Fix                                                                                                                                                                                                    |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `environment_link_limit_exceeded` or managed tunnel limit | Remove an unused environment, then restart Astrolabe on the host.                                                                                                                                      |
+| `auth_invalid` or `invalid_bearer`                        | Run `astrolabe connect login`. If credentials were revoked, run `astrolabe connect logout`, then `astrolabe connect` again. Restart the server after signing in.                                       |
+| Expired or invalid link proof                             | Check the host's date and time, update Astrolabe, then restart it.                                                                                                                                     |
+| HTTP 403 without a recognized error                       | If the host requires approval for new devices, update Astrolabe on this device and approve it. Otherwise check relay access, proxies, and firewall rules. Keep any Cloudflare Ray ID for a bug report. |
+| HTTP 408, 429, or 5xx                                     | Wait a few minutes. Astrolabe retries temporary failures on its own.                                                                                                                                   |
 
 After you fix a permanent rejection, restart the host's server with
 `astrolabe service restart`. For a foreground server, stop it and run `astrolabe serve` again.

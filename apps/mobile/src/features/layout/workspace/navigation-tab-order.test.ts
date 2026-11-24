@@ -23,9 +23,20 @@ describe("navigation tab order", () => {
 
   it("fills missing sections and drops removed placeholders, duplicates, and Settings", () => {
     expect(
-      resolveNavigationTabOrder(["usage", "home", "issues", "settings", "usage", null]),
-    ).toEqual(["usage", "threads", "pullRequests", "wikis", "repositories"]);
+      resolveNavigationTabOrder(["usage", "home", "inbox", "settings", "usage", null]),
+    ).toEqual(["usage", "threads", "pullRequests", "wikis", "repositories", "issues"]);
     expect(resolveNavigationTabOrder()).toEqual(NAVIGATION_TAB_ORDER);
+  });
+
+  it("keeps Changes beside Agents and starts Issues in the overflow", () => {
+    expect(visibleNavigationTabs()).toContain("pullRequests");
+    expect(overflowNavigationTabs()).toEqual(["issues", "usage"]);
+    expect(visibleNavigationTabs(moveNavigationTab(undefined, "issues", 1))).toEqual([
+      "threads",
+      "issues",
+      "pullRequests",
+      "wikis",
+    ]);
   });
 
   it("moves a section without changing the relative order of the others", () => {
@@ -42,7 +53,7 @@ describe("navigation tab order", () => {
 
   it("overflows Usage into Settings by default and keeps Settings selected during editing", () => {
     expect(visibleNavigationTabs()).toEqual(["threads", "pullRequests", "wikis", "repositories"]);
-    expect(overflowNavigationTabs()).toEqual(["usage"]);
+    expect(overflowNavigationTabs()).toEqual(["issues", "usage"]);
     expect(selectedNavigationTab(undefined, "threads", true)).toBe("settings");
     expect(selectedNavigationTab(undefined, "usage", false)).toBe("settings");
     expect(selectedNavigationTab(undefined, "wikis", false)).toBe("wikis");
@@ -57,10 +68,11 @@ describe("navigation tab order", () => {
       "pullRequests",
       "wikis",
       "repositories",
+      "issues",
     ]);
     expect(toggleNavigationTabVisibility(hidden, "usage")).toEqual([]);
-    expect(visibleNavigationTabs(order, [], 5)).toEqual(order);
-    expect(enabledNavigationTabs(undefined, ["home", "issues", "settings"])).toEqual(
+    expect(visibleNavigationTabs(order, [], 6)).toEqual(order);
+    expect(enabledNavigationTabs(undefined, ["home", "inbox", "settings"])).toEqual(
       NAVIGATION_TAB_ORDER,
     );
   });

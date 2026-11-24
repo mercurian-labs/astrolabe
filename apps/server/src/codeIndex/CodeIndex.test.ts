@@ -170,6 +170,7 @@ const withIndex = <A, E>(
         }),
         GitVcsDriver.layer.pipe(
           Layer.provide(VcsProcess.layer),
+          Layer.provide(NodeCrypto.layer),
           Layer.provideMerge(ServerConfig.layerTest(baseDir, baseDir)),
         ),
       );

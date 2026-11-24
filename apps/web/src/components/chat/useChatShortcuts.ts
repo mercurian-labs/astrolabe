@@ -40,6 +40,13 @@ const PANEL_COMMANDS: ReadonlySet<KeybindingCommand> = new Set([
 
 export type ChatShortcutCommands = Partial<Record<KeybindingCommand, ChatShortcutHandler>>;
 
+/** Window-level commands the main chat still runs while focus is in its side chat pane. */
+const SIDE_CHAT_PANE_COMMANDS: ReadonlySet<KeybindingCommand> = new Set([
+  "rightPanel.toggle",
+  "rightPanel.close",
+  "rightPanel.toggleMaximized",
+]);
+
 interface ChatShortcutsInput {
   readonly enabled: boolean;
   /**
@@ -83,12 +90,14 @@ export function useChatShortcuts(input: ChatShortcutsInput) {
       event.stopPropagation();
       return;
     }
-    if (!input.enabled || isCommandPaletteOpen() || isInSideChatPane(event.target)) return;
+    if (!input.enabled || isCommandPaletteOpen()) return;
+    const inSideChatPane = isInSideChatPane(event.target);
     const terminalFocusOwner = getTerminalFocusOwner();
     if (event.defaultPrevented && terminalFocusOwner === null) return;
     const shortcutContext = input.getShortcutContext(event.target);
 
     if (
+      !inSideChatPane &&
       !shortcutContext.terminalFocus &&
       !shortcutContext.modelPickerOpen &&
       shouldTypeToFocusComposer(event) &&
@@ -106,7 +115,7 @@ export function useChatShortcuts(input: ChatShortcutsInput) {
     const command = resolveChatShortcutCommand(event, keybindings, input.scriptKeybindings, {
       context: shortcutContext,
     });
-    if (!command) return;
+    if (!command || (inSideChatPane && !SIDE_CHAT_PANE_COMMANDS.has(command))) return;
     const takes = command === "terminal.toggle" ? takesTerminalToggle : takesPanelShortcut;
     if (PANEL_COMMANDS.has(command) && !takes(owner)) return;
     // Astrolabe: in the shared panes, the panes close the focused tab, the chat's own included.

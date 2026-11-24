@@ -20,8 +20,10 @@ import { workspaceAreaProps } from "~/lib/workspaceFocus";
 import { primaryServerKeybindingsAtom } from "~/state/server";
 import { AstrolabeMarkSmall } from "../brand/AstrolabeMarks";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
-import { usePullRequestsSupported } from "~/state/environments";
+import { useIssuesSupported, usePullRequestsSupported } from "~/state/environments";
 import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
+import { readIssueListPreferences } from "../issue/issueListPreferences";
+import { IssueGlyph } from "../issue/issuePresentation";
 import {
   SidebarMenu,
   SidebarMenuButton,
@@ -32,6 +34,7 @@ import {
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { AccountMenu } from "./AccountMenu";
 import {
+  isIssuesPath,
   isPullRequestsPath,
   isRepositoriesPath,
   isWikisPath,
@@ -42,7 +45,14 @@ import { SidebarUpdatePill } from "./SidebarUpdatePill";
 
 /** One of the app's sections, as the icon rail and the keyboard menu's Go to offer it. */
 interface AppSection {
-  readonly id: "threads" | "wikis" | "repositories" | "pull-requests" | "usage" | "settings";
+  readonly id:
+    | "threads"
+    | "wikis"
+    | "repositories"
+    | "pull-requests"
+    | "issues"
+    | "usage"
+    | "settings";
   readonly label: string;
   readonly icon: ReactNode;
   readonly active: boolean;
@@ -63,14 +73,20 @@ export function useAppSections(): readonly AppSection[] {
   const navigate = useNavigate();
   const navigateToAgents = useNavigateToAgents();
   const pullRequestsSupported = usePullRequestsSupported();
+  const issuesSupported = useIssuesSupported();
 
   const onSettings = pathname === "/settings" || pathname.startsWith("/settings/");
   const onUsage = pathname === "/usage";
   const onPullRequests = isPullRequestsPath(sectionPathname);
   const onWikis = isWikisPath(sectionPathname);
   const onRepositories = isRepositoriesPath(sectionPathname);
+  const onIssues = isIssuesPath(sectionPathname);
   const onThreads =
-    !onPullRequests && !onWikis && !onRepositories && !sectionPathname.startsWith("/projects/");
+    !onPullRequests &&
+    !onIssues &&
+    !onWikis &&
+    !onRepositories &&
+    !sectionPathname.startsWith("/projects/");
 
   return [
     {
@@ -106,6 +122,18 @@ export function useAppSections(): readonly AppSection[] {
             active: onPullRequests,
             open: () =>
               void navigate({ to: "/pull-requests", search: readPullRequestListPreferences() }),
+            foot: false,
+          },
+        ]
+      : []),
+    ...(issuesSupported
+      ? [
+          {
+            id: "issues" as const,
+            label: "Issues",
+            icon: <IssueGlyph.issue />,
+            active: onIssues,
+            open: () => void navigate({ to: "/issues", search: readIssueListPreferences() }),
             foot: false,
           },
         ]

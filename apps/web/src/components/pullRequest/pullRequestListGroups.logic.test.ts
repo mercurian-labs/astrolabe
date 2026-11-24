@@ -23,6 +23,7 @@ describe("pullRequestGroups", () => {
   it("leaves hidden rows out of every group, the partitions' own queries included", () => {
     const { groups } = pullRequestGroups({
       known: [entry(1), entry(2), entry(3)],
+      baseline: undefined,
       providers: [],
       viewers: {},
       involvement: "all",

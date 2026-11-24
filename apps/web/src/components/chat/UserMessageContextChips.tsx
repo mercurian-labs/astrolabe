@@ -1,3 +1,5 @@
+import { useNativeFileDrag } from "../../useNativeFileDrag";
+import { resolvePathLinkTarget } from "@t3tools/shared/fileLinks";
 import { documentChipKindForFileName } from "~/pierre-icons";
 import { isSvgAttachment } from "@t3tools/shared/image";
 import { useRenderedAppearance } from "../../hooks/useTheme";
@@ -25,6 +27,7 @@ import ChatMarkdown from "../ChatMarkdown";
 import { EnvironmentContextChip } from "../EnvironmentContextChip";
 import { ThreadContextChip } from "../ThreadContextChip";
 import { WikiNoteContextChip } from "../WikiNoteContextChip";
+import { ResponseReplyCard } from "./AssistantCitationChip";
 import { MessageCircleIcon, MousePointerClickIcon, PaintbrushIcon } from "lucide-react";
 import type {
   CanvasContextRecord,
@@ -75,11 +78,15 @@ function UserMessageMentionChip(props: {
   copyMarkdown: string;
 }) {
   const ctx = use(TimelineRowCtx);
+  const nativeDrag = useNativeFileDrag(ctx.activeThreadEnvironmentId, () =>
+    resolvePathLinkTarget(props.record.path, ctx.workspaceRoot ?? ""),
+  );
   return (
     <Tooltip>
       <TooltipTrigger
         render={
           <ContextChip
+            {...nativeDrag}
             kind={documentChipKindForFileName(props.record.path) ?? "mention"}
             render={<button type="button" />}
             aria-label={`Preview ${props.record.path}`}
@@ -361,6 +368,21 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
       render: (record, context) =>
         record.kind === "change-group" ? (
           <ChangeGroupContextChip record={record} copyMarkdown={context.copyMarkdown} />
+        ) : (
+          <UnavailableUserMessageContextChip {...context} />
+        ),
+    },
+    {
+      kind: "response",
+      canRender: (record) => record.kind === "response",
+      render: (record, context) =>
+        record.kind === "response" ? (
+          <ResponseReplyCard
+            record={record}
+            copyMarkdown={context.copyMarkdown}
+            leading={context.reference.leading ?? false}
+            trailing={context.reference.trailing ?? false}
+          />
         ) : (
           <UnavailableUserMessageContextChip {...context} />
         ),

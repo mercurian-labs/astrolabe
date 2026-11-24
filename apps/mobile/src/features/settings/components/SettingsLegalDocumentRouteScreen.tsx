@@ -10,6 +10,7 @@ import { AppText as Text } from "../../../components/ui/AppText";
 import { LoadingStrip } from "../../../components/ui/LoadingStrip";
 import { SymbolView } from "../../../components/ui/AppSymbol";
 import { isLegalDocumentUrl, LEGAL_URL } from "../lib/legal-document-url";
+import { webViewDecelerationRate } from "../../../lib/webViewDecelerationRate";
 
 interface SettingsLegalDocumentRouteScreenProps {
   readonly documentName: string;
@@ -101,6 +102,7 @@ export function SettingsLegalDocumentRouteScreen({
         cacheMode="LOAD_NO_CACHE"
         allowsBackForwardNavigationGestures
         contentInsetAdjustmentBehavior="automatic"
+        decelerationRate={webViewDecelerationRate}
         domStorageEnabled={false}
         incognito
         javaScriptEnabled={false}

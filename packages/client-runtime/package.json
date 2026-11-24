@@ -4,6 +4,10 @@
   "license": "MIT",
   "type": "module",
   "exports": {
+    "./pull-request-diff-fold": {
+      "types": "./src/pullRequestDiffFold.ts",
+      "default": "./src/pullRequestDiffFold.ts"
+    },
     "./assembly-highlighting": {
       "types": "./src/assemblyHighlighting.ts",
       "default": "./src/assemblyHighlighting.ts"
@@ -20,6 +24,10 @@
       "types": "./src/workspaceBasenameLookup.ts",
       "default": "./src/workspaceBasenameLookup.ts"
     },
+    "./saved-views": {
+      "types": "./src/savedViews.ts",
+      "default": "./src/savedViews.ts"
+    },
     "./composerThreadItems": {
       "types": "./src/composerThreadItems.ts",
       "default": "./src/composerThreadItems.ts"
@@ -27,6 +35,10 @@
     "./composer-model-mentions": {
       "types": "./src/composerModelMentions.ts",
       "default": "./src/composerModelMentions.ts"
+    },
+    "./locales": {
+      "types": "./src/locales.ts",
+      "default": "./src/locales.ts"
     },
     "./model-search": {
       "types": "./src/modelSearch.ts",
@@ -99,6 +111,10 @@
     "./workspaces": {
       "types": "./src/workspaces/index.ts",
       "default": "./src/workspaces/index.ts"
+    },
+    "./scheduled-task-time-zone": {
+      "types": "./src/scheduledTaskTimeZone.ts",
+      "default": "./src/scheduledTaskTimeZone.ts"
     },
     "./connection": {
       "types": "./src/connection/index.ts",
@@ -216,6 +232,10 @@
       "types": "./src/state/attachments.ts",
       "default": "./src/state/attachments.ts"
     },
+    "./state/attachment-uploads": {
+      "types": "./src/state/attachmentUploads.ts",
+      "default": "./src/state/attachmentUploads.ts"
+    },
     "./text-paste": {
       "types": "./src/textPaste.ts",
       "default": "./src/textPaste.ts"
@@ -320,6 +340,10 @@
       "types": "./src/state/providerInstanceDisplay.ts",
       "default": "./src/state/providerInstanceDisplay.ts"
     },
+    "./state/issues": {
+      "types": "./src/state/issues.ts",
+      "default": "./src/state/issues.ts"
+    },
     "./state/pull-requests": {
       "types": "./src/state/pullRequests.ts",
       "default": "./src/state/pullRequests.ts"
@@ -380,6 +404,10 @@
       "types": "./src/state/shell.ts",
       "default": "./src/state/shell.ts"
     },
+    "./state/issue-trackers": {
+      "types": "./src/state/issueTrackers.ts",
+      "default": "./src/state/issueTrackers.ts"
+    },
     "./state/source-control": {
       "types": "./src/state/sourceControl.ts",
       "default": "./src/state/sourceControl.ts"
@@ -391,6 +419,10 @@
     "./state/threads": {
       "types": "./src/state/threads.ts",
       "default": "./src/state/threads.ts"
+    },
+    "./state/thread-activity-announcement": {
+      "types": "./src/state/threadActivityAnnouncement.ts",
+      "default": "./src/state/threadActivityAnnouncement.ts"
     },
     "./state/subagent-display": {
       "types": "./src/state/subagentDisplay.ts",
@@ -608,6 +640,14 @@
       "types": "./src/pullRequestReply.ts",
       "default": "./src/pullRequestReply.ts"
     },
+    "./issue-presentation": {
+      "types": "./src/issuePresentation.ts",
+      "default": "./src/issuePresentation.ts"
+    },
+    "./issue-list": {
+      "types": "./src/issueList.ts",
+      "default": "./src/issueList.ts"
+    },
     "./pull-request-query": {
       "types": "./src/pullRequestQuery.ts",
       "default": "./src/pullRequestQuery.ts"
@@ -619,6 +659,18 @@
     "./pull-request-reviewers": {
       "types": "./src/pullRequestReviewers.ts",
       "default": "./src/pullRequestReviewers.ts"
+    },
+    "./issue-links": {
+      "types": "./src/issueLinks.ts",
+      "default": "./src/issueLinks.ts"
+    },
+    "./issue-selection": {
+      "types": "./src/issueSelection.ts",
+      "default": "./src/issueSelection.ts"
+    },
+    "./pull-request-selection": {
+      "types": "./src/pullRequestSelection.ts",
+      "default": "./src/pullRequestSelection.ts"
     },
     "./provider-clients": {
       "types": "./src/providerClients.ts",
@@ -658,11 +710,15 @@
     "@tanstack/electric-db-collection": "0.6.1",
     "effect": "catalog:",
     "jszip": "3.10.1",
+    "remark-gfm": "catalog:",
+    "remark-parse": "catalog:",
     "three": "0.180.0",
-    "unbash": "^5.0.0"
+    "unbash": "^5.0.0",
+    "unified": "catalog:"
   },
   "devDependencies": {
     "@effect/vitest": "catalog:",
+    "@types/mdast": "^4.0.4",
     "@types/three": "0.180.0",
     "vite-plus": "catalog:"
   }

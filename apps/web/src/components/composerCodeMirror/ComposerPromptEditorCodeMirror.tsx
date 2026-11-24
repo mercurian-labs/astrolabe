@@ -265,6 +265,8 @@ function ComposerPromptEditorCodeMirrorInner(
       focusAtEnd: () => editorInstance.current?.focusAtEnd(),
       readSelectionRange: () =>
         editorInstance.current?.readSelectionRange() ?? { start: 0, end: 0 },
+      // Tiptap's chips mark where pasted images land; this editor adds them at the end instead.
+      captureAttachmentInsertion: () => undefined,
       requestCitationComment: (request) => editorInstance.current?.requestCitationComment(request),
       readSnapshot: () =>
         editorInstance.current?.readSnapshot() ?? {
@@ -475,7 +477,6 @@ function CitationChip({
     >
       <AssistantCitationChip
         citation={citation}
-        composer
         commentEditor={{
           open: target !== null,
           sourceAnchor: target?.sourceAnchor,

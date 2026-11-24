@@ -288,11 +288,12 @@ export function ComposerActionButton(props: {
 }) {
   const { scale, smallIconSize } = useAndroidControlSizing();
   const circleSize = Math.round((props.size === "large" ? 44 : 30) * scale);
+  const fadeIcon = props.disabled === true && props.variant !== "danger";
   const iconColorClassName =
     props.variant === "danger"
       ? "accent-danger-foreground"
       : props.disabled
-        ? "accent-foreground/38"
+        ? "accent-foreground"
         : "accent-primary-foreground";
   return (
     <Pressable
@@ -317,21 +318,28 @@ export function ComposerActionButton(props: {
               : "bg-primary",
         )}
       >
-        {props.control ? (
-          <ComposerControlIcon
-            control={props.control}
-            size={Math.round(20 * scale)}
-            colorClassName={iconColorClassName}
-          />
-        ) : (
-          <SymbolView
-            name={props.icon}
-            size={props.size === "large" ? Math.round(20 * scale) : smallIconSize}
-            weight="semibold"
-            tintColorClassName={iconColorClassName}
-            type="monochrome"
-          />
-        )}
+        {/* Fade the icon as one layer: a translucent tint, or opacity on a Tabler icon (which
+              copies it onto every path), stacks where the SVG strokes overlap. */}
+        <View
+          className={fadeIcon ? "opacity-38" : undefined}
+          needsOffscreenAlphaCompositing={fadeIcon}
+        >
+          {props.control ? (
+            <ComposerControlIcon
+              control={props.control}
+              size={Math.round(20 * scale)}
+              colorClassName={iconColorClassName}
+            />
+          ) : (
+            <SymbolView
+              name={props.icon}
+              size={props.size === "large" ? Math.round(20 * scale) : smallIconSize}
+              weight="semibold"
+              tintColorClassName={iconColorClassName}
+              type="monochrome"
+            />
+          )}
+        </View>
       </View>
     </Pressable>
   );

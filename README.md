@@ -6,7 +6,7 @@ It works with the subscriptions you already have for Claude Code, Codex, Cursor,
 
 Astrolabe is made by [Mercurian, Inc.](https://mercurian.ai) and is built on [T3 Code](https://github.com/pingdotgg/t3code). Learn more at [astrolabe.sh](https://astrolabe.sh).
 
-## Installation
+T3 Code runs the coding agents on your machine and gives them one fast interface. Start a thread at your desk, then approve the next step from your phone.
 
 > [!WARNING]
 > Astrolabe currently supports Codex, Claude, Cursor, Grok Build, OpenCode, Antigravity, and fx. Install and authenticate at least one provider before use:
@@ -19,7 +19,7 @@ Astrolabe is made by [Mercurian, Inc.](https://mercurian.ai) and is built on [T3
 > - Antigravity: enable it in Settings, then use **Install Antigravity** and **Sign in with Google**. No CLI is required.
 > - fx: install [fx](https://fx.sh) and run `fx login` on the machine running the T3 Code server ([setup guide](./docs/user/providers-fx.md))
 
-### Command line
+## What you get
 
 On macOS (Apple silicon) and Linux:
 
@@ -52,10 +52,6 @@ Sign-in, workspaces, remote access through our relay and the phone apps are not 
 Full docs live in [docs/](./docs). There's no docs site yet.
 
 - [Install and first run](./docs/user/install.md)
-- [Permission modes](./docs/user/permission-modes.md)
-- [Keyboard shortcuts](./docs/user/keybindings.md)
-- [Project settings](./docs/user/project-settings.md)
-- [Appearance preferences](./docs/user/appearance.md)
 - [Remote access from a phone or another machine](./docs/user/remote-access.md)
 - [Connect Claude Code, Codex, ChatGPT and other agents over MCP](./docs/user/outside-agents.md)
 - [Keeping app and server in sync](./docs/user/updating.md)

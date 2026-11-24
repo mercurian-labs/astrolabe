@@ -2,6 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { sortProjectsByGroupOrder } from "@t3tools/client-runtime/state/project-grouping";
 import type { ScopedProjectRef, SidebarProjectGroupingMode } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
+import type { ReactNode } from "react";
 import { Platform, ScrollView } from "react-native";
 import type { MenuProps } from "../../components/ui/Menu.types";
 import { ListFilterMenu } from "../layout/workspace/ListFilterMenu";
@@ -46,12 +47,18 @@ function choices(field: string, options: Readonly<Record<string, string>>, selec
   }));
 }
 
-type ProjectOrder = readonly { readonly memberProjectRefs: readonly ScopedProjectRef[] }[];
+type ProjectOrder = readonly {
+  readonly memberProjectRefs: readonly ScopedProjectRef[];
+  readonly pinned: boolean;
+  readonly archived: boolean;
+}[];
 const sameProjectOrder = (previous: ProjectOrder, next: ProjectOrder) =>
   previous.length === next.length &&
   previous.every((group, index) => {
     const members = next[index]!.memberProjectRefs;
     return (
+      group.pinned === next[index]!.pinned &&
+      group.archived === next[index]!.archived &&
       group.memberProjectRefs.length === members.length &&
       group.memberProjectRefs.every(
         (ref, member) =>
@@ -74,7 +81,11 @@ const sidebarProjectOrderFamily = Atom.family((mode: SidebarProjectGroupingMode)
       threads: get(environmentThreadShells.threadShellsAtom),
       pendingTasks: [],
       projectSortOrder: "updated_at",
-    }).map((scope) => ({ memberProjectRefs: scope.projectRefs })),
+    }).map((scope) => ({
+      memberProjectRefs: scope.projectRefs,
+      pinned: scope.pinned,
+      archived: scope.archived,
+    })),
   ).pipe(Atom.withEquality(sameProjectOrder)),
 );
 
@@ -391,6 +402,7 @@ export function PullRequestListFilters(props: {
   /** Android sidebar rows sit further in than full-width rows; the pills follow them. */
   readonly sidebar?: boolean;
   readonly filters: ReturnType<typeof usePullRequestListFilters>;
+  readonly savedViewsMenu: ReactNode;
 }) {
   const { count, more, reset, select, author, selectedLabelCount } = props.filters;
   return (
@@ -406,6 +418,7 @@ export function PullRequestListFilters(props: {
           : ROW_STYLE
       }
     >
+      {props.savedViewsMenu}
       {Platform.OS === "android" ? null : (
         <ListFilterMenu
           label={count ? String(count) : "Filters"}

@@ -48,6 +48,7 @@ export interface KeybindingRow {
   readonly key: string;
   readonly when: string;
   readonly source: KeybindingSource;
+  readonly isUnassigned: boolean;
   readonly defaultKey: string | null;
   readonly defaultWhen: string;
   readonly binding: ResolvedKeybindingRule;
@@ -163,6 +164,13 @@ function defaultBindingForBinding(
         shortcutToKeybindingInput(entry.shortcut) === bindingKey &&
         whenAstToExpression(entry.whenAst) === bindingWhen,
     ) ??
+    (bindingWhen === "false"
+      ? DEFAULT_RESOLVED_KEYBINDINGS.find(
+          (entry) =>
+            entry.command === binding.command &&
+            shortcutToKeybindingInput(entry.shortcut) === bindingKey,
+        )
+      : undefined) ??
     DEFAULT_RESOLVED_KEYBINDINGS.find(
       (entry) =>
         entry.command === binding.command && whenAstToExpression(entry.whenAst) === bindingWhen,
@@ -176,6 +184,7 @@ function keybindingRowId(command: KeybindingCommand, key: string, when: string):
 }
 
 function conflictsWithWhen(leftWhen: string, rightWhen: string): boolean {
+  if (leftWhen === "false" || rightWhen === "false") return false;
   return leftWhen.length === 0 || rightWhen.length === 0 || leftWhen === rightWhen;
 }
 
@@ -315,6 +324,10 @@ export function buildKeybindingRows(
       key,
       when,
       source: sourceForBinding(binding),
+      isUnassigned:
+        when === "false" &&
+        defaultBinding !== undefined &&
+        key === shortcutToKeybindingInput(defaultBinding.shortcut),
       defaultKey: defaultBinding ? shortcutToKeybindingInput(defaultBinding.shortcut) : null,
       defaultWhen: whenAstToExpression(defaultBinding?.whenAst),
       binding,
@@ -411,6 +424,7 @@ const ASTROLABE_COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
   "section.threads": "Section: Agents",
   "section.repositories": "Section: Projects",
   "section.pullRequests": "Section: Changes",
+  "section.issues": "Section: Issues",
   "tab.close": "Close Tab or Pane Tab",
   "rightPanel.close": "Close Focused Tab",
   "draft.write": "Send Draft or Save Note",
@@ -492,6 +506,7 @@ export function commandLabel(command: KeybindingCommand): string {
   const astrolabeLabel = ASTROLABE_COMMAND_LABELS[command];
   if (astrolabeLabel) return astrolabeLabel;
   if (command === "preview.focusUrl") return "Preview: Focus URL";
+  if (command === "preview.find") return "Preview: Find on Page";
   const raw = String(command);
   if (raw.startsWith("script.") && raw.endsWith(".run")) {
     return `Run Script: ${titleCaseCommandSegment(raw.slice("script.".length, -".run".length))}`;

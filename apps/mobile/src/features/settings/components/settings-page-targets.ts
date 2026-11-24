@@ -1,13 +1,22 @@
+/** Astrolabe's own Settings pages. */
+const ASTROLABE_SETTINGS_PAGE_TARGETS = ["SettingsChangeRequests", "SettingsWorkspaces"] as const;
+
+export function isAstrolabeSettingsPageTarget(
+  target: string,
+): target is (typeof ASTROLABE_SETTINGS_PAGE_TARGETS)[number] {
+  return ASTROLABE_SETTINGS_PAGE_TARGETS.some((candidate) => candidate === target);
+}
+
 /** Settings pages a Settings row opens. */
 export const SETTINGS_PAGE_TARGETS = [
   "SettingsEnvironments",
   "SettingsNotifications",
   "SettingsThreads",
-  "SettingsChangeRequests",
-  "SettingsWorkspaces",
+  ...ASTROLABE_SETTINGS_PAGE_TARGETS,
   "SettingsAbout",
   "SettingsArchive",
   "SettingsAppearance",
+  "SettingsLanguage",
   "SettingsNavigation",
   "SettingsOrganization",
   "SettingsProjectOverview",

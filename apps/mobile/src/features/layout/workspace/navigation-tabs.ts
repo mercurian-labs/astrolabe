@@ -21,6 +21,7 @@ export const NAVIGATION_TAB_ICONS = {
   pullRequests: PullRequestGlyph.pullRequest,
   wikis: "book",
   repositories: "folder",
+  issues: "git.issue",
   usage: "chart.bar.xaxis",
 } as const satisfies Readonly<Record<NavigationTab, AppSymbolName>>;
 

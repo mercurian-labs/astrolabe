@@ -51,6 +51,7 @@ export const DEFAULT_TRIGGER_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "menu g w", command: "section.wikis" },
   { key: "menu g r", command: "section.repositories" },
   { key: "menu g p", command: "section.pullRequests" },
+  { key: "menu g i", command: "section.issues" },
   { key: "menu g u", command: "section.usage" },
   { key: "menu g s", command: "section.settings" },
   { key: "menu t ]", command: "chatTab.next" },

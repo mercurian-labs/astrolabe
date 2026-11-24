@@ -1,8 +1,10 @@
+// Astrolabe: Changes stays pinned beside Agents; Issues comes after Wikis and Projects.
 export const NAVIGATION_TAB_ORDER = [
   "threads",
   "pullRequests",
   "wikis",
   "repositories",
+  "issues",
   "usage",
 ] as const;
 export type NavigationTab = (typeof NAVIGATION_TAB_ORDER)[number];
@@ -19,6 +21,7 @@ export const NAVIGATION_TAB_LABELS: Readonly<Record<NavigationTab, string>> = {
   pullRequests: "Changes",
   wikis: "Wikis",
   repositories: "Projects",
+  issues: "Issues",
   usage: "Usage",
 };
 

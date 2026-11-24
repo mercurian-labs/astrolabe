@@ -4,12 +4,14 @@ import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime"
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import { wikiMergeMethod } from "@t3tools/client-runtime/wikiLogic";
 import type { PullRequestDetail, PullRequestMergeMethod } from "@t3tools/contracts";
+import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { AsyncResult } from "effect/reactivity";
 import { useRef, useState } from "react";
 import { View } from "react-native";
 import { AppText as Text } from "../../components/ui/AppText";
 import { Button } from "../../components/ui/Button";
 import { SplitButton } from "../../components/ui/SplitButton";
+import { useEnvironmentServerConfig } from "../../state/entities";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
 import { composerPullRequests } from "../../state/pull-requests";
 import { useEnvironmentQuery } from "../../state/query";
@@ -22,6 +24,7 @@ import {
   MERGE_METHODS,
   PR_ACTION_ICONS,
   pullRequestActionLabel,
+  resolveMergeMethod,
 } from "./pullRequestActions";
 import { pullRequestStackMerge, singlePullRequestMergeAllowed } from "./pullRequestStack";
 import { pullRequestTarget, type PullRequestParams } from "./usePullRequestDiff";
@@ -42,6 +45,7 @@ export function PullRequestMergeControls(props: {
   const permissions = usePullRequestPermissions(props.params, pr);
   const stateAction = usePullRequestAction(props.params, pr);
   const preferences = useAtomValue(mobilePreferencesAtom);
+  const serverSettings = useEnvironmentServerConfig(target.environmentId)?.settings;
   const savePreferences = useAtomSet(updateMobilePreferencesAtom);
   const runAction = useAtomCommand(composerPullRequests.runAction, { reportFailure: false });
   const refreshDetail = useAtomRefresh(composerPullRequests.detail(target));
@@ -55,16 +59,15 @@ export function PullRequestMergeControls(props: {
     wikiEnvironment.list({ environmentId: target.environmentId, input: {} }),
   );
   const isWiki = wikis.data?.wikis.some((wiki) => wiki.host?.projectId === target.input.projectId);
-  const preferred =
-    selectedMethod ??
-    (isWiki ? wikiMergeMethod(methods) : undefined) ??
-    (AsyncResult.isSuccess(preferences) ? preferences.value.pullRequestMergeMethod : undefined) ??
-    "squash";
-  const method = methods.includes(preferred)
-    ? preferred
-    : methods.includes("squash")
-      ? "squash"
-      : methods[0];
+  const method = resolveMergeMethod(
+    pr,
+    selectedMethod ?? (isWiki ? (wikiMergeMethod(methods) ?? null) : null),
+    serverSettings
+      ? resolveProjectSettings(serverSettings, target.input.projectId).settings
+          .pullRequestMergeMethod
+      : null,
+    AsyncResult.isSuccess(preferences) ? preferences.value.pullRequestMergeMethod : undefined,
+  );
   const scope = stack.stack ? pullRequestStackMerge(stack.stack, pr.number, terminology) : null;
   const canMergeSingle = singlePullRequestMergeAllowed({
     supportsStackActions: stack.supportsStackActions,

@@ -24,7 +24,6 @@ export function PullRequestTitleEditor({
   pullRequestKey,
   detail,
   canWriteSourceControl,
-  onSaved,
   editRequest,
 }: {
   environmentId: EnvironmentId;
@@ -32,7 +31,6 @@ export function PullRequestTitleEditor({
   pullRequestKey: string;
   detail: PullRequestDetail;
   canWriteSourceControl: boolean;
-  onSaved: () => void;
   /** Astrolabe: the title shows in the tab's header; each new request opens the editor here. */
   editRequest?: number | undefined;
 }) {
@@ -57,9 +55,12 @@ export function PullRequestTitleEditor({
       return;
     }
     setTitleSaving(true);
+    // The new title shows while the host takes it, so the editor closes at once.
+    setTitleScope(null);
     const result = await update({ environmentId, input: { ...reference, title } });
     setTitleSaving(false);
     if (result._tag === "Failure") {
+      setTitleScope({ pullRequestKey, text: title });
       toastManager.add({
         type: "error",
         title: "The title could not be saved",
@@ -68,10 +69,7 @@ export function PullRequestTitleEditor({
           "The host refused the new title.",
         ),
       });
-      return;
     }
-    setTitleScope(null);
-    onSaved();
   };
 
   if (titleDraft === null) {

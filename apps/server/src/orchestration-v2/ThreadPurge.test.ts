@@ -321,6 +321,12 @@ it.effect("leaves a content-free tombstone and every other thread untouched", ()
       ["message:kept"],
     );
     assert.equal((yield* storedEvents(keptId)).length, 2);
+    const itemCounts = (threadId: ThreadId) => sql<{ readonly count: number }>`
+      SELECT COUNT(*) AS count FROM orchestration_v2_projection_turn_item_counts
+      WHERE thread_id = ${threadId}
+    `;
+    assert.equal((yield* itemCounts(deletedId))[0]?.count, 0);
+    assert.isAbove((yield* itemCounts(keptId))[0]?.count ?? 0, 0);
 
     assert.equal((yield* secureDelete)[0]?.secure_delete, secureDeleteBefore);
     assert.isTrue((yield* maintenance.verify).valid);

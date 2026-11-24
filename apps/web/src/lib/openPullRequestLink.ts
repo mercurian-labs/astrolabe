@@ -15,11 +15,7 @@ import { canOpenLinksInApp } from "../browser/browserLinkTarget";
 import { useOpenLink } from "../browser/useOpenLink";
 import { useClientSettings } from "../hooks/useSettings";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
-import {
-  PULL_REQUESTS_PANEL_REF,
-  selectActiveRightPanel,
-  useRightPanelStore,
-} from "../rightPanelStore";
+import { PULL_REQUESTS_PANEL_REF, useRightPanelStore } from "../rightPanelStore";
 import { showPullRequest } from "../components/pullRequest/pullRequestWorkspace";
 import {
   selectThreadBranchBaseRef,
@@ -42,6 +38,27 @@ export function usePullRequestPreviewTarget(environmentId: EnvironmentId | null,
     projects,
     pullRequestsEnabled: serverConfig !== null,
     url,
+  });
+}
+
+/** Where a click on this link opens the in-app panel, read at call time as the click reads it. */
+export function pullRequestLinkPanelTarget(input: {
+  readonly url: string;
+  readonly environmentId: EnvironmentId | undefined;
+  readonly primaryEnvironmentId: EnvironmentId | null;
+  readonly lendHostProject: boolean;
+}) {
+  // Read at click time: every provider status push replaces the config map, and
+  // subscribing would hand every rendered link a new handler. Projects likewise, so a
+  // link can resolve against a snapshot that arrived after this handler was built.
+  const serverConfigs = appAtomRegistry.get(environmentServerConfigsAtom);
+  return resolveChangeRequestLinkTarget({
+    url: input.url,
+    projects: readProjects(),
+    configLoaded: (environmentId) => serverConfigs.has(environmentId),
+    environmentId: input.environmentId,
+    primaryEnvironmentId: input.primaryEnvironmentId,
+    lendHostProject: input.lendHostProject,
   });
 }
 
@@ -81,14 +98,8 @@ export function useOpenChangeRequestLink(
     const resolvedThreadRef = targetThreadRef ?? threadRef;
     const resolvedPanelRef = panelRef ?? resolvedThreadRef;
     const openPullRequest = () => {
-      // Read at click time: every provider status push replaces the config map, and
-      // subscribing would hand every rendered link a new handler. Projects likewise, so a
-      // link can resolve against a snapshot that arrived after this handler was built.
-      const serverConfigs = appAtomRegistry.get(environmentServerConfigsAtom);
-      const target = resolveChangeRequestLinkTarget({
+      const target = pullRequestLinkPanelTarget({
         url: targetUrl,
-        projects: readProjects(),
-        configLoaded: (environmentId) => serverConfigs.has(environmentId),
         environmentId: resolvedThreadRef?.environmentId ?? targetEnvironmentId,
         primaryEnvironmentId,
         lendHostProject: resolvedPanelRef !== undefined,
@@ -211,12 +222,7 @@ export function useOpenChangeRequestLink(
               (source) => source.kind === "commit" && source.headRef === commit.sha,
             )
           ) {
-            const diffOpen =
-              selectActiveRightPanel(
-                useRightPanelStore.getState().byThreadKey,
-                resolvedThreadRef,
-              ) === "diff";
-            useDiffPanelStore.getState().selectCommit(resolvedThreadRef, commit.sha, !diffOpen);
+            useDiffPanelStore.getState().selectCommit(resolvedThreadRef, commit.sha);
             useRightPanelStore.getState().open(resolvedThreadRef, "diff");
             return;
           }

@@ -1,3 +1,5 @@
+import { heldPullRequestListEntriesAtom } from "@t3tools/client-runtime/state/pull-requests";
+import { AsyncResult, Atom } from "effect/reactivity";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import { applyPullRequestDraftFilterChange } from "@t3tools/client-runtime/pull-request-query";
 import { Spinner } from "~/components/ui/spinner";
@@ -98,7 +100,7 @@ import { toastManager } from "../ui/toast";
 import { useSidebarProjectGroups } from "~/hooks/useSidebarProjectGroups";
 import {
   pullRequestEnvironment,
-  usePullRequestList,
+  usePullRequestHostList,
   usePullRequestListStats,
   restoredPullRequestList,
   usePullRequestTurnRefreshes,
@@ -132,6 +134,11 @@ import {
 import { rowClickIntent, type RowClick } from "../../tabNavigation.logic";
 import { PullRequestsSidebarPortal } from "./PullRequestsSidebar";
 import { PullRequestRefreshControl, PullRequestsSidebarList } from "./PullRequestsColumn";
+import {
+  rememberPullRequestHosts,
+  resetPullRequestHosts,
+  type PullRequestHostRead,
+} from "./pullRequestProjectAssignment.logic";
 
 function getShortcutContext() {
   return {
@@ -158,6 +165,34 @@ const NO_LIST_TARGETS: ReadonlyArray<EnvironmentQueryTarget<PullRequestListInput
 /** The pull request rows' share of the sidebars' row selection (`sidebarRowSelection`). */
 const PULL_REQUEST_SELECTION = "pull-requests";
 const NO_ROW_KEYS: readonly string[] = [];
+const heldRowReaders = new WeakMap<
+  EnvironmentPullRequestEntry,
+  Map<string, ReturnType<typeof heldPullRequestListEntriesAtom<EnvironmentPullRequestEntry>>>
+>();
+
+function usePendingListEntries(
+  input: PullRequestListInput,
+  entries: ReadonlyArray<EnvironmentPullRequestEntry> | undefined,
+) {
+  const key = JSON.stringify(input);
+  return useAtomValue(
+    Atom.make((get) =>
+      (entries ?? []).flatMap((entry) => {
+        let readers = heldRowReaders.get(entry);
+        if (readers === undefined) {
+          readers = new Map();
+          heldRowReaders.set(entry, readers);
+        }
+        let reader = readers.get(key);
+        if (reader === undefined) {
+          reader = heldPullRequestListEntriesAtom(entry.environmentId, input, [entry]);
+          readers.set(key, reader);
+        }
+        return AsyncResult.getOrElse(get(reader), () => []);
+      }),
+    ),
+  );
+}
 
 export function PullRequestsPage() {
   const search = useSearch({ from: "/_chat/pull-requests" });
@@ -168,6 +203,9 @@ export function PullRequestsPage() {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   // Astrolabe: the list lives in the sidebar, a sheet over the review on narrow windows.
   const { isMobile, open: sidebarOpen, setOpen: setSidebarOpen, setOpenMobile } = useSidebar();
+  const [hostReads, setHostReads] = useState<ReadonlyMap<EnvironmentId, PullRequestHostRead>>(
+    () => new Map(),
+  );
   const {
     capableEnvironments,
     scopedEnvironmentId,
@@ -182,11 +220,12 @@ export function PullRequestsPage() {
     selectedProject,
     queryEnvironmentIds,
     environmentQueries,
+    preferredEnvironmentQueries,
     assignmentKey,
     linkedSelection,
     expectedHosts,
     projectsKnown,
-  } = usePullRequestScope(search);
+  } = usePullRequestScope(search, hostReads);
   // Astrolabe: the pull requests open as tabs of the shared panes; the list lights the focused one.
   const capable = capableEnvironments.length > 0;
   const focusedKey = useWorkspaceFocusedKey();
@@ -259,9 +298,9 @@ export function PullRequestsPage() {
     localFilters,
     hasLocalFilters,
   } = usePullRequestQueryFilters(search, typedQuery);
-  const turnRefreshes = usePullRequestTurnRefreshes(
-    environmentQueries.map(({ environmentId }) => environmentId),
-  );
+  const turnRefreshes = usePullRequestTurnRefreshes([
+    ...new Set(environmentQueries.map(({ environmentId }) => environmentId)),
+  ]);
   const turnRefreshToken = turnRefreshes
     .map(([environmentId, revision]) => `${environmentId}:${revision}`)
     .join("|");
@@ -295,48 +334,57 @@ export function PullRequestsPage() {
     });
   }
 
-  const listTargets = environmentQueries.flatMap(({ environmentId, projectIds }) => {
-    const cursors = sentCursors?.[environmentId];
-    if (sentCursors !== null && cursors === undefined && !sentRegrown.includes(environmentId)) {
-      return [];
-    }
-    return [
-      {
-        environmentId,
-        input: {
-          state: search.state,
-          involvement: search.involvement,
-          limit: pageSize,
-          ...(scopedProjectId ? { projectId: scopedProjectId } : {}),
-          ...(projectIds ? { projectIds } : {}),
-          ...(search.host ? { host: search.host } : {}),
-          ...(hasFilters ? { filters } : {}),
-          ...(sentParsed.text ? { query: sentParsed.text } : {}),
-          ...(cursors === undefined ? {} : { cursors }),
-        } satisfies PullRequestListInput,
-      },
-    ];
-  });
-  const listQuery = usePullRequestList(listTargets);
+  const listTargetsFor = (queries: typeof environmentQueries) =>
+    queries.flatMap(({ environmentId, projectIds }) => {
+      const cursors = sentCursors?.[environmentId];
+      if (sentCursors !== null && cursors === undefined && !sentRegrown.includes(environmentId)) {
+        return [];
+      }
+      return [
+        {
+          environmentId,
+          input: {
+            state: search.state,
+            involvement: search.involvement,
+            limit: pageSize,
+            ...(scopedProjectId ? { projectId: scopedProjectId } : {}),
+            ...(projectIds ? { projectIds } : {}),
+            ...(search.host ? { host: search.host } : {}),
+            ...(hasFilters ? { filters } : {}),
+            ...(sentParsed.text ? { query: sentParsed.text } : {}),
+            ...(cursors === undefined ? {} : { cursors }),
+          } satisfies PullRequestListInput,
+        },
+      ];
+    });
+  const listTargets = listTargetsFor(environmentQueries);
+  const listQuery = usePullRequestHostList(listTargets);
 
   /**
    * Kept as its own read rather than remembered from an earlier answer because an answer cannot
    * say which question it belongs to: mid-switch the text has already changed and the data has
    * not, and a search's answer would file itself under the workspace.
    */
-  const baselineTargets = environmentQueries.map(({ environmentId, projectIds }) => ({
-    environmentId,
-    input: {
-      state: search.state,
-      involvement: search.involvement,
-      limit: PAGE_SIZE,
-      ...(scopedProjectId ? { projectId: scopedProjectId } : {}),
-      ...(projectIds ? { projectIds } : {}),
-      ...(search.host ? { host: search.host } : {}),
-      ...(menuFiltered ? { filters: menuFilters } : {}),
-    } satisfies PullRequestListInput,
-  }));
-  const baselineQuery = usePullRequestList(baselineTargets);
+  const baselineTargetsFor = (queries: typeof environmentQueries) =>
+    queries.map(({ environmentId, projectIds }) => ({
+      environmentId,
+      input: {
+        state: search.state,
+        involvement: search.involvement,
+        limit: PAGE_SIZE,
+        ...(scopedProjectId ? { projectId: scopedProjectId } : {}),
+        ...(projectIds ? { projectIds } : {}),
+        ...(search.host ? { host: search.host } : {}),
+        ...(menuFiltered ? { filters: menuFilters } : {}),
+      } satisfies PullRequestListInput,
+    }));
+  const baselineTargets = baselineTargetsFor(environmentQueries);
+  const baselineQuery = usePullRequestHostList(baselineTargets);
+  const observedHosts = rememberPullRequestHosts(
+    rememberPullRequestHosts(hostReads, baselineQuery.observations),
+    listQuery.observations,
+  );
+  if (observedHosts !== hostReads) setHostReads(observedHosts);
   const baselineEmpty =
     baselineQuery.data?.entries.length === 0 &&
     baselineQuery.data.errors.length === 0 &&
@@ -356,7 +404,7 @@ export function PullRequestsPage() {
       } satisfies PullRequestListInput,
     }));
   })();
-  const facetQuery = usePullRequestList(facetTargets);
+  const facetQuery = usePullRequestHostList(facetTargets);
   const filterOptionScope = environmentQueries.map(({ environmentId, projectIds }) => ({
     environmentId,
     input: {
@@ -392,8 +440,8 @@ export function PullRequestsPage() {
       }));
     return { authored: targetsFor("authored"), reviewing: targetsFor("reviewing") };
   })();
-  const authoredQuery = usePullRequestList(partitionTargets.authored);
-  const reviewingQuery = usePullRequestList(partitionTargets.reviewing);
+  const authoredQuery = usePullRequestHostList(partitionTargets.authored);
+  const reviewingQuery = usePullRequestHostList(partitionTargets.reviewing);
   const invalidate = useAtomCommand(pullRequestEnvironment.invalidate, { reportFailure: false });
   const [invalidating, setInvalidating] = useState(false);
   const refreshing = invalidating || listQuery.isPending;
@@ -671,6 +719,23 @@ export function PullRequestsPage() {
     search.state,
   );
 
+  const heldEntries = ordered?.key === filterKey ? ordered.entries : (listData?.entries ?? []);
+  const overlayInput = { state: search.state, filters };
+  const shownEntries = usePendingListEntries(overlayInput, heldEntries);
+  const shownBaseline = usePendingListEntries(
+    overlayInput,
+    typedParsed.filters.checks === undefined ? baselineQuery.data?.entries : undefined,
+  );
+  const shownAuthored = usePendingListEntries(
+    overlayInput,
+    partitionsWanted ? authoredQuery.data?.entries : undefined,
+  );
+  const shownReviewing = usePendingListEntries(
+    overlayInput,
+    partitionsWanted ? reviewingQuery.data?.entries : undefined,
+  );
+  const shownHeldAuthored = usePendingListEntries(overlayInput, heldPartitions?.authored);
+  const shownHeldReviewing = usePendingListEntries(overlayInput, heldPartitions?.reviewing);
   const scrollRef = useRef<HTMLDivElement>(null);
   const changeRequestKind = useChangeRequestKind();
   // Astrolabe: where the wiki changes list beside these, a host wiki's change shows once, there.
@@ -678,7 +743,12 @@ export function PullRequestsPage() {
     changeRequestKind === "all" && search.host === undefined && scopedProjectId === undefined,
   );
   const { entries, groups, entriesByStatsKey, heldPullRequestsBySurface } = pullRequestGroups({
-    known: ordered?.key === filterKey ? ordered.entries : (listData?.entries ?? []),
+    known: shownEntries,
+    // The baseline was read without typed qualifiers, and rows cannot be checked for `checks:`.
+    baseline:
+      typedParsed.filters.checks === undefined && baselineQuery.data !== null
+        ? shownBaseline
+        : undefined,
     hidden: hostedKeys.size === 0 ? undefined : (entry) => isHostedPullRequest(hostedKeys, entry),
     providers: baselineQuery.data?.providers ?? listData?.providers ?? [],
     viewers,
@@ -689,11 +759,14 @@ export function PullRequestsPage() {
     answeredLocally: querySettled && !showingCarried,
     baselineEmpty,
     held:
-      loaded !== null && loaded.environmentKey === environmentKey && loaded.scope === scopeKey
-        ? loaded.partitions
-        : undefined,
-    authored: partitionsWanted ? authoredQuery.data?.entries : undefined,
-    reviewing: partitionsWanted ? reviewingQuery.data?.entries : undefined,
+      heldPartitions === undefined
+        ? undefined
+        : {
+            authored: shownHeldAuthored,
+            reviewing: shownHeldReviewing,
+          },
+    authored: partitionsWanted && authoredQuery.data !== null ? shownAuthored : undefined,
+    reviewing: partitionsWanted && reviewingQuery.data !== null ? shownReviewing : undefined,
     partitionsWanted,
   });
 
@@ -881,6 +954,11 @@ export function PullRequestsPage() {
     await Promise.all(
       queryEnvironmentIds.map((environmentId) => invalidate({ environmentId, input: {} })),
     );
+    listQuery.refresh([
+      ...listTargetsFor(preferredEnvironmentQueries),
+      ...baselineTargetsFor(preferredEnvironmentQueries),
+    ]);
+    setHostReads(resetPullRequestHosts);
     setInvalidating(false);
     refreshListAndStats(requestedStatsScope);
   };
@@ -1045,6 +1123,10 @@ export function PullRequestsPage() {
     if (focusedPullRequestKey !== null) selectFocusedInUrl();
   }, [focusedPullRequestKey]);
 
+  const listError = listQuery.error
+    ? `${environmentLabels.get(listQuery.error.environmentId) || "Environment"}: ${listQuery.error.message}`
+    : null;
+
   const unavailableProjects = new Map(
     listErrors.map(
       (error) =>
@@ -1131,6 +1213,8 @@ export function PullRequestsPage() {
   const searchInput = (
     <PullRequestSearchInput
       value={search.q ?? ""}
+      label="Search pull requests"
+      placeholder="Search pull requests, or label:bug"
       busy={typedQuery.length > 0 && (!querySettled || showingCarried)}
       onChange={(query) => updateListScope({ q: query || undefined })}
       onSubmit={submitQuery}
@@ -1160,9 +1244,9 @@ export function PullRequestsPage() {
         unsupportedState
       ) : firstLoad ? (
         <PullRequestListGhost rows={7} caption="Loading pull requests…" />
-      ) : listQuery.error && shownCount === 0 ? (
+      ) : listError && shownCount === 0 ? (
         <PullRequestsUnavailableState
-          error={listQuery.error}
+          error={listError}
           refreshing={listQuery.isPending}
           onRetry={() => listQuery.refresh()}
         />
@@ -1210,9 +1294,9 @@ export function PullRequestsPage() {
         />
       )}
 
-      {listQuery.error && shownCount > 0 ? (
+      {listError && shownCount > 0 ? (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-warning/30 bg-warning-surface px-3 py-2 text-xs">
-          <span>{listQuery.error} Showing the last pull requests loaded.</span>
+          <span>{listError} Showing the last pull requests loaded.</span>
           <Button size="xs" variant="outline" onClick={() => listQuery.refresh()}>
             Retry
           </Button>
@@ -1348,23 +1432,13 @@ export function PullRequestsPage() {
     const { shortLabel, singular } = (
       sourceControlClients.findByChangeRequestUrl(url) ?? sourceControlClients.get(undefined)
     ).changeRequest;
-    void writeTextToClipboard(url, `${singular} link`).then(
-      (didCopy) => {
-        if (didCopy)
-          toastManager.add({
-            type: "success",
-            title: `${shortLabel} link copied`,
-            description: url,
-          });
-      },
-      (error) => {
-        toastManager.add({
-          type: "error",
-          title: `Failed to copy ${shortLabel} link`,
-          description: error instanceof Error ? error.message : "An error occurred.",
-        });
-      },
-    );
+    void writeTextToClipboard(url, `${singular} link`).then(undefined, (error) => {
+      toastManager.add({
+        type: "error",
+        title: `Failed to copy ${shortLabel} link`,
+        description: error instanceof Error ? error.message : "An error occurred.",
+      });
+    });
   });
   // Astrolabe: closes the focused pane's pull request, as T3 Code's shortcut closed its panel.
   const closeFocusedFromShortcut = useEffectEvent((event: KeyboardEvent) => {

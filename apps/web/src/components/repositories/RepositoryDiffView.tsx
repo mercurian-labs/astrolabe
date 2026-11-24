@@ -200,10 +200,11 @@ export function RepositoryDiffView({
               {isCollapsed ? <ChevronRightIcon /> : <ChevronDownIcon />}
             </Button>
           )}
-          onRevealSearchMatch={(fileKey) =>
+          onFileCollapsedChange={(fileKey, collapsed) =>
             setCollapsed((current) => {
               const next = new Set(current);
-              next.delete(fileKey);
+              if (collapsed) next.add(fileKey);
+              else next.delete(fileKey);
               return next;
             })
           }

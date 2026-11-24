@@ -4,7 +4,8 @@ import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScroll
 
 import { useNavigation } from "@react-navigation/native";
 import { useState } from "react";
-import { RefreshControl, View } from "react-native";
+import { View } from "react-native";
+import { RefreshControl } from "../../components/ui/RefreshControl";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { reportAtomCommandResult, settlePromise } from "@t3tools/client-runtime/state/runtime";
@@ -73,11 +74,11 @@ function ConfiguredConnectOnboardingRouteScreen() {
         contentInsetAdjustmentBehavior="automatic"
         showsVerticalScrollIndicator={false}
         className="flex-1"
-        contentInset={{ bottom: Math.max(insets.bottom, 18) + 18 }}
         contentContainerStyle={{
           gap: 16,
           paddingHorizontal: 20,
           paddingTop: 16,
+          paddingBottom: Math.max(insets.bottom, 18) + 18,
         }}
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />}
       >

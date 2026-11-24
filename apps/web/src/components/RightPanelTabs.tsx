@@ -17,6 +17,7 @@ import {
 import type {
   ContextMenuItem,
   EnvironmentId,
+  IssueTrackerKind,
   PreviewSessionSnapshot,
   ProjectId,
   PullRequestState,
@@ -36,6 +37,7 @@ import { restrictToFirstScrollableAncestor, restrictToHorizontalAxis } from "@dn
 import { horizontalListSortingStrategy, SortableContext, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
+  CircleDotIcon,
   Smartphone,
   ChevronDown,
   ChevronLeft,
@@ -67,6 +69,8 @@ import { isElectron } from "~/env";
 import type { DesktopPreviewOverlay } from "~/previewStateStore";
 import type { RightPanelSurface } from "~/rightPanelStore";
 import { cn } from "~/lib/utils";
+import { issueStatePresentation } from "~/components/issue/issuePresentation";
+import { issueEnvironment } from "~/state/issues";
 import { resolveShortcutCommand, type ShortcutMatchContext } from "~/keybindings";
 import { readLocalApi } from "~/localApi";
 import { useStableCallback } from "~/hooks/useStableCallback";
@@ -102,6 +106,8 @@ import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
 import { PreviewPanelShell, type PreviewPanelMode } from "./preview/PreviewPanelShell";
 import { FaviconImage } from "./preview/PreviewFaviconIcon";
 import { previewBridge } from "./preview/previewBridge";
+import { dispatchPreviewAction } from "./preview/previewActionBus";
+import { preventThumbButtonFocus, takeThumbButtonNavigation } from "./preview/thumbButtons";
 import { PierreEntryIcon } from "./chat/PierreEntryIcon";
 import { resolvePullRequestState } from "./pullRequest/pullRequestPresentation";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
@@ -630,6 +636,9 @@ export function surfaceTitle(
       return "Canvas";
     case "lineage":
       return "Lineage";
+    case "issue":
+      // A git host numbers its issues; a tracker with keys of its own, such as Linear, names them.
+      return /^\d+$/.test(surface.key) ? `#${surface.key}` : surface.key;
     case "device":
       return surface.title ?? surface.target?.name ?? "Device";
     case "side-chat":
@@ -728,6 +737,8 @@ export function SurfaceIcon({
       return <LayoutDashboard className="size-3 shrink-0" />;
     case "lineage":
       return <GitFork className="size-3 shrink-0" />;
+    case "issue":
+      return <IssueSurfaceIcon surface={surface} environmentId={environmentId} />;
     case "side-chat":
       return <SideChatTabIcon environmentId={environmentId} threadId={surface.threadId} />;
     case "device":
@@ -783,18 +794,13 @@ export function resolvePullRequestTabLink(
   reference: { repository: string; number: number },
 ) {
   if (environmentId === null || host === null) return undefined;
+  // Keys are cached per object, so one target normalizes once instead of once per link.
+  const target = { host, repository: reference.repository, number: reference.number };
   let newest: EnvironmentThreadShell["pullRequests"][number] | undefined;
   for (const thread of threads) {
     if (thread.environmentId !== environmentId) continue;
     for (const link of visibleThreadPullRequests(thread.pullRequests)) {
-      if (
-        !threadPullRequestKeysEqual(link, {
-          host,
-          repository: reference.repository,
-          number: reference.number,
-        })
-      )
-        continue;
+      if (!threadPullRequestKeysEqual(link, target)) continue;
       if (
         newest === undefined ||
         (link.snapshot?.syncedAt ?? "") > (newest.snapshot?.syncedAt ?? "")
@@ -803,6 +809,41 @@ export function resolvePullRequestTabLink(
     }
   }
   return newest;
+}
+
+/** The issue's own state mark, from the detail its panel already reads; a plain dot until then. */
+function IssueSurfaceIcon({
+  surface,
+  environmentId,
+}: {
+  surface: Extract<RightPanelSurface, { kind: "issue" }>;
+  environmentId: EnvironmentId | null;
+}) {
+  const resolvedEnvironmentId =
+    (surface.environmentId as EnvironmentId | undefined) ?? environmentId;
+  const detail = useEnvironmentQuery(
+    resolvedEnvironmentId === null
+      ? null
+      : issueEnvironment.detail({
+          environmentId: resolvedEnvironmentId,
+          input: {
+            projectId: surface.projectId as ProjectId,
+            tracker: surface.tracker as IssueTrackerKind,
+            ...(surface.host ? { host: surface.host } : {}),
+            scope: surface.scope,
+            key: surface.key,
+          },
+        }),
+  ).data;
+  if (detail === null) return <CircleDotIcon className="size-3 shrink-0" />;
+  const presentation = issueStatePresentation(detail.state);
+  return (
+    <presentation.Icon
+      role="img"
+      aria-label={presentation.label}
+      className={cn("size-3 shrink-0", presentation.toneClassName)}
+    />
+  );
 }
 
 function PullRequestSurfaceIcon({
@@ -1002,6 +1043,7 @@ function RightPanelTab(
           onBlur={(event) => onFinishRename(surface.id, event.currentTarget.value)}
           onKeyDown={(event) => {
             event.stopPropagation();
+            if (event.nativeEvent.isComposing || event.keyCode === 229) return;
             if (event.key === "Enter") event.currentTarget.blur();
             if (event.key === "Escape") {
               event.currentTarget.value = title;
@@ -1382,6 +1424,13 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       {...(props.widthStorageKey !== undefined ? { widthStorageKey: props.widthStorageKey } : {})}
       {...(props.defaultWidth !== undefined ? { defaultWidth: props.defaultWidth } : {})}
       {...(props.inlineSize ? { inlineSize: props.inlineSize } : {})}
+      onMouseDown={preventThumbButtonFocus}
+      onMouseUp={(event) =>
+        takeThumbButtonNavigation(
+          event,
+          focusedSurface?.kind === "preview" ? dispatchPreviewAction : undefined,
+        )
+      }
     >
       <div
         className={cn(
@@ -1398,7 +1447,10 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
           ref={attachTabList}
           hideScrollbars
           scrollFade
-          className="min-w-0 flex-1"
+          className={cn(
+            "min-w-0 flex-1",
+            ownsDesktopTitleBar && tabScrollState.hasOverflow && "[-webkit-app-region:no-drag]",
+          )}
           data-right-panel-tab-list
         >
           <div className="flex h-full w-max min-w-full items-center gap-1">
