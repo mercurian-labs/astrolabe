@@ -161,6 +161,9 @@ describe("command permissions", () => {
   it.effect.each([
     { method: WS_METHODS.serverRunStorageCleanup, scope: AuthSettingsWriteScope },
     { method: WS_METHODS.serverReclaimDatabaseSpace, scope: AuthEnvironmentMaintainScope },
+    { method: WS_METHODS.gitClientDiscard, scope: AuthSourceControlWriteScope },
+    { method: WS_METHODS.gitClientCommit, scope: AuthSourceControlWriteScope },
+    { method: WS_METHODS.gitClientUndo, scope: AuthSourceControlWriteScope },
   ])("requires the destination $scope grant for $method", ({ method, scope }) =>
     Effect.scoped(
       Effect.gen(function* () {

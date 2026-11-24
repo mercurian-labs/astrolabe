@@ -276,6 +276,7 @@ import {
 import type { AssistantCitationRequest } from "./chat/AssistantCitationSource";
 import { useCitedHistory } from "./chat/citationProcedure";
 import type { MessagesTimelineHistoryControls } from "./chat/MessagesTimeline";
+import { useTurnReveal } from "./chat/turnReveal";
 import { ThreadTimeline } from "./chat/ThreadTimeline";
 import { NativeChildWorkDialog } from "./chat/NativeChildWorkDialog";
 import { ProviderSubagentBar } from "./chat/ProviderSubagentBar";
@@ -2140,6 +2141,14 @@ export default function ChatView(props: ChatViewProps) {
       : list.scrollToIndex({ index, animated, viewOffset: 24 }));
   };
   const scrollTimelineToMessageStable = useStableCallback(scrollTimelineToMessage);
+  // Astrolabe: a turn another view opened this thread at (the Git tab's) loads and scrolls into view.
+  useTurnReveal({
+    threadKey: activeThreadKey,
+    list: legendListRef,
+    history: threadHistoryControls,
+    loaded: serverVisibleTurnItems,
+    scrollTo: scrollTimelineToMessageStable,
+  });
   // And the turn being read moves the Lineage tab's mark, without re-rendering the chat.
   const reportReadingTurn = (messageId: string | null) => {
     if (activeThreadKey !== null) setReadingTurn(activeThreadKey, messageId);

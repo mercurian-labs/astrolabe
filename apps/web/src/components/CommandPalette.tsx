@@ -81,6 +81,7 @@ import {
   UserPlusIcon,
   WaypointsIcon,
   FilePenLineIcon,
+  GitCommitHorizontalIcon,
 } from "lucide-react";
 import { openThreadFind } from "./chat/threadFindStore";
 import { openThreadChangeRequests } from "./changeRequests/groups/openThreadChangeRequests";
@@ -302,6 +303,7 @@ import {
 } from "~/components/wiki/wikiLinkStep";
 import { commandLineField, queryForField } from "~/whichKey/exCommands";
 import { useExLine } from "~/whichKey/exPalette";
+import { gitTabOpener } from "~/components/gitClient/openGitTab";
 
 const EMPTY_BROWSE_ENTRIES: FilesystemBrowseResult["entries"] = [];
 const ADD_PROJECT_ENTRY_GROUP = "add-project";
@@ -1718,6 +1720,24 @@ function OpenCommandPaletteDialog(props: {
       },
     });
   }
+
+  // Astrolabe: the Git tab of the focused tab's checkout, or of the worktree its chat works in.
+  const openGit = gitTabOpener();
+  actionItems.push({
+    kind: "action",
+    value: "action:open-git",
+    searchTerms: ["git", "commit", "stage", "uncommitted", "push", "pull", "lazygit"],
+    title: "Open Git",
+    description: openGit
+      ? "Changes by turn and commits of this checkout"
+      : "Focus a chat or a project tab first",
+    disabled: openGit === null,
+    icon: <GitCommitHorizontalIcon className={ITEM_ICON_CLASS} />,
+    shortcutCommand: "repository.git",
+    run: async () => {
+      openGit?.();
+    },
+  });
 
   actionItems.push({
     kind: "action",

@@ -2,6 +2,7 @@ import {
   CircleAlertIcon,
   FileDiffIcon,
   GitBranchIcon,
+  GitCommitHorizontalIcon,
   ListTreeIcon,
   PlayIcon,
   ScrollTextIcon,
@@ -49,6 +50,10 @@ const worktreesOf = (
 
 // The local graph's renderer loads with its first tab, never with Repositories itself.
 const RepositoryGraphView = lazy(() => import("./RepositoryGraphView"));
+// The Git client loads with its first tab.
+const GitClientView = lazy(() =>
+  import("../gitClient/GitClientView").then((module) => ({ default: module.GitClientView })),
+);
 // The multi-file views load with their first tab.
 const RepositorySearchView = lazy(() =>
   import("./multibuffer/RepositoryMultibufferViews").then((module) => ({
@@ -125,6 +130,10 @@ export function RepositoryTabView({
           <RepositoryFileView tabKey={tabKey} tab={checkedOut} />
         ) : checkedOut.kind === "diff" ? (
           <RepositoryDiffView tabKey={tabKey} tab={checkedOut} />
+        ) : checkedOut.kind === "git" ? (
+          <Suspense fallback={null}>
+            <GitClientView tabKey={tabKey} tab={checkedOut} />
+          </Suspense>
         ) : (
           <Suspense fallback={null}>
             <RepositoryGraphView tabKey={tabKey} tab={checkedOut} />
@@ -249,32 +258,37 @@ export function useRepositoryTabLabel(tabKey: string): PaneTabLabel | null {
   }
   const holder = listed ? holderOf(listed.worktrees, tab.checkout) : null;
   const label =
-    tab.kind === "graph"
+    tab.kind === "git"
       ? {
-          title: tab.path === null ? "Local graph" : `Local graph · ${fileName(tab.path)}`,
-          icon: <WaypointsIcon className="size-3.5 shrink-0" />,
+          title: `Git · ${checkoutName(tab.checkout, holder)}`,
+          icon: <GitCommitHorizontalIcon className="size-3.5 shrink-0" />,
         }
-      : tab.kind === "file"
+      : tab.kind === "graph"
         ? {
-            title: fileName(tab.path),
-            icon: (
-              <PierreEntryIcon
-                pathValue={tab.path}
-                kind="file"
-                theme={resolvedTheme}
-                className="size-3.5"
-              />
-            ),
+            title: tab.path === null ? "Local graph" : `Local graph · ${fileName(tab.path)}`,
+            icon: <WaypointsIcon className="size-3.5 shrink-0" />,
           }
-        : {
-            title:
-              tab.source === "working-tree"
-                ? "Uncommitted changes"
-                : tab.base === undefined
-                  ? "Branch changes"
-                  : `Against ${tab.base}`,
-            icon: <FileDiffIcon className="size-3.5 shrink-0" />,
-          };
+        : tab.kind === "file"
+          ? {
+              title: fileName(tab.path),
+              icon: (
+                <PierreEntryIcon
+                  pathValue={tab.path}
+                  kind="file"
+                  theme={resolvedTheme}
+                  className="size-3.5"
+                />
+              ),
+            }
+          : {
+              title:
+                tab.source === "working-tree"
+                  ? "Uncommitted changes"
+                  : tab.base === undefined
+                    ? "Branch changes"
+                    : `Against ${tab.base}`,
+              icon: <FileDiffIcon className="size-3.5 shrink-0" />,
+            };
   const place =
     holder === null
       ? listed === null

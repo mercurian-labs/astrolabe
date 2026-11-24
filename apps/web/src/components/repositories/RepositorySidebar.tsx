@@ -530,6 +530,15 @@ function WorktreeSections({
                         source: "branch-range",
                       }),
                     ),
+                  onOpenGit: () =>
+                    workspace.show(
+                      repositoryTabKey({
+                        kind: "git",
+                        environmentId: repository.environmentId,
+                        projectId: repository.id,
+                        checkout: checkoutOf(worktree),
+                      }),
+                    ),
                 }
               : {})}
           />

@@ -73,6 +73,7 @@ import {
   splitPane,
   toggleMaximizedPane,
 } from "~/panes/paneCommands";
+import { gitTabOpener } from "~/components/gitClient/openGitTab";
 import { localGraphOpener } from "~/components/repositories/localGraph";
 import { linkedFileEditToggle } from "~/components/files/linkedFileEditToggle";
 import { problemsOpener } from "~/components/repositories/multibuffer/openMultibuffer";
@@ -674,6 +675,10 @@ function astrolabeCommand(
     }
     case "repository.localGraph":
       return entry("Open local graph", localGraphOpener(panes?.controller ?? null));
+    case "repository.git": {
+      const open = gitTabOpener();
+      return entry(open ? "Open Git" : "No checkout in front", open);
+    }
     case "file.toggleEdit": {
       const toggle = linkedFileEditToggle(focused?.leaf.active ?? null);
       return entry(toggle?.label ?? "Edit file", toggle?.run ?? null);

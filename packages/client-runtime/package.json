@@ -340,6 +340,10 @@
       "types": "./src/state/changeGroups.ts",
       "default": "./src/state/changeGroups.ts"
     },
+    "./state/gitClient": {
+      "types": "./src/state/gitClient.ts",
+      "default": "./src/state/gitClient.ts"
+    },
     "./state/worktrees": {
       "types": "./src/state/worktrees.ts",
       "default": "./src/state/worktrees.ts"

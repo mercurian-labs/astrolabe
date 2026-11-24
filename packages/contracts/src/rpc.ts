@@ -185,6 +185,17 @@ import {
   ProjectWorktreeStatusResult,
   ProjectWorktreeTargetInput,
 } from "./worktrees.ts";
+import {
+  GitClientCommitInput,
+  GitClientCommitResult,
+  GitClientCwdInput,
+  GitClientError,
+  GitClientLogInput,
+  GitClientLogResult,
+  GitClientMessageResult,
+  GitClientPathsInput,
+  GitClientStatus,
+} from "./gitClient.ts";
 import { KeybindingsConfigError } from "./keybindings.ts";
 import {
   ServerRemoveVimMappingInput,
@@ -618,6 +629,16 @@ export const WS_METHODS = {
   worktreesSubscribeChanges: "worktrees.subscribeChanges",
   worktreesStatus: "worktrees.status",
   worktreesMarkOpened: "worktrees.markOpened",
+  gitClientStatus: "gitClient.status",
+  gitClientLog: "gitClient.log",
+  gitClientStage: "gitClient.stage",
+  gitClientUnstage: "gitClient.unstage",
+  gitClientDiscard: "gitClient.discard",
+  gitClientCommit: "gitClient.commit",
+  gitClientGenerateCommitMessage: "gitClient.generateCommitMessage",
+  gitClientUndo: "gitClient.undo",
+  gitClientFetch: "gitClient.fetch",
+  gitClientPull: "gitClient.pull",
 
   terminalOpen: "terminal.open",
   terminalAttach: "terminal.attach",
@@ -1900,6 +1921,58 @@ const WsWorktreesSubscribeChangesRpc = Rpc.make(WS_METHODS.worktreesSubscribeCha
   stream: true,
 });
 
+const gitClientError = Schema.Union([GitClientError, EnvironmentAuthorizationError]);
+const WsGitClientStatusRpc = Rpc.make(WS_METHODS.gitClientStatus, {
+  payload: GitClientCwdInput,
+  success: GitClientStatus,
+  error: gitClientError,
+});
+const WsGitClientLogRpc = Rpc.make(WS_METHODS.gitClientLog, {
+  payload: GitClientLogInput,
+  success: GitClientLogResult,
+  error: gitClientError,
+});
+const WsGitClientStageRpc = Rpc.make(WS_METHODS.gitClientStage, {
+  payload: GitClientPathsInput,
+  success: Schema.Void,
+  error: gitClientError,
+});
+const WsGitClientUnstageRpc = Rpc.make(WS_METHODS.gitClientUnstage, {
+  payload: GitClientPathsInput,
+  success: Schema.Void,
+  error: gitClientError,
+});
+const WsGitClientDiscardRpc = Rpc.make(WS_METHODS.gitClientDiscard, {
+  payload: GitClientPathsInput,
+  success: GitClientMessageResult,
+  error: gitClientError,
+});
+const WsGitClientCommitRpc = Rpc.make(WS_METHODS.gitClientCommit, {
+  payload: GitClientCommitInput,
+  success: GitClientCommitResult,
+  error: gitClientError,
+});
+const WsGitClientGenerateCommitMessageRpc = Rpc.make(WS_METHODS.gitClientGenerateCommitMessage, {
+  payload: GitClientCwdInput,
+  success: GitClientMessageResult,
+  error: gitClientError,
+});
+const WsGitClientUndoRpc = Rpc.make(WS_METHODS.gitClientUndo, {
+  payload: GitClientCwdInput,
+  success: GitClientMessageResult,
+  error: gitClientError,
+});
+const WsGitClientFetchRpc = Rpc.make(WS_METHODS.gitClientFetch, {
+  payload: GitClientCwdInput,
+  success: Schema.Void,
+  error: gitClientError,
+});
+const WsGitClientPullRpc = Rpc.make(WS_METHODS.gitClientPull, {
+  payload: GitClientCwdInput,
+  success: VcsPullResult,
+  error: gitClientError,
+});
+
 const WsReviewGetRecentFilesRpc = Rpc.make(WS_METHODS.reviewGetRecentFiles, {
   payload: ReviewRecentFilesInput,
   success: ReviewRecentFilesResult,
@@ -3051,6 +3124,16 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsWorktreesSubscribeChangesRpc,
   WsWorktreesStatusRpc,
   WsWorktreesMarkOpenedRpc,
+  WsGitClientStatusRpc,
+  WsGitClientLogRpc,
+  WsGitClientStageRpc,
+  WsGitClientUnstageRpc,
+  WsGitClientDiscardRpc,
+  WsGitClientCommitRpc,
+  WsGitClientGenerateCommitMessageRpc,
+  WsGitClientUndoRpc,
+  WsGitClientFetchRpc,
+  WsGitClientPullRpc,
   WsReviewGetRecentFilesRpc,
   WsServerUpsertVimMappingRpc,
   WsServerRemoveVimMappingRpc,
