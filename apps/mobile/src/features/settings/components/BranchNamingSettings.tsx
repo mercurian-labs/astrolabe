@@ -87,9 +87,9 @@ export function BranchNamingSettings(props: {
         <View className="gap-2 px-4 py-3">
           <Text className="text-sm text-foreground-muted">
             {gt("Use {short} or {slash} for {example}. Leave empty for no prefix.", {
-              short: "t3",
-              slash: "t3/",
-              example: "t3/add-search",
+              short: "astrolabe",
+              slash: "astrolabe/",
+              example: "astrolabe/add-search",
             })}
           </Text>
           <AppTextInput

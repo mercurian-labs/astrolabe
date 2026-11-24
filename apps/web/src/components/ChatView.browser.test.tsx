@@ -212,51 +212,35 @@ it("opens a linked Linear issue from an inactive thread's sidebar badge", async 
     // AppRoot brings its own router.
     router: false,
   });
-  setTimeout(() => console.log("DBG BODY", document.body.innerText.slice(0, 2500)), 9000);
   const badge = page.getByRole("button", {
     name: `Issue ${issue.displayKey}: ${issue.title}, Open`,
   });
-  console.log("DBG step 1");
   await expect.element(badge).toBeVisible();
   expect(badge.element().querySelector("svg")).toHaveClass(/text-emerald-600/);
   const groupedBadge = page.getByRole("button", { name: "2 linked issues" });
-  console.log("DBG step 2");
   await vi.waitFor(() =>
     expect(groupedBadge.element().querySelector("svg")).toHaveClass(/text-emerald-600/),
   );
-  console.log("DBG step 3");
   await userEvent.hover(badge);
   const issueName = `Issue ${issue.displayKey}: ${liveTitle}`;
   const previewLink = page.getByRole("link", { name: issueName });
-  console.log("DBG step 4");
   await userEvent.hover(previewLink.getByText("sam", { exact: true }));
-  console.log("DBG step 5");
   await expect.element(previewLink).toBeVisible();
   const contextMenu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
-  console.log("DBG step 6");
   await act(() => previewLink.element().dispatchEvent(contextMenu));
   expect(contextMenu.defaultPrevented).toBe(false);
-  console.log("DBG step 7");
   await userEvent.click(badge);
   const issueRow = page
     .getByRole("region", { name: "Linked issues" })
     .getByRole("link", { name: issueName });
-  console.log("DBG step 8");
   await expect.element(issueRow.getByRole("img", { name: "Open" })).toBeVisible();
-  console.log("DBG step 9");
   await expect.element(issueRow.getByRole("img", { name: "3 comments" })).toBeVisible();
-  console.log("DBG step 10");
   await expect.element(issueRow.getByRole("img", { name: "Linear" })).toBeVisible();
-  console.log("DBG step 11");
   await expect.element(issueRow.getByText(issue.scope, { exact: true })).toBeVisible();
-  console.log("DBG step 12");
   await userEvent.click(issueRow);
   expect(router.history.location.pathname).toBe(`/${ENVIRONMENT_ID}/${linked.id}`);
-  console.log("DBG step 13");
   await expect.element(page.getByRole("heading", { name: liveTitle })).toBeVisible();
-  console.log("DBG step 14");
   await act(() => useRightPanelStore.getState().close(scopeThreadRef(ENVIRONMENT_ID, linked.id)));
-  console.log("DBG step 15");
   await expect
     .element(
       page.getByRole("region", { name: "Thread details" }).getByRole("link", {
@@ -665,6 +649,7 @@ it("opening a thread or returning to the window on a touch tablet does not focus
     router: false,
   });
   const composer = page.getByTestId("composer-editor");
+  setTimeout(() => console.log("DBG URL", router.history.location.pathname, "BODY", document.body.innerText.slice(0, 2500)), 6000);
   await expect.element(page.getByText(`Answer 0 for ${first.id}.`)).toBeVisible();
 
   // Fake frames hold the next thread entry's focus frame until the test advances it.
