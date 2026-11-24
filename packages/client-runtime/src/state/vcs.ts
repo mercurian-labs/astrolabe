@@ -17,6 +17,7 @@ import { Atom, AtomRegistry } from "effect/reactivity";
 
 import {
   createEnvironmentRpcCommand,
+  createEnvironmentRpcQueryAtomFamily,
   createEnvironmentRpcSubscriptionAtomFamily,
   createEnvironmentSubscriptionAtomFamily,
 } from "./runtime.ts";
@@ -353,6 +354,11 @@ export function createVcsEnvironmentAtoms<R, E>(
       label: "environment-data:vcs:base-text",
       tag: WS_METHODS.subscribeVcsBaseText,
       idleTtlMs: VCS_STATUS_IDLE_TTL_MS,
+    }),
+    /** Astrolabe: the turn behind each line of a file, read again each time it is asked for. */
+    intentBlame: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:vcs:intent-blame",
+      tag: WS_METHODS.vcsIntentBlame,
     }),
     worktreeSetup: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
       label: "environment-data:vcs:worktree-setup",

@@ -12,7 +12,7 @@ import {
 } from "@mercurian/editor/code/editing";
 import { gitChanges, setGitBase } from "@mercurian/editor/git";
 import { livePreview } from "@mercurian/editor/markdown";
-import { outline, type OutlineItem } from "@mercurian/editor/outline";
+import { outline, outlinePath, type OutlineItem } from "@mercurian/editor/outline";
 import { diagnosticsUi } from "@mercurian/editor/lsp/diagnostics";
 import { environmentCompletion } from "@mercurian/editor/lsp/completion";
 import { environmentHover } from "@mercurian/editor/lsp/hover";
@@ -58,7 +58,20 @@ import {
   type LanguageServerId,
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
-import { BotIcon, GitBranchIcon, SquarePenIcon, WaypointsIcon, WrapTextIcon } from "lucide-react";
+import {
+  BotIcon,
+  GitBranchIcon,
+  MessageSquareQuoteIcon,
+  SquarePenIcon,
+  WaypointsIcon,
+  WrapTextIcon,
+} from "lucide-react";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import type { AssistantCitation, IntentBlameTurn } from "@t3tools/contracts";
+import { assistantCitationNavigation } from "~/lib/assistantCitationNavigation";
+import { buildThreadRouteParams } from "~/threadRoutes";
+import { IntentBlamePanel } from "./IntentBlamePanel";
+import { type IntentBlameAsk, plainQuote, registerIntentBlameAsker } from "./intentBlame";
 import { useAtomMount } from "@effect/atom-react";
 import type {
   DocumentSession,
@@ -413,6 +426,109 @@ function RepositoryFile({
   const showGraph = useStableCallback(() => {
     if ("projectId" in tab) panes.update((arrangement) => openLocalGraph(arrangement, tab));
   });
+  const [why, setWhy] = useState<IntentBlameAsk | null>(null);
+  const [staleWhy, setStaleWhy] = useState<number | null>(null);
+  // One condition for the header, the menu and the panel: the editor is what shows.
+  const canAskWhy = whole === null && !renderedForm.shown;
+  const askWhy = useStableCallback(() => {
+    const view = editorView.current;
+    if (!view || !canAskWhy) return;
+    const { doc } = view.state;
+    const head = view.state.selection.main.head;
+    const inner = outlinePath(view.state, head).at(-1);
+    const text = doc.toString();
+    const unsaved = !fromDisk && session.getState().unsaved;
+    appAtomRegistry.refresh(
+      vcsEnvironment.intentBlame({
+        environmentId,
+        input: unsaved ? { cwd, path, contents: text } : { cwd, path },
+      }),
+    );
+    setWhy({
+      id: (why?.id ?? 0) + 1,
+      line: doc.lineAt(head).number,
+      item: inner
+        ? {
+            name: inner.name,
+            kind: inner.kind,
+            startLine: doc.lineAt(inner.from).number,
+            endLine: doc.lineAt(Math.max(inner.from, inner.to - 1)).number,
+          }
+        : null,
+      text,
+      unsaved,
+    });
+  });
+  const closeWhy = useStableCallback(() => {
+    setWhy(null);
+    editorView.current?.focus();
+  });
+  const fileRoot = useRef<HTMLDivElement | null>(null);
+  // A native listener: an ancestor stops Escape before React's root listener would see it.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- listens for Escape on the file's DOM while the panel is open
+  useEffect(() => {
+    const root = fileRoot.current;
+    if (!root || why === null) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      // The editor prevents an Escape it used itself, such as closing completions or search.
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      event.preventDefault();
+      closeWhy();
+    };
+    root.addEventListener("keydown", onKeyDown);
+    return () => root.removeEventListener("keydown", onKeyDown);
+  }, [why, closeWhy]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the asked-about line in view above the panel that just took the editor's lower part
+  useEffect(() => {
+    const view = editorView.current;
+    if (!view || why === null) return;
+    const head = view.state.selection.main.head;
+    view.dispatch({ effects: EditorView.scrollIntoView(head, { y: "center" }) });
+  }, [why]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- marks the answer out of date when the document's text moves on from the one asked about, or the unsaved text it answered is saved
+  useEffect(() => {
+    if (why === null || fromDisk) return;
+    const offVersion = session.onVersion(() => {
+      if (session.text() !== why.text) setStaleWhy(why.id);
+    });
+    // An answer about unsaved text is out of date once that text is saved.
+    const offState = why.unsaved
+      ? session.subscribe(() => {
+          if (!session.getState().unsaved) setStaleWhy(why.id);
+        })
+      : () => undefined;
+    return () => {
+      offVersion();
+      offState();
+    };
+  }, [why, fromDisk, session]);
+  const openTurn = useStableCallback((turn: IntentBlameTurn) => {
+    // Opens on the agent's words the panel quoted, highlighted; the request is just above them.
+    const said =
+      turn.beforeChangeMessageId !== null && turn.beforeChange !== null
+        ? { messageId: turn.beforeChangeMessageId, text: turn.beforeChange }
+        : turn.closingMessageId !== null && turn.closing !== null
+          ? { messageId: turn.closingMessageId, text: turn.closing }
+          : null;
+    const quote = said === null ? null : plainQuote(said.text);
+    if (said !== null && quote !== null) {
+      const citation: AssistantCitation = {
+        version: 1,
+        environmentId,
+        threadId: turn.threadId,
+        messageId: said.messageId,
+        text: quote,
+        start: 0,
+        end: quote.length,
+        prefix: "",
+        suffix: "",
+      };
+      void navigate(assistantCitationNavigation(citation, null));
+      return;
+    }
+    const ref = scopeThreadRef(environmentId, turn.threadId);
+    void navigate({ to: "/$environmentId/$threadId", params: buildThreadRouteParams(ref) });
+  });
   const [contextMenu] = useState<CodeContextMenuHost>(() => ({
     show: async (entries, at) => (await readLocalApi()?.contextMenu.show(entries, at)) ?? null,
     readClipboard: () => readTextFromClipboard(),
@@ -422,6 +538,7 @@ function RepositoryFile({
         label: "Copy Relative Path",
         run: () => void writeTextToClipboard(path).catch(() => undefined),
       },
+      { label: "Why Is This Here?", run: askWhy },
       // The code index, and so a local graph, is a project's.
       ...("projectId" in tab ? [{ label: "Open Local Graph", run: showGraph }] : []),
     ],
@@ -540,7 +657,7 @@ function RepositoryFile({
       />
     );
   return (
-    <div className="@container/file flex min-h-0 flex-1 flex-col">
+    <div ref={fileRoot} className="@container/file flex min-h-0 flex-1 flex-col">
       <TabHeader.Root>
         <FileBreadcrumbs path={path} trail={trail} />
         <TabHeader.Status
@@ -602,6 +719,11 @@ function RepositoryFile({
               <WrapTextIcon />
             </TabHeader.Action>
           )}
+          {canAskWhy ? (
+            <TabHeader.Action label="Why is this here?" onClick={askWhy}>
+              <MessageSquareQuoteIcon />
+            </TabHeader.Action>
+          ) : null}
           {"projectId" in tab ? (
             <span className="contents @max-[26rem]/file:hidden">
               <TabHeader.Action label="Open local graph" onClick={showGraph}>
@@ -651,6 +773,7 @@ function RepositoryFile({
           <FileEditor
             onView={(view) => {
               editorView.current = view;
+              if (view) registerIntentBlameAsker(view, askWhy);
             }}
             tabKey={tabKey}
             checkout={tab}
@@ -671,6 +794,18 @@ function RepositoryFile({
           />
         </div>
       )}
+      {why !== null && canAskWhy ? (
+        <IntentBlamePanel
+          environmentId={environmentId}
+          cwd={cwd}
+          path={path}
+          ask={why}
+          stale={staleWhy === why.id}
+          onAskAgain={askWhy}
+          onOpenTurn={openTurn}
+          onClose={closeWhy}
+        />
+      ) : null}
     </div>
   );
 }

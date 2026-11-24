@@ -137,6 +137,7 @@ import * as VcsProcess from "./vcs/VcsProcess.ts";
 import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
 import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
 import * as VcsBaseText from "./vcs/VcsBaseText.ts";
+import * as IntentBlame from "./vcs/IntentBlame.ts";
 import * as ProjectCloneTracker from "./project/ProjectCloneTracker.ts";
 import * as GitWorkflowService from "./git/GitWorkflowService.ts";
 import * as ReviewService from "./review/ReviewService.ts";
@@ -725,6 +726,8 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   ReplayMarkers.layer,
   // Astrolabe: an open file's base texts, which read the checkout's status and its turns.
   VcsBaseText.layer,
+  // Astrolabe: the turn behind each line of an open file.
+  IntentBlame.layer,
   // Astrolabe: tells language servers of the files the checkout's signals show changed.
   WorkspaceChangeSignals.layer,
   // Astrolabe: what reverting a file the user edited to the agent's version would throw away.

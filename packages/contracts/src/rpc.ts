@@ -498,6 +498,7 @@ import {
 } from "./sourceControl.ts";
 import { VcsError } from "./vcs.ts";
 import { VcsBaseTextError, VcsBaseTextInput, VcsBaseTextResult } from "./vcsBaseText.ts";
+import { IntentBlameError, IntentBlameInput, IntentBlameResult } from "./intentBlame.ts";
 import {
   DocumentDiscardInput,
   DocumentError,
@@ -700,6 +701,8 @@ export const WS_METHODS = {
   // Astrolabe: the text an open file's change markers compare against, and its changes.
   vcsReadBaseText: "vcs.readBaseText",
   subscribeVcsBaseText: "subscribeVcsBaseText",
+  // Astrolabe: the turn behind each line of a file.
+  vcsIntentBlame: "vcs.intentBlame",
 
   // Astrolabe: local wikis.
   wikiList: "wiki.list",
@@ -2309,6 +2312,12 @@ const WsSubscribeVcsBaseTextRpc = Rpc.make(WS_METHODS.subscribeVcsBaseText, {
   stream: true,
 });
 
+const WsVcsIntentBlameRpc = Rpc.make(WS_METHODS.vcsIntentBlame, {
+  payload: IntentBlameInput,
+  success: IntentBlameResult,
+  error: Schema.Union([IntentBlameError, EnvironmentAuthorizationError]),
+});
+
 // Astrolabe: local wikis. Every change is pushed on `wiki.subscribe` so open views read again.
 const WsWikiListRpc = Rpc.make(WS_METHODS.wikiList, {
   payload: Schema.Struct({}),
@@ -3057,6 +3066,7 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsServerSetVimOptionRpc,
   WsVcsReadBaseTextRpc,
   WsSubscribeVcsBaseTextRpc,
+  WsVcsIntentBlameRpc,
   WsWikiListRpc,
   WsWikiSubscribeRpc,
   WsWikiRegisterRpc,

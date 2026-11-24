@@ -215,6 +215,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.reviewGetRecentFiles]: AuthFilesystemReadScope,
   [WS_METHODS.vcsReadBaseText]: AuthFilesystemReadScope,
   [WS_METHODS.subscribeVcsBaseText]: AuthFilesystemReadScope,
+  [WS_METHODS.vcsIntentBlame]: AuthFilesystemReadScope,
   [WS_METHODS.changeGroupsList]: AuthOrchestrationReadScope,
   [WS_METHODS.changeGroupsUpdate]: AuthOrchestrationOperateScope,
   // Astrolabe: worktree writes come from CLIENT_GUARDED_RPC_SCOPES.
@@ -299,6 +300,10 @@ const requiredScopesForRpcCall = (
 ): ReadonlyArray<AuthEnvironmentScope> => {
   if (method === WS_METHODS.serverRetryResourceTelemetry) {
     return [AuthEnvironmentMaintainScope, AuthDiagnosticsReadScope];
+  }
+  // Astrolabe: the answer quotes the threads' requests and the agent's words.
+  if (method === WS_METHODS.vcsIntentBlame) {
+    return [AuthFilesystemReadScope, AuthOrchestrationReadScope];
   }
   if (method === WS_METHODS.assetsCreateUrl) {
     const { resource } = decodeAssetCreateUrlInput(payload);

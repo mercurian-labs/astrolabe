@@ -468,6 +468,7 @@ const ASTROLABE_COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
   "multibuffer.problems": "Projects: Show Problems",
   "projectSearch.openInEditor": "Open Search Results in Editor",
   "repository.localGraph": "Projects: Open Local Graph",
+  "repository.whyIsThisHere": "Why Is This Here?",
   "tab.toggleLink": "Tabs: Link or Unlink Tab",
   "tab.newLinked": "Tabs: New Linked Tab",
 };

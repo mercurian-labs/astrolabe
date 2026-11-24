@@ -229,6 +229,53 @@ describe("RPC scope middleware", () => {
   );
 });
 
+it.effect.each([
+  { scopes: [AuthFilesystemReadScope], missing: AuthOrchestrationReadScope },
+  { scopes: [AuthOrchestrationReadScope], missing: AuthFilesystemReadScope },
+])(
+  "keeps intent blame, which reads a file and quotes its threads, from a grant without $missing",
+  ({ scopes, missing }) =>
+    Effect.gen(function* () {
+      const group = WsRpcGroup.omit(
+        ...[...WsRpcGroup.requests.keys()].filter(
+          (
+            tag,
+          ): tag is Exclude<keyof typeof RPC_REQUIRED_SCOPES, typeof WS_METHODS.vcsIntentBlame> =>
+            tag !== WS_METHODS.vcsIntentBlame,
+        ),
+      );
+      let handled = 0;
+      const answer = { spans: [], turns: [], changedBy: 0, missingCheckpoints: 0 };
+      const client = yield* RpcTest.makeClient(group).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            group.toLayerHandler(WS_METHODS.vcsIntentBlame, () =>
+              Effect.sync(() => {
+                handled++;
+                return answer;
+              }),
+            ),
+            RpcAuthorization.layer(scopes),
+          ),
+        ),
+      );
+      const input = { cwd: "/repo", path: "file.ts" };
+      expect(yield* client[WS_METHODS.vcsIntentBlame](input).pipe(Effect.flip)).toMatchObject({
+        requiredPermission: missing,
+      });
+      expect(handled).toBe(0);
+      const both = yield* RpcTest.makeClient(group).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            group.toLayerHandler(WS_METHODS.vcsIntentBlame, () => Effect.succeed(answer)),
+            RpcAuthorization.layer([AuthFilesystemReadScope, AuthOrchestrationReadScope]),
+          ),
+        ),
+      );
+      expect(yield* both[WS_METHODS.vcsIntentBlame](input)).toEqual(answer);
+    }).pipe(Effect.scoped),
+);
+
 it.effect.each([WS_METHODS.subscribeVcsBranch, WS_METHODS.subscribeVcsStatus] as const)(
   "enforces read permission on stream %s",
   (method) =>
