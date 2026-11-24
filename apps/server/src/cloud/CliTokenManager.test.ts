@@ -38,8 +38,8 @@ interface Reply {
 
 interface AuthServer {
   readonly requests: Array<RecordedRequest>;
-  /** Device token replies, consumed in order; the last one repeats. */
-  readonly deviceTokenReplies: Array<Reply>;
+  /** Device token replies, consumed in order; the last one repeats. `stall` never answers. */
+  readonly deviceTokenReplies: Array<Reply | "stall">;
   /** `/token` replies, consumed in order; the last one repeats. */
   readonly relayTokenReplies: Array<Reply>;
 }
@@ -71,14 +71,14 @@ const relayTokenIssued = (expSeconds: number): Reply => ({
   body: JSON.stringify({ token: relayToken(expSeconds) }),
 });
 
-const nextReply = (replies: Array<Reply>, fallback: Reply) =>
+const nextReply = <R>(replies: Array<R>, fallback: Reply) =>
   (replies.length > 1 ? replies.shift() : replies[0]) ?? fallback;
 
 const layerAuthServer = (server: AuthServer) =>
   Layer.succeed(
     HttpClient.HttpClient,
     HttpClient.make((request) =>
-      Effect.sync(() => {
+      Effect.suspend(() => {
         const path = new URL(request.url).pathname;
         const text =
           request.body._tag === "Uint8Array" ? new TextDecoder().decode(request.body.body) : "";
@@ -95,12 +95,15 @@ const layerAuthServer = (server: AuthServer) =>
               : path === "/api/auth/get-session"
                 ? { status: 200, body: JSON.stringify({ user: { email: "theo@example.test" } }) }
                 : nextReply(server.relayTokenReplies, { status: 401, body: "{}" });
-        return HttpClientResponse.fromWeb(
-          request,
-          new Response(reply.body, {
-            status: reply.status,
-            headers: { "content-type": "application/json" },
-          }),
+        if (reply === "stall") return Effect.never;
+        return Effect.succeed(
+          HttpClientResponse.fromWeb(
+            request,
+            new Response(reply.body, {
+              status: reply.status,
+              headers: { "content-type": "application/json" },
+            }),
+          ),
         );
       }),
     ),
@@ -230,6 +233,24 @@ it.layer(NodeServices.layer)("CliTokenManager.deviceAuthorizationLogin", (it) =>
       yield* TestClock.adjust(Duration.seconds(1));
       const { token } = yield* Fiber.join(fiber);
       assert.lengthOf(polls(), 2);
+      assert.equal(token.refreshToken, "session-1");
+    }),
+  );
+
+  it.effect("retries a poll that never answers instead of waiting out the device code", () =>
+    Effect.gen(function* () {
+      const server: AuthServer = {
+        requests: [],
+        deviceTokenReplies: ["stall", sessionGranted],
+        relayTokenReplies: [relayTokenIssued(900)],
+      };
+
+      const fiber = yield* startLogin(server).pipe(Effect.forkChild);
+      // 5 s interval, a 10 s request timeout, then the 10 s slowed-down interval.
+      yield* TestClock.adjust(Duration.seconds(25));
+
+      assert.lengthOf(requestsTo(server.requests, "/api/auth/device/token"), 2);
+      const { token } = yield* Fiber.join(fiber);
       assert.equal(token.refreshToken, "session-1");
     }),
   );

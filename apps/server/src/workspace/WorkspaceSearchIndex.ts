@@ -57,7 +57,7 @@ const WORKSPACE_INDEX_MAX_ENTRIES = 25_000;
 const WORKSPACE_INDEX_PAGE_SIZE = WORKSPACE_INDEX_MAX_ENTRIES + 2;
 const WORKSPACE_INDEX_SCAN_TIMEOUT = "15 seconds";
 const WORKSPACE_INDEX_SCAN_TIMEOUT_MS = 15_000;
-const WORKSPACE_INDEX_IDLE_TTL = "15 minutes";
+export const WORKSPACE_INDEX_IDLE_TTL = "15 minutes";
 export const CONTENT_SEARCH_MAX_MATCHES_PER_FILE = 100;
 const GIT_GREP_MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
 // fff's lineContent cap; matches past it are reported without ranges.
@@ -313,6 +313,28 @@ function buildContentSearchQuery(input: IndexedContentSearchInput): {
     searchQuery: constraints.length > 0 ? `${constraints.join(" ")} ${query}` : query,
     regexMode: input.useRegex,
   };
+}
+
+const ASCII_WORD = /^\w+$/;
+
+// A whole-word search for an ASCII word asks fff for the word itself, so substring hits are dropped
+// natively instead of filling pages with lines the JS check then discards. `-u` keeps `\b` and `i`
+// to ASCII: plain search does not fold `ſ` or `K`, and any non-ASCII neighbour stays a candidate.
+function buildWholeWordPattern(query: string, caseSensitive: boolean): string {
+  return `(?${caseSensitive ? "" : "i"}-u)\\b${query}\\b`;
+}
+
+// fff's ranges for that pattern are not used: the JS word check decides, on every hit in the line.
+function findWordRanges(
+  line: string,
+  word: string,
+  caseSensitive: boolean,
+): Array<{ readonly start: number; readonly end: number }> {
+  // No `u` flag: with it, `i` would fold `ſ` and `K` onto ASCII letters.
+  return Array.from(line.matchAll(new RegExp(word, caseSensitive ? "g" : "gi")), (match) => ({
+    start: match.index,
+    end: match.index + match[0].length,
+  }));
 }
 
 function mapContentMatchRanges(
@@ -1338,9 +1360,12 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
     if (isIgnoredPath(ignoredPaths, match.relativePath, hostIsWindows)) return null;
     const path = toPosixPath(match.relativePath, hostIsWindows);
     if (input.pathFilter && !input.pathFilter.matches(path)) return null;
-    const matchRanges = mapContentMatchRanges(match.lineContent, match.matchRanges).filter(
-      (range) => !input.wholeWord || isWholeWordRange(match.lineContent, range),
-    );
+    const wholeWordPrefilter = input.wholeWord && !input.useRegex && ASCII_WORD.test(input.query);
+    const matchRanges = (
+      wholeWordPrefilter
+        ? findWordRanges(match.lineContent, input.query, input.caseSensitive)
+        : mapContentMatchRanges(match.lineContent, match.matchRanges)
+    ).filter((range) => !input.wholeWord || isWholeWordRange(match.lineContent, range));
     // fff reports hits past its 512-char lineContent cap with no ranges, so whole words can't be verified there.
     if (input.wholeWord && matchRanges.length === 0) return null;
     return {
@@ -1391,7 +1416,11 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
       );
       contentIndexPending = false;
     }
-    let { searchQuery, regexMode } = buildContentSearchQuery(input);
+    // fff reads glob and path syntax out of a query even in regex mode, so only a bare word qualifies.
+    const wholeWordPrefilter = input.wholeWord && !input.useRegex && ASCII_WORD.test(input.query);
+    let { searchQuery, regexMode } = wholeWordPrefilter
+      ? { searchQuery: buildWholeWordPattern(input.query, input.caseSensitive), regexMode: true }
+      : buildContentSearchQuery(input);
     // Grep cursors advance per file; post-filters need enough raw candidates before advancing.
     const rawPageSize =
       input.wholeWord || input.pathFilter !== null

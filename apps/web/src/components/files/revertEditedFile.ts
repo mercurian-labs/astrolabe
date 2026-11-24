@@ -1,3 +1,4 @@
+import { runAtomCommand } from "@t3tools/client-runtime/state/runtime";
 /* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { isolateHistory } from "@codemirror/commands";
 import { EditorState, Transaction } from "@codemirror/state";
@@ -162,10 +163,15 @@ export async function revertEditedFile(
   revert: { readonly text: string; readonly missing: boolean },
 ): Promise<FileRevertOutcome> {
   if (revert.missing && openFileEditor(target.environmentId, target.cwd, target.path) === null) {
-    const written = await projectEnvironment.writeFile.run(target.registry, {
-      environmentId: target.environmentId,
-      input: { cwd: target.cwd, relativePath: target.path, contents: revert.text },
-    });
+    const written = await runAtomCommand(
+      target.registry,
+      projectEnvironment.writeFile,
+      {
+        environmentId: target.environmentId,
+        input: { cwd: target.cwd, relativePath: target.path, contents: revert.text },
+      },
+      { reportFailure: false, reportDefect: false },
+    );
     if (!AsyncResult.isSuccess(written))
       return { ok: false, message: "The file could not be recreated." };
     target.onSaved();

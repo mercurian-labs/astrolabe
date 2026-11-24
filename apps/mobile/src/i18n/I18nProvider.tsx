@@ -1,14 +1,19 @@
-import "./intl-polyfills";
-import { resolveLocale } from "@t3tools/client-runtime/locales";
+import { resolveLocaleSelection } from "@t3tools/client-runtime/locales";
 import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { GTProvider, initializeGT, useLocale } from "gt-react-native";
-import { useDeferredValue, useEffect, type ReactNode } from "react";
-import { View } from "react-native";
+import { createContext, use, useDeferredValue, useEffect, useMemo, type ReactNode } from "react";
+import { Platform, TurboModuleRegistry, View, type TurboModule } from "react-native";
 
 import { mobilePreferencesAtom } from "../state/preferences";
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES } from "./locales";
 import { setActiveLocale } from "./messages";
+
+const FormattingLocaleContext = createContext(DEFAULT_LOCALE);
+
+export function useFormattingLocale(): string {
+  return use(FormattingLocaleContext);
+}
 
 // Committed catalogs, so forks and offline installs never reach GT's CDN. English is the source.
 // Required on demand: Metro runs every statically imported module at startup, and only one
@@ -33,6 +38,22 @@ initializeGT({
   cacheExpiryTime: null,
 });
 
+// Read the device languages from gt-react-native's own native module: GT's getLocale() prefers
+// the last locale passed to GTProvider, which it persists, so it can't express "system".
+function readSystemLocales(): ReadonlyArray<string> {
+  try {
+    const locales =
+      TurboModuleRegistry.get<{ getNativeLocales(): string[] } & TurboModule>(
+        "GtReactNative",
+      )?.getNativeLocales() ?? [];
+    // On iOS the first entry is NSLocale.currentLocale, whose language is the app's bundle
+    // localization (English only), not the user's; preferredLanguages follow it.
+    return Platform.OS === "ios" ? locales.slice(1) : locales;
+  } catch {
+    return [];
+  }
+}
+
 export function useLanguagePreference(): string {
   const preferences = useAtomValue(mobilePreferencesAtom);
   return AsyncResult.isSuccess(preferences)
@@ -40,18 +61,31 @@ export function useLanguagePreference(): string {
     : DEFAULT_LOCALE;
 }
 
-/** Translates the app into the saved language; Astrolabe resolves "system" to English. Mounted once in App. */
+/** Translates the app into the saved language; Astrolabe keeps "system" in English. Mounted once in App. */
 export function I18nProvider(props: { readonly children: ReactNode }) {
+  const language = useLanguagePreference();
+  const selected = resolveLocaleSelection(
+    language,
+    readSystemLocales(),
+    SUPPORTED_LOCALES,
+    DEFAULT_LOCALE,
+  );
+  // Astrolabe ships in English: "system" picks no catalog, though formatting follows the device.
+  const catalogLocale = SUPPORTED_LOCALES.includes(language)
+    ? selected.catalogLocale
+    : DEFAULT_LOCALE;
+  const { formattingLocale } = selected;
   // GT suspends while a locale's catalog loads. Deferring the switch keeps the current language
   // on screen until then, instead of GT's full-screen spinner.
-  const locale = useDeferredValue(
-    // Astrolabe ships in English: "system" resolves to it rather than the device's language.
-    resolveLocale(useLanguagePreference(), [], SUPPORTED_LOCALES, DEFAULT_LOCALE),
+  const selection = useDeferredValue(
+    useMemo(() => ({ catalogLocale, formattingLocale }), [catalogLocale, formattingLocale]),
   );
   return (
-    <GTProvider locale={locale} fallback={<View className="flex-1 bg-screen" />}>
+    <GTProvider locale={selection.catalogLocale} fallback={<View className="flex-1 bg-screen" />}>
       <ActiveLocale />
-      {props.children}
+      <FormattingLocaleContext value={selection.formattingLocale}>
+        {props.children}
+      </FormattingLocaleContext>
     </GTProvider>
   );
 }

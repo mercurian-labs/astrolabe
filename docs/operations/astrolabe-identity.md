@@ -134,6 +134,14 @@ Astrolabe's own feature modules rarely conflict. These upstream files carry its 
   `McpSchema.EnabledWhen: hiddenFromOutsideClients`, or `McpToolAccess.toLayer` dies at startup.
 - `apps/server/src/mcp/toolkits/toolSearch/tools.ts`: the description names Astrolabe's tool
   prefixes so a search for one stays under the result cap.
+- `apps/server/src/mcp/toolkits/pullRequests/handlers.ts`: `pull_request_merge` and
+  `pull_request_update` refuse a host wiki's change request, which merges through the wiki.
+- `packages/client-runtime/src/relay/mercurianAccountSource.ts`: the cloud account service waits
+  for a `client` with an id before it trusts a sign-out (Clerk's offline guard), so the Mercurian
+  source sends one whenever its session is loaded.
+- Language: Astrolabe ships in English. `vp run i18n:generate`, then
+  `node scripts/astrolabe-rekey-catalogs.ts --upstream <ref>`, carries upstream's translations onto
+  rebranded keys; Astrolabe-only UI files carry a file-level `no-untranslated-copy` disable.
 - `packages/client-runtime/src/relay/cloudAccountService.ts` and
   `apps/mobile/src/features/cloud/cloudAccountService.ts`: upstream types the account service on
   Clerk. Astrolabe adapts it to the Mercurian account and keeps `@clerk/*` out of the dependency
@@ -144,8 +152,10 @@ Astrolabe's own feature modules rarely conflict. These upstream files carry its 
 - `apps/server/src/os-jank.ts` (`resolveBaseDir`), `apps/server/src/cli/browser.ts`,
   `apps/desktop/src/app/DesktopStatePaths.ts`, `scripts/dev-runner.ts` (`DEFAULT_T3_HOME`),
   `scripts/install.sh`, `scripts/install.ps1`: the `~/.astrolabe` default.
-- `apps/server/src/device/sshDeviceScript.ts`, `apps/desktop/src/wsl/DesktopWslEnvironment.ts`:
+- `apps/server/src/device/sshDeviceScript.ts`, `apps/desktop/src/wsl/DesktopWslEnvironment.ts`,
+  `packages/ssh/src/tunnel.ts` (the launch scripts, including the dangling-symlink guard):
   remote-host folders under `~/.astrolabe`.
+- `scripts/dev-runner.ts`: the "explicit live home" check compares against `~/.astrolabe`.
 - `apps/server/src/project/AgentSessionScanner.ts`: recognises both `.astrolabe/worktrees` and
   `.t3/worktrees`.
 - Left on purpose: `apps/server/scripts/migrate-dev-db.ts`, `t3-sqlite-state.ts` and the first

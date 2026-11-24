@@ -290,6 +290,11 @@ it.effect("leaves a content-free tombstone and every other thread untouched", ()
         INSERT INTO orchestration_v2_projection_turn_item_counts (thread_id, run_key, item_count)
         VALUES (${threadId}, '', 1)
       `;
+      yield* sql`
+        INSERT INTO orchestration_v2_projection_thread_item_counts (thread_id, item_count)
+        VALUES (${threadId}, 1)
+        ON CONFLICT (thread_id) DO UPDATE SET item_count = 1
+      `;
     }
 
     const secureDelete = sql<{ readonly secure_delete: number }>`PRAGMA secure_delete`;
@@ -328,12 +333,16 @@ it.effect("leaves a content-free tombstone and every other thread untouched", ()
       ["message:kept"],
     );
     assert.equal((yield* storedEvents(keptId)).length, 2);
-    const itemCounts = (threadId: ThreadId) => sql<{ readonly count: number }>`
-      SELECT COUNT(*) AS count FROM orchestration_v2_projection_turn_item_counts
-      WHERE thread_id = ${threadId}
-    `;
-    assert.equal((yield* itemCounts(deletedId))[0]?.count, 0);
-    assert.equal((yield* itemCounts(keptId))[0]?.count, 1);
+    for (const table of [
+      "orchestration_v2_projection_turn_item_counts",
+      "orchestration_v2_projection_thread_item_counts",
+    ]) {
+      const itemCounts = (threadId: ThreadId) => sql<{ readonly count: number }>`
+        SELECT COUNT(*) AS count FROM ${sql(table)} WHERE thread_id = ${threadId}
+      `;
+      assert.equal((yield* itemCounts(deletedId))[0]?.count, 0, table);
+      assert.equal((yield* itemCounts(keptId))[0]?.count, 1, table);
+    }
 
     assert.equal((yield* secureDelete)[0]?.secure_delete, secureDeleteBefore);
     assert.isTrue((yield* maintenance.verify).valid);

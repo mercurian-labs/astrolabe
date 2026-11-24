@@ -11,6 +11,7 @@ import {
   AuthPreviewOperateScope,
   AuthProvidersManageScope,
   AuthRelayReadScope,
+  AuthRelayConfigureScope,
   AuthRelayWriteScope,
   AuthSettingsWriteScope,
   AuthSourceControlWriteScope,
@@ -103,7 +104,14 @@ export const AUTH_SCOPE_OPTIONS: ReadonlyArray<{
   {
     scope: AuthRelayWriteScope,
     title: msg("Manage remote access"),
-    description: msg("Turn remote access on or off for this environment."),
+    description: msg("Update remote access preferences or turn it off for this environment."),
+  },
+  {
+    scope: AuthRelayConfigureScope,
+    title: msg("Configure remote access (admin)"),
+    description: msg(
+      "Set up or replace remote access, including its trusted pairing credential issuer.",
+    ),
   },
 ];
 

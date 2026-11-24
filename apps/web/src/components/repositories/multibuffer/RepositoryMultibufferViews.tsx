@@ -1,3 +1,4 @@
+import { runAtomCommand } from "@t3tools/client-runtime/state/runtime";
 /* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { RegistryContext, useAtomMount } from "@effect/atom-react";
 import { matchHighlight, problemMarks } from "@mercurian/editor/multibuffer/highlights";
@@ -136,22 +137,27 @@ export function RepositorySearchView({
       const matches = [];
       let cursor: string | undefined;
       do {
-        const result = await projectContentSearchPage.run(registry, {
-          environmentId,
-          input: {
-            cwd,
-            query: search.query,
-            limit: 500,
-            caseSensitive: search.caseSensitive,
-            wholeWord: search.wholeWord,
-            useRegex: search.useRegex,
-            contextLines: 2,
-            ...(search.include ? { include: search.include } : {}),
-            ...(search.exclude ? { exclude: search.exclude } : {}),
-            ...(search.includeIgnored ? { includeIgnored: true } : {}),
-            ...(cursor === undefined ? {} : { cursor }),
+        const result = await runAtomCommand(
+          registry,
+          projectContentSearchPage,
+          {
+            environmentId,
+            input: {
+              cwd,
+              query: search.query,
+              limit: 500,
+              caseSensitive: search.caseSensitive,
+              wholeWord: search.wholeWord,
+              useRegex: search.useRegex,
+              contextLines: 2,
+              ...(search.include ? { include: search.include } : {}),
+              ...(search.exclude ? { exclude: search.exclude } : {}),
+              ...(search.includeIgnored ? { includeIgnored: true } : {}),
+              ...(cursor === undefined ? {} : { cursor }),
+            },
           },
-        });
+          { reportFailure: false, reportDefect: false },
+        );
         if (cancelled) return;
         if (!AsyncResult.isSuccess(result)) {
           setState((current) => ({ ...current, status: "failed", message: "Searching failed." }));

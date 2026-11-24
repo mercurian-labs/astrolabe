@@ -2,7 +2,6 @@ import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
 import { ThreadDetailsControl } from "./chat/ThreadDetailsControl";
 import { ComposerContextLabel } from "./ComposerContextLabel";
 import { openThreadChangeRequests } from "./changeRequests/groups/openThreadChangeRequests";
-import { useRightPanelStore } from "../rightPanelStore";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   isAtomCommandInterrupted,
@@ -914,20 +913,7 @@ export function BranchToolbarBranchSelector({
           />
         ) : null}
         {displayMode === "panel" ? (
-          <ThreadDetailsIssueRows
-            links={linkedIssues}
-            onOpenLink={(event, link) => {
-              event.stopPropagation();
-              useRightPanelStore.getState().openIssue(threadRef, {
-                projectId: link.projectId,
-                tracker: link.tracker,
-                host: link.host,
-                scope: link.scope,
-                key: link.key,
-                url: link.url,
-              });
-            }}
-          />
+          <ThreadDetailsIssueRows links={linkedIssues} threadRef={threadRef} />
         ) : null}
       </div>
     </BranchPicker>

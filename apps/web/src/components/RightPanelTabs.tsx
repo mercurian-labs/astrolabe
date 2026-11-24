@@ -640,7 +640,7 @@ export function surfaceTitle(
     case "pull-request":
       return `#${surface.number}`;
     case "pull-requests":
-      return resolve(msg("Pull requests"));
+      return resolve(msg("Linked items"));
     case "graph":
       return resolve(msg("Graph"));
     case "canvas":

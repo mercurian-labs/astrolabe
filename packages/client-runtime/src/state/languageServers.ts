@@ -19,6 +19,7 @@ import {
   createEnvironmentRpcQueryAtomFamily,
   createEnvironmentRpcSubscriptionAtomFamily,
   followStreamInEnvironment,
+  runAtomCommand,
 } from "./runtime.ts";
 
 /**
@@ -175,7 +176,12 @@ export function createLanguageServerEnvironmentAtoms<R, E>(
   const sender =
     (registry: AtomRegistry.AtomRegistry, environmentId: EnvironmentId) =>
     (input: LanguageServerSendInput) => {
-      void send.run(registry, { environmentId, input });
+      void runAtomCommand(
+        registry,
+        send,
+        { environmentId, input },
+        { reportFailure: false, reportDefect: false },
+      );
     };
 
   return {

@@ -65,8 +65,12 @@ function recoveryHint(error: RelayProtectedError): string {
       return "Turn off remote access for an unused environment, then restart Astrolabe on this machine.";
     case "RelayAuthInvalidError":
       return "Run `astrolabe connect login` to check this machine's authorization. If the stored credential was revoked, sign out with `astrolabe connect logout`, then run `astrolabe connect` again. Restart Astrolabe after signing in.";
-    case "RelayEnvironmentLinkProofExpiredError":
     case "RelayEnvironmentLinkProofInvalidError":
+      if (error.reason === "environment_key_mismatch") {
+        return "Remote access already has this environment linked with a different key. Turn off remote access for it in your account, then restart Astrolabe on this machine.";
+      }
+      return "Check this machine's date and time, update Astrolabe, then restart it.";
+    case "RelayEnvironmentLinkProofExpiredError":
       return "Check this machine's date and time, update Astrolabe, then restart it.";
     default:
       return "Retry when remote access is available. If this continues, include the trace ID when reporting it.";

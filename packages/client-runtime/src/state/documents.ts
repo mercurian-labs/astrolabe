@@ -20,6 +20,7 @@ import {
   createEnvironmentRpcCommand,
   followStreamInEnvironment,
   type AtomCommandResult,
+  runAtomCommand,
 } from "./runtime.ts";
 
 const isDocumentError = Schema.is(DocumentError);
@@ -99,13 +100,33 @@ export function createDocumentEnvironmentAtoms<R, E>(
     target: DocumentTarget,
   ): DocumentChannel => ({
     push: (input) =>
-      push.run(registry, { environmentId, input: { ...target, ...input } }).then(callResult),
+      runAtomCommand(
+        registry,
+        push,
+        { environmentId, input: { ...target, ...input } },
+        { reportFailure: false, reportDefect: false },
+      ).then(callResult),
     save: (input) =>
-      save.run(registry, { environmentId, input: { ...target, ...input } }).then(callResult),
+      runAtomCommand(
+        registry,
+        save,
+        { environmentId, input: { ...target, ...input } },
+        { reportFailure: false, reportDefect: false },
+      ).then(callResult),
     recover: (input) =>
-      recover.run(registry, { environmentId, input: { ...target, ...input } }).then(callResult),
+      runAtomCommand(
+        registry,
+        recover,
+        { environmentId, input: { ...target, ...input } },
+        { reportFailure: false, reportDefect: false },
+      ).then(callResult),
     discard: (input) =>
-      discard.run(registry, { environmentId, input: { ...target, ...input } }).then(callResult),
+      runAtomCommand(
+        registry,
+        discard,
+        { environmentId, input: { ...target, ...input } },
+        { reportFailure: false, reportDefect: false },
+      ).then(callResult),
   });
 
   return { push, save, recover, discard, replaceAll, undoReplaceAll, follow, channel };
