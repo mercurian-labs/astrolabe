@@ -10,6 +10,9 @@ export const WORKSPACE_PATHS = {
   shape: "/api/workspaces/shape",
 } as const;
 
+/** A logo's data URL, at most this long: room for a detailed 128px image. */
+export const WORKSPACE_LOGO_MAX_LENGTH = 100_000;
+
 export type WorkspaceRole = "owner" | "admin" | "member";
 export type WorkspacePolicy = "members" | "admins";
 
@@ -17,6 +20,11 @@ const Id = Schema.String.check(Schema.isMinLength(1));
 const Name = Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(80));
 const Policy = Schema.Literals(["members", "admins"]);
 const GrantedRole = Schema.Literals(["admin", "member"]);
+// The image itself, not a link, so members' clients never fetch from a host the uploader chose.
+const Logo = Schema.String.check(
+  Schema.isMaxLength(WORKSPACE_LOGO_MAX_LENGTH),
+  Schema.isPattern(/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/),
+);
 
 /** Every write a client can make, and its input. */
 export const WorkspaceWrites = {
@@ -24,6 +32,8 @@ export const WorkspaceWrites = {
   updateWorkspace: Schema.Struct({
     organizationId: Id,
     name: Schema.optional(Name),
+    /** null removes it. */
+    logo: Schema.optional(Schema.NullOr(Logo)),
     invitePolicy: Schema.optional(Policy),
     teamCreationPolicy: Schema.optional(Policy),
   }),

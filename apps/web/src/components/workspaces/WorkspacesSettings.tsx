@@ -10,11 +10,16 @@ import {
 } from "@t3tools/shared/mercurianWorkspaces";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { PlusIcon, UserPlusIcon, XIcon } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 
 import { startCloudSignIn, useCloudAccountState } from "../../cloud/account";
 import { useWorkspaceSync } from "../../cloud/workspaces";
-import { SettingsPageContainer, SettingsRow, SettingsSection } from "../settings/settingsLayout";
+import {
+  SettingsPageContainer,
+  SettingsRow,
+  SettingsSearchTarget,
+  SettingsSection,
+} from "../settings/settingsLayout";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -28,7 +33,10 @@ import {
   NewWorkspaceDialog,
   TransferOwnershipDialog,
 } from "./WorkspaceDialogs";
+import { toastManager } from "../ui/toast";
 import { useWorkspaceAction, useWorkspaceRows } from "./useWorkspaceRows";
+import { WORKSPACE_LOGO_ACCEPT, workspaceLogoFromFile } from "./workspaceLogo";
+import { WorkspaceTile } from "./WorkspaceTile";
 import {
   buildWorkspaceViews,
   invitationsForYou,
@@ -155,7 +163,7 @@ function SignedInWorkspaces({
         </SettingsSection>
       )}
       {canStartWorkspace && !ownsWorkspace ? (
-        <div className="px-3 sm:px-4">
+        <SettingsSearchTarget id="workspace-new" className="px-3 sm:px-4">
           <Button size="sm" variant="outline" onClick={() => setCreating(true)}>
             <PlusIcon />
             New workspace
@@ -166,7 +174,7 @@ function SignedInWorkspaces({
             onOpenChange={setCreating}
             onCreated={selectSlug}
           />
-        </div>
+        </SettingsSearchTarget>
       ) : null}
     </>
   );
@@ -234,6 +242,7 @@ function WorkspaceDetail({
     <>
       <SettingsSection title={view.workspace.name} id="workspace" headerAction={picker}>
         <WorkspaceNameRow sync={sync} view={view} editable={admin} />
+        <WorkspaceLogoRow sync={sync} view={view} editable={admin} />
         <SettingsRow
           title="Address"
           description="Open this workspace in the hosted app."
@@ -307,6 +316,82 @@ function WorkspaceNameRow({
         ) : (
           <span className="text-sm">{view.workspace.name}</span>
         )
+      }
+    />
+  );
+}
+
+function WorkspaceLogoRow({
+  sync,
+  view,
+  editable,
+}: {
+  sync: WorkspaceSync;
+  view: WorkspaceView;
+  editable: boolean;
+}) {
+  const { pending, run } = useWorkspaceAction();
+  const input = useRef<HTMLInputElement>(null);
+  const organizationId = view.workspace.id;
+  const upload = async (file: File) => {
+    const logo = await workspaceLogoFromFile(file).catch((error: unknown) => {
+      toastManager.add({
+        type: "error",
+        title: "Couldn't use that image",
+        description: error instanceof Error ? error.message : "Try a PNG, JPEG, WebP or SVG.",
+      });
+      return null;
+    });
+    if (logo)
+      void run("Couldn't change the logo", () => sync.updateWorkspace({ organizationId, logo }));
+  };
+  return (
+    <SettingsRow
+      id="workspace-logo"
+      title="Logo"
+      description={editable ? "Shown on the icon rail. Square images look best." : undefined}
+      control={
+        <div className="flex items-center gap-2">
+          <WorkspaceTile workspace={view.workspace} className="size-8" />
+          {editable ? (
+            <>
+              <input
+                ref={input}
+                type="file"
+                accept={WORKSPACE_LOGO_ACCEPT}
+                className="hidden"
+                aria-label="Workspace logo file"
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0];
+                  event.currentTarget.value = "";
+                  if (file) void upload(file);
+                }}
+              />
+              <Button
+                size="xs"
+                variant="outline"
+                disabled={pending}
+                onClick={() => input.current?.click()}
+              >
+                {view.workspace.logo ? "Change" : "Upload"}
+              </Button>
+              {view.workspace.logo ? (
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  disabled={pending}
+                  onClick={() =>
+                    void run("Couldn't remove the logo", () =>
+                      sync.updateWorkspace({ organizationId, logo: null }),
+                    )
+                  }
+                >
+                  Remove
+                </Button>
+              ) : null}
+            </>
+          ) : null}
+        </div>
       }
     />
   );

@@ -49,11 +49,11 @@ const SIDEBAR_LIST: PlaceList = {
   search: openSidebarSearch,
 };
 
-/** The icon rail's section buttons: Agents, Wikis, Pull Requests, Usage, Settings. */
+/** The icon rail's buttons: the workspace switcher, then Agents, Wikis, Pull Requests, Usage, Settings. */
 const RAIL_LIST: PlaceList = {
   place: "[data-app-rail]",
   // Each button is a tooltip's trigger, which takes over `data-slot`; `data-sidebar` stays.
-  row: "[data-sidebar='menu-button']",
+  row: "[data-app-rail-switcher], [data-sidebar='menu-button']",
 };
 
 const LISTS = [SIDEBAR_LIST, RAIL_LIST];

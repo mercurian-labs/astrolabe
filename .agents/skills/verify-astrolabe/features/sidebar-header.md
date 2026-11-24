@@ -1,7 +1,6 @@
 # Sidebar header
 
-The sidebar's titlebar row (`[data-sidebar-chrome-header]`) carries no wordmark (the
-rail's monogram stands for the brand), only the Dev or Nightly version pill on those builds. Back
+The sidebar's titlebar row (`[data-sidebar-chrome-header]`) carries no wordmark, only the Dev or Nightly version pill on those builds. Back
 and Forward live in each tab's header, not here (panes.md). It has a bottom border in
 line with the tab strip's and keeps the icon rail's colour (`bg-sidebar`), so the
 rail's title-bar cell and this row read as one band. Below it the sidebar's body
@@ -16,8 +15,8 @@ actions at its right end.
 
 ## Sub-features
 
-- No brand link in the header row; the rail's monogram tile (`[data-app-rail-mark]`, as large
-  as a rail button, 6px corners) heads the rail. Where the open sidebar meets the rail and the
+- No brand link in the header row; the rail's Personal tile (`[data-app-rail-personal]`, a person
+  glyph, as large as a rail button, 6px corners), or the chosen workspace's tile, heads the rail. Where the open sidebar meets the rail and the
   title bar, `[data-app-rail-corner]` rounds the join with the tab's 6px radius (`--radius-md`). With the
   sidebar collapsed, `[data-app-rail-corner=collapsed]` rounds the content's top-left
   corner the same way, where the rail's edge meets the title bar's bottom border (strips).
@@ -67,7 +66,7 @@ actions at its right end.
   right-clicking the row also opens project settings.
   That is Settings › Projects, where a project is pinned with its "Pin project" switch and
   archived or brought back with its Archive / Unarchive button.
-- **Rail mark**: the small monogram on a bordered rounded tile (`[data-app-rail-mark]`) is the rail's first item, above Agents, on web and desktop alike. The cap above the rail (`[data-app-rail-cap]`) is an empty, aria-hidden cell. The sidebar toggle is a separate fixed element drawn over it (`[data-app-rail-toggle]`, centred, x ≈ 6), not a child of the cap: locate it by `[data-app-rail-toggle]` or `role=button[name='Toggle main sidebar']`, never scoped under the cap. In the macOS desktop app (not fullscreen), whose window buttons take that corner, the toggle sits just after them (`--rail-toggle-left`, 90px, outside the cap's 44px) and the header row's content starts after the toggle.
+- **Rail head**: the Personal tile, a person glyph on a bordered rounded tile (`[data-app-rail-personal]`), is the rail's first item, above Agents, on web and desktop alike. Where cloud sign-in is configured it sits inside the workspace switcher (`[data-app-rail-switcher]`, see [workspaces.md](workspaces.md)), which shows the chosen workspace's tile in its place. The cap above the rail (`[data-app-rail-cap]`) is an empty, aria-hidden cell. The sidebar toggle is a separate fixed element drawn over it (`[data-app-rail-toggle]`, centred, x ≈ 6), not a child of the cap: locate it by `[data-app-rail-toggle]` or `role=button[name='Toggle main sidebar']`, never scoped under the cap. In the macOS desktop app (not fullscreen), whose window buttons take that corner, the toggle sits just after them (`--rail-toggle-left`, 90px, outside the cap's 44px) and the header row's content starts after the toggle.
 - **Icon rail** (`nav[aria-label='Sections']`, at wide widths on web and desktop; absent in a
   narrow window, 700px for one): the sections on top
   (Agents, Wikis, Projects, Changes when the server supports pull requests),
@@ -76,7 +75,7 @@ actions at its right end.
   `Update 1 provider`, which web shows too), then Usage and Settings, sit at the foot. Where cloud sign-in is
   configured, Settings is the account menu instead of a plain button (see
   [account-menu.md](account-menu.md)). The sidebar toggle is not in the rail but above it (see
-  Rail mark). The rail is the first stop of upstream's F6 cycle and the sidebar the next
+  Rail head). The rail is the first stop of upstream's F6 cycle and the sidebar the next
   (keyboard-nav.md).
   Usage and Settings open as full-screen modals (`dialog "Usage"`, `dialog "Settings"`) over
   the section you were on, whose sidebar stays as it was underneath; on Usage the toggle is
@@ -91,14 +90,14 @@ actions at its right end.
   [pull-requests.md](pull-requests.md)). The rail stays when the sidebar collapses, starting below the title
   bar, which still runs to the window's left edge. The sidebar footer keeps only
   update notices on desktop. On narrow windows (sheet sidebar) the rail, and with it the
-  monogram, is absent; the header row carries no brand at any width, and below 768px it starts
+  Personal tile, is absent; the header row carries no brand at any width, and below 768px it starts
   with the sheet's own Toggle main sidebar (`md:hidden`). The footer keeps Settings (or the
   account menu), Wikis, Projects, Changes (when the server supports pull requests) and
   Usage; while on Wikis, Projects or Changes, that section's button reads Agents
   instead. Only legacy `/projects/…` pages show Back there (beside the account menu when
   there is one); Settings and Usage keep the footer of the section underneath, and their modal
   covers the sheet.
-- **Toggle main sidebar** is drawn over the rail's title-bar cell, above the monogram (same icon,
+- **Toggle main sidebar** is drawn over the rail's title-bar cell, above the Personal tile (same icon,
   tooltip "Toggle main sidebar (⌘B)", `aria-pressed` while open; outside the rail's list,
   so `j`/`k` no longer reach it). On narrow windows (no rail) the toggle stays in the
   title bar and the sheet's header. The rail's title-bar cell has no bottom border; the rail's right edge starts on the title bar's
@@ -159,7 +158,7 @@ type, the filter popup with its `Search filters` field, the Status and Projects 
 the New project button, every box ticked under All projects, the stored filter and the pill
 after a pick, the row count dropping to the picked projects and returning after the pill's ×,
 the picker or a new `/draft/` URL), plus a saved screenshot of the rows and pills. Rows in the accessibility
-tree are not proof they paint: for `[data-app-rail-mark]`, `[data-app-rail-toggle] button` and
+tree are not proof they paint: for `[data-app-rail-personal]`, `[data-app-rail-toggle] button` and
 the first search result, take the `getBoundingClientRect` centre (nonzero height) and check
 `document.elementFromPoint(cx, cy).closest(...)` returns that element. The borders are visual-only:
 read `getComputedStyle` widths on the header row (a bottom border) and `[data-app-rail-cap]` (none: the border stops above the rail). Colours: `[data-sidebar-chrome-header]` and `[data-app-rail]` share a `backgroundColor`; `[data-slot=sidebar-inner]` matches `main[data-slot=sidebar-inset]` (light and dark, Mercurian and another theme), and a hovered and the current row still show a fill. The edge: `getComputedStyle(document.querySelector('[data-app-sidebar]'), '::after').top` is `0px`. Check the pill is not clipped at the default sidebar width,

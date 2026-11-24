@@ -1,7 +1,7 @@
 # Workspaces
 
 Settings › Workspaces shows the workspaces you belong to, synced live from the
-cloud: their name, address and two policies; people with roles and pending
+cloud: their name, logo, address and two policies; people with roles and pending
 invitations; teams to join, leave, create and manage (rename, owners, delete);
 handing over, leaving and deleting. Invitations addressed to you appear above
 them. `/w/<short name>` opens a workspace there.
@@ -14,6 +14,17 @@ redirects to `/settings/workspaces?w=<short name>`. It needs an Astrolabe
 account; signed out it offers **Sign in**. A build without cloud addresses hides
 it: the settings nav and search leave Workspaces out, and `/settings/workspaces` (and so
 `/w/<short name>`) redirects to `/settings/general`.
+
+The rail's head (`[data-app-rail-switcher]`, named `Workspace: <name>`, or `Workspace: Personal` with the
+person glyph when none is chosen) is the switcher: its menu lists your workspaces as radio items
+plus **Personal**, then **Invite
+people** (only where your role may invite), **Workspace settings** and **Create workspace** (on
+New workspace's terms), each opening Settings › Workspaces. Signed out it offers **Sign in**.
+The choice is client state in local storage, `astrolabe:selected-workspace:<user id>`, never
+Better Auth's active organization. Search's **Switch workspace** submenu does the same.
+Below the `md` breakpoint there's no rail: the narrow sidebar's title row heads with the same
+switcher (`[data-sidebar-workspace-switcher]`, the tile plus the name and a chevron). A logo sits
+on a white tile in both themes; one with transparency is stored with a margin, an opaque one fills.
 
 ## Setup
 
@@ -62,7 +73,10 @@ the workspace dialogs open beside it: scope to their own names. They are named b
 `aria-labelledby`, so `role=dialog[name="New workspace"]` finds one and CSS `[aria-label=…]`
 finds nothing. **New workspace** shows only
 for an approved account that owns no workspace yet; the cloud enforces the same rule. Rerun
-with a fresh `cloud-kit.sh person` or delete the workspace first. A new workspace starts with
+with a fresh `cloud-kit.sh person` or delete the workspace first. `#workspace-logo` shows the tile; owners and admins
+get **Upload** (a hidden file input, `Workspace logo file`, which `preview_act upload` fills),
+then **Change** and **Remove**. Any image becomes a 128px WebP data URL in `auth.organization.logo`;
+the cloud refuses links and SVG data URLs. A new workspace starts with
 a team of the same name, invite policy "Owner and admins" and team policy "Everyone"
 (`#workspace-invite-policy`, `#workspace-team-policy`, each combobox named by its row title).
 The **Workspace** picker shows only when you are in more than one. A person's remove button
@@ -122,11 +136,13 @@ disappears on sign-out.
 
 ## Owns
 
-`apps/web/src/components/workspaces/`, `apps/web/src/cloud/workspaces.ts`,
+`apps/web/src/components/workspaces/`, `apps/web/src/components/sidebar/WorkspaceSwitcher.tsx`,
+`apps/web/src/components/CommandPaletteWorkspaceItems.tsx`, `apps/web/src/cloud/workspaces.ts`,
 `apps/web/src/routes/_chat.settings.workspaces.tsx`, `apps/web/src/routes/w.$slug.tsx`,
 `packages/client-runtime/src/workspaces/`, `apps/cloud/src/workspaces/`,
 `apps/cloud/src/auth/workspaces.ts`, `apps/cloud/src/auth/access.ts` (who may create one), `apps/mobile/src/features/workspaces/`.
 
 Tests: `apps/cloud/src/workspaces/*.test.ts` and
 `apps/cloud/src/auth/workspaces.test.ts` (rules and the write path on PGlite),
-`packages/client-runtime/src/workspaces/*.test.ts` (views, `stopped`, `close`).
+`packages/client-runtime/src/workspaces/*.test.ts` (views, selection, `stopped`, `close`),
+`apps/web/src/components/sidebar/WorkspaceSwitcher.browser.test.tsx`.

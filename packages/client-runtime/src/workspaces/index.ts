@@ -171,11 +171,12 @@ export function createWorkspaceSync(options: {
   // transaction arrives; a refusal rolls them back.
   const optimistic = {
     updateWorkspace: createOptimisticAction<WorkspaceWriteInput<"updateWorkspace">>({
-      onMutate: ({ organizationId, name, invitePolicy, teamCreationPolicy }) => {
+      onMutate: ({ organizationId, name, logo, invitePolicy, teamCreationPolicy }) => {
         if (!collections.workspaces.has(organizationId)) return;
         collections.workspaces.update(organizationId, (draft) => {
           Object.assign(draft, {
             ...(name === undefined ? {} : { name }),
+            ...(logo === undefined ? {} : { logo }),
             ...(invitePolicy === undefined ? {} : { invite_policy: invitePolicy }),
             ...(teamCreationPolicy === undefined
               ? {}

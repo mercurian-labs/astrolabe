@@ -1,3 +1,4 @@
+import { ProjectIconColor } from "@t3tools/contracts";
 import {
   administers,
   type InvitationRow,
@@ -103,6 +104,59 @@ export function buildWorkspaceViews(rows: WorkspaceRows, userId: string): Array<
     })
     .slice()
     .sort((a, b) => byName(a.workspace, b.workspace));
+}
+
+export interface WorkspaceMembership {
+  readonly workspace: WorkspaceRow;
+  readonly myRole: WorkspaceRole;
+}
+
+/** The workspaces the signed-in person belongs to, by name, with their role in each. */
+export function workspaceMemberships(
+  rows: Pick<WorkspaceRows, "workspaces" | "members">,
+  userId: string,
+): Array<WorkspaceMembership> {
+  const roles = new Map(
+    rows.members
+      .filter((member) => member.user_id === userId)
+      .map((member) => [member.organization_id, member.role]),
+  );
+  return rows.workspaces
+    .flatMap((workspace) => {
+      const myRole = roles.get(workspace.id);
+      return myRole === undefined ? [] : [{ workspace, myRole }];
+    })
+    .sort((a, b) => byName(a.workspace, b.workspace));
+}
+
+/**
+ * The workspace this device has selected: the saved one while the person still belongs to it.
+ * Once they leave it, or it is deleted, nothing is selected rather than some other workspace.
+ */
+export function selectedWorkspace<Choice extends { readonly workspace: WorkspaceRow }>(
+  choices: ReadonlyArray<Choice>,
+  savedId: string | null,
+): Choice | null {
+  if (savedId === null) return null;
+  return choices.find((choice) => choice.workspace.id === savedId) ?? null;
+}
+
+/** Up to two letters for a workspace's tile: the first word's initial and the last word's. */
+export function workspaceInitials(name: string): string {
+  const words = name.normalize("NFKC").match(/[\p{L}\p{N}]+/gu) ?? [];
+  const first = Array.from(words[0] ?? "")[0] ?? "";
+  const last = words.length > 1 ? (Array.from(words.at(-1) ?? "")[0] ?? "") : "";
+  return (first + last).toUpperCase() || "W";
+}
+
+// Gray reads as disabled beside the rail's icons.
+const TILE_COLORS = ProjectIconColor.literals.filter((color) => color !== "gray");
+
+/** A workspace's tile colour, from its id, so it is the same on every device and survives renames. */
+export function workspaceColor(id: string): ProjectIconColor {
+  let hash = 0;
+  for (const glyph of id) hash = (hash * 31 + (glyph.codePointAt(0) ?? 0)) >>> 0;
+  return TILE_COLORS[hash % TILE_COLORS.length] ?? "blue";
 }
 
 export interface InvitationForYou {

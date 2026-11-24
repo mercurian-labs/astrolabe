@@ -18,7 +18,6 @@ import { shortcutLabelForCommand } from "~/keybindings";
 import { cn } from "~/lib/utils";
 import { workspaceAreaProps } from "~/lib/workspaceFocus";
 import { primaryServerKeybindingsAtom } from "~/state/server";
-import { AstrolabeMarkSmall } from "../brand/AstrolabeMarks";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { usePullRequestsSupported } from "~/state/environments";
 import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
@@ -39,6 +38,7 @@ import {
   useSectionPathname,
 } from "./mainAppLocation";
 import { SidebarUpdatePill } from "./SidebarUpdatePill";
+import { PersonalTile, WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
 /** One of the app's sections, as the icon rail and the keyboard menu's Go to offer it. */
 interface AppSection {
@@ -130,10 +130,9 @@ export function useAppSections(): readonly AppSection[] {
 }
 
 /**
- * The far-left icon rail: monogram, sections, and at its foot Usage and Settings (the account menu
- * where sign-in is set up). It stays when the sidebar collapses; its title-bar cell keeps the
- * sidebar toggle in reach (after the macOS window buttons, `--rail-toggle-left`). Narrow windows,
- * where the sidebar is a sheet, have no rail. It is the leftmost focus place (`keyboardNav/`).
+ * The far-left icon rail: the workspace switcher, sections, then Usage and Settings at its foot.
+ * It stays when the sidebar collapses; its title-bar cell keeps the sidebar toggle after the macOS
+ * window buttons (`--rail-toggle-left`). Narrow windows, where the sidebar is a sheet, have none.
  */
 export function AppIconRail() {
   const isMobile = useMediaQuery("max-md");
@@ -198,7 +197,7 @@ export function AppIconRail() {
         className="fixed top-[calc(var(--workspace-topbar-height)-1px)] bottom-0 left-0 z-20 flex w-11 flex-col items-center border-r border-border bg-sidebar py-2"
       >
         <div className="flex shrink-0 justify-center pb-1">
-          <RailMark />
+          {hasCloudPublicConfig() ? <WorkspaceSwitcher /> : <PersonalTile />}
         </div>
         <SidebarMenu className="items-center">
           {sections.filter((section) => !section.foot).map(item)}
@@ -221,18 +220,6 @@ export function AppIconRail() {
         </SidebarMenu>
       </nav>
     </>
-  );
-}
-
-/** The monogram on a tile as large as a rail button's square, so it heads their column. */
-function RailMark() {
-  return (
-    <span
-      data-app-rail-mark=""
-      className="flex size-8 items-center justify-center rounded-md border border-border bg-background shadow-xs/5"
-    >
-      <AstrolabeMarkSmall className="h-5" />
-    </span>
   );
 }
 

@@ -6,7 +6,16 @@ import type {
 } from "@t3tools/shared/mercurianWorkspaces";
 import { describe, expect, it } from "vite-plus/test";
 
-import { buildWorkspaceViews, invitationsForYou, slugFor, type WorkspaceRows } from "./model.ts";
+import {
+  buildWorkspaceViews,
+  invitationsForYou,
+  selectedWorkspace,
+  slugFor,
+  workspaceColor,
+  workspaceInitials,
+  workspaceMemberships,
+  type WorkspaceRows,
+} from "./model.ts";
 
 const workspace = (id: string, name: string): WorkspaceRow => ({
   id,
@@ -131,5 +140,65 @@ describe("workspace short names", () => {
     expect(slugFor("  Acme & Co. Design ")).toBe("acme-co-design");
     expect(slugFor("Café Ünited")).toBe("cafe-united");
     expect(slugFor("!!!")).toBe("workspace");
+  });
+});
+
+describe("the selected workspace", () => {
+  const synced = rows({
+    workspaces: [workspace("b", "Beta"), workspace("a", "Acme"), workspace("c", "Invited only")],
+    members: [
+      member("m1", "a", "me", "owner"),
+      member("m2", "b", "me", "member"),
+      member("m3", "c", "them", "owner"),
+    ],
+  });
+  const memberships = workspaceMemberships(synced, "me");
+
+  it("offers the workspaces you belong to, by name, with your role", () => {
+    expect(memberships.map(({ workspace, myRole }) => [workspace.name, myRole])).toEqual([
+      ["Acme", "owner"],
+      ["Beta", "member"],
+    ]);
+  });
+
+  it("is the saved one while you still belong to it", () => {
+    expect(selectedWorkspace(memberships, "b")?.workspace.name).toBe("Beta");
+  });
+
+  it("is none when nothing was saved", () => {
+    expect(selectedWorkspace(memberships, null)).toBeNull();
+  });
+
+  it("falls back to none once you leave the saved one or it is deleted", () => {
+    const afterLeaving = workspaceMemberships(
+      { workspaces: synced.workspaces, members: synced.members.filter((m) => m.id !== "m2") },
+      "me",
+    );
+    expect(selectedWorkspace(afterLeaving, "b")).toBeNull();
+    const afterDeletion = workspaceMemberships(
+      { workspaces: synced.workspaces.filter((w) => w.id !== "b"), members: synced.members },
+      "me",
+    );
+    expect(selectedWorkspace(afterDeletion, "b")).toBeNull();
+  });
+
+  it("never selects a workspace you were only invited to", () => {
+    expect(selectedWorkspace(memberships, "c")).toBeNull();
+  });
+});
+
+describe("workspace tiles", () => {
+  it("shows the first and last words' initials", () => {
+    expect(workspaceInitials("Acme design co")).toBe("AC");
+    expect(workspaceInitials("acme")).toBe("A");
+    expect(workspaceInitials("  Ünited  ")).toBe("Ü");
+    expect(workspaceInitials("!!!")).toBe("W");
+  });
+
+  it("colours a workspace by its id, the same every time and never gray", () => {
+    const ids = Array.from({ length: 50 }, (_, index) => `org_${index}`);
+    expect(ids.map(workspaceColor)).toEqual(ids.map(workspaceColor));
+    expect(ids.map(workspaceColor)).not.toContain("gray");
+    expect(new Set(ids.map(workspaceColor)).size).toBeGreaterThan(5);
   });
 });
