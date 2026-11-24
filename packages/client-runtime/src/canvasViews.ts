@@ -1,4 +1,10 @@
-import { canvasData, placeCanvas, type CanvasData } from "@mercurian/wiki/canvas";
+import {
+  canvasData,
+  canvasFileName,
+  canvasNameKey,
+  placeCanvas,
+  type CanvasData,
+} from "@mercurian/wiki/canvas";
 import { CANVAS_SHOW_TOOL_NAME, CanvasShowInput } from "@t3tools/contracts";
 import { resolveT3McpToolId } from "@t3tools/shared/t3McpToolPresentation";
 import { compactDynamicToolOutput, toolArguments } from "@t3tools/shared/toolOutput";
@@ -23,9 +29,12 @@ export interface CanvasView {
 const decodeInput = Schema.decodeUnknownOption(CanvasShowInput);
 
 interface CanvasItem {
+  readonly id?: string | undefined;
   readonly type: string;
+  readonly runId?: string | null | undefined;
   readonly title?: string | null | undefined;
   readonly document?: unknown;
+  readonly sourceToolItemIds?: ReadonlyArray<string> | undefined;
   readonly toolName?: string | null | undefined;
   readonly status?: string | undefined;
   readonly input?: unknown;
@@ -33,22 +42,102 @@ interface CanvasItem {
   readonly updatedAt?: unknown;
 }
 
-// An item changes only as a new object, and timelines re-derive their rows on every thread update.
-const viewsByItem = new WeakMap<CanvasItem, CanvasView | null | undefined>();
+/**
+ * Recorded `canvas` items already present in a thread, used to suppress `dynamic_tool` fallbacks
+ * for providers (such as Antigravity) whose tool output holds a human summary instead of the raw
+ * MCP JSON with `canvasItemId`.
+ */
+export interface RecordedCanvases {
+  readonly toolItemIds: ReadonlySet<string>;
+  readonly names: ReadonlySet<string>;
+  readonly namesByRun: ReadonlyMap<string, ReadonlySet<string>>;
+}
 
-function viewOf(item: CanvasItem): CanvasView | null | undefined {
+/** Collects the tool item ids and normalized canvas names that already have persisted `canvas` items. */
+export function recordedCanvasesIn(items: ReadonlyArray<CanvasItem>): RecordedCanvases {
+  const toolItemIds = new Set<string>();
+  const names = new Set<string>();
+  const namesByRun = new Map<string, Set<string>>();
+  for (const item of items) {
+    if (item.type !== "canvas") continue;
+    for (const toolItemId of item.sourceToolItemIds ?? []) {
+      if (toolItemId.length > 0) toolItemIds.add(toolItemId);
+    }
+    const runNames =
+      typeof item.runId === "string" && item.runId.length > 0
+        ? (namesByRun.get(item.runId) ??
+          (() => {
+            const set = new Set<string>();
+            namesByRun.set(item.runId, set);
+            return set;
+          })())
+        : undefined;
+    if (typeof item.id === "string" && item.id.length > 0) {
+      runNames?.add(item.id);
+    }
+    if (typeof item.title === "string" && item.title.trim().length > 0) {
+      const fileKey = canvasNameKey(canvasFileName(item.title));
+      const titleKey = canvasNameKey(item.title);
+      if (fileKey.length > 0) {
+        names.add(fileKey);
+        runNames?.add(fileKey);
+      }
+      if (titleKey.length > 0) {
+        names.add(titleKey);
+        runNames?.add(titleKey);
+      }
+    }
+  }
+  return { toolItemIds, names, namesByRun };
+}
+
+// An item changes only as a new object, and timelines re-derive their rows on every thread update.
+const viewsByItem = new WeakMap<
+  CanvasItem,
+  {
+    readonly view: CanvasView | null | undefined;
+    readonly titleNames?: ReadonlyArray<string>;
+    readonly updateNames?: ReadonlyArray<string>;
+  }
+>();
+
+function viewOf(item: CanvasItem): {
+  readonly view: CanvasView | null | undefined;
+  readonly titleNames?: ReadonlyArray<string>;
+  readonly updateNames?: ReadonlyArray<string>;
+} {
   if (item.type === "canvas") {
     return {
-      title: item.title ?? "Canvas",
-      data: canvasData(item.document),
-      recorded: { document: item.document, revision: String(item.updatedAt ?? "") },
+      view: {
+        title: item.title ?? "Canvas",
+        data: canvasData(item.document),
+        recorded: { document: item.document, revision: String(item.updatedAt ?? "") },
+      },
     };
   }
-  if (t3ToolResultIndicatesFailure(item.output)) return undefined;
+  if (t3ToolResultIndicatesFailure(item.output)) return { view: undefined };
   // The board this call drew is its canvas item's, which draws in its place.
-  if (compactDynamicToolOutput(item.output)?.canvasItemId !== undefined) return null;
+  if (compactDynamicToolOutput(item.output)?.canvasItemId !== undefined) return { view: null };
   const input = Option.getOrUndefined(decodeInput(toolArguments(item.input)));
-  return input === undefined ? undefined : { title: input.title, data: placeCanvas(input) };
+  if (input === undefined) return { view: undefined };
+  const titleNames = [
+    canvasNameKey(canvasFileName(input.title)),
+    canvasNameKey(input.title),
+  ].filter((name) => name.length > 0);
+  const updateTarget = input.update?.trim();
+  const updateNames =
+    updateTarget !== undefined && updateTarget.length > 0
+      ? [
+          updateTarget,
+          canvasNameKey(canvasFileName(updateTarget)),
+          canvasNameKey(updateTarget),
+        ].filter((name) => name.length > 0)
+      : undefined;
+  return {
+    view: { title: input.title, data: placeCanvas(input) },
+    titleNames,
+    ...(updateNames === undefined ? {} : { updateNames }),
+  };
 }
 
 /**
@@ -56,27 +145,75 @@ function viewOf(item: CanvasItem): CanvasView | null | undefined {
  * recorded none. `null` for a call whose canvas item draws it instead, which shows nothing itself;
  * undefined for any other item.
  */
-export function canvasViewFromItem(item: CanvasItem): CanvasView | null | undefined {
+export function canvasViewFromItem(
+  item: CanvasItem,
+  recorded?: RecordedCanvases,
+): CanvasView | null | undefined {
   const drawn =
     item.type === "canvas" ||
     (item.type === "dynamic_tool" &&
       item.status === "completed" &&
       resolveT3McpToolId(item.toolName) === CANVAS_SHOW_TOOL_NAME);
   if (!drawn) return undefined;
-  if (viewsByItem.has(item)) return viewsByItem.get(item);
-  const view = viewOf(item);
-  viewsByItem.set(item, view);
-  return view;
+  let cached = viewsByItem.get(item);
+  if (cached === undefined) {
+    cached = viewOf(item);
+    viewsByItem.set(item, cached);
+  }
+  if (
+    item.type === "dynamic_tool" &&
+    cached.view !== undefined &&
+    cached.view !== null &&
+    recorded
+  ) {
+    if (typeof item.id === "string" && recorded.toolItemIds.has(item.id)) return null;
+    if (
+      typeof item.runId === "string" &&
+      cached.updateNames !== undefined &&
+      cached.updateNames.some((name) => recorded.namesByRun.get(item.runId!)?.has(name) === true)
+    ) {
+      return null;
+    }
+    if (
+      recorded.names.size > 0 &&
+      cached.titleNames?.some((name) => recorded.names.has(name)) === true
+    ) {
+      return null;
+    }
+  }
+  return cached.view;
 }
 
 /** The thread's canvases, oldest first, each with the id of the item that draws it. */
 export function canvasViews(
   items: ReadonlyArray<CanvasItem & { readonly id: string }>,
 ): ReadonlyArray<CanvasView & { readonly id: string }> {
+  const recorded = recordedCanvasesIn(items);
   return items.flatMap((item) => {
-    const view = canvasViewFromItem(item);
+    const view = canvasViewFromItem(item, recorded);
     return view === undefined || view === null ? [] : [{ ...view, id: item.id }];
   });
+}
+
+/** What a reply calls a thread's canvas: the file name its title gives, as the tool returned it. */
+export const canvasViewFile = (view: Pick<CanvasView, "title">): string =>
+  canvasFileName(view.title);
+
+/**
+ * The canvas a reply's `[[Name.canvas]]` or `![[Name.canvas#Group]]` names: by file name, with or
+ * without `.canvas` and ignoring case, else by title. Names are unique in a thread from the server;
+ * where older threads repeat one, the latest drawn wins, the one a reply just made.
+ */
+export function canvasViewNamed<View extends Pick<CanvasView, "title">>(
+  views: ReadonlyArray<View>,
+  name: string,
+): View | undefined {
+  const wanted = canvasNameKey(name);
+  if (wanted === "") return undefined;
+  return (
+    views.findLast((view) => canvasNameKey(canvasViewFile(view)) === wanted) ??
+    views.findLast((view) => canvasNameKey(view.title) === wanted)
+  );
 }
 
 /** A board the user edited since the agent's last prompt, at the edit `editedAt` names. */

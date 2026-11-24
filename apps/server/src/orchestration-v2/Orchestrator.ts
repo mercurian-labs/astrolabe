@@ -1,3 +1,4 @@
+import { canvasFileName, canvasNameKey, canvasUniqueTitle } from "@mercurian/wiki/canvas";
 import { applyCanvasHandEdits } from "@mercurian/wiki/canvas-edits";
 import type {
   OrchestrationV2ThreadLinkMetadata,
@@ -12,6 +13,8 @@ import {
   runRanAfter,
   usageLimitBlockedRun,
 } from "@t3tools/shared/orchestrationV2ThreadError";
+import { resolveT3McpToolId } from "@t3tools/shared/t3McpToolPresentation";
+import { toolArguments } from "@t3tools/shared/toolOutput";
 import { canonicalizeGitCafePullRequestUrl } from "@t3tools/source-control-definitions/registry";
 import { threadPullRequestsOf } from "../sourceControl/threadPullRequests.ts";
 import {
@@ -21,6 +24,7 @@ import {
   legacyThreadPullRequestKey,
 } from "../sourceControl/threadPullRequests.ts";
 import {
+  CANVAS_SHOW_TOOL_NAME,
   ORCHESTRATION_V2_WORKSPACE_PREPARATION_FAILURE_CODE,
   type ChatAttachment,
   CommandId,
@@ -9483,7 +9487,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       .getThreadRecords(
         command.threadId,
         ["runs", "nodes", "turnItems", "attempts", "providerTurns"],
-        { turnItemTypes: ["canvas"], messageRoles: [] },
+        { turnItemTypes: ["canvas", "dynamic_tool"], messageRoles: [] },
       )
       .pipe(
         Effect.mapError(
@@ -9498,9 +9502,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         cause: `Node ${command.nodeId} is not the root of run ${command.runId}.`,
       });
     }
-    // A board is recorded once and never moves after: recorded again, it stays as it was.
-    const existing = projection.turnItems.find((item) => item.id === command.turnItemId);
-    if (existing !== undefined && existing.type !== "canvas") {
+    const canvases = projection.turnItems.filter(
+      (item): item is Extract<OrchestrationV2TurnItem, { readonly type: "canvas" }> =>
+        item.type === "canvas",
+    );
+    const byId = projection.turnItems.find((item) => item.id === command.turnItemId);
+    if (byId !== undefined && byId.type !== "canvas") {
       return yield* new OrchestratorDispatchError({
         commandId: command.commandId,
         commandType: command.type,
@@ -9508,6 +9515,161 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       });
     }
     const now = yield* DateTime.now;
+    // A board is recorded once on retries unless `replace: true` asks to overwrite that item.
+    if (byId !== undefined && command.replace !== true) {
+      yield* emit(
+        events,
+        command,
+      )({
+        type: "turn-item.updated",
+        threadId: command.threadId,
+        ...(byId.runId === null ? {} : { runId: byId.runId }),
+        ...(byId.nodeId === null ? {} : { nodeId: byId.nodeId }),
+        providerInstanceId: run.providerInstanceId,
+        occurredAt: now,
+        payload: byId,
+      });
+      return;
+    }
+
+    let target: Extract<OrchestrationV2TurnItem, { readonly type: "canvas" }> | undefined = byId;
+    if (target === undefined) {
+      if (command.update !== undefined) {
+        const updateTarget = command.update;
+        const wantedKey = canvasNameKey(updateTarget);
+        target = canvases.findLast(
+          (item) =>
+            item.id === updateTarget ||
+            (item.title !== null &&
+              (canvasNameKey(canvasFileName(item.title)) === wantedKey ||
+                canvasNameKey(item.title) === wantedKey)),
+        );
+        if (target === undefined) {
+          const available = canvases
+            .flatMap((item) => (item.title === null ? [] : [canvasFileName(item.title)]))
+            .join(", ");
+          return yield* new OrchestratorDispatchError({
+            commandId: command.commandId,
+            commandType: command.type,
+            cause:
+              available.length > 0
+                ? `No canvas named "${updateTarget}" exists in this thread. Existing canvases: ${available}.`
+                : `No canvas named "${updateTarget}" exists in this thread yet. Leave out \`update\` to draw a new board.`,
+          });
+        }
+      } else {
+        // Across turns, reusing an earlier unedited board's exact title updates that board in
+        // place instead of forking "Title 2.canvas". Hand-edited boards require explicit `update`
+        // so user edits are never clobbered silently; within one turn, duplicate titles stay distinct.
+        const wantedKey = canvasNameKey(canvasFileName(command.title));
+        target = canvases.findLast(
+          (item) =>
+            item.runId !== command.runId &&
+            item.editedAt === undefined &&
+            item.title !== null &&
+            canvasNameKey(canvasFileName(item.title)) === wantedKey,
+        );
+      }
+    }
+
+    const claimedToolIds = new Set(canvases.flatMap((item) => item.sourceToolItemIds ?? []));
+    const activeCanvasTools = projection.turnItems.filter(
+      (item): item is Extract<OrchestrationV2TurnItem, { readonly type: "dynamic_tool" }> =>
+        item.type === "dynamic_tool" &&
+        item.runId === command.runId &&
+        (item.status === "running" || item.status === "pending" || item.status === "waiting") &&
+        resolveT3McpToolId(item.toolName) === CANVAS_SHOW_TOOL_NAME &&
+        !claimedToolIds.has(item.id),
+    );
+    const wantedInputTitleKey = canvasNameKey(command.title);
+    const wantedUpdateKey =
+      command.update === undefined ? undefined : canvasNameKey(command.update);
+    const matchedTool =
+      activeCanvasTools.findLast((item) => {
+        const args = toolArguments(item.input);
+        if (args === null || typeof args !== "object") return false;
+        const rawTitle = "title" in args && typeof args.title === "string" ? args.title : undefined;
+        const rawUpdate =
+          "update" in args && typeof args.update === "string" ? args.update : undefined;
+        if (wantedUpdateKey !== undefined) {
+          return rawUpdate !== undefined && canvasNameKey(rawUpdate) === wantedUpdateKey;
+        }
+        return (
+          rawUpdate === undefined &&
+          rawTitle !== undefined &&
+          canvasNameKey(rawTitle) === wantedInputTitleKey
+        );
+      }) ??
+      (activeCanvasTools.length === 1 &&
+      (() => {
+        const args = toolArguments(activeCanvasTools[0]!.input);
+        if (args === null || typeof args !== "object") return true;
+        const hasTitle = "title" in args && typeof args.title === "string";
+        const hasUpdate = "update" in args && typeof args.update === "string";
+        return !hasTitle && !hasUpdate;
+      })()
+        ? activeCanvasTools[0]
+        : undefined);
+    const sourceToolItemIds = Array.from(
+      new Set([
+        ...(target?.sourceToolItemIds ?? []),
+        ...(matchedTool === undefined ? [] : [matchedTool.id]),
+      ]),
+    );
+
+    const payload: Extract<OrchestrationV2TurnItem, { readonly type: "canvas" }> =
+      target !== undefined
+        ? (() => {
+            const {
+              editedAt: _editedAt,
+              code: _code,
+              sourceToolItemIds: _sourceToolItemIds,
+              ...kept
+            } = target;
+            return {
+              ...kept,
+              runId: command.runId,
+              nodeId: command.nodeId,
+              providerThreadId: run.providerThreadId,
+              providerTurnId: providerTurnForRun(projection, run)?.id ?? null,
+              // Keeping the existing title preserves every earlier embed (`![[File.canvas]]`).
+              title: target.title ?? command.title,
+              document: command.document,
+              updatedAt: now,
+              ...(command.code === undefined ? {} : { code: command.code }),
+              ...(sourceToolItemIds.length === 0 ? {} : { sourceToolItemIds }),
+            };
+          })()
+        : {
+            id: command.turnItemId,
+            threadId: command.threadId,
+            runId: command.runId,
+            nodeId: command.nodeId,
+            providerThreadId: run.providerThreadId,
+            providerTurnId: providerTurnForRun(projection, run)?.id ?? null,
+            nativeItemRef: null,
+            parentItemId: null,
+            ordinal: yield* nextTurnItemOrdinal(projection),
+            status: "completed",
+            // File names come from titles and replies embed by them: keep them unique in the thread.
+            title: canvasUniqueTitle(
+              command.title,
+              canvases.flatMap((item) => (item.title !== null ? [item.title] : [])),
+            ),
+            startedAt: now,
+            completedAt: now,
+            updatedAt: now,
+            type: "canvas",
+            document: command.document,
+            ...(command.code === undefined ? {} : { code: command.code }),
+            ...(sourceToolItemIds.length === 0 ? {} : { sourceToolItemIds }),
+          };
+
+    const nextPayload =
+      target !== undefined && target.runId !== command.runId
+        ? { ...payload, ordinal: yield* nextTurnItemOrdinal(projection) }
+        : payload;
+
     yield* emit(
       events,
       command,
@@ -9518,25 +9680,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       nodeId: command.nodeId,
       providerInstanceId: run.providerInstanceId,
       occurredAt: now,
-      payload: existing ?? {
-        id: command.turnItemId,
-        threadId: command.threadId,
-        runId: command.runId,
-        nodeId: command.nodeId,
-        providerThreadId: run.providerThreadId,
-        providerTurnId: providerTurnForRun(projection, run)?.id ?? null,
-        nativeItemRef: null,
-        parentItemId: null,
-        ordinal: yield* nextTurnItemOrdinal(projection),
-        status: "completed",
-        title: command.title,
-        startedAt: now,
-        completedAt: now,
-        updatedAt: now,
-        type: "canvas",
-        document: command.document,
-        ...(command.code === undefined ? {} : { code: command.code }),
-      },
+      payload: nextPayload,
     });
   });
 

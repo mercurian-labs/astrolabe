@@ -22,12 +22,13 @@ type ThreadCanvasScreenProps = StaticScreenProps<{
   readonly environmentId: string;
   readonly threadId: string;
   readonly itemId: string;
+  readonly frame?: string | undefined;
 }>;
 
 /** A canvas from a thread, to pan and pinch, read from the item that draws it. */
 export function ThreadCanvasScreen({ route }: ThreadCanvasScreenProps) {
   const navigation = useNavigation();
-  const { environmentId, threadId, itemId } = route.params;
+  const { environmentId, threadId, itemId, frame } = route.params;
   const detail = useEnvironmentQuery(
     orchestrationEnvironment.turnItem({
       environmentId: EnvironmentId.make(environmentId),
@@ -40,6 +41,7 @@ export function ThreadCanvasScreen({ route }: ThreadCanvasScreenProps) {
   const theme = useEditorTheme();
   const editor = useRef<WikiEditorHandle>(null);
   const camera = useRef<CanvasCamera | null>(null);
+  const focusedFrame = useRef<string | undefined>(undefined);
   const [keeping, setKeeping] = useState(false);
   const canKeep = useAtomValue(
     wikiEnvironment.keepCanvas.permissionAtom(EnvironmentId.make(environmentId)),
@@ -49,16 +51,24 @@ export function ThreadCanvasScreen({ route }: ThreadCanvasScreenProps) {
     const commands: WikiEditorCommand[] = [{ type: "theme", theme }];
     if (view !== undefined) {
       commands.push({ type: "showCanvas", data: view.data, camera: camera.current });
+      if (frame !== undefined && camera.current === null) {
+        commands.push({ type: "focusCard", id: frame });
+        focusedFrame.current = frame;
+      }
     }
     return commands;
-  }, [theme, view]);
+  }, [frame, theme, view]);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- hands the page the board once the stored call loads, which can land after the page is ready
   useEffect(() => {
     if (view !== undefined) {
       editor.current?.send({ type: "showCanvas", data: view.data, camera: camera.current });
+      if (frame !== undefined && camera.current === null && focusedFrame.current !== frame) {
+        editor.current?.send({ type: "focusCard", id: frame });
+        focusedFrame.current = frame;
+      }
     }
-  }, [view]);
+  }, [frame, view]);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the theme crosses into the web view, outside React
   useEffect(() => {

@@ -12,7 +12,7 @@ import {
 } from "./CanvasBoard";
 import { focusCardEditor, useCanvasCardSession } from "./canvasCardSession";
 import { cardFileName } from "./canvasGeometry";
-import { CanvasMinimap } from "./CanvasMinimap";
+import { CanvasMinimap, canvasFigureView } from "./CanvasMinimap";
 import { MobileMermaid } from "./MobileMermaid";
 import type { WikiEditorPage } from "./mobilePageController";
 import { WikiNoteEditor } from "./NoteEditor";
@@ -196,7 +196,10 @@ export function MobileCanvas({
   );
 }
 
-/** `![[Board.canvas]]` in a note: a static picture of the board, which opens it. */
+/**
+ * `![[Board.canvas]]` in a note: a static picture of the board, which opens it. `#Group` frames
+ * that named group, the rest dimmed, and opens the board by that link.
+ */
 export function MobileCanvasEmbed({
   page,
   target,
@@ -206,23 +209,34 @@ export function MobileCanvasEmbed({
   readonly target: string;
   readonly onOpen: (name: string) => void;
 }) {
-  const path = target.split(/[#|]/)[0]?.trim() ?? target;
+  const [path = target, ...rest] = target.split("|")[0]?.split("#") ?? [];
+  const named = rest.join("#").trim();
+  const frame = named === "" ? undefined : named;
+  const file = path.trim();
   const read = useSyncExternalStore(
-    (listener) => page.watchFile(path, listener),
-    () => page.getFile(path),
+    (listener) => page.watchFile(file, listener),
+    () => page.getFile(file),
   );
   const parsed = useMemo(() => parseCanvas(read?.text ?? ""), [read?.text]);
-  const title = cardFileName(path).replace(/\.canvas$/i, "");
+  const missing = parsed.ok && canvasFigureView(parsed.data, frame).missing;
+  const name = cardFileName(file).replace(/\.canvas$/i, "");
+  const title = frame === undefined || missing ? name : `${name} › ${frame}`;
   return (
-    <button type="button" className="canvas-embed" onClick={() => onOpen(read?.file ?? path)}>
-      <span className="canvas-embed-title">{title}</span>
+    <button
+      type="button"
+      className="canvas-embed"
+      onClick={() => onOpen(`${read?.file ?? file}${frame === undefined ? "" : `#${frame}`}`)}
+    >
+      <span className="canvas-embed-title">
+        {missing ? `${title}: no group named "${frame}"` : title}
+      </span>
       <span className="canvas-embed-body">
         {read === undefined ? null : !read.exists ? (
-          `"${path}" could not be found.`
+          `"${file}" could not be found.`
         ) : parsed.ok ? (
-          <CanvasMinimap data={parsed.data} label={`The canvas ${title}`} />
+          <CanvasMinimap data={parsed.data} label={`The canvas ${title}`} frame={frame} words />
         ) : (
-          `${path} isn't valid JSON.`
+          `${file} isn't valid JSON.`
         )}
       </span>
     </button>

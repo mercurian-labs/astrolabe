@@ -1,4 +1,4 @@
-import { CanvasFrame } from "../canvas/CanvasFrame";
+import { TurnCanvases } from "../canvas/TurnCanvases";
 import { shouldPreserveAssistantLineBreaks } from "@t3tools/shared/markdownPipeline";
 import { type RunId } from "@t3tools/contracts";
 import { canForkProjectedAssistantItem } from "@t3tools/client-runtime/state/thread-workflows";
@@ -70,6 +70,9 @@ export function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind
             onOpenTurnDiff={ctx.onOpenTurnDiff}
           />
         ) : null}
+        {row.turnCanvases === undefined ? null : (
+          <TurnCanvases canvases={row.turnCanvases} threadRef={ctx.threadRef ?? null} />
+        )}
         {row.showAssistantMeta ? (
           <AssistantMessageMeta
             className="mt-1.5"
@@ -272,15 +275,22 @@ export function HtmlRenderTimelineRow({
   );
 }
 
+/** A canvas whose turn has no reply to sit under yet: its own footer, where it was drawn. */
 export function CanvasTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "canvas" }> }) {
   const { threadRef } = use(TimelineRowCtx);
   return (
     <div className="min-w-0 px-1">
-      <CanvasFrame
-        id={row.id}
-        view={row.canvas}
+      <TurnCanvases
+        canvases={[
+          {
+            id: row.id,
+            canvas: row.canvas,
+            sourceThreadId: row.sourceThreadId,
+            itemId: row.itemId,
+            embedded: false,
+          },
+        ]}
         threadRef={threadRef ?? null}
-        source={{ threadId: row.sourceThreadId, itemId: row.itemId }}
       />
     </div>
   );

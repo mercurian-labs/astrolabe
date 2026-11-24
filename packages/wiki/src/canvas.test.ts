@@ -11,8 +11,13 @@ import {
   canvasDrawingProblems,
   canvasInkBounds,
   canvasInkEnd,
+  canvasEmbeds,
+  canvasFileName,
+  canvasFrame,
+  canvasFrameCards,
+  canvasNameKey,
+  canvasUniqueTitle,
   canvasLayoutKind,
-  canvasSteps,
   diffCanvas,
   parseCanvas,
   placeCanvas,
@@ -20,7 +25,6 @@ import {
   reviewCanvasFiles,
   serializeCanvas,
   type CanvasBounds,
-  type CanvasData,
   type CanvasDrawing,
 } from "./canvas.ts";
 import { canvasLinks, canvasOutline, canvasSourceOutline, renameInCanvas } from "./canvasIndex.ts";
@@ -610,7 +614,7 @@ describe("canvasOutline", () => {
     },
   });
 
-  it("files cards under the smallest group wholly holding them, with no coordinates, then its stories", () => {
+  it("files cards under the smallest group wholly holding them, with no coordinates, and no old stories", () => {
     expect(canvasOutline("Board.canvas", data)).toBe(
       [
         "Board.canvas: 3 cards, 2 groups, 1 arrow.",
@@ -626,10 +630,6 @@ describe("canvasOutline", () => {
         "",
         "Arrows",
         "[a] <-> [b] (elbow): uses",
-        "",
-        "Story: Tour",
-        "1. [inner] Start inside.",
-        "2. [a] [b] Then. Out to the note.",
       ].join("\n"),
     );
   });
@@ -872,95 +872,8 @@ describe("placeCanvas", () => {
     expect(edges).toEqual([]);
   });
 
-  describe("stories", () => {
-    const step = (name: string, ...ids: string[]) => ({ note: `Step ${name}`, cards: ids });
-    const story = (...steps: ReturnType<typeof step>[]) => ({ title: "Story", steps });
-    const lit = (drawing: CanvasDrawing, at = 0) =>
-      canvasSteps(placeCanvas(drawing), at).map((each) => [each.note, [...each.cards].sort()]);
-    const positions = (data: CanvasData) =>
-      data.nodes.map(({ id, x, y, width, height }) => ({ id, x, y, width, height }));
-
-    it("walks a story's steps in the order they were written", () => {
-      expect(
-        lit({
-          cards: cards("a", "b", "c"),
-          stories: [story(step("two", "c"), step("one", "a", "b"))],
-        }),
-      ).toEqual([
-        ["Step two", ["c"]],
-        ["Step one", ["a", "b"]],
-      ]);
-    });
-
-    it("frames a card shared by neighbours in both steps, and docks one from far back", () => {
-      // `s` is shared by neighbours; `a` comes back three steps later.
-      const shared: CanvasDrawing = {
-        cards: cards("a", "b", "c", "d", "e", "f", "s"),
-        stories: [
-          story(
-            step("1", "a", "s"),
-            step("2", "s", "b"),
-            step("3", "c", "d"),
-            step("4", "e", "a"),
-            step("5", "f"),
-          ),
-        ],
-      };
-      const board = placeCanvas(shared);
-      const walked = canvasSteps(board);
-      const s = board.nodes.find((node) => node.id === "s");
-      if (s === undefined) throw new Error("s isn't on the board");
-      expect(walked.map((each) => contains(each.frame, s))).toEqual([
-        true,
-        true,
-        false,
-        false,
-        false,
-      ]);
-      expect(walked[0]?.docked.size).toBe(0);
-      expect(walked[1]?.docked.size).toBe(0);
-
-      // During step 4, `a` stands beside its frame rather than three steps away.
-      const fourth = walked[3];
-      const docked = fourth?.docked.get("a");
-      if (fourth === undefined || docked === undefined) throw new Error("a isn't docked");
-      expect(docked.from).toBe(0);
-      expect(overlap(docked, fourth.frame)).toBe(false);
-      expect(contains(fourth.bounds, docked)).toBe(true);
-      const whole = canvasBounds(board);
-      expect(fourth.bounds.width * fourth.bounds.height).toBeLessThan(whole.width * whole.height);
-
-      // A board being edited leaves `a` where it is, so the camera goes there for it.
-      const a = board.nodes.find((node) => node.id === "a");
-      if (a === undefined) throw new Error("a isn't on the board");
-      expect(contains(fourth.inPlace, a)).toBe(true);
-      expect(contains(fourth.inPlace, fourth.frame)).toBe(true);
-      expect(walked[0]?.inPlace).toEqual(walked[0]?.bounds);
-    });
-
-    it("lets later stories, and stories on a map, walk the board without moving a card", () => {
-      const first = story(step("1", "a", "b"), step("2", "c"));
-      const second = { title: "Backwards", steps: [step("x", "c"), step("y", "a")] };
-      const walk: CanvasDrawing = { cards: cards("a", "b", "c"), stories: [first] };
-      const both = placeCanvas({ ...walk, stories: [first, second] });
-      expect(positions(both)).toEqual(positions(placeCanvas(walk)));
-      expect(both.stories?.map((each) => each.title)).toEqual(["Story", "Backwards"]);
-      expect(lit({ ...walk, stories: [first, second] }, 1)).toEqual([
-        ["Step x", ["c"]],
-        ["Step y", ["a"]],
-      ]);
-
-      const map: CanvasDrawing = {
-        cards: [{ id: "a", text: "A", group: "g" }, ...cards("b", "c")],
-        groups: [{ id: "g", label: "G" }],
-        arrows: [{ from: "a", to: "b" }],
-      };
-      expect(
-        positions(placeCanvas({ ...map, layout: { kind: "map" }, stories: [second] })),
-      ).toEqual(positions(placeCanvas(map)));
-    });
-
-    it("lays a story told across groups out in lanes, each step a named column no card has to leave", () => {
+  describe("lanes and frames", () => {
+    it("lays groups out as lanes, with the arrows deciding the columns", () => {
       const drawing: CanvasDrawing = {
         cards: [
           { id: "form", text: "Form", group: "browser" },
@@ -978,18 +891,13 @@ describe("placeCanvas", () => {
         arrows: [
           { from: "form", to: "login" },
           { from: "login", to: "users" },
+          { from: "users", to: "check" },
           { from: "check", to: "sessions" },
           { from: "sessions", to: "cookie" },
         ],
-        stories: [
-          story(
-            step("submit", "form", "login"),
-            step("find", "login", "users"),
-            step("check", "check", "users"),
-            step("session", "check", "sessions", "cookie"),
-          ),
-        ],
+        layout: { kind: "lanes" },
       };
+      expect(canvasLayoutKind({ ...drawing, layout: undefined })).toBe("map");
       const board = placeCanvas(drawing);
       const at = new Map(board.nodes.map((node) => [node.id, node]));
       // Each lane is a band, top to bottom in order, holding its own cards.
@@ -999,19 +907,13 @@ describe("placeCanvas", () => {
       );
       for (const card of drawing.cards)
         expect(contains(at.get(card.group!)!, at.get(card.id)!)).toBe(true);
-      // Cards share the column of the first step that shows them.
-      expect(at.get("form")!.x).toBe(at.get("login")!.x);
-      expect(at.get("sessions")!.x).toBe(at.get("cookie")!.x);
-      expect(at.get("users")!.x).toBeGreaterThan(at.get("login")!.x);
-      expect(canvasSteps(board).map((each) => each.docked.size)).toEqual([0, 0, 0, 0]);
-      // Each step is named above the column of the cards it brings, clear of every lane.
-      const headings = canvasSteps(board).map((each) => each.heading);
-      expect(headings.map((each) => each?.x)).toEqual(
-        ["form", "users", "check", "sessions"].map((id) => at.get(id)!.x),
-      );
-      const firstLane = Math.min(...lanes.map((lane) => lane.y));
-      for (const heading of headings) expect(heading!.y + heading!.height).toBeLessThan(firstLane);
-      expect(canvasBounds(board).y).toBe(Math.min(...headings.map((each) => each!.y)));
+      // Each card sits a column after the card that points at it, whatever its lane.
+      const order = ["form", "login", "users", "check", "sessions", "cookie"];
+      const xs = order.map((id) => at.get(id)!.x);
+      expect(xs).toEqual([...xs].sort((a, b) => a - b));
+      expect(new Set(xs).size).toBe(order.length);
+      // Every lane is a frame a link can name.
+      expect(canvasFrame(board, "storage")?.id).toBe("store");
       expect(canvasData(canvasDocument(board))).toEqual(board);
       const cards = board.nodes.filter((node) => node.type !== "group");
       for (const a of cards) {
@@ -1020,138 +922,108 @@ describe("placeCanvas", () => {
       }
     });
 
-    it("says where a card it brings in comes from: an earlier step, or its group on the map", () => {
+    it("finds a frame by its group's label ignoring case, else by id, and its cards", () => {
       const card = (id: string, x: number) => ({
         id,
         type: "text",
         text: id,
         x,
-        y: 0,
+        y: 40,
         width: 100,
         height: 60,
       });
       const data = canvasData({
         nodes: [
-          { id: "g", type: "group", label: "Store", x: 1960, y: -40, width: 400, height: 140 },
-          card("a", 0),
-          card("b", 1000),
-          card("c", 2000),
-        ],
-        astrolabe: {
-          stories: [
-            {
-              title: "S",
-              steps: [
-                { note: "1", cards: ["a"] },
-                { note: "2", cards: ["b", "a", "c"] },
-              ],
-            },
-          ],
-        },
-      });
-      const second = canvasSteps(data)[1];
-      expect(
-        [...(second?.docked ?? new Map())].map(([id, each]) => [id, each.from, each.group]),
-      ).toEqual([
-        ["a", 0, undefined],
-        ["c", undefined, "Store"],
-      ]);
-    });
-
-    it("makes a step that names a group, or shows exactly its cards, that group", () => {
-      const card = (id: string, x: number, y = 40) => ({
-        id,
-        type: "text",
-        text: id,
-        x,
-        y,
-        width: 100,
-        height: 60,
-      });
-      const data = canvasData({
-        nodes: [
-          { id: "g", type: "group", label: "Server", x: 0, y: 0, width: 400, height: 140 },
-          { id: "h", type: "group", x: 0, y: 0, width: 1000, height: 400 },
+          { id: "g", type: "group", label: "Checkout Flow", x: 0, y: 0, width: 400, height: 140 },
+          { id: "h", type: "group", x: 600, y: 0, width: 200, height: 140 },
           card("a", 20),
           card("b", 200),
-          card("c", 600),
+          card("c", 620),
         ],
-        astrolabe: {
-          stories: [
-            {
-              title: "S",
-              steps: [
-                { note: "named", group: "g" },
-                { note: "its cards", cards: ["b", "a"] },
-                { note: "some of them", cards: ["a"] },
-                { label: "Own", note: "relabelled", group: "g" },
-                { note: "gone", group: "missing" },
-              ],
-            },
-          ],
-        },
       });
-      const steps = canvasSteps(data);
-      expect(steps.map((each) => [each.note, each.groups, each.label])).toEqual([
-        ["named", ["g"], "Server"],
-        ["its cards", ["g"], "Server"],
-        ["some of them", [], undefined],
-        ["relabelled", ["g"], "Own"],
+      expect(canvasFrame(data, " checkout flow ")?.id).toBe("g");
+      expect(canvasFrame(data, "H")?.id).toBe("h");
+      expect(canvasFrame(data, "Missing")).toBeUndefined();
+      expect(canvasFrame(data, "")).toBeUndefined();
+      expect([...canvasFrameCards(data, canvasFrame(data, "Checkout Flow")!)].sort()).toEqual([
+        "a",
+        "b",
       ]);
-      expect(steps[0]?.frame).toEqual({ x: 0, y: 0, width: 400, height: 140 });
-      expect(steps[0]?.bounds).toEqual(steps[0]?.frame);
-      expect([...(steps[0]?.cards ?? [])].sort()).toEqual(["a", "b"]);
-      expect(steps[0]?.docked.size).toBe(0);
     });
 
-    it("lays a story told group by group out in the order it walks them, each step its group", () => {
-      const drawing: CanvasDrawing = {
+    it.each([
+      ["Checkout Flow", "Checkout Flow.canvas"],
+      ["  Auth: sign-in / out  ", "Auth sign-in out.canvas"],
+      ["[[Weird]] #title|x", "Weird title x.canvas"],
+      ["Board.canvas", "Board.canvas"],
+      ["...", "Canvas.canvas"],
+      ["", "Canvas.canvas"],
+    ])("names a canvas titled %j as %s", (title, file) => {
+      expect(canvasFileName(title)).toBe(file);
+    });
+
+    it("numbers a title whose file name an earlier canvas already has, ignoring case", () => {
+      expect(canvasUniqueTitle("Flow", [])).toBe("Flow");
+      expect(canvasUniqueTitle("Flow", ["Other"])).toBe("Flow");
+      expect(canvasUniqueTitle("flow", ["Flow"])).toBe("flow 2");
+      expect(canvasUniqueTitle("Flow", ["Flow", "flow 2", "Flow: 3"])).toBe("Flow 4");
+      expect(canvasNameKey(" Checkout Flow.CANVAS ")).toBe(canvasNameKey("checkout flow"));
+
+      const longTitle = "A".repeat(105);
+      const second = canvasUniqueTitle(longTitle, [longTitle]);
+      expect(canvasNameKey(canvasFileName(second))).not.toBe(
+        canvasNameKey(canvasFileName(longTitle)),
+      );
+      expect(second.endsWith(" 2")).toBe(true);
+    });
+
+    it("normalizes escaped newlines in card text while preserving code blocks and inline code", () => {
+      const placed = placeCanvas({
         cards: [
-          { id: "pay", text: "Charge the card", group: "payments" },
-          { id: "cart", text: "Cart", group: "store" },
-          { id: "price", text: "Price it", group: "orders" },
-        ],
-        groups: [
-          { id: "payments", label: "Payments" },
-          { id: "orders", label: "Orders API" },
-          { id: "store", label: "Storefront" },
-        ],
-        stories: [
           {
-            title: "Buying",
-            steps: [
-              { note: "Shop", group: "store" },
-              { note: "Order", group: "orders" },
-              { note: "Pay", group: "payments" },
-            ],
+            id: "a",
+            text: '### Heading\\n\\nBody line\\r\\nNext `fmt.Printf("\\n")`\\n```ts\\nconst s = "a\\\\nb";\\n```',
           },
         ],
-      };
-      expect(canvasLayoutKind(drawing)).toBe("flow");
-      const board = placeCanvas(drawing);
-      expect(board.nodes.filter((node) => node.type === "group").map((node) => node.id)).toEqual([
-        "store",
-        "orders",
-        "payments",
-      ]);
-      expect(canvasSteps(board).map((each) => [each.groups, each.label, [...each.cards]])).toEqual([
-        [["store"], "Storefront", ["cart"]],
-        [["orders"], "Orders API", ["price"]],
-        [["payments"], "Payments", ["pay"]],
+      });
+      const text = placed.nodes[0]?.type === "text" ? placed.nodes[0].text : "";
+      expect(text).toBe(
+        '### Heading\n\nBody line\nNext `fmt.Printf("\\n")`\n```ts\nconst s = "a\\\\nb";\n```',
+      );
+    });
+
+    it("lists the embeds a board can be stitched in with: the whole of it, then each frame", () => {
+      const data = canvasData({
+        nodes: [
+          { id: "g", type: "group", label: "Pay", x: 0, y: 0, width: 400, height: 140 },
+          { id: "h", type: "group", label: "a|b", x: 600, y: 0, width: 200, height: 140 },
+          { id: "u", type: "group", x: 900, y: 0, width: 200, height: 140 },
+        ],
+      });
+      expect(canvasEmbeds("Flow.canvas", data)).toEqual([
+        "![[Flow.canvas]]",
+        "![[Flow.canvas#Pay]]",
+        "![[Flow.canvas#h]]",
       ]);
     });
 
-    it("keeps every card clear of the others", () => {
-      const { nodes } = placeCanvas({
-        cards: cards("a", "b", "c", "d", "e"),
-        stories: [story(step("1", "a", "b"), step("2", "b", "c"), step("3", "d"), step("4", "a"))],
-        arrows: [{ from: "a", to: "b" }],
+    it("reads an old file with stories as its board alone, and writes the stories back untouched", () => {
+      const source = JSON.stringify({
+        nodes: [
+          { id: "g", type: "group", label: "Start", x: 0, y: 0, width: 300, height: 140 },
+          { id: "a", type: "text", text: "A", x: 20, y: 40, width: 100, height: 60 },
+        ],
+        edges: [],
+        astrolabe: {
+          stories: [{ title: "Tour", steps: [{ note: "Here", cards: ["a"], heading: {} }] }],
+        },
       });
-      for (const a of nodes) {
-        for (const b of nodes) {
-          if (a.id !== b.id) expect(overlap(a, b), `${a.id} and ${b.id}`).toBe(false);
-        }
-      }
+      const parsed = parseCanvas(source);
+      if (!parsed.ok) throw new Error(parsed.error);
+      expect(parsed.data).toEqual({ nodes: parsed.data.nodes, edges: [] });
+      expect(canvasBounds(parsed.data)).toEqual({ x: 0, y: 0, width: 300, height: 140 });
+      expect(canvasFrame(parsed.data, "start")?.id).toBe("g");
+      expect(JSON.parse(serializeCanvas(parsed.document)).astrolabe.stories[0].title).toBe("Tour");
     });
 
     it("writes a board as a document that reads back the same", () => {
@@ -1163,37 +1035,9 @@ describe("placeCanvas", () => {
         ],
         groups: [{ id: "g", label: "G" }],
         arrows: [{ from: "a", to: "b", label: "calls", ends: "both" }],
-        stories: [story(step("1", "a", "b"), step("2", "c"))],
       });
       expect(canvasData(canvasDocument(board))).toEqual(board);
-    });
-
-    it("reads a file's stories from its top level, leaving out steps with no card or group", () => {
-      const data = canvasData({
-        nodes: [{ id: "a", type: "text", text: "A", x: 0, y: 0, width: 100, height: 60 }],
-        astrolabe: {
-          stories: [
-            {
-              title: "Tour",
-              steps: [
-                { label: "Start", note: "Here", cards: ["a"] },
-                { note: "Nothing", cards: [] },
-                { note: "A group", group: "g" },
-              ],
-            },
-            { title: "Empty", steps: [] },
-          ],
-        },
-      });
-      expect(data.stories).toEqual([
-        {
-          title: "Tour",
-          steps: [
-            { label: "Start", note: "Here", cards: ["a"] },
-            { note: "A group", cards: [], group: "g" },
-          ],
-        },
-      ]);
+      expect(canvasDocument(board)).not.toHaveProperty("astrolabe");
     });
   });
 
@@ -1206,6 +1050,23 @@ describe("placeCanvas", () => {
       }),
     );
     expect(height).toBeGreaterThan(width);
+  });
+
+  it("normalizes double-escaped \\n line breaks in card text while preserving inline code and real newlines", () => {
+    const { nodes } = placeCanvas({
+      cards: [
+        { id: "escaped", text: "**Title**\\nFirst line\\nSecond line" },
+        { id: "code", text: "**Split**\\nUses `\\n` separator" },
+        { id: "real", text: "**Title**\nKeep literal \\n when real newlines exist" },
+      ],
+    });
+    const textOf = (id: string) => {
+      const node = nodes.find((candidate) => candidate.id === id);
+      return node?.type === "text" ? node.text : undefined;
+    };
+    expect(textOf("escaped")).toBe("**Title**\nFirst line\nSecond line");
+    expect(textOf("code")).toBe("**Split**\nUses `\\n` separator");
+    expect(textOf("real")).toBe("**Title**\nKeep literal \\n when real newlines exist");
   });
 });
 
@@ -1230,35 +1091,6 @@ describe("canvasDrawingProblems", () => {
     ["an empty card", { cards: [{ id: "a" }] }, "needs text, url or path"],
     ["a link that is also code", { cards: [{ id: "a", url: "x", path: "y" }] }, "only be one"],
     ["an unknown group", { cards: [{ id: "a", text: "A", group: "g" }] }, "isn't in `groups`"],
-    [
-      "a step naming an unknown card",
-      { cards: cards("a"), stories: [{ title: "S", steps: [{ note: "N", cards: ["b"] }] }] },
-      "isn't here",
-    ],
-    [
-      "a step with no card",
-      { cards: cards("a"), stories: [{ title: "S", steps: [{ note: "N", cards: [] }] }] },
-      "needs cards or a group",
-    ],
-    [
-      "a step naming an unknown group",
-      { cards: cards("a"), stories: [{ title: "S", steps: [{ note: "N", group: "g" }] }] },
-      "isn't in `groups`",
-    ],
-    [
-      "a step with a group and cards",
-      {
-        cards: [{ id: "a", text: "A", group: "g" }],
-        groups: [{ id: "g" }],
-        stories: [{ title: "S", steps: [{ note: "N", group: "g", cards: ["a"] }] }],
-      },
-      "give one",
-    ],
-    [
-      "a story with no step",
-      { cards: cards("a"), stories: [{ title: "S", steps: [] }] },
-      "needs a step",
-    ],
     ["an absolute path", { cards: [{ id: "a", path: "/etc/passwd" }] }, "relative"],
     ["a Windows path", { cards: [{ id: "a", path: "C:\\x" }] }, "relative"],
     ["a path out of the repository", { cards: [{ id: "a", path: "src/../../x" }] }, "relative"],

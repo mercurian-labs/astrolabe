@@ -100,4 +100,36 @@ describe("CanvasView", () => {
     flush();
     expect(world.style.transform).toBe(fitted);
   });
+
+  it("defers focus until a zero-size board is laid out", () => {
+    const resize = { fire: () => undefined as void };
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: () => void) {
+          resize.fire = callback;
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    const board = {
+      clientWidth: 0,
+      clientHeight: 0,
+      classList: { add: () => undefined, remove: () => undefined },
+      getBoundingClientRect: () => ({ left: 0, top: 0 }),
+    } as unknown as { clientWidth: number; clientHeight: number } & HTMLElement;
+    const world = {
+      style: { transform: "", setProperty: () => undefined },
+    } as unknown as HTMLElement;
+    const view = new CanvasView();
+    view.attach(board, world, { x: 0, y: 0, width: 1200, height: 300 }, 0);
+    view.focus({ x: 800, y: 0, width: 400, height: 300 });
+    board.clientWidth = 400;
+    board.clientHeight = 300;
+    resize.fire();
+    flush();
+    expect(view.fitted).toBe(false);
+    expect(view.camera).toEqual({ x: -800, y: 0, zoom: 1 });
+  });
 });

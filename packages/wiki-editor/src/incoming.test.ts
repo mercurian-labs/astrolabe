@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { ambiguousLink, resolveIncomingNote, wikiEmbeds, wikilinkNoteName } from "./incoming";
+import {
+  ambiguousLink,
+  resolveIncomingNote,
+  wikiEmbeds,
+  wikilinkNoteName,
+  wikilinkTarget,
+} from "./incoming";
 
 describe("wikiEmbeds", () => {
   it("holds one address per target until it runs out, and a missing one for a while", async () => {
@@ -54,6 +60,19 @@ describe("wikilinkNoteName", () => {
     expect(wikilinkNoteName("Note#Heading")).toBe("Note");
     expect(wikilinkNoteName("Note|Alias")).toBe("Note");
     expect(wikilinkNoteName(" #Heading")).toBeNull();
+  });
+});
+
+describe("wikilinkTarget", () => {
+  it("preserves #Group fragments on .canvas targets and strips headings on regular notes", () => {
+    expect(wikilinkTarget("Architecture.canvas#Storage")).toBe("Architecture.canvas#Storage");
+    expect(wikilinkTarget("Architecture.canvas#Storage|DB layer")).toBe(
+      "Architecture.canvas#Storage",
+    );
+    expect(wikilinkTarget("Architecture.canvas|Full board")).toBe("Architecture.canvas");
+    expect(wikilinkTarget("Architecture.canvas#")).toBe("Architecture.canvas");
+    expect(wikilinkTarget("Note#Heading|Alias")).toBe("Note");
+    expect(wikilinkTarget(" #Heading")).toBeNull();
   });
 });
 

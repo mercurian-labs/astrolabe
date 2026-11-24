@@ -26,7 +26,11 @@ import type { HtmlRenderReference } from "@t3tools/shared/htmlRender";
 import { turnItemDetailRevision } from "@t3tools/client-runtime/work-log/item-detail";
 import type { McpAppReference } from "@t3tools/shared/mcpApp";
 import { htmlRenderFromToolItem, mcpAppFromToolItem } from "@t3tools/shared/toolOutput";
-import { canvasViewFromItem, type CanvasView } from "@t3tools/client-runtime/canvasViews";
+import {
+  canvasViewFromItem,
+  recordedCanvasesIn,
+  type CanvasView,
+} from "@t3tools/client-runtime/canvasViews";
 import {
   contextCompactionLabel,
   workEntryIndicatesToolFailure,
@@ -537,6 +541,7 @@ export function deriveTimelineEntriesFromVisibleTurnItems(
     return undefined;
   };
 
+  const recordedCanvases = recordedCanvasesIn(input.visibleTurnItems.map((row) => row.item));
   const foldedAnswerMessageIds = new Set(
     input.visibleTurnItems.flatMap(({ item }) =>
       item.type === "user_input_request" && item.questionAnswer
@@ -656,7 +661,7 @@ export function deriveTimelineEntriesFromVisibleTurnItems(
       continue;
     }
 
-    const canvas = canvasViewFromItem(item);
+    const canvas = canvasViewFromItem(item, recordedCanvases);
     // The call that drew a recorded board shows nothing: its canvas item draws it.
     if (canvas === null) continue;
     if (canvas !== undefined) {

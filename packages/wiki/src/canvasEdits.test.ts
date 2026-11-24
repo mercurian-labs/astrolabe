@@ -8,7 +8,6 @@ import {
   canvasInkEnd,
   canvasLayerOf,
   canvasStack,
-  canvasSteps,
   parseCanvas,
   serializeCanvas,
   type CanvasBounds,
@@ -19,16 +18,12 @@ import {
   CANVAS_MAX_DRAWINGS,
   canvasOrderChanges,
   canvasOrderEdits,
-  canvasSectionAround,
-  canvasStepPick,
-  canvasStoryEdit,
   canvasStyleKeys,
   CanvasEditError,
   type CanvasEdit,
   type CanvasHandEdit,
   type CanvasLayerRef,
   type CanvasOrderMove,
-  type CanvasStoryChange,
 } from "./canvasEdits.ts";
 import { canvasPlace } from "./canvasPlace.ts";
 
@@ -590,10 +585,6 @@ describe("a person's edits", () => {
     ["an arrow's removal", [{ op: "remove-arrow", arrow: "e1" }]],
     ["a new arrow", [{ op: "put-arrow", edge: { id: "e3", fromNode: "b", toNode: "a" } }]],
     [
-      "a first story",
-      [{ op: "set-stories", stories: [{ title: "T", steps: [{ note: "n", cards: ["a"] }] }] }],
-    ],
-    [
       "two removals, undone to their places",
       [
         { op: "remove-card", card: "a" },
@@ -865,159 +856,15 @@ describe("a person's edits", () => {
   });
 });
 
-describe("a person's stories", () => {
-  const STORIED = {
-    nodes: [
-      group("g", 0, 0, 500, 300),
-      card("a", 20, 40),
-      card("b", 260, 40),
-      card("c", 700, 0),
-      group("h", 0, 400, 300, 200),
-      card("h1", 20, 440),
-      card("d", 700, 400),
-      card("e", 940, 400),
-      card("f", 2000, 2000),
-    ],
-    edges: [],
-    astrolabe: {
-      theme: "kept",
-      stories: [
-        "not a story",
-        {
-          title: "Walk",
-          future: 1,
-          steps: [
-            { note: "First", label: "One", cards: ["a"], pinned: true },
-            { note: 3 },
-            { note: "Second", group: "g" },
-          ],
-        },
-      ],
-    },
-  };
-  const change = (document: unknown, each: CanvasStoryChange) =>
-    applyCanvasHandEdits(
-      document,
-      canvasStoryEdit(document, each, () => "made"),
-    ).document;
-  const steps = (document: unknown, story = 0) =>
-    canvasData(document).stories?.[story]?.steps.map((step) => step.label ?? step.note);
-
-  it("changes steps by the places it draws them at, keeping what it doesn't read", () => {
-    const edited = change(STORIED, {
-      kind: "edit-step",
-      story: 0,
-      step: 1,
-      note: "Then",
-      label: "Two",
-    });
-    expect(steps(edited)).toEqual(["One", "Two"]);
-    const moved = change(edited, { kind: "move-step", story: 0, step: 1, to: 0 });
-    expect(steps(moved)).toEqual(["Two", "One"]);
-    const added = change(moved, { kind: "add-step", story: 0, at: 1, step: { cards: ["c"] } });
-    expect(steps(added)).toEqual(["Two", "", "One"]);
-    const unlabelled = change(added, { kind: "edit-step", story: 0, step: 2, label: " " });
-    expect(steps(unlabelled)).toEqual(["Two", "", "First"]);
-    const { astrolabe } = unlabelled as { astrolabe: { theme: string; stories: unknown[] } };
-    expect(astrolabe.theme).toBe("kept");
-    expect(astrolabe.stories[0]).toBe("not a story");
-    expect(astrolabe.stories[1]).toMatchObject({
-      future: 1,
-      steps: expect.arrayContaining([{ note: 3 }]),
-    });
-    expect(JSON.stringify(astrolabe.stories)).toContain('"pinned":true');
-  });
-
-  it("starts a story with a step, and drops one whose last step goes", () => {
-    const started = change(STORIED, { kind: "add-step", story: 1, at: 0, step: { group: "g" } });
-    expect(canvasData(started).stories?.map((story) => story.title)).toEqual(["Walk", "Story 2"]);
-    const renamed = change(started, { kind: "rename-story", story: 1, title: "Tour" });
-    expect(canvasData(renamed).stories?.[1]?.title).toBe("Tour");
-    const emptied = change(renamed, { kind: "remove-step", story: 1, step: 0 });
-    expect(canvasData(emptied).stories?.map((story) => story.title)).toEqual(["Walk"]);
-    const none = change(emptied, { kind: "remove-story", story: 0 });
-    expect(canvasData(none).stories).toBeUndefined();
-    expect(
-      applyCanvasHandEdits(STORIED, canvasStoryEdit(STORIED, { kind: "remove-story", story: 0 }))
-        .inverse,
-    ).toEqual([{ op: "set-stories", stories: STORIED.astrolabe.stories }]);
-  });
-
-  it.each<[string, ReadonlyArray<string>, unknown]>([
-    ["a group alone is that group", ["g"], { group: "g" }],
-    ["cards are those cards", ["a", "c"], { cards: ["a", "c"] }],
-    ["a group with other cards brings its own", ["g", "c"], { cards: ["c", "a", "b"] }],
-    ["groups alone are those groups", ["g", "h"], { groups: ["g", "h"], cards: ["a", "b", "h1"] }],
-    ["cards that fill a group are that group", ["b", "a"], { group: "g" }],
-    [
-      "cards that sit together get a section round them",
-      ["d", "e"],
-      { around: { x: 680, y: 380, width: 480, height: 140 } },
-    ],
-    ["cards with another between them stay cards", ["d", "f"], { cards: ["d", "f"] }],
-    ["a card alone stays a card", ["d"], { cards: ["d"] }],
-    ["nothing shows no step", [], null],
-  ])("makes a step of a selection: %s", (_name, picked, step) => {
-    expect(canvasStepPick(canvasData(STORIED), picked)).toEqual(step);
-  });
-
-  it("makes the section a step is in the same edit, so one undo takes both away", () => {
-    const step = canvasStepPick(canvasData(STORIED), ["d", "e"]);
-    if (step === null) throw new Error("no step");
-    const edits = canvasStoryEdit(STORIED, { kind: "add-step", story: 0, at: 0, step }, () => "s");
-    const made = applyCanvasHandEdits(STORIED, edits);
-    const data = canvasData(made.document);
-    expect(data.nodes.find((node) => node.id === "s")).toEqual({
-      id: "s",
-      type: "group",
-      x: 680,
-      y: 380,
-      width: 480,
-      height: 140,
-    });
-    expect(canvasSteps(data)[0]).toMatchObject({ groups: ["s"], cards: new Set(["d", "e"]) });
-    expect(serializeCanvas(applyCanvasHandEdits(made.document, made.inverse).document)).toBe(
-      serializeCanvas(STORIED),
+describe("stories, retired", () => {
+  it("replays an edit a thread recorded before stories went, which the board then doesn't read", () => {
+    const start = { nodes: [card("a", 0, 0)], edges: [] };
+    const stories = [{ title: "Walk", steps: [{ note: "A", cards: ["a"] }] }];
+    const { document, inverse } = applyCanvasHandEdits(start, [{ op: "set-stories", stories }]);
+    expect(document).toMatchObject({ astrolabe: { stories } });
+    expect(canvasData(document)).toEqual(canvasData(start));
+    expect(serializeCanvas(applyCanvasHandEdits(document, inverse).document)).toBe(
+      serializeCanvas(start),
     );
-  });
-
-  it("makes a section of a step's cards that sit together, and nothing else of the step changes", () => {
-    const loose = change(STORIED, {
-      kind: "add-step",
-      story: 0,
-      at: 0,
-      step: { cards: ["d", "e"] },
-    });
-    const around = canvasSectionAround(canvasData(loose), ["d", "e"]);
-    if (around === null) throw new Error("they sit together");
-    expect(canvasSectionAround(canvasData(loose), ["d", "f"])).toBeNull();
-    const labelled = change(loose, { kind: "edit-step", story: 0, step: 0, label: "Pair" });
-    const sectioned = change(labelled, { kind: "make-section", story: 0, step: 0, around });
-    const [first] = canvasData(sectioned).stories?.[0]?.steps ?? [];
-    expect(first).toEqual({ label: "Pair", note: "", cards: [], group: "made" });
-    const removed = change(sectioned, { kind: "remove-step", story: 0, step: 0 });
-    expect(canvasData(removed).nodes.some((node) => node.id === "made")).toBe(true);
-  });
-
-  it("walks a step of several groups, and falls back to its cards once they're gone", () => {
-    const step = canvasStepPick(canvasData(STORIED), ["g", "h"]);
-    if (step === null) throw new Error("no step");
-    const both = change(STORIED, { kind: "add-step", story: 0, at: 0, step });
-    expect(canvasSteps(canvasData(both))[0]).toMatchObject({
-      label: "g, h",
-      groups: ["g", "h"],
-      cards: new Set(["a", "b", "h1"]),
-      frame: { x: 0, y: 0, width: 500, height: 600 },
-    });
-    // Versions that read one group show the cards it was made with.
-    expect(JSON.stringify(both)).toContain('"groups":["g","h"],"cards":["a","b","h1"]');
-    const gone = applyCanvasHandEdits(both, [
-      { op: "remove-card", card: "g" },
-      { op: "remove-card", card: "h" },
-    ]).document;
-    expect(canvasSteps(canvasData(gone))[0]).toMatchObject({
-      groups: [],
-      cards: new Set(["a", "b", "h1"]),
-    });
   });
 });

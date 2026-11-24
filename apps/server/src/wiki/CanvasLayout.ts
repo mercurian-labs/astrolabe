@@ -1,14 +1,13 @@
 /**
  * Astrolabe: where a drawn canvas's cards go, decided once on the server when the agent draws it.
  * Flows, trees, radial boards and maps are laid out by ELK (Eclipse Layout Kernel, used under
- * EPL-2.0, unmodified); lanes and story boards by `placeCanvas`, which needs no engine.
+ * EPL-2.0, unmodified); lanes by `placeCanvas`, which needs no engine.
  */
 import {
   CANVAS_GROUP_INSET,
   canvasCardBox,
   canvasFromRects,
   canvasLayoutKind,
-  canvasStoryOrder,
   placeCanvas,
   type CanvasBounds,
   type CanvasData,
@@ -258,9 +257,8 @@ const run = (graph: ElkNode) =>
  * can't do falls back to `placeCanvas`, so a board always draws.
  */
 export const layoutCanvas = Effect.fn("CanvasLayout.layout")(function* (
-  drawn: CanvasDrawing,
+  drawing: CanvasDrawing,
 ): Effect.fn.Return<CanvasData> {
-  const drawing = canvasStoryOrder(drawn);
   const kind = canvasLayoutKind(drawing);
   const asked = drawing.layout?.direction;
   const direction = asked === "down" ? "DOWN" : "RIGHT";

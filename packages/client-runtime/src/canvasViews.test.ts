@@ -3,8 +3,11 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   canvasViewFromItem,
+  canvasViewNamed,
+  canvasViews,
   editedBoardsSinceLastPrompt,
   editedFilesSinceLastPrompt,
+  recordedCanvasesIn,
 } from "./canvasViews.ts";
 
 const input = { title: "Flow", cards: [{ id: "a", text: "A" }] };
@@ -15,6 +18,25 @@ const item = (overrides: Record<string, unknown>) => ({
   input,
   output: { structuredContent: { message: "Shown" } },
   ...overrides,
+});
+
+describe("canvasViewNamed", () => {
+  const views = [
+    { id: "1", title: "Checkout Flow" },
+    { id: "2", title: "Auth: sign-in" },
+    { id: "3", title: "checkout flow" },
+  ];
+  it.each([
+    ["Checkout Flow.canvas", "3"],
+    ["checkout flow", "3"],
+    ["CHECKOUT FLOW.CANVAS", "3"],
+    ["Auth sign-in.canvas", "2"],
+    ["Auth: sign-in", "2"],
+    ["Missing.canvas", undefined],
+    ["", undefined],
+  ])("finds %j as the board %s", (name, id) => {
+    expect(canvasViewNamed(views, name)?.id).toBe(id);
+  });
 });
 
 describe("canvasViewFromItem", () => {
@@ -40,8 +62,11 @@ describe("canvasViewFromItem", () => {
         astrolabe: { stories: [{ title: "Tour", steps: [{ note: "Here", cards: ["a"] }] }] },
       },
     });
-    expect(board?.data.nodes).toMatchObject([{ id: "a", x: 40, y: 80 }]);
-    expect(board?.data.stories?.[0]?.title).toBe("Tour");
+    // An older board's stories are left in its file and drawn as nothing.
+    expect(board?.data).toEqual({
+      nodes: [expect.objectContaining({ id: "a", x: 40, y: 80 })],
+      edges: [],
+    });
     expect(
       canvasViewFromItem(
         item({
@@ -49,6 +74,102 @@ describe("canvasViewFromItem", () => {
         }),
       ),
     ).toBeNull();
+  });
+
+  it("suppresses summary-only dynamic_tool outputs linked by sourceToolItemIds or recorded names without hiding unrecorded calls", () => {
+    const canvasItem = {
+      id: "turn-item:canvas:1",
+      type: "canvas",
+      runId: "run-2",
+      title: "Command Lifecycle",
+      sourceToolItemIds: ["turn-item:tool:1", "turn-item:tool:2"],
+      document: {
+        nodes: [{ id: "a", type: "text", text: "A", x: 0, y: 0, width: 180, height: 60 }],
+        edges: [],
+      },
+    };
+    const sameRunCall = {
+      id: "turn-item:tool:1",
+      ...item({
+        runId: "run-1",
+        input: { title: "Command Lifecycle", cards: [{ id: "a", text: "A" }] },
+        output: "Draw command lifecycle canvas",
+      }),
+    };
+    const crossRunUpdateCall = {
+      id: "turn-item:tool:2",
+      ...item({
+        runId: "run-2",
+        input: {
+          title: "Command Lifecycle v2",
+          update: "Command Lifecycle.canvas",
+          cards: [{ id: "a", text: "A" }],
+        },
+        output: "Update command lifecycle canvas",
+      }),
+    };
+    const racedUpdateCall = {
+      id: "turn-item:tool:raced",
+      ...item({
+        runId: "run-2",
+        input: {
+          title: "Renamed Draft",
+          update: "Command Lifecycle.canvas",
+          cards: [{ id: "a", text: "A" }],
+        },
+        output: "Update command lifecycle canvas",
+      }),
+    };
+    const unrecordedSameRunCall = {
+      id: "turn-item:tool:unrecorded",
+      ...item({
+        runId: "run-2",
+        input: { title: "Second Board", cards: [{ id: "b", text: "B" }] },
+        output: "Draw second board",
+      }),
+    };
+    const unrecordedUpdateCall = {
+      id: "turn-item:tool:unrecorded-update",
+      ...item({
+        runId: "run-3",
+        input: {
+          title: "Ghost Board",
+          update: "Missing.canvas",
+          cards: [{ id: "c", text: "C" }],
+        },
+        output: "Update missing board",
+      }),
+    };
+
+    expect(canvasViewFromItem(sameRunCall)?.title).toBe("Command Lifecycle");
+    const recorded = recordedCanvasesIn([
+      canvasItem,
+      sameRunCall,
+      crossRunUpdateCall,
+      racedUpdateCall,
+      unrecordedSameRunCall,
+      unrecordedUpdateCall,
+    ]);
+    expect(canvasViewFromItem(sameRunCall, recorded)).toBeNull();
+    expect(canvasViewFromItem(crossRunUpdateCall, recorded)).toBeNull();
+    expect(canvasViewFromItem(racedUpdateCall, recorded)).toBeNull();
+    // An unrecorded second call on the same run or an unrecorded update must still render its fallback.
+    expect(canvasViewFromItem(unrecordedSameRunCall, recorded)?.title).toBe("Second Board");
+    expect(canvasViewFromItem(unrecordedUpdateCall, recorded)?.title).toBe("Ghost Board");
+    expect(
+      canvasViews([
+        canvasItem,
+        sameRunCall,
+        crossRunUpdateCall,
+        racedUpdateCall,
+        unrecordedSameRunCall,
+        unrecordedUpdateCall,
+      ]).map((view) => view.id),
+    ).toEqual([
+      "turn-item:canvas:1",
+      "turn-item:tool:unrecorded",
+      "turn-item:tool:unrecorded-update",
+    ]);
   });
 
   it("leaves a call still running, a failed one, another tool or a bad input to its own row", () => {

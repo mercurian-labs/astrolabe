@@ -123,6 +123,80 @@ describe("deriveMessagesTimelineRows", () => {
     expect(reply).toMatchObject({ suppressEmptyResponse: expected });
   });
 
+  it.each([
+    ["with a diff", true],
+    ["without one", false],
+  ] as const)(
+    "moves a turn's canvases to the foot of its last reply, %s, marking those its prose shows",
+    (_name, diff) => {
+      const at = "2026-11-06T00:00:00Z";
+      const runId = RunId.make("canvas-run");
+      const canvas = (id: string, title: string, run = runId): TimelineEntry => ({
+        kind: "canvas",
+        id,
+        createdAt: at,
+        runId: run,
+        canvas: { title, data: { nodes: [], edges: [] } },
+        sourceThreadId: ThreadId.make("thread"),
+        itemId: TurnItemId.make(id),
+      });
+      const reply = (id: string, text: string): TimelineEntry => ({
+        kind: "message",
+        id,
+        createdAt: at,
+        message: {
+          id: MessageId.make(id),
+          role: "assistant",
+          runId,
+          text,
+          streaming: false,
+          createdAt: at,
+          updatedAt: at,
+        },
+      });
+      const rows = deriveMessagesTimelineRows({
+        timelineEntries: [
+          canvas("flow", "Checkout Flow"),
+          reply("early", "First the cart: ![[checkout flow#Storefront]]"),
+          canvas("aside", "Aside"),
+          reply("last", "And [[Aside.canvas]] is linked, never shown."),
+          // A turn with no reply yet keeps its board where it was drawn.
+          canvas("pending", "Pending", RunId.make("other-run")),
+        ],
+        latestRun: null,
+        isWorking: false,
+        activeTurnStartedAt: null,
+        turnDiffSummaries: diff
+          ? [
+              {
+                runId,
+                checkpointTurnCount: 1,
+                checkpointRef: CheckpointRef.make("refs/t3/checkpoints/canvas"),
+                status: "ready",
+                files: [{ path: "src/a.ts", kind: "modified", additions: 1, deletions: 0 }],
+                assistantMessageId: MessageId.make("last"),
+                completedAt: at,
+              },
+            ]
+          : [],
+        supportsConversationRollback: false,
+      });
+      // The early reply folds into the turn; the boards it and the last one drew go to the foot.
+      expect(rows.map((row) => `${row.kind}:${row.id}`)).toEqual([
+        "turn-fold:turn-fold:canvas-run",
+        "message:last",
+        "canvas:pending",
+      ]);
+      const last = rows.find((row) => row.id === "last");
+      if (last?.kind !== "message") throw new Error("no last reply");
+      expect(last.assistantTurnDiffSummary === undefined).toBe(!diff);
+      expect(last.turnCanvases?.map((each) => [each.id, each.embedded])).toEqual([
+        ["flow", true],
+        ["aside", false],
+      ]);
+    },
+  );
+
   it.each(["alone", "before tool", "before commentary and tool"])(
     "keeps an unfinished task update static %s",
     (placement) => {

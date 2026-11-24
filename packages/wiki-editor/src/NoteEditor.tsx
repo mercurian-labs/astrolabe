@@ -9,7 +9,7 @@ import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "reac
 import { createPortal } from "react-dom";
 
 import type { WikiNoteSession } from "./noteBuffer";
-import { wikilinkNoteName } from "./incoming";
+import { wikilinkTarget } from "./incoming";
 import {
   useWikiLinkTools,
   wikilinkDisplay,
@@ -138,7 +138,7 @@ export function WikiNoteEditor({
   const livePreview = useMemo<LivePreviewOptions>(
     () => ({
       openWikilink: (target) => {
-        const name = wikilinkNoteName(target);
+        const name = wikilinkTarget(target);
         if (name !== null) openNoteRef.current(name);
       },
       ...(hasOpenUrl ? { openUrl: (href: string) => openUrlRef.current?.(href) } : {}),

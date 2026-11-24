@@ -1,5 +1,11 @@
 import { assert, it } from "@effect/vitest";
-import { canvasDocument, canvasSteps, parseCanvas, placeCanvas } from "@mercurian/wiki";
+import {
+  canvasDocument,
+  canvasFrame,
+  canvasFrameCards,
+  parseCanvas,
+  placeCanvas,
+} from "@mercurian/wiki";
 import {
   type CanvasShowInput,
   ThreadId,
@@ -200,27 +206,18 @@ it.effect("keeps a recorded board where the thread drew it, even if the layout c
   }),
 );
 
-it.effect("keeps every story, naming its cards by their new ids", () =>
+it.effect("keeps a board an older thread drew with stories as its board and frames alone", () =>
   Effect.gen(function* () {
-    const walk: CanvasShowInput = {
+    // Drawn before stories were retired: the call still holds them, and keeping it drops them.
+    const walk = {
       title: "Walk",
       cards: [
-        { id: "a", text: "Alpha" },
+        { id: "a", text: "Alpha", group: "g" },
         { id: "b", text: "Beta" },
-        { id: "c", text: "Gamma" },
       ],
-      stories: [
-        {
-          title: "Forwards",
-          steps: [
-            { note: "First", cards: ["a"] },
-            { note: "Second", cards: ["b"] },
-            { note: "Back to the start", cards: ["c", "a"] },
-          ],
-        },
-        { title: "Backwards", steps: [{ label: "End", note: "Last", cards: ["c"] }] },
-      ],
-    };
+      groups: [{ id: "g", label: "Start" }],
+      stories: [{ title: "Forwards", steps: [{ note: "First", group: "g" }] }],
+    } as CanvasShowInput;
     const { source } = yield* keep({
       item: {
         type: "dynamic_tool",
@@ -233,26 +230,16 @@ it.effect("keeps every story, naming its cards by their new ids", () =>
     const parsed = parseCanvas(source);
     assert.isTrue(parsed.ok);
     if (!parsed.ok) return;
+    assert.notProperty(JSON.parse(source), "astrolabe");
+    const frame = canvasFrame(parsed.data, "start");
+    assert.isDefined(frame);
+    if (frame === undefined) return;
     const texts = new Map(
       parsed.data.nodes.map((node) => [node.id, node.type === "text" ? node.text : ""]),
     );
     assert.deepEqual(
-      canvasSteps(parsed.data).map((step) => [
-        step.note,
-        [...step.cards].map((id) => texts.get(id)).toSorted(),
-      ]),
-      [
-        ["First", ["Alpha"]],
-        ["Second", ["Beta"]],
-        ["Back to the start", ["Alpha", "Gamma"]],
-      ],
-    );
-    assert.deepEqual(
-      canvasSteps(parsed.data, 1).map((step) => [
-        step.label,
-        [...step.cards].map((id) => texts.get(id)),
-      ]),
-      [["End", ["Gamma"]]],
+      [...canvasFrameCards(parsed.data, frame)].map((id) => texts.get(id)),
+      ["Alpha"],
     );
   }),
 );

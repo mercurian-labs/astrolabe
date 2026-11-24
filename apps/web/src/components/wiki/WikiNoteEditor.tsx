@@ -22,7 +22,7 @@ import { useClientSettings } from "~/hooks/useSettings";
 import { appVimKeys } from "~/whichKey/doors";
 
 import type { WikiNoteSession } from "@mercurian/wiki-editor/note-buffer";
-import { wikilinkNoteName } from "@mercurian/wiki-editor/incoming";
+import { wikilinkTarget } from "@mercurian/wiki-editor/incoming";
 import {
   useWikiLinkTools,
   type WikiLinkOption,
@@ -108,7 +108,7 @@ const previewOptions = (
   embedBlocks: NonNullable<LivePreviewOptions["embedBlocks"]>,
 ): LivePreviewOptions => ({
   openWikilink: (target) => {
-    const name = wikilinkNoteName(target);
+    const name = wikilinkTarget(target);
     if (name !== null) openNote(name);
   },
   resolveEmbed,

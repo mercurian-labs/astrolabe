@@ -1,8 +1,7 @@
 import { CanvasDocument } from "@mercurian/wiki-editor/canvas-document";
 import type { CanvasView } from "@t3tools/client-runtime/canvasViews";
 import type { EnvironmentId, ThreadId, TurnItemId } from "@t3tools/contracts";
-import type { CanvasData } from "@mercurian/wiki/canvas";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
 
 import { threadEnvironment } from "~/state/threads";
 import { useAtomCommand } from "~/state/use-atom-command";
@@ -76,14 +75,4 @@ export function useThreadCanvasDocument(
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a board scrolled away or closed still saves what was waiting to
   useEffect(() => () => board?.flush(), [board]);
   return board?.canvas ?? null;
-}
-
-const noSubscription = () => () => {};
-
-/** What a board shows: its document as edited, or the version read when there's none. */
-export function useCanvasDocumentData(canvas: CanvasDocument | null, read: CanvasData): CanvasData {
-  return useSyncExternalStore(
-    canvas?.subscribe ?? noSubscription,
-    () => canvas?.getState().data ?? read,
-  );
 }

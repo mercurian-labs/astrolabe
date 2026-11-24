@@ -5,6 +5,20 @@ export function wikilinkNoteName(target: string): string | null {
   return name.length > 0 ? name : null;
 }
 
+/**
+ * The target a wikilink opens: `Note|Alias` opens `Note`, while `Board.canvas#Group` keeps its
+ * `#Group` frame so opening the canvas zooms to that group.
+ */
+export function wikilinkTarget(target: string): string | null {
+  const base = target.split(/\\?\|/)[0]!;
+  const hash = base.indexOf("#");
+  const name = (hash === -1 ? base : base.slice(0, hash)).replace(/\\$/, "").trim();
+  if (name.length === 0) return null;
+  if (hash === -1 || !/\.canvas$/i.test(name)) return name;
+  const frame = base.slice(hash + 1).trim();
+  return frame.length > 0 ? `${name}#${frame}` : name;
+}
+
 /** An embedded file's address, and when to look for it again. */
 export interface WikiEmbedAddress {
   readonly url: string | null;

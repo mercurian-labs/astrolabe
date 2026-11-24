@@ -136,22 +136,17 @@ it.effect("circles a radial board around the card it names", () =>
   }),
 );
 
-it.effect("leaves lanes and a story's own layout to the board's placer", () =>
+it.effect("leaves lanes to the board's placer", () =>
   Effect.gen(function* () {
     const lanes: CanvasDrawing = {
       cards: [
         { id: "a", text: "A", group: "one" },
         { id: "b", text: "B", group: "two" },
       ],
+      arrows: [{ from: "a", to: "b" }],
       groups: [{ id: "one" }, { id: "two" }],
-      stories: [{ title: "S", steps: [{ note: "N", cards: ["a", "b"] }] }],
+      layout: { kind: "lanes" },
     };
-    const story: CanvasDrawing = {
-      cards: cards("a", "b"),
-      stories: [{ title: "S", steps: [{ note: "N", cards: ["a"] }] }],
-    };
-    for (const drawing of [lanes, story]) {
-      assert.deepEqual(yield* layoutCanvas(drawing), placeCanvas(drawing));
-    }
+    assert.deepEqual(yield* layoutCanvas(lanes), placeCanvas(lanes));
   }),
 );

@@ -22,6 +22,7 @@ import {
   ProviderTurnId,
   RunId,
   ThreadId,
+  TurnItemId,
   type OrchestrationV2ServerCommand,
   type OrchestrationV2StoredEvent,
   type OrchestrationV2ThreadProjection,
@@ -3895,5 +3896,168 @@ describe("OrchestratorMcpService thread stop", () => {
         }).pipe(Effect.provide(layerTest));
       }),
     ),
+  );
+
+  it.effect(
+    "delegates canvas update resolution to canvas.record, reads back the recorded canvas, maps missing-target errors, and reports replaced user edits",
+    () =>
+      Effect.gen(function* () {
+        const threadId = ThreadId.make("thread:mcp-canvas-update");
+        const providerInstanceId = ProviderInstanceId.make("antigravity");
+        const existingId = TurnItemId.make("turn-item:canvas:existing");
+        const run1 = RunId.make("run:canvas-1");
+        const run2 = RunId.make("run:canvas-2");
+        const rootNodeId = NodeId.make("node:canvas-root");
+        let activeRunId = run1;
+        const dispatched: Array<OrchestrationV2ServerCommand> = [];
+        const canvases: Array<{
+          readonly id: TurnItemId;
+          readonly type: "canvas";
+          readonly runId: RunId;
+          readonly title: string;
+          readonly editedAt?: DateTime.Utc;
+        }> = [
+          {
+            id: existingId,
+            type: "canvas",
+            runId: run1,
+            title: "Command Lifecycle",
+            editedAt: DateTime.makeUnsafe("2026-10-01T00:01:00.000Z"),
+          },
+        ];
+
+        const layerDependencies = Layer.mergeAll(
+          NodeServices.layer,
+          NodeCrypto.layer,
+          Layer.mock(ThreadManagementService.ThreadManagementService)({
+            getThreadRecords: () =>
+              Effect.sync(
+                () =>
+                  ({
+                    runs: [
+                      {
+                        id: activeRunId,
+                        ordinal: activeRunId === run1 ? 1 : 2,
+                        status: "running",
+                        rootNodeId,
+                        providerInstanceId,
+                      },
+                    ],
+                    turnItems: canvases,
+                  }) as unknown as OrchestrationV2ThreadProjection,
+              ),
+            dispatch: (command) => {
+              dispatched.push(command);
+              if (command.type !== "canvas.record") {
+                return Effect.succeed({ sequence: 1, storedEvents: [] });
+              }
+              if (command.update === "Nope.canvas") {
+                return Effect.fail(
+                  new Orchestrator.OrchestratorDispatchError({
+                    commandId: command.commandId,
+                    commandType: command.type,
+                    cause:
+                      'No canvas named "Nope.canvas" exists in this thread. Existing canvases: Command Lifecycle.canvas.',
+                  }),
+                );
+              }
+              const isExplicitUpdate = command.update === "Command Lifecycle.canvas";
+              const recordedId = isExplicitUpdate ? existingId : command.turnItemId;
+              const recordedTitle = isExplicitUpdate
+                ? "Command Lifecycle"
+                : command.runId === run1
+                  ? "Command Lifecycle 2"
+                  : command.title;
+              return Effect.succeed({
+                sequence: 1,
+                storedEvents: [
+                  {
+                    sequence: 1,
+                    commandId: command.commandId,
+                    event: {
+                      type: "turn-item.updated",
+                      payload: {
+                        id: recordedId,
+                        type: "canvas",
+                        title: recordedTitle,
+                      },
+                    },
+                  },
+                ] as never,
+              });
+            },
+          }),
+          ServerSettings.layerTest(),
+          Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
+          Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({
+            list: () => Effect.succeed([]),
+          }),
+          Layer.mock(ProjectService.ProjectService)({}),
+          Layer.mock(SecretRequests.SecretRequests)({}),
+          Layer.mock(RemoteDelegation.RemoteDelegation)({}),
+          Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
+        );
+        const scope: McpInvocationScope = {
+          environmentId: EnvironmentId.make("environment:mcp-canvas"),
+          requestNamespace: "provider-session:mcp-canvas",
+          thread: {
+            threadId,
+            providerSessionId: "provider-session:mcp-canvas",
+            providerInstanceId,
+          },
+          client: undefined,
+          capabilities: new Set(["orchestration"]),
+          issuedAt: 1,
+        };
+
+        yield* Effect.gen(function* () {
+          const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+
+          // Fresh draw: reads unique title back from storedEvents.
+          const fresh = yield* service.recordCanvas(scope, {
+            title: "Command Lifecycle",
+            document: { nodes: [], edges: [] },
+            code: undefined,
+          });
+          assert.equal(fresh?.title, "Command Lifecycle 2");
+          assert.equal(fresh?.updated, false);
+          assert.equal(fresh?.replacedUserEdits, undefined);
+          assert.equal(
+            dispatched[0]?.type === "canvas.record" ? dispatched[0].update : "wrong",
+            undefined,
+          );
+
+          // Explicit `update` target targeting an edited board keeps its existing title and flags replacedUserEdits.
+          activeRunId = run2;
+          const updated = yield* service.recordCanvas(scope, {
+            title: "Command Lifecycle v2",
+            update: "Command Lifecycle.canvas",
+            document: { nodes: [{ id: "b" }], edges: [] },
+            code: undefined,
+          });
+          assert.deepEqual(updated, {
+            turnItemId: existingId,
+            title: "Command Lifecycle",
+            updated: true,
+            replacedUserEdits: true,
+          });
+          assert.equal(
+            dispatched[1]?.type === "canvas.record" ? dispatched[1].update : "wrong",
+            "Command Lifecycle.canvas",
+          );
+
+          // Unknown `update` target maps OrchestratorDispatchError to invalid_request.
+          const missing = yield* service
+            .recordCanvas(scope, {
+              title: "Other",
+              update: "Nope.canvas",
+              document: { nodes: [], edges: [] },
+              code: undefined,
+            })
+            .pipe(Effect.flip);
+          assert.equal(missing.code, "invalid_request");
+          assert.include(missing.message, "Command Lifecycle.canvas");
+        }).pipe(Effect.provide(layerOrchestratorService.pipe(Layer.provide(layerDependencies))));
+      }),
   );
 });

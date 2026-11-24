@@ -68,7 +68,9 @@ import type { ThreadRunSummary } from "@t3tools/client-runtime/state/shell";
 import type { ToolCallVisibility } from "@t3tools/contracts/settings";
 import { resolveT3McpToolDefinition } from "@t3tools/shared/t3McpToolPresentation";
 import { compactDynamicToolOutput } from "@t3tools/shared/toolOutput";
-import type { CanvasView } from "@t3tools/client-runtime/canvasViews";
+import { canvasViewFile, type CanvasView } from "@t3tools/client-runtime/canvasViews";
+import { canvasNameKey } from "@mercurian/wiki/canvas";
+import { canvasLinksIn } from "@t3tools/shared/canvasLinks";
 import { htmlRenderReferencesEqual, type HtmlRenderReference } from "@t3tools/shared/htmlRender";
 import { mcpAppReferencesEqual, type McpAppReference } from "@t3tools/shared/mcpApp";
 import { dynamicToolTitle } from "@t3tools/shared/toolActivity";
@@ -603,6 +605,8 @@ type MessagesTimelineRowContent =
       showAssistantCopyButton: boolean;
       assistantCopyStreaming: boolean;
       assistantTurnDiffSummary?: TurnDiffSummary | undefined;
+      /** The canvases this message's turn drew, shown at its foot beside its changed files. */
+      turnCanvases?: ReadonlyArray<TurnCanvas> | undefined;
       revertTurnCount?: number | undefined;
       /** Another of your messages follows directly, so the two sit closer together. */
       groupedWithNext?: boolean;
@@ -647,6 +651,7 @@ type MessagesTimelineRowContent =
       canvas: CanvasView;
       sourceThreadId: ThreadId;
       itemId: TurnItemId;
+      runId: RunId | null;
     }
   | {
       kind: "mcp-app";
@@ -657,6 +662,15 @@ type MessagesTimelineRowContent =
       revision: string;
       mcpApp: McpAppReference;
     };
+
+/** A canvas a turn drew, at its foot; `embedded` when the turn's prose shows it with `![[…]]`. */
+export interface TurnCanvas {
+  readonly id: string;
+  readonly canvas: CanvasView;
+  readonly sourceThreadId: ThreadId;
+  readonly itemId: TurnItemId;
+  readonly embedded: boolean;
+}
 
 export interface StableMessagesTimelineRowsState {
   byId: Map<string, MessagesTimelineRow>;
@@ -2137,6 +2151,7 @@ export function deriveMessagesTimelineRows(input: {
         canvas: timelineEntry.canvas,
         sourceThreadId: timelineEntry.sourceThreadId,
         itemId: timelineEntry.itemId,
+        runId: timelineEntry.runId,
       });
       continue;
     }
@@ -2327,7 +2342,10 @@ export function deriveMessagesTimelineRows(input: {
   }
 
   const result = attachTrailingToolGroupsToAssistant(
-    attachCreatedThreadSummaries(nextRows, timelineEntries, collapsedFoldMemberIds),
+    attachTurnCanvases(
+      attachCreatedThreadSummaries(nextRows, timelineEntries, collapsedFoldMemberIds),
+      timelineEntries,
+    ),
   );
   return result.map((row, index) => {
     if (timelineRowIsWorkLog(row) && timelineRowIsWorkLog(result[index + 1])) {
@@ -2367,6 +2385,86 @@ function timelineRowIsWorkLog(row: MessagesTimelineRow | undefined): boolean {
       row.kind === "thinking")
   );
 }
+
+/**
+ * A turn's canvases move to the foot of its last reply, beside its changed files, where they stay
+ * reachable whether or not the reply embedded them. A turn with no such reply yet, still running
+ * or cut short, keeps each where it was drawn.
+ */
+function attachTurnCanvases(
+  rows: MessagesTimelineRow[],
+  timelineEntries: ReadonlyArray<TimelineEntry>,
+): MessagesTimelineRow[] {
+  const terminal = new Map<RunId, number>();
+  for (const [index, row] of rows.entries()) {
+    if (row.kind === "message" && row.showAssistantMeta && row.message.runId) {
+      terminal.set(row.message.runId, index);
+    }
+  }
+  if (terminal.size === 0) return rows;
+  // Every reply of the turn, folded ones included, can show a board.
+  const embeddedByRun = new Map<RunId, Set<string>>();
+  for (const entry of timelineEntries) {
+    if (entry.kind !== "message" || entry.message.role !== "assistant") continue;
+    const runId = entry.message.runId;
+    if (!runId || !terminal.has(runId)) continue;
+    for (const link of canvasLinksIn(entry.message.text)) {
+      if (!link.embed) continue;
+      let names = embeddedByRun.get(runId);
+      if (names === undefined) {
+        names = new Set<string>();
+        embeddedByRun.set(runId, names);
+      }
+      names.add(canvasNameKey(link.name));
+    }
+  }
+  const byRun = new Map<RunId, TurnCanvas[]>();
+  const moved = new Set<string>();
+  for (const row of rows) {
+    if (row.kind !== "canvas" || row.runId === null || !terminal.has(row.runId)) continue;
+    const embeddedNames = embeddedByRun.get(row.runId);
+    const embedded =
+      embeddedNames !== undefined &&
+      (embeddedNames.has(canvasNameKey(canvasViewFile(row.canvas))) ||
+        embeddedNames.has(canvasNameKey(row.canvas.title)));
+    let canvases = byRun.get(row.runId);
+    if (canvases === undefined) {
+      canvases = [];
+      byRun.set(row.runId, canvases);
+    }
+    canvases.push({
+      id: row.id,
+      canvas: row.canvas,
+      sourceThreadId: row.sourceThreadId,
+      itemId: row.itemId,
+      embedded,
+    });
+    moved.add(row.id);
+  }
+  if (moved.size === 0) return rows;
+  return rows.flatMap((row, index): MessagesTimelineRow[] => {
+    if (row.kind === "canvas" && moved.has(row.id)) return [];
+    if (row.kind !== "message" || !row.message.runId) return [row];
+    if (terminal.get(row.message.runId) !== index) return [row];
+    const turnCanvases = byRun.get(row.message.runId);
+    return [turnCanvases === undefined ? row : { ...row, turnCanvases }];
+  });
+}
+
+const sameTurnCanvases = (
+  a: ReadonlyArray<TurnCanvas> | undefined,
+  b: ReadonlyArray<TurnCanvas> | undefined,
+) =>
+  a === b ||
+  (a !== undefined &&
+    b !== undefined &&
+    a.length === b.length &&
+    a.every(
+      (each, index) =>
+        each.id === b[index]?.id &&
+        each.canvas === b[index]?.canvas &&
+        each.embedded === b[index]?.embedded,
+    ));
 
 function attachCreatedThreadSummaries(
   rows: MessagesTimelineRow[],
@@ -2715,6 +2813,7 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
         a.showAssistantCopyButton === bm.showAssistantCopyButton &&
         a.assistantCopyStreaming === bm.assistantCopyStreaming &&
         a.assistantTurnDiffSummary === bm.assistantTurnDiffSummary &&
+        sameTurnCanvases(a.turnCanvases, bm.turnCanvases) &&
         a.revertTurnCount === bm.revertTurnCount &&
         a.groupedWithNext === bm.groupedWithNext &&
         a.groupedWithPrevious === bm.groupedWithPrevious &&

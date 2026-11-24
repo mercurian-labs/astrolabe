@@ -397,9 +397,9 @@ export function WikiNoteView({
                     environmentId={environmentId}
                     wikiId={wikiId}
                     changeRequestId={changeRequestId}
-                    file={target.split("#")[0]?.trim() ?? target}
+                    target={target}
                     from={data.file}
-                    onOpen={onOpenNote}
+                    onOpen={(link) => onOpenNote(link, data.file)}
                   />
                 </Suspense>
               )}

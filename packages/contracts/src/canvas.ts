@@ -35,7 +35,8 @@ export const CanvasShowCard = Schema.Struct({
   id: CardReference.annotate({ description: "Unique among this call's cards and groups." }),
   text: Schema.optional(
     Schema.NonEmptyString.annotate({
-      description: "Markdown on the card, or a caption on a url or path card.",
+      description:
+        "Markdown on the card, or a caption on a url or path card. Keep it concise (short heading and one sentence or brief bullets) and use actual line breaks, never literal \\n.",
     }),
   ),
   url: Schema.optional(Schema.NonEmptyString.annotate({ description: "Makes this a link card." })),
@@ -67,42 +68,20 @@ export type CanvasShowArrow = typeof CanvasShowArrow.Type;
 
 export const CanvasShowGroup = Schema.Struct({
   id: CardReference.annotate({ description: "Unique among this call's cards and groups." }),
-  label: Schema.optional(Schema.NonEmptyString),
+  label: Schema.optional(
+    Schema.NonEmptyString.annotate({
+      description: "Names the group as a frame your reply can embed by itself.",
+    }),
+  ),
   color: Schema.optional(CanvasShowColor),
 });
 export type CanvasShowGroup = typeof CanvasShowGroup.Type;
-
-export const CanvasShowStep = Schema.Struct({
-  label: Schema.optional(
-    Schema.NonEmptyString.annotate({
-      description: "A few words. Steps are numbered for you; a group's step has its label.",
-    }),
-  ),
-  note: Schema.NonEmptyString.annotate({
-    description: "One or two sentences the reader sees at this step.",
-  }),
-  group: Schema.optional(
-    CardReference.annotate({ description: "The group this step is: it shows that group's cards." }),
-  ),
-  cards: Schema.optional(
-    Schema.Array(CardReference).check(Schema.isMinLength(1)).annotate({
-      description: "Or the cards it shows, across groups. A card can be in several steps.",
-    }),
-  ),
-});
-export type CanvasShowStep = typeof CanvasShowStep.Type;
-
-export const CanvasShowStory = Schema.Struct({
-  title: Schema.NonEmptyString.annotate({ description: "A few words naming this telling." }),
-  steps: Schema.Array(CanvasShowStep).check(Schema.isMinLength(1)),
-});
-export type CanvasShowStory = typeof CanvasShowStory.Type;
 
 export const CanvasShowLayout = Schema.Struct({
   kind: Schema.optional(
     Schema.Literals(["flow", "lanes", "tree", "map", "radial"]).annotate({
       description:
-        "flow: steps and dependencies. lanes: who does what over time; groups are the lanes, a story's steps the columns. tree: a hierarchy. map: areas side by side; groups are the areas. radial: one idea and what surrounds it. Chosen for you when left out.",
+        "flow: steps and dependencies. lanes: who does what over time; groups are the lanes, arrows set the columns. tree: a hierarchy. map: areas side by side; groups are the areas. radial: one idea and what surrounds it. Chosen for you when left out.",
     }),
   ),
   direction: Schema.optional(
@@ -116,18 +95,18 @@ export type CanvasShowLayout = typeof CanvasShowLayout.Type;
 
 export const CanvasShowInput = Schema.Struct({
   title: Schema.NonEmptyString.annotate({ description: "A few words naming the diagram." }),
+  update: Schema.optional(
+    Schema.NonEmptyString.annotate({
+      description:
+        "File name or title of an earlier canvas in this thread to update in place (its file name stays the same, for example `Architecture.canvas`). Leave out to draw a new board.",
+    }),
+  ),
   cards: Schema.Array(CanvasShowCard)
     .check(Schema.isMinLength(1), Schema.isMaxLength(CANVAS_SHOW_MAX_CARDS))
     .annotate({ description: "Each needs text, url or path." }),
   arrows: Schema.optional(Schema.Array(CanvasShowArrow)),
   groups: Schema.optional(Schema.Array(CanvasShowGroup)),
   layout: Schema.optional(CanvasShowLayout),
-  stories: Schema.optional(
-    Schema.Array(CanvasShowStory).annotate({
-      description:
-        "To explain step by step: each story walks the board one step at a time, in reading order. Part by part: make each part a group and each step a group. Who does what over time: groups are who, and each step picks its cards across them. Several stories tell it different ways.",
-    }),
-  ),
 });
 export type CanvasShowInput = typeof CanvasShowInput.Type;
 
@@ -270,6 +249,7 @@ const CanvasHandEdits = [
     at: Schema.optional(Schema.Int),
   }),
   Schema.Struct({ op: Schema.Literal("remove-arrow"), arrow: Schema.String }),
+  /** Retired with stories: nothing sends it, but recorded thread edits still decode and replay. */
   Schema.Struct({ op: Schema.Literal("set-stories"), stories: Schema.Array(Schema.Unknown) }),
   Schema.Struct({
     op: Schema.Literal("put-drawing"),
@@ -314,6 +294,10 @@ export const CanvasShowResult = Schema.Struct({
   message: Schema.String,
   /** The turn item that holds the board as it was laid out, which clients draw. */
   canvasItemId: Schema.optional(Schema.String),
+  /** What the reply calls the board, as Name.canvas. */
+  file: Schema.optional(Schema.String),
+  /** Ready to write into the reply: the whole board, then each named group. */
+  embeds: Schema.optional(Schema.Array(Schema.String)),
   code: Schema.optional(CanvasShowCode),
 });
 export type CanvasShowResult = typeof CanvasShowResult.Type;

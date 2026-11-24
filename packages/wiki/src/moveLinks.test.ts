@@ -142,6 +142,20 @@ const MOVES: ReadonlyArray<{
     to: "New",
     after: { "d/Y.md": "[[b/New]]" },
   },
+  {
+    row: "a canvas renamed keeps the frame each link and embed names",
+    files: {
+      "Board.canvas": '{"nodes":[],"edges":[]}',
+      "L.md":
+        "[[Board.canvas#Checkout Flow]] ![[Board.canvas#Checkout Flow]] ![[Board.canvas]] [[Board.canvas#Pay|pay]]",
+    },
+    from: "Board.canvas",
+    to: "Flows/Checkout.canvas",
+    after: {
+      "L.md":
+        "[[Checkout.canvas#Checkout Flow]] ![[Checkout.canvas#Checkout Flow]] ![[Checkout.canvas]] [[Checkout.canvas#Pay|pay]]",
+    },
+  },
 ];
 
 describe("moving a document", () => {
@@ -170,6 +184,18 @@ describe("moving a document", () => {
       "other/Un.md",
       "other/Un.md",
       null,
+    ]);
+  });
+
+  it("resolves a link or embed of a canvas's frame to the canvas", () => {
+    const files = MOVES.at(-1)?.files ?? {};
+    const note = indexFiles(files).notes.get("L.md");
+    const listed = linkFiles(Object.keys(files));
+    expect(note?.links.map((link) => resolveLink(link.target, "L.md", listed).file)).toEqual([
+      "Board.canvas",
+      "Board.canvas",
+      "Board.canvas",
+      "Board.canvas",
     ]);
   });
 

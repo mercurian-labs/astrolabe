@@ -68,8 +68,15 @@ import {
 import { claudeResumeCompactionAge } from "@t3tools/shared/claudeCompaction";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
 import { truncate } from "@t3tools/shared/String";
+import { canvasNameKey } from "@mercurian/wiki/canvas";
+import { canvasLinksIn } from "@t3tools/shared/canvasLinks";
 import type { HtmlRenderReference } from "@t3tools/shared/htmlRender";
-import { canvasViewFromItem, type CanvasView } from "@t3tools/client-runtime/canvasViews";
+import {
+  canvasViewFile,
+  canvasViewFromItem,
+  recordedCanvasesIn,
+  type CanvasView,
+} from "@t3tools/client-runtime/canvasViews";
 import type { McpAppReference } from "@t3tools/shared/mcpApp";
 import {
   compactDynamicToolOutput,
@@ -130,6 +137,14 @@ export interface ThreadFeedActivity {
   readonly projectedItem: OrchestrationV2ProjectedTurnItem;
 }
 
+export interface MobileTurnCanvas {
+  readonly id: string;
+  readonly sourceThreadId: ThreadId;
+  readonly itemId: TurnItemId;
+  readonly canvas: CanvasView;
+  readonly embedded: boolean;
+}
+
 export interface ThreadFeedMessage {
   readonly context?: import("@t3tools/contracts").OrchestrationMessageContext | undefined;
   readonly id: MessageId;
@@ -150,6 +165,7 @@ export interface ThreadFeedMessage {
   readonly updatedAt: string;
   readonly projectedItem?: OrchestrationV2ProjectedTurnItem;
   readonly checkpointSummary?: ThreadCheckpointSummary;
+  readonly turnCanvases?: ReadonlyArray<MobileTurnCanvas>;
 }
 
 export interface LocalThreadMessage {
@@ -1649,6 +1665,67 @@ export function deriveThreadFeedPresentation(
       for (const entryId of fold.hiddenEntryIds) collapsedEntryIds.add(entryId);
     }
   }
+  const terminalAssistantIdByRun = new Map<RunId, string>();
+  for (const entry of sourceFeed) {
+    if (
+      entry.type === "message" &&
+      entry.message.role === "assistant" &&
+      entry.message.runId !== null &&
+      entry.message.runId !== activeRunId &&
+      !entry.message.streaming
+    ) {
+      terminalAssistantIdByRun.set(entry.message.runId, entry.id);
+    }
+  }
+  const embeddedCanvasesByRun = new Map<RunId, Set<string>>();
+  if (terminalAssistantIdByRun.size > 0) {
+    for (const entry of sourceFeed) {
+      if (
+        entry.type !== "message" ||
+        entry.message.role !== "assistant" ||
+        entry.message.runId === null ||
+        !terminalAssistantIdByRun.has(entry.message.runId)
+      ) {
+        continue;
+      }
+      for (const link of canvasLinksIn(entry.message.text)) {
+        if (!link.embed) continue;
+        let names = embeddedCanvasesByRun.get(entry.message.runId);
+        if (names === undefined) {
+          names = new Set<string>();
+          embeddedCanvasesByRun.set(entry.message.runId, names);
+        }
+        names.add(canvasNameKey(link.name));
+      }
+    }
+  }
+  const movedCanvasEntryIds = new Set<string>();
+  const turnCanvasesByMessageId = new Map<string, MobileTurnCanvas[]>();
+  if (terminalAssistantIdByRun.size > 0) {
+    for (const entry of sourceFeed) {
+      if (entry.type !== "canvas" || entry.runId === null) continue;
+      const terminalMessageId = terminalAssistantIdByRun.get(entry.runId);
+      if (terminalMessageId === undefined) continue;
+      const embeddedNames = embeddedCanvasesByRun.get(entry.runId);
+      const embedded =
+        embeddedNames !== undefined &&
+        (embeddedNames.has(canvasNameKey(canvasViewFile(entry.canvas))) ||
+          embeddedNames.has(canvasNameKey(entry.canvas.title)));
+      let canvases = turnCanvasesByMessageId.get(terminalMessageId);
+      if (canvases === undefined) {
+        canvases = [];
+        turnCanvasesByMessageId.set(terminalMessageId, canvases);
+      }
+      canvases.push({
+        id: entry.id,
+        sourceThreadId: entry.sourceThreadId,
+        itemId: entry.itemId,
+        canvas: entry.canvas,
+        embedded,
+      });
+      movedCanvasEntryIds.add(entry.id);
+    }
+  }
   for (let sourceIndex = 0; sourceIndex < sourceFeed.length; sourceIndex += 1) {
     const entry = sourceFeed[sourceIndex]!;
     const feedIndex = retainedFeedIndices[sourceIndex]!;
@@ -1699,7 +1776,7 @@ export function deriveThreadFeedPresentation(
     ) {
       continue;
     }
-    if (!collapsedEntryIds.has(entry.id)) {
+    if (!collapsedEntryIds.has(entry.id) && !movedCanvasEntryIds.has(entry.id)) {
       if (
         entry.type === "activity-group" &&
         entry.runId !== null &&
@@ -1776,14 +1853,17 @@ export function deriveThreadFeedPresentation(
   }
   for (let index = tailStart; index < result.length; index += 1) {
     const row = result[index]!;
-    if (
-      row.type !== "message" ||
-      !row.message.checkpointSummary ||
-      !workRowByRunId.has(row.message.checkpointSummary.runId)
-    )
-      continue;
-    const message = { ...row.message };
-    delete message.checkpointSummary;
+    if (row.type !== "message") continue;
+    const dropCheckpoint =
+      row.message.checkpointSummary !== undefined &&
+      workRowByRunId.has(row.message.checkpointSummary.runId);
+    const turnCanvases = turnCanvasesByMessageId.get(row.id);
+    if (!dropCheckpoint && turnCanvases === undefined) continue;
+    const message = {
+      ...row.message,
+      ...(turnCanvases === undefined ? {} : { turnCanvases }),
+    };
+    if (dropCheckpoint) delete message.checkpointSummary;
     result[index] = { ...row, message };
   }
   // Reused rows are final: the user message after them never continues a work log.
@@ -2151,6 +2231,9 @@ interface ThreadFeedBuild {
   readonly checkpointSummaries: ReadonlyArray<ThreadCheckpointSummary> | undefined;
   readonly foldedAnswerMessageIds: ReadonlySet<string>;
   readonly delegatedChildrenByRun: ReadonlyMap<RunId, ReadonlySet<string>>;
+  readonly recordedCanvasToolItemIds: ReadonlySet<string>;
+  readonly recordedCanvasNames: ReadonlySet<string>;
+  readonly recordedCanvasNamesByRun: ReadonlyMap<string, ReadonlySet<string>>;
   readonly feed: ReadonlyArray<ThreadFeedEntry>;
   /** Grouping is empty before `row`: the rows before it produced `feed.slice(0, feedLength)`. */
   readonly restarts: ReadonlyArray<{ readonly row: number; readonly feedLength: number }>;
@@ -2252,6 +2335,7 @@ export function buildThreadFeed(
   };
   // Thread-wide facts that change rows anywhere in the feed. A cached prefix
   // is reused only while these match the build that produced it.
+  const recordedCanvases = recordedCanvasesIn(visibleTurnItems.map((row) => row.item));
   const foldedAnswerMessageIds = new Set<string>();
   const delegatedChildrenByRun = new Map<RunId, Set<string>>();
   for (const { item } of visibleTurnItems) {
@@ -2274,7 +2358,10 @@ export function buildThreadFeed(
     previous.nodes === options?.nodes &&
     checkpointSummariesEqual(previous.checkpointSummaries, options?.checkpointSummaries) &&
     setsEqual(previous.foldedAnswerMessageIds, foldedAnswerMessageIds) &&
-    setMapsEqual(previous.delegatedChildrenByRun, delegatedChildrenByRun)
+    setMapsEqual(previous.delegatedChildrenByRun, delegatedChildrenByRun) &&
+    setsEqual(previous.recordedCanvasToolItemIds, recordedCanvases.toolItemIds) &&
+    setsEqual(previous.recordedCanvasNames, recordedCanvases.names) &&
+    setMapsEqual(previous.recordedCanvasNamesByRun, recordedCanvases.namesByRun)
   ) {
     const firstChanged = firstChangedIndex(previous.rows, visibleTurnItems);
     restartIndex = previous.restarts.length - 1;
@@ -2321,6 +2408,9 @@ export function buildThreadFeed(
     ) {
       continue;
     }
+    if (item.type === "dynamic_tool" && canvasViewFromItem(item, recordedCanvases) === null) {
+      continue;
+    }
     const attemptId = resolveAttemptId(item);
     const cached = projectedEntriesCache.get(row);
     if (cached?.attemptId === attemptId) {
@@ -2346,9 +2436,7 @@ export function buildThreadFeed(
       entryRows.push(index);
       continue;
     }
-    const canvas = canvasViewFromItem(item);
-    // The call that drew a recorded board shows nothing: its canvas item draws it.
-    if (canvas === null) continue;
+    const canvas = canvasViewFromItem(item, recordedCanvases);
     if (canvas) {
       const entry: RawThreadFeedEntry = {
         type: "canvas",
@@ -2518,6 +2606,9 @@ export function buildThreadFeed(
             checkpointSummaries: options?.checkpointSummaries,
             foldedAnswerMessageIds,
             delegatedChildrenByRun,
+            recordedCanvasToolItemIds: recordedCanvases.toolItemIds,
+            recordedCanvasNames: recordedCanvases.names,
+            recordedCanvasNamesByRun: recordedCanvases.namesByRun,
             feed,
             restarts,
           };

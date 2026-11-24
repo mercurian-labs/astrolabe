@@ -197,6 +197,37 @@ describe("links", () => {
     expect(img?.getAttribute("width")).toBe("200");
     expect(img?.closest<HTMLElement>(".cm-md-image")?.dataset.embed).toBe("pic.png");
   });
+
+  it("opens an inline embed chip directly when clicking its open icon, and handles escaped table pipes", () => {
+    const opened: string[] = [];
+    const view = mount("See ![[Architecture.canvas#Storage]] inline", {
+      focused: true,
+      selection: [0],
+      options: { openWikilink: (target) => opened.push(target) },
+    });
+    const chip = view.contentDOM.querySelector<HTMLElement>(".cm-md-embed");
+    const icon = chip?.querySelector("svg");
+    const label = chip?.querySelector<HTMLElement>(".cm-md-embed-label");
+    expect(chip?.title).toBe("");
+    expect(icon?.getAttribute("role")).toBe("button");
+    expect(icon?.getAttribute("aria-label")).toBe(
+      "Open Architecture.canvas#Storage (put on its own line to preview)",
+    );
+
+    icon?.dispatchEvent(
+      new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }),
+    );
+    expect(opened).toEqual(["Architecture.canvas#Storage"]);
+
+    label?.dispatchEvent(
+      new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }),
+    );
+    expect(opened).toEqual(["Architecture.canvas#Storage"]);
+    expect(caret(view)).toBe(4);
+
+    const tableView = mount("See ![[Board.canvas#Stage\\|Stage overview]] in a cell");
+    expect(texts(tableView, ".cm-md-embed-label")).toEqual(["Stage overview"]);
+  });
 });
 
 describe("multi-line links and images", () => {

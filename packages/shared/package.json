@@ -304,6 +304,10 @@
       "types": "./src/promptLinks.ts",
       "import": "./src/promptLinks.ts"
     },
+    "./canvasLinks": {
+      "types": "./src/canvasLinks.ts",
+      "import": "./src/canvasLinks.ts"
+    },
     "./threadLinks": {
       "types": "./src/threadLinks.ts",
       "import": "./src/threadLinks.ts"

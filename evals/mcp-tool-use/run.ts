@@ -52,7 +52,16 @@ import { buildCodexAdditionalContext } from "../../apps/server/src/provider/Code
 import { makeSideChatContext } from "../../apps/server/src/orchestration-v2/ContextHandoffService.ts";
 import { withInlineContext } from "../../apps/server/src/orchestration-v2/ContextHandoffDelivery.ts";
 import { AttachmentToolkit } from "../../apps/server/src/mcp/toolkits/attachment/tools.ts";
-import { CanvasToolkit } from "../../apps/server/src/mcp/toolkits/canvas/tools.ts";
+import {
+  CanvasToolkit,
+  canvasShownMessage,
+} from "../../apps/server/src/mcp/toolkits/canvas/tools.ts";
+import {
+  canvasEmbeds,
+  canvasFileName,
+  placeCanvas,
+  type CanvasDrawing,
+} from "../../packages/wiki/src/canvas.ts";
 import { ChangeGroupToolkit } from "../../apps/server/src/mcp/toolkits/changeGroups/tools.ts";
 import { CodeToolkit } from "../../apps/server/src/mcp/toolkits/code/tools.ts";
 import { DeviceToolkit } from "../../apps/server/src/mcp/toolkits/device/tools.ts";
@@ -1310,6 +1319,23 @@ export const t3Default = (
         htmlRender: { attachmentId: "att-1", title: input.title ?? "Visual", height: 560 },
         message: HTML_RENDERED,
       };
+    case "astrolabe_canvas_show": {
+      // T3's own result, from the same helpers: only the layout engine differs.
+      const updateTarget = typeof input.update === "string" ? input.update.trim() : "";
+      const updated = updateTarget.length > 0;
+      const file = canvasFileName(
+        updated ? updateTarget : typeof input.title === "string" ? input.title : "",
+      );
+      const board = Array.isArray(input.cards)
+        ? placeCanvas(input as unknown as CanvasDrawing)
+        : { nodes: [] };
+      return {
+        message: canvasShownMessage(file, updated),
+        canvasItemId: "turn-item:canvas:1",
+        file,
+        embeds: canvasEmbeds(file, board),
+      };
+    }
     case "preview_status":
       return {
         available: false,
