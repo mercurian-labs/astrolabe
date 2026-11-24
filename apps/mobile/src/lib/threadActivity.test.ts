@@ -2055,3 +2055,124 @@ it("caps live thought previews while preserving reasoning detail", () => {
   expect(JSON.parse(activity.getFullDetail()!).item).toMatchObject({ text });
   expect(activity.getCopyText()).toContain(text);
 });
+
+it("moves finished turns' canvases into turnCanvases on their terminal reply and reflects updated-turn ownership", () => {
+  const run1 = RunId.make("run:canvas-turn-1");
+  const run2 = RunId.make("run:canvas-turn-2");
+  const at1 = "2026-06-20T00:00:01.000Z";
+  const at2 = "2026-06-20T00:00:05.000Z";
+  const at3 = "2026-06-20T00:00:10.000Z";
+  const canvasDoc = {
+    nodes: [{ id: "a", type: "text", text: "Card", x: 0, y: 0, width: 180, height: 60 }],
+    edges: [],
+  };
+
+  const user1: OrchestrationV2TurnItem = {
+    ...base("user-1", at1, 0),
+    runId: run1,
+    type: "user_message",
+    messageId: MessageId.make("msg-user-1"),
+    createdBy: "user",
+    creationSource: "mobile",
+    inputIntent: "turn_start",
+    text: "Draw the flow",
+    attachments: [],
+  };
+  const canvas1: OrchestrationV2TurnItem = {
+    ...base("canvas-1", at1, 1),
+    runId: run1,
+    type: "canvas",
+    title: "Command Flow",
+    document: canvasDoc,
+  };
+  const reply1: OrchestrationV2TurnItem = {
+    ...base("reply-1", at1, 2),
+    runId: run1,
+    type: "assistant_message",
+    messageId: MessageId.make("msg-reply-1"),
+    text: "Here is the flow:\n![[Command Flow.canvas]]",
+    streaming: false,
+  };
+
+  // While run1 is still running, the canvas stays inline in the feed.
+  const activeFeed = buildThreadFeed([
+    projected(user1, 0),
+    projected(canvas1, 1),
+    projected(reply1, 2),
+  ]);
+  const whileRunning = deriveThreadFeedPresentation(
+    activeFeed,
+    { runId: run1, status: "running", startedAt: at1, completedAt: null },
+    new Set(),
+    new Set(),
+    at1,
+  );
+  expect(whileRunning.some((row) => row.type === "canvas")).toBe(true);
+
+  // Once run1 completes, the canvas moves to reply1's turnCanvases with embedded: true.
+  const afterRun1 = deriveThreadFeedPresentation(
+    activeFeed,
+    { runId: run1, status: "completed", startedAt: at1, completedAt: at2 },
+    new Set(),
+    new Set(),
+    null,
+  );
+  expect(afterRun1.some((row) => row.type === "canvas")).toBe(false);
+  const reply1Row = afterRun1.find(
+    (row) => row.type === "message" && row.message.id === MessageId.make("msg-reply-1"),
+  );
+  expect(reply1Row?.type === "message" ? reply1Row.message.turnCanvases : undefined).toMatchObject([
+    { itemId: "canvas-1", embedded: true },
+  ]);
+
+  // Turn 2 updates canvas-1 in place (server moves its runId & ordinal to run2); it now lands in turn 2's footer.
+  const user2: OrchestrationV2TurnItem = {
+    ...base("user-2", at2, 3),
+    runId: run2,
+    type: "user_message",
+    messageId: MessageId.make("msg-user-2"),
+    createdBy: "user",
+    creationSource: "mobile",
+    inputIntent: "turn_start",
+    text: "Add another stage",
+    attachments: [],
+  };
+  const updatedCanvas1: OrchestrationV2TurnItem = {
+    ...canvas1,
+    runId: run2,
+    ordinal: 4,
+    updatedAt: DateTime.makeUnsafe(at3),
+  };
+  const reply2: OrchestrationV2TurnItem = {
+    ...base("reply-2", at3, 5),
+    runId: run2,
+    type: "assistant_message",
+    messageId: MessageId.make("msg-reply-2"),
+    text: "Updated the board with the extra stage.",
+    streaming: false,
+  };
+  const feedAfterUpdate = buildThreadFeed([
+    projected(user1, 0),
+    projected(reply1, 1),
+    projected(user2, 2),
+    projected(updatedCanvas1, 3),
+    projected(reply2, 4),
+  ]);
+  const afterRun2 = deriveThreadFeedPresentation(
+    feedAfterUpdate,
+    { runId: run2, status: "completed", startedAt: at2, completedAt: at3 },
+    new Set(),
+    new Set(),
+    null,
+  );
+  const r1 = afterRun2.find(
+    (row) => row.type === "message" && row.message.id === MessageId.make("msg-reply-1"),
+  );
+  const r2 = afterRun2.find(
+    (row) => row.type === "message" && row.message.id === MessageId.make("msg-reply-2"),
+  );
+  expect(r1?.type === "message" ? r1.message.turnCanvases : undefined).toBeUndefined();
+  expect(r2?.type === "message" ? r2.message.turnCanvases : undefined).toMatchObject([
+    { itemId: "canvas-1", embedded: false },
+  ]);
+});

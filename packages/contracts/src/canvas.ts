@@ -98,7 +98,7 @@ export const CanvasShowInput = Schema.Struct({
   update: Schema.optional(
     Schema.NonEmptyString.annotate({
       description:
-        "File name or title of an earlier canvas in this thread to update in place (for example `Architecture.canvas`). Leave out to draw a new board.",
+        "File name or title of an earlier canvas in this thread to update in place (its file name stays the same, for example `Architecture.canvas`). Leave out to draw a new board.",
     }),
   ),
   cards: Schema.Array(CanvasShowCard)

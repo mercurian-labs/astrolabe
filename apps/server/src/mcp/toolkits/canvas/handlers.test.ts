@@ -78,6 +78,7 @@ const harness = (options: {
   readonly noGit?: boolean;
   readonly recordedTitle?: string;
   readonly recordedUpdated?: boolean;
+  readonly recordedReplacedUserEdits?: boolean;
   readonly recordError?: OrchestratorMcpFailure;
 }) => {
   const asked: string[] = [];
@@ -114,6 +115,9 @@ const harness = (options: {
               ...(options.recordedUpdated === undefined
                 ? {}
                 : { updated: options.recordedUpdated }),
+              ...(options.recordedReplacedUserEdits === undefined
+                ? {}
+                : { replacedUserEdits: options.recordedReplacedUserEdits }),
             });
           },
         }),
@@ -205,6 +209,23 @@ describe("canvas toolkit handlers", () => {
         expect(updated.structuredContent).toMatchObject({
           file: "Flow.canvas",
           message: expect.stringContaining("Updated Flow.canvas in place"),
+        });
+
+        const replacedTools = harness({
+          recordedUpdated: true,
+          recordedReplacedUserEdits: true,
+        });
+        const replaced = yield* replacedTools.call({
+          title: "Flow",
+          update: "Flow.canvas",
+          cards: [{ id: "a", text: "Client" }],
+        });
+        expect(replaced.isError).not.toBe(true);
+        expect(replaced.structuredContent).toMatchObject({
+          file: "Flow.canvas",
+          message: expect.stringContaining(
+            "Updated Flow.canvas in place (replacing earlier hand edits)",
+          ),
         });
 
         const missingTools = harness({

@@ -3899,7 +3899,7 @@ describe("OrchestratorMcpService thread stop", () => {
   );
 
   it.effect(
-    "updates an existing canvas in place by explicit update target or cross-run title match while keeping same-run boards distinct",
+    "delegates canvas update resolution to canvas.record, reads back the recorded canvas, maps missing-target errors, and reports replaced user edits",
     () =>
       Effect.gen(function* () {
         const threadId = ThreadId.make("thread:mcp-canvas-update");
@@ -3915,12 +3915,14 @@ describe("OrchestratorMcpService thread stop", () => {
           readonly type: "canvas";
           readonly runId: RunId;
           readonly title: string;
+          readonly editedAt?: DateTime.Utc;
         }> = [
           {
             id: existingId,
             type: "canvas",
             runId: run1,
             title: "Command Lifecycle",
+            editedAt: DateTime.makeUnsafe("2026-10-01T00:01:00.000Z"),
           },
         ];
 
@@ -3944,11 +3946,46 @@ describe("OrchestratorMcpService thread stop", () => {
                     turnItems: canvases,
                   }) as unknown as OrchestrationV2ThreadProjection,
               ),
-            dispatch: (command) =>
-              Effect.sync(() => {
-                dispatched.push(command);
-                return {} as never;
-              }),
+            dispatch: (command) => {
+              dispatched.push(command);
+              if (command.type !== "canvas.record") {
+                return Effect.succeed({ sequence: 1, storedEvents: [] });
+              }
+              if (command.update === "Nope.canvas") {
+                return Effect.fail(
+                  new Orchestrator.OrchestratorDispatchError({
+                    commandId: command.commandId,
+                    commandType: command.type,
+                    cause:
+                      'No canvas named "Nope.canvas" exists in this thread. Existing canvases: Command Lifecycle.canvas.',
+                  }),
+                );
+              }
+              const isExplicitUpdate = command.update === "Command Lifecycle.canvas";
+              const recordedId = isExplicitUpdate ? existingId : command.turnItemId;
+              const recordedTitle = isExplicitUpdate
+                ? "Command Lifecycle"
+                : command.runId === run1
+                  ? "Command Lifecycle 2"
+                  : command.title;
+              return Effect.succeed({
+                sequence: 1,
+                storedEvents: [
+                  {
+                    sequence: 1,
+                    commandId: command.commandId,
+                    event: {
+                      type: "turn-item.updated",
+                      payload: {
+                        id: recordedId,
+                        type: "canvas",
+                        title: recordedTitle,
+                      },
+                    },
+                  },
+                ] as never,
+              });
+            },
           }),
           ServerSettings.layerTest(),
           Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
@@ -3976,55 +4013,40 @@ describe("OrchestratorMcpService thread stop", () => {
         yield* Effect.gen(function* () {
           const service = yield* OrchestratorMcpService.OrchestratorMcpService;
 
-          // Same run, no explicit `update`: draws a distinct numbered board instead of overwriting.
-          const sameRun = yield* service.recordCanvas(scope, {
+          // Fresh draw: reads unique title back from storedEvents.
+          const fresh = yield* service.recordCanvas(scope, {
             title: "Command Lifecycle",
             document: { nodes: [], edges: [] },
             code: undefined,
           });
-          assert.equal(sameRun?.title, "Command Lifecycle 2");
-          assert.equal(sameRun?.updated, false);
-          assert.notEqual(sameRun?.turnItemId, existingId);
+          assert.equal(fresh?.title, "Command Lifecycle 2");
+          assert.equal(fresh?.updated, false);
+          assert.equal(fresh?.replacedUserEdits, undefined);
           assert.equal(
-            dispatched[0]?.type === "canvas.record" ? dispatched[0].replace : "wrong",
+            dispatched[0]?.type === "canvas.record" ? dispatched[0].update : "wrong",
             undefined,
           );
 
-          // Later run, same title: updates the earlier board in place instead of forking "2".
+          // Explicit `update` target targeting an edited board keeps its existing title and flags replacedUserEdits.
           activeRunId = run2;
-          const crossRun = yield* service.recordCanvas(scope, {
-            title: "Command Lifecycle",
-            document: { nodes: [{ id: "a" }], edges: [] },
-            code: undefined,
-          });
-          assert.deepEqual(crossRun, {
-            turnItemId: existingId,
-            title: "Command Lifecycle",
-            updated: true,
-          });
-          assert.equal(
-            dispatched[1]?.type === "canvas.record" ? dispatched[1].replace : "wrong",
-            true,
-          );
-
-          // Explicit `update` target updates and renames in place.
-          const renamed = yield* service.recordCanvas(scope, {
+          const updated = yield* service.recordCanvas(scope, {
             title: "Command Lifecycle v2",
             update: "Command Lifecycle.canvas",
             document: { nodes: [{ id: "b" }], edges: [] },
             code: undefined,
           });
-          assert.deepEqual(renamed, {
+          assert.deepEqual(updated, {
             turnItemId: existingId,
-            title: "Command Lifecycle v2",
+            title: "Command Lifecycle",
             updated: true,
+            replacedUserEdits: true,
           });
           assert.equal(
-            dispatched[2]?.type === "canvas.record" ? dispatched[2].replace : "wrong",
-            true,
+            dispatched[1]?.type === "canvas.record" ? dispatched[1].update : "wrong",
+            "Command Lifecycle.canvas",
           );
 
-          // Unknown `update` target fails cleanly with existing board names.
+          // Unknown `update` target maps OrchestratorDispatchError to invalid_request.
           const missing = yield* service
             .recordCanvas(scope, {
               title: "Other",

@@ -16,6 +16,7 @@ import type {
   SelectableMarkdownTextProps,
 } from "./SelectableMarkdownText.types";
 import {
+  enrichedCanvasLinkPresentation,
   enrichedContextLinkPresentation,
   enrichedLinkVariantPattern,
   enrichedModelReference,
@@ -46,6 +47,10 @@ export function enrichedThreadLinkCustomization(href: string) {
   return chipCustomization(enrichedThreadLinkPresentation(href));
 }
 
+function enrichedCanvasLinkCustomization(href: string) {
+  return chipCustomization(enrichedCanvasLinkPresentation(href));
+}
+
 export function withChipIcon(
   customization: MarkdownLinkCustomization | undefined,
   iconUri: string | undefined,
@@ -67,6 +72,8 @@ function presentation(
   if (custom) return custom;
   const context = enrichedContextLinkCustomization(url);
   if (context) return context;
+  const canvas = enrichedCanvasLinkCustomization(url);
+  if (canvas) return canvas;
   const skill = enrichedSkillReference(url, props.skills);
   if (skill)
     return {

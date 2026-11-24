@@ -968,6 +968,28 @@ describe("placeCanvas", () => {
       expect(canvasUniqueTitle("flow", ["Flow"])).toBe("flow 2");
       expect(canvasUniqueTitle("Flow", ["Flow", "flow 2", "Flow: 3"])).toBe("Flow 4");
       expect(canvasNameKey(" Checkout Flow.CANVAS ")).toBe(canvasNameKey("checkout flow"));
+
+      const longTitle = "A".repeat(105);
+      const second = canvasUniqueTitle(longTitle, [longTitle]);
+      expect(canvasNameKey(canvasFileName(second))).not.toBe(
+        canvasNameKey(canvasFileName(longTitle)),
+      );
+      expect(second.endsWith(" 2")).toBe(true);
+    });
+
+    it("normalizes escaped newlines in card text while preserving code blocks and inline code", () => {
+      const placed = placeCanvas({
+        cards: [
+          {
+            id: "a",
+            text: '### Heading\\n\\nBody line\\r\\nNext `fmt.Printf("\\n")`\\n```ts\\nconst s = "a\\\\nb";\\n```',
+          },
+        ],
+      });
+      const text = placed.nodes[0]?.type === "text" ? placed.nodes[0].text : "";
+      expect(text).toBe(
+        '### Heading\n\nBody line\nNext `fmt.Printf("\\n")`\n```ts\nconst s = "a\\\\nb";\n```',
+      );
     });
 
     it("lists the embeds a board can be stitched in with: the whole of it, then each frame", () => {

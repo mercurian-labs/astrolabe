@@ -659,7 +659,11 @@ const SimpleFile = ({ file }: { readonly file: string }) => (
 );
 
 function simpleTextTitle(text: string): string {
-  for (const raw of text.split(/\r?\n/)) {
+  const normalized =
+    !text.includes("\n") && (text.includes("\\n") || text.includes("\\r\\n"))
+      ? text.replace(/(?<!\\)\\r\\n|(?<!\\)\\n/g, "\n")
+      : text;
+  for (const raw of normalized.split(/\r?\n/)) {
     const line = raw
       .trim()
       .replace(/^#{1,6}\s+/, "")

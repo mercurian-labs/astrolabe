@@ -666,7 +666,6 @@ type MessagesTimelineRowContent =
 /** A canvas a turn drew, at its foot; `embedded` when the turn's prose shows it with `![[…]]`. */
 export interface TurnCanvas {
   readonly id: string;
-  readonly createdAt: string;
   readonly canvas: CanvasView;
   readonly sourceThreadId: ThreadId;
   readonly itemId: TurnItemId;
@@ -2404,31 +2403,42 @@ function attachTurnCanvases(
   }
   if (terminal.size === 0) return rows;
   // Every reply of the turn, folded ones included, can show a board.
-  const prose = new Map<RunId, string[]>();
+  const embeddedByRun = new Map<RunId, Set<string>>();
   for (const entry of timelineEntries) {
     if (entry.kind !== "message" || entry.message.role !== "assistant") continue;
     const runId = entry.message.runId;
     if (!runId || !terminal.has(runId)) continue;
-    prose.set(runId, [...(prose.get(runId) ?? []), entry.message.text]);
+    for (const link of canvasLinksIn(entry.message.text)) {
+      if (!link.embed) continue;
+      let names = embeddedByRun.get(runId);
+      if (names === undefined) {
+        names = new Set<string>();
+        embeddedByRun.set(runId, names);
+      }
+      names.add(canvasNameKey(link.name));
+    }
   }
   const byRun = new Map<RunId, TurnCanvas[]>();
   const moved = new Set<string>();
   for (const row of rows) {
     if (row.kind !== "canvas" || row.runId === null || !terminal.has(row.runId)) continue;
-    const embeds = (prose.get(row.runId) ?? []).flatMap((text) =>
-      canvasLinksIn(text).flatMap((link) => (link.embed ? [canvasNameKey(link.name)] : [])),
-    );
-    const names = [canvasNameKey(canvasViewFile(row.canvas)), canvasNameKey(row.canvas.title)];
-    const canvases = byRun.get(row.runId) ?? [];
+    const embeddedNames = embeddedByRun.get(row.runId);
+    const embedded =
+      embeddedNames !== undefined &&
+      (embeddedNames.has(canvasNameKey(canvasViewFile(row.canvas))) ||
+        embeddedNames.has(canvasNameKey(row.canvas.title)));
+    let canvases = byRun.get(row.runId);
+    if (canvases === undefined) {
+      canvases = [];
+      byRun.set(row.runId, canvases);
+    }
     canvases.push({
       id: row.id,
-      createdAt: row.createdAt,
       canvas: row.canvas,
       sourceThreadId: row.sourceThreadId,
       itemId: row.itemId,
-      embedded: embeds.some((name) => names.includes(name)),
+      embedded,
     });
-    byRun.set(row.runId, canvases);
     moved.add(row.id);
   }
   if (moved.size === 0) return rows;

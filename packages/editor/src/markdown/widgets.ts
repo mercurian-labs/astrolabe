@@ -286,26 +286,29 @@ export class ImageWidget extends WidgetType {
 
 /** `![[Note]]` in v1: a chip naming the embedded note, not its content. */
 export class EmbedChipWidget extends WidgetType {
-  constructor(readonly target: string) {
+  constructor(
+    readonly target: string,
+    readonly label: string = target,
+  ) {
     super();
   }
 
   override eq(other: EmbedChipWidget) {
-    return other.target === this.target;
+    return other.target === this.target && other.label === this.label;
   }
 
   toDOM(view: EditorView) {
     const chip = span("cm-md-embed");
     chip.dataset.embed = this.target;
     const icon = svgIcon("cm-md-icon", ["M14 3h7v7", "M10 14 21 3", "M21 14v7H3V3h7"]);
-    const baseName = this.target.split("|")[0]?.split("#")[0]?.trim() ?? "";
+    const baseName = this.target.split(/\\?\|/)[0]?.split("#")[0]?.replace(/\\+$/, "").trim() ?? "";
     const isBlockEmbed = /\.(?:canvas|base)$/i.test(baseName);
-    chip.title = view.state.readOnly
-      ? `Open ${this.target}`
-      : isBlockEmbed
-        ? `Click icon or Mod-click to open ${this.target} · Put on its own line to preview`
-        : `Click icon or Mod-click to open ${this.target}`;
-    chip.append(icon, span("cm-md-embed-label", this.target));
+    icon.setAttribute("role", "button");
+    icon.setAttribute(
+      "aria-label",
+      isBlockEmbed ? `Open ${this.target} (put on its own line to preview)` : `Open ${this.target}`,
+    );
+    chip.append(icon, span("cm-md-embed-label", this.label));
     chip.addEventListener("mousedown", (event) => {
       if (event.button !== 0) return;
       event.preventDefault();

@@ -228,12 +228,21 @@ import {
 } from "./pending-thread-feed";
 import type { QueuedThreadMessage } from "../../state/thread-outbox-model";
 import { resolveThreadFeedFixedItemSize } from "./thread-feed-item-size";
+import { canvasFrame } from "@mercurian/wiki/canvas";
+import { canvasViewNamed } from "@t3tools/client-runtime/canvasViews";
+import { parseCanvasLinkHref } from "@t3tools/shared/canvasLinks";
 import { htmlRenderFrameHeight } from "@t3tools/shared/htmlRender";
+import {
+  markdownWithCanvasLinks,
+  splitMarkdownCanvasEmbeds,
+  type ThreadCanvasEntry,
+} from "../../lib/markdownCanvasLinks";
 import { htmlRenderRowHeight, ThreadHtmlRender } from "./HtmlRenderWebView";
 import {
   canvasRowHeight,
   ThreadCanvas,
   ThreadWikiCanvas,
+  TurnCanvasesFooter,
   WIKI_CANVAS_ROW_HEIGHT,
 } from "./ThreadCanvas";
 import { ThreadMcpApp } from "./McpAppWebView";
@@ -1148,6 +1157,8 @@ const AssistantMarkdownContent = memo(function AssistantMarkdownContent(props: {
   readonly onUseArtifactTemplate?: ((template: CodexArtifactTemplate) => void) | undefined;
   readonly renderImage: MarkdownImageRenderer;
   readonly skills?: ReadonlyArray<SelectableMarkdownSkill> | undefined;
+  readonly threadCanvases: ReadonlyArray<ThreadCanvasEntry>;
+  readonly contentWidth: number;
 }) {
   const models = useModelMentions(props.environmentId, props.markdown);
   const liveMarkdown = useLiveThreadLinkLabels(props.markdown, props.environmentId);
@@ -1161,34 +1172,61 @@ const AssistantMarkdownContent = memo(function AssistantMarkdownContent(props: {
   return (
     <AssistantMarkdownBlocks
       markdown={liveMarkdown}
+      environmentId={props.environmentId}
       markdownStyles={props.markdownStyles}
       linkHandlers={linkHandlers}
       onUseArtifactTemplate={props.onUseArtifactTemplate}
       renderImage={props.renderImage}
       skills={props.skills}
       models={models}
+      threadCanvases={props.threadCanvases}
+      contentWidth={props.contentWidth}
     />
   );
 });
 
-// Folds split first, so an artifact card inside a fold stays inside it.
+// Folds split first, so an artifact card or canvas embed inside a fold stays inside it.
 function AssistantMarkdownBlocks(props: {
   readonly markdown: string;
+  readonly environmentId: EnvironmentId;
   readonly markdownStyles: MarkdownStyleSet;
   readonly linkHandlers: MarkdownLinkHandlers;
   readonly onUseArtifactTemplate?: ((template: CodexArtifactTemplate) => void) | undefined;
   readonly renderImage: MarkdownImageRenderer;
   readonly skills?: ReadonlyArray<SelectableMarkdownSkill> | undefined;
   readonly models: ReturnType<typeof useModelMentions>;
+  readonly threadCanvases: ReadonlyArray<ThreadCanvasEntry>;
+  readonly contentWidth: number;
 }) {
   const blocks = useMemo(
     () =>
       splitMarkdownDetails(props.markdown).map((block) =>
         block.kind === "details"
           ? block
-          : { ...block, segments: splitCodexArtifactTemplateMarkdown(block.markdown) },
+          : {
+              ...block,
+              segments: splitCodexArtifactTemplateMarkdown(block.markdown).flatMap(
+                (
+                  segment,
+                ): ReadonlyArray<
+                  | Extract<
+                      ReturnType<typeof splitCodexArtifactTemplateMarkdown>[number],
+                      { readonly kind: "artifact-template" }
+                    >
+                  | ReturnType<typeof splitMarkdownCanvasEmbeds>[number]
+                > =>
+                  segment.kind === "artifact-template"
+                    ? [segment]
+                    : splitMarkdownCanvasEmbeds(segment.markdown, props.threadCanvases).map(
+                        (piece) => ({
+                          ...piece,
+                          sourceOffset: segment.sourceOffset + piece.sourceOffset,
+                        }),
+                      ),
+              ),
+            },
       ),
-    [props.markdown],
+    [props.markdown, props.threadCanvases],
   );
   return blocks.map((block) => {
     if (block.kind === "details") {
@@ -1213,11 +1251,27 @@ function AssistantMarkdownBlocks(props: {
           />
         );
       }
+      if (segment.kind === "canvas-embed") {
+        return (
+          <ThreadCanvas
+            key={`canvas-embed:${offset}`}
+            environmentId={props.environmentId}
+            threadId={segment.canvas.sourceThreadId}
+            itemId={segment.canvas.itemId}
+            view={segment.canvas}
+            frame={segment.frame}
+            frameWidth={props.contentWidth}
+          />
+        );
+      }
       if (segment.markdown.trim().length === 0) return null;
       return (
         <SelectableMarkdownText
           key={`markdown:${offset}`}
-          markdown={renderCodexInlineDirectivesAsMarkdown(segment.markdown)}
+          markdown={markdownWithCanvasLinks(
+            renderCodexInlineDirectivesAsMarkdown(segment.markdown),
+            props.threadCanvases,
+          )}
           skills={props.skills}
           models={props.models}
           textStyle={props.markdownStyles.nativeTextStyle}
@@ -1661,6 +1715,7 @@ function renderFeedEntry(
     readonly markdownContentWidth: number;
     readonly contentWidth: number;
     readonly threadTitle: string;
+    readonly threadCanvases: ReadonlyArray<ThreadCanvasEntry>;
     readonly workflowOpening: WorkflowOpening | null;
     readonly userMessageGrouping: GroupedThreadFeedRow["userMessageGrouping"];
   },
@@ -2240,7 +2295,12 @@ function renderFeedEntry(
       );
     }
 
-    if (renderedText.trim().length === 0 && attachments.length === 0) {
+    const turnCanvases = showAssistantMeta ? message.turnCanvases : undefined;
+    if (
+      renderedText.trim().length === 0 &&
+      attachments.length === 0 &&
+      (turnCanvases === undefined || turnCanvases.length === 0)
+    ) {
       return null;
     }
 
@@ -2265,6 +2325,8 @@ function renderFeedEntry(
               onUseArtifactTemplate={props.onUseArtifactTemplate}
               renderImage={props.renderMarkdownImage}
               skills={props.skills}
+              threadCanvases={props.threadCanvases}
+              contentWidth={props.markdownContentWidth}
             />
           </MarkdownImageAvailableWidthContext>
         ) : null}
@@ -2274,6 +2336,13 @@ function renderFeedEntry(
           onPressPreview={props.onPressPreview}
           onPlaybackStart={props.onPlaybackStart}
         />
+        {turnCanvases && turnCanvases.length > 0 ? (
+          <TurnCanvasesFooter
+            environmentId={props.environmentId}
+            canvases={turnCanvases}
+            frameWidth={props.markdownContentWidth}
+          />
+        ) : null}
         {showAssistantMeta && message.checkpointSummary ? (
           <TurnDiffStat
             checkpoint={message.checkpointSummary}
@@ -2876,6 +2945,21 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     // A v1 link names no environment, so it falls back to this message's.
     return scopeThreadRef(props.environmentId, link.threadId);
   };
+  const threadCanvases = useMemo<ReadonlyArray<ThreadCanvasEntry>>(
+    () =>
+      props.feed.flatMap((entry) =>
+        entry.type === "canvas"
+          ? [
+              {
+                ...entry.canvas,
+                sourceThreadId: entry.sourceThreadId,
+                itemId: entry.itemId,
+              },
+            ]
+          : [],
+      ),
+    [props.feed],
+  );
   const onMarkdownLinkPress = (href: string, imageEmbed = false) => {
     markdownLinkRequest.current?.abort();
     const request = new AbortController();
@@ -2884,6 +2968,21 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     if (skill) {
       const instructionsPath = enrichedSkillInstructionsPath(skill);
       if (instructionsPath) openSkillInstructions(instructionsPath);
+      return;
+    }
+    const canvasLink = parseCanvasLinkHref(href);
+    if (canvasLink) {
+      const target = canvasViewNamed(threadCanvases, canvasLink.name);
+      if (target) {
+        const group =
+          canvasLink.frame === undefined ? undefined : canvasFrame(target.data, canvasLink.frame);
+        navigation.navigate("ThreadCanvas", {
+          environmentId: String(props.environmentId),
+          threadId: String(target.sourceThreadId),
+          itemId: String(target.itemId),
+          ...(group === undefined ? {} : { frame: group.id }),
+        });
+      }
       return;
     }
     if (parseThreadLinkHref(href)) {
@@ -3225,6 +3324,8 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       linkHandlers={markdownLinkHandlers}
       renderImage={renderMarkdownImage}
       skills={props.skills}
+      threadCanvases={threadCanvases}
+      contentWidth={markdownContentWidth}
     />
   );
   const reviewCommentColors = useReviewCommentColors();
@@ -3690,6 +3791,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
             markdownContentWidth,
             contentWidth,
             threadTitle: props.threadTitle,
+            threadCanvases,
             skills: props.skills,
             workspaceRoot: props.workspaceRoot,
             workflowOpening,

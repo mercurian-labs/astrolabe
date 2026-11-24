@@ -1610,6 +1610,8 @@ const OrchestrationV2CanvasFields = {
   code: Schema.optional(CanvasShowCode),
   /** When the user last changed it, which the agent hears about on its next turn. */
   editedAt: Schema.optional(Schema.DateTimeUtc),
+  /** Tool-call items whose `astrolabe_canvas_show` invocations this canvas item represents. */
+  sourceToolItemIds: Schema.optional(Schema.Array(TurnItemId)),
 } as const;
 
 export const OrchestrationV2LinkRequestStatus = Schema.Literals([
@@ -3673,7 +3675,9 @@ const OrchestrationV2InternalCommand = Schema.Union([
     title: TrimmedNonEmptyString,
     document: Schema.Unknown,
     code: Schema.optional(CanvasShowCode),
-    /** When true, replaces an existing canvas item's title, document, and code in place. */
+    /** File name, title, or item id of an earlier board in this thread to update in place. */
+    update: Schema.optional(TrimmedNonEmptyString),
+    /** When true, replaces an existing canvas item's document and code in place. */
     replace: Schema.optional(Schema.Boolean),
   }),
   /**

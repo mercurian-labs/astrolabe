@@ -19,8 +19,16 @@ import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as OrchestratorMcpService from "../../OrchestratorMcpService.ts";
 
 /** What a drawn board's result tells the agent, by the file its reply embeds it as. */
-export const canvasShownMessage = (file: string, updated = false): string =>
-  `${updated ? `Updated ${file} in place` : `Drawn as ${file}`}, which the reader can always open below your reply. Write any of \`embeds\` on its own line where it helps the reader: ![[${file}]] shows the whole board, ![[${file}#Group label]] one named group. [[${file}#Group label]] links to it instead. Say around each what the picture can't; don't restate its cards.`;
+export const canvasShownMessage = (
+  file: string,
+  updated = false,
+  replacedUserEdits = false,
+): string =>
+  `${
+    updated
+      ? `Updated ${file} in place${replacedUserEdits ? " (replacing earlier hand edits)" : ""}`
+      : `Drawn as ${file}`
+  }, which the reader can always open below your reply. Write any of \`embeds\` on its own line where it helps the reader: ![[${file}]] shows the whole board, ![[${file}#Group label]] one named group. [[${file}#Group label]] links to it instead. Say around each what the picture can't; don't restate its cards.`;
 
 const CanvasShowTool = Tool.make(CANVAS_SHOW_TOOL_NAME, {
   description:

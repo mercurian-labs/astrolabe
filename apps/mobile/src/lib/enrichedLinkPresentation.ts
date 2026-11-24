@@ -16,6 +16,7 @@ import {
   formatComposerContextHref,
   parseComposerContextHref,
 } from "@t3tools/shared/composerContextReferences";
+import { parseCanvasLinkHref } from "@t3tools/shared/canvasLinks";
 import { hasThreadLinks, parseThreadLinkHref } from "@t3tools/shared/threadLinks";
 
 export function enrichedContextLinkPresentation(
@@ -42,6 +43,17 @@ export function enrichedThreadLinkPresentation(
 ): { accent?: string; icon: ContextChipIconRef } | undefined {
   if (!parseThreadLinkHref(href)) return undefined;
   const presentation = contextChipPresentation("thread");
+  return {
+    ...(presentation.accent ? { accent: presentation.accent } : {}),
+    icon: contextChipIcon(presentation, ""),
+  };
+}
+
+export function enrichedCanvasLinkPresentation(
+  href: string,
+): { accent?: string; icon: ContextChipIconRef } | undefined {
+  if (!parseCanvasLinkHref(href)) return undefined;
+  const presentation = contextChipPresentation("canvas");
   return {
     ...(presentation.accent ? { accent: presentation.accent } : {}),
     icon: contextChipIcon(presentation, ""),

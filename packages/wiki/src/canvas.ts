@@ -325,7 +325,16 @@ export function canvasUniqueTitle(title: string, earlier: Iterable<string>): str
   const own = canvasFileName(title).replace(/\.canvas$/i, "");
   if (!taken.has(canvasNameKey(own))) return title;
   for (let next = 2; ; next++) {
-    if (!taken.has(canvasNameKey(`${own} ${next}`))) return `${title.trim()} ${next}`;
+    const suffix = ` ${next}`;
+    const maxBase = Math.max(1, MAX_NAME - suffix.length);
+    const candidate = `${own.slice(0, maxBase).trimEnd()}${suffix}`;
+    if (!taken.has(canvasNameKey(candidate))) {
+      const trimmed = title.trim();
+      const titled = `${trimmed.slice(0, maxBase).trimEnd()}${suffix}`;
+      return canvasNameKey(canvasFileName(titled)) === canvasNameKey(candidate)
+        ? titled
+        : candidate;
+    }
   }
 }
 

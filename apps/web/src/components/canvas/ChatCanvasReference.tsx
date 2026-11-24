@@ -49,7 +49,11 @@ export function ChatCanvasReference({
   );
   const view = canvasViewNamed(views, target.name);
   if (view === undefined) {
-    return <span className="text-muted-foreground">{written.source}</span>;
+    return target.name.toLowerCase().endsWith(".canvas") ? (
+      <span className="text-muted-foreground">{written.source}</span>
+    ) : (
+      written.source
+    );
   }
   const group = target.frame === undefined ? undefined : canvasFrame(view.data, target.frame);
   const missing = target.frame !== undefined && group === undefined;

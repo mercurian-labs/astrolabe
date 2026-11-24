@@ -112,7 +112,11 @@ export const layer = McpToolAccess.toLayer(CanvasToolkit, {
       const file = canvasFileName(recorded.title);
       const embeds = canvasEmbeds(file, board);
       return {
-        message: canvasShownMessage(file, recorded.updated === true),
+        message: canvasShownMessage(
+          file,
+          recorded.updated === true,
+          recorded.replacedUserEdits === true,
+        ),
         canvasItemId: recorded.turnItemId,
         file,
         embeds,

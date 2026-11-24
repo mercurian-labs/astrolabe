@@ -76,12 +76,13 @@ describe("canvasViewFromItem", () => {
     ).toBeNull();
   });
 
-  it("suppresses a summary-only dynamic_tool output when a recorded canvas already covers that run or update", () => {
+  it("suppresses summary-only dynamic_tool outputs linked by sourceToolItemIds or recorded names without hiding unrecorded calls", () => {
     const canvasItem = {
       id: "turn-item:canvas:1",
       type: "canvas",
-      runId: "run-1",
+      runId: "run-2",
       title: "Command Lifecycle",
+      sourceToolItemIds: ["turn-item:tool:1", "turn-item:tool:2"],
       document: {
         nodes: [{ id: "a", type: "text", text: "A", x: 0, y: 0, width: 180, height: 60 }],
         edges: [],
@@ -107,31 +108,68 @@ describe("canvasViewFromItem", () => {
         output: "Update command lifecycle canvas",
       }),
     };
-    const crossRunSameTitleCall = {
-      id: "turn-item:tool:3",
+    const racedUpdateCall = {
+      id: "turn-item:tool:raced",
+      ...item({
+        runId: "run-2",
+        input: {
+          title: "Renamed Draft",
+          update: "Command Lifecycle.canvas",
+          cards: [{ id: "a", text: "A" }],
+        },
+        output: "Update command lifecycle canvas",
+      }),
+    };
+    const unrecordedSameRunCall = {
+      id: "turn-item:tool:unrecorded",
+      ...item({
+        runId: "run-2",
+        input: { title: "Second Board", cards: [{ id: "b", text: "B" }] },
+        output: "Draw second board",
+      }),
+    };
+    const unrecordedUpdateCall = {
+      id: "turn-item:tool:unrecorded-update",
       ...item({
         runId: "run-3",
-        input: { title: "Command Lifecycle", cards: [{ id: "a", text: "A" }] },
-        output: "Redraw command lifecycle canvas",
+        input: {
+          title: "Ghost Board",
+          update: "Missing.canvas",
+          cards: [{ id: "c", text: "C" }],
+        },
+        output: "Update missing board",
       }),
     };
 
-    // Without recorded context, the fallback renders; with recorded canvases, all three calls suppress.
     expect(canvasViewFromItem(sameRunCall)?.title).toBe("Command Lifecycle");
     const recorded = recordedCanvasesIn([
       canvasItem,
       sameRunCall,
       crossRunUpdateCall,
-      crossRunSameTitleCall,
+      racedUpdateCall,
+      unrecordedSameRunCall,
+      unrecordedUpdateCall,
     ]);
     expect(canvasViewFromItem(sameRunCall, recorded)).toBeNull();
     expect(canvasViewFromItem(crossRunUpdateCall, recorded)).toBeNull();
-    expect(canvasViewFromItem(crossRunSameTitleCall, recorded)).toBeNull();
+    expect(canvasViewFromItem(racedUpdateCall, recorded)).toBeNull();
+    // An unrecorded second call on the same run or an unrecorded update must still render its fallback.
+    expect(canvasViewFromItem(unrecordedSameRunCall, recorded)?.title).toBe("Second Board");
+    expect(canvasViewFromItem(unrecordedUpdateCall, recorded)?.title).toBe("Ghost Board");
     expect(
-      canvasViews([canvasItem, sameRunCall, crossRunUpdateCall, crossRunSameTitleCall]).map(
-        (view) => view.id,
-      ),
-    ).toEqual(["turn-item:canvas:1"]);
+      canvasViews([
+        canvasItem,
+        sameRunCall,
+        crossRunUpdateCall,
+        racedUpdateCall,
+        unrecordedSameRunCall,
+        unrecordedUpdateCall,
+      ]).map((view) => view.id),
+    ).toEqual([
+      "turn-item:canvas:1",
+      "turn-item:tool:unrecorded",
+      "turn-item:tool:unrecorded-update",
+    ]);
   });
 
   it("leaves a call still running, a failed one, another tool or a bad input to its own row", () => {

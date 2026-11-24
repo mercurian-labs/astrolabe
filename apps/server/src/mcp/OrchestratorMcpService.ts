@@ -68,7 +68,7 @@ import {
   resolveProjectProviderInstanceEnabled,
   SECRET_REQUEST_UNSAVED_NOTE,
 } from "@t3tools/contracts";
-import { canvasFileName, canvasNameKey, canvasUniqueTitle } from "@mercurian/wiki/canvas";
+import { canvasFileName, canvasNameKey } from "@mercurian/wiki/canvas";
 import { getProviderOptionCurrentValue, withLegacyUltracodeEffort } from "@t3tools/shared/model";
 import { runRanAfter } from "@t3tools/shared/orchestrationV2ThreadError";
 import { formatThreadLink } from "@t3tools/shared/threadLinks";
@@ -212,6 +212,7 @@ export interface OrchestratorMcpServiceShape {
         readonly turnItemId: TurnItemId;
         readonly title: string;
         readonly updated?: boolean | undefined;
+        readonly replacedUserEdits?: boolean | undefined;
       }
     | undefined,
     OrchestratorMcpFailure
@@ -2156,10 +2157,16 @@ const make = Effect.gen(function* () {
     recordCanvas: Effect.fn("OrchestratorMcpService.recordCanvas")(function* (scope, input) {
       if (scope.thread === undefined) return undefined;
       const threadId = scope.thread.threadId;
-      const parent = yield* loadThreadRecords(threadId, ["runs", "turnItems"], {
-        runStatuses: ThreadManagementService.ACTIVE_RUN_STATUSES,
-        turnItemTypes: ["canvas"],
-      });
+      const updateTarget = input.update?.trim();
+      const hasUpdateTarget = updateTarget !== undefined && updateTarget.length > 0;
+      const parent = yield* loadThreadRecords(
+        threadId,
+        hasUpdateTarget ? ["runs", "turnItems"] : ["runs"],
+        {
+          runStatuses: ThreadManagementService.ACTIVE_RUN_STATUSES,
+          ...(hasUpdateTarget ? { turnItemTypes: ["canvas"] } : {}),
+        },
+      );
       const run = ThreadManagementService.latestActiveRun(parent);
       if (
         run === undefined ||
@@ -2168,52 +2175,26 @@ const make = Effect.gen(function* () {
       ) {
         return undefined;
       }
-      const canvases = parent.turnItems.filter((item) => item.type === "canvas");
-      const updateTarget = input.update?.trim();
-      let existing = undefined;
-      if (updateTarget !== undefined && updateTarget.length > 0) {
+      let existingEditedId: TurnItemId | undefined;
+      if (hasUpdateTarget) {
         const wantedKey = canvasNameKey(updateTarget);
-        existing = canvases.findLast(
+        const existing = parent.turnItems.findLast(
           (item) =>
-            item.id === updateTarget ||
-            (item.title !== null &&
-              (canvasNameKey(canvasFileName(item.title)) === wantedKey ||
-                canvasNameKey(item.title) === wantedKey)),
+            item.type === "canvas" &&
+            (item.id === updateTarget ||
+              (item.title !== null &&
+                (canvasNameKey(canvasFileName(item.title)) === wantedKey ||
+                  canvasNameKey(item.title) === wantedKey))),
         );
-        if (existing === undefined) {
-          const available = canvases
-            .flatMap((item) => (item.title === null ? [] : [canvasFileName(item.title)]))
-            .join(", ");
-          return yield* failure(
-            "invalid_request",
-            available.length > 0
-              ? `No canvas named "${updateTarget}" exists in this thread. Existing canvases: ${available}.`
-              : `No canvas named "${updateTarget}" exists in this thread yet. Leave out \`update\` to draw a new board.`,
-          );
+        if (existing?.type === "canvas" && existing.editedAt !== undefined) {
+          existingEditedId = existing.id;
         }
-      } else {
-        // Across turns, reusing an earlier board's exact title updates that board in place instead
-        // of forking "Title 2.canvas"; within one turn, duplicate titles stay distinct.
-        const wantedKey = canvasNameKey(canvasFileName(input.title));
-        existing = canvases.findLast(
-          (item) =>
-            item.runId !== run.id &&
-            item.title !== null &&
-            canvasNameKey(canvasFileName(item.title)) === wantedKey,
-        );
       }
       const key = yield* requestKey(undefined);
-      const turnItemId =
-        existing?.id ??
-        TurnItemId.make(`turn-item:canvas:${stablePart(threadId)}:${stablePart(key)}`);
-      // Its file name is its title's, which replies embed it by: unique in the thread, a retry aside.
-      const title = canvasUniqueTitle(
-        input.title,
-        canvases.flatMap((item) =>
-          item.id !== turnItemId && item.title !== null ? [item.title] : [],
-        ),
+      const turnItemId = TurnItemId.make(
+        `turn-item:canvas:${stablePart(threadId)}:${stablePart(key)}`,
       );
-      yield* threadManagement
+      const dispatchResult = yield* threadManagement
         .dispatch({
           type: "canvas.record",
           commandId: stableCommandId({ scope, requestKey: key, operation: "canvas-record" }),
@@ -2221,17 +2202,45 @@ const make = Effect.gen(function* () {
           runId: run.id,
           nodeId: run.rootNodeId,
           turnItemId,
-          title,
+          title: input.title,
           document: input.document,
           ...(input.code === undefined ? {} : { code: input.code }),
-          ...(existing === undefined ? {} : { replace: true }),
+          ...(hasUpdateTarget ? { update: updateTarget } : {}),
         })
         .pipe(
-          Effect.mapError((error) =>
-            failure("orchestration_error", `Could not record the canvas: ${errorMessage(error)}`),
-          ),
+          Effect.mapError((error) => {
+            if (
+              error._tag === "OrchestratorDispatchError" &&
+              typeof error.cause === "string" &&
+              error.cause.startsWith("No canvas named ")
+            ) {
+              return failure("invalid_request", error.cause);
+            }
+            return failure(
+              "orchestration_error",
+              `Could not record the canvas: ${errorMessage(error)}`,
+            );
+          }),
         );
-      return { turnItemId, title, updated: existing !== undefined };
+      const recordedEvent = dispatchResult?.storedEvents?.find(
+        (stored) =>
+          stored.event.type === "turn-item.updated" && stored.event.payload.type === "canvas",
+      );
+      const recordedItem =
+        recordedEvent?.event.type === "turn-item.updated" &&
+        recordedEvent.event.payload.type === "canvas"
+          ? recordedEvent.event.payload
+          : undefined;
+      const recordedId = recordedItem?.id ?? turnItemId;
+      const recordedTitle = recordedItem?.title ?? input.title;
+      const updated = recordedId !== turnItemId;
+      const replacedUserEdits = existingEditedId !== undefined && recordedId === existingEditedId;
+      return {
+        turnItemId: recordedId,
+        title: recordedTitle,
+        updated,
+        ...(replacedUserEdits ? { replacedUserEdits: true } : {}),
+      };
     }),
     requestSecret: Effect.fn("OrchestratorMcpService.requestSecret")(function* (scope, input) {
       const { scope: threadScope, parent } = yield* loadThreadCaller(scope, "request_secret");

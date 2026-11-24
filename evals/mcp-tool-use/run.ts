@@ -1321,12 +1321,16 @@ export const t3Default = (
       };
     case "astrolabe_canvas_show": {
       // T3's own result, from the same helpers: only the layout engine differs.
-      const file = canvasFileName(typeof input.title === "string" ? input.title : "");
+      const updateTarget = typeof input.update === "string" ? input.update.trim() : "";
+      const updated = updateTarget.length > 0;
+      const file = canvasFileName(
+        updated ? updateTarget : typeof input.title === "string" ? input.title : "",
+      );
       const board = Array.isArray(input.cards)
         ? placeCanvas(input as unknown as CanvasDrawing)
         : { nodes: [] };
       return {
-        message: canvasShownMessage(file),
+        message: canvasShownMessage(file, updated),
         canvasItemId: "turn-item:canvas:1",
         file,
         embeds: canvasEmbeds(file, board),

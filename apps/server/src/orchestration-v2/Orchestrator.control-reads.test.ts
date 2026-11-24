@@ -2086,7 +2086,7 @@ it.effect(
       });
       assert.isTrue(edited?.type === "canvas" && edited.editedAt !== undefined);
 
-      // Replacing an existing canvas updates its title/document/code in place and clears editedAt.
+      // Replacing an existing canvas updates its document/code in place, keeps its title, and clears editedAt.
       const replacedDocument = {
         nodes: [
           { id: "a", type: "text", text: "A v2", x: 10, y: 20, width: 180, height: 60 },
@@ -2124,12 +2124,171 @@ it.effect(
           : null,
         {
           id: turnItemId,
-          title: "Flow v2",
+          title: "Flow",
           document: replacedDocument,
           code: { commit: "deadbee" },
           editedAt: undefined,
         },
       );
+
+      // Same run, duplicate title without `update`: allocates a distinct numbered title.
+      const secondId = TurnItemId.make("turn-item:canvas:canvas-record:2");
+      yield* orchestrator.dispatch({
+        type: "canvas.record",
+        commandId: CommandId.make("canvas-record:second"),
+        threadId,
+        runId,
+        nodeId,
+        turnItemId: secondId,
+        title: "Flow",
+        document,
+      });
+      const afterSecond = (yield* projections.getThreadRecords(threadId, ["turnItems"], {
+        turnItemTypes: ["canvas"],
+        messageRoles: [],
+      })).turnItems;
+      assert.deepStrictEqual(
+        afterSecond.map((item) => ({ id: item.id, title: item.title })),
+        [
+          { id: turnItemId, title: "Flow" },
+          { id: secondId, title: "Flow 2" },
+        ],
+      );
+
+      // Start a second run to test cross-run updates, hand-edit protection, and moving to the updating turn.
+      const run2 = RunId.make("run:canvas-record-2");
+      const node2 = NodeId.make("node:canvas-record-2");
+      const now2 = DateTime.makeUnsafe("2026-10-01T00:05:00.000Z");
+      yield* projections.apply({
+        id: EventId.make("canvas-record:run-2"),
+        type: "run.created",
+        threadId,
+        occurredAt: now2,
+        payload: {
+          id: run2,
+          threadId,
+          ordinal: 2,
+          providerInstanceId: instanceId,
+          modelSelection,
+          providerThreadId,
+          userMessageId: MessageId.make("msg:canvas-record-2"),
+          rootNodeId: node2,
+          activeAttemptId: null,
+          status: "running",
+          requestedAt: now2,
+          startedAt: now2,
+          completedAt: null,
+          checkpointId: null,
+          contextHandoffId: null,
+        },
+      });
+      // Seed an active dynamic_tool item on run2 so sourceToolItemIds captures it.
+      const tool2 = TurnItemId.make("turn-item:tool:canvas-update-2");
+      yield* projections.apply({
+        id: EventId.make("canvas-record:tool-2"),
+        type: "turn-item.updated",
+        threadId,
+        runId: run2,
+        occurredAt: DateTime.makeUnsafe("2026-10-01T00:05:01.000Z"),
+        payload: {
+          id: tool2,
+          threadId,
+          runId: run2,
+          nodeId: node2,
+          providerThreadId,
+          providerTurnId: null,
+          nativeItemRef: null,
+          parentItemId: null,
+          ordinal: 10,
+          status: "running",
+          title: "astrolabe_canvas_show",
+          startedAt: DateTime.makeUnsafe("2026-10-01T00:05:01.000Z"),
+          completedAt: null,
+          updatedAt: DateTime.makeUnsafe("2026-10-01T00:05:01.000Z"),
+          type: "dynamic_tool",
+          toolName: "mcp__t3-code__astrolabe_canvas_show",
+          input: { title: "Flow Revised", update: "Flow.canvas" },
+          output: null,
+        },
+      });
+
+      // Re-edit the first board; an implicit cross-run draw with the same title must NOT clobber hand edits.
+      yield* edit("hand-before-run2", turnItemId);
+      const forkedId = TurnItemId.make("turn-item:canvas:canvas-record:forked");
+      yield* orchestrator.dispatch({
+        type: "canvas.record",
+        commandId: CommandId.make("canvas-record:implicit-edited"),
+        threadId,
+        runId: run2,
+        nodeId: node2,
+        turnItemId: forkedId,
+        title: "Flow",
+        document,
+      });
+      const afterImplicitEdited = (yield* projections.getThreadRecords(threadId, ["turnItems"], {
+        turnItemTypes: ["canvas"],
+        messageRoles: [],
+      })).turnItems;
+      assert.strictEqual(afterImplicitEdited.length, 3);
+      assert.strictEqual(afterImplicitEdited.find((item) => item.id === forkedId)?.title, "Flow 3");
+
+      // Explicit `update` replaces the hand-edited board in place, keeps its title "Flow",
+      // moves it to run2/node2, clears editedAt, and records sourceToolItemIds.
+      yield* orchestrator.dispatch({
+        type: "canvas.record",
+        commandId: CommandId.make("canvas-record:explicit-update"),
+        threadId,
+        runId: run2,
+        nodeId: node2,
+        turnItemId: TurnItemId.make("turn-item:canvas:canvas-record:unused"),
+        title: "Flow Revised",
+        update: "Flow.canvas",
+        document: replacedDocument,
+      });
+      const afterExplicit = (yield* projections.getThreadRecords(threadId, ["turnItems"], {
+        turnItemTypes: ["canvas"],
+        messageRoles: [],
+      })).turnItems;
+      assert.strictEqual(afterExplicit.length, 3);
+      const moved = afterExplicit.find((item) => item.id === turnItemId);
+      assert.deepStrictEqual(
+        moved?.type === "canvas"
+          ? {
+              id: moved.id,
+              runId: moved.runId,
+              nodeId: moved.nodeId,
+              title: moved.title,
+              editedAt: moved.editedAt,
+              sourceToolItemIds: moved.sourceToolItemIds,
+            }
+          : null,
+        {
+          id: turnItemId,
+          runId: run2,
+          nodeId: node2,
+          title: "Flow",
+          editedAt: undefined,
+          sourceToolItemIds: [tool2],
+        },
+      );
+
+      // Unknown `update` target fails with the existing canvas names.
+      const missingUpdate = yield* orchestrator
+        .dispatch({
+          type: "canvas.record",
+          commandId: CommandId.make("canvas-record:missing-update"),
+          threadId,
+          runId: run2,
+          nodeId: node2,
+          turnItemId: TurnItemId.make("turn-item:canvas:canvas-record:missing"),
+          title: "Other",
+          update: "Nope.canvas",
+          document,
+        })
+        .pipe(Effect.flip);
+      assert.instanceOf(missingUpdate, Orchestrator.OrchestratorDispatchError);
+      assert.include(String(missingUpdate.cause), 'No canvas named "Nope.canvas"');
+      assert.include(String(missingUpdate.cause), "Flow.canvas");
 
       const refused = yield* edit("missing", TurnItemId.make("turn-item:missing")).pipe(
         Effect.flip,

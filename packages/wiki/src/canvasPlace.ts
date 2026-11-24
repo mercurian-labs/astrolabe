@@ -133,13 +133,21 @@ export const CANVAS_GROUP_INSET = {
 export const canvasCardBox = (card: CanvasDrawing["cards"][number]) => cardBox(card);
 
 /**
- * Some models double-escape line breaks as literal `\n` inside JSON tool arguments. When a card
- * has no actual newlines at all, turn standalone `\n` sequences (outside inline code) into real
- * line breaks so both card sizing and rendered Markdown behave cleanly.
+ * Some models double-escape line breaks as literal `\n` (or `\r\n`) inside JSON tool arguments.
+ * When a card has no actual newlines at all, turn standalone escaped line breaks outside inline
+ * code spans into real newlines so both card sizing and rendered Markdown behave cleanly.
  */
-function normalizeCardText(text: string): string {
-  if (text.includes("\n") || !text.includes("\\n")) return text;
-  return text.replace(/`[^`]*`|\\n/g, (match) => (match === "\\n" ? "\n" : match));
+export function normalizeCardText(text: string): string {
+  if (text.includes("\n") || (!text.includes("\\n") && !text.includes("\\r\\n"))) return text;
+  // Match multi-backtick spans (`...`, ``...``, ```...```) first so fences don't mis-pair as empty
+  // single-backtick spans; outside inline code, expand \r\n and \n (not \\n).
+  return text.replace(/(`+)[^`]*\1|(?<!\\)\\r\\n|(?<!\\)\\n/g, (match, ticks?: string) => {
+    if (ticks !== undefined) {
+      // A triple-backtick code fence serialized onto one line needs real newlines to stay a fence.
+      return ticks.length >= 3 ? match.replace(/(?<!\\)\\r\\n|(?<!\\)\\n/g, "\n") : match;
+    }
+    return "\n";
+  });
 }
 
 function cardBox(card: CanvasDrawing["cards"][number]): Box {

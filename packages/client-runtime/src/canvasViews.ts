@@ -29,10 +29,12 @@ export interface CanvasView {
 const decodeInput = Schema.decodeUnknownOption(CanvasShowInput);
 
 interface CanvasItem {
+  readonly id?: string | undefined;
   readonly type: string;
   readonly runId?: string | null | undefined;
   readonly title?: string | null | undefined;
   readonly document?: unknown;
+  readonly sourceToolItemIds?: ReadonlyArray<string> | undefined;
   readonly toolName?: string | null | undefined;
   readonly status?: string | undefined;
   readonly input?: unknown;
@@ -46,25 +48,47 @@ interface CanvasItem {
  * MCP JSON with `canvasItemId`.
  */
 export interface RecordedCanvases {
-  readonly runs: ReadonlySet<string>;
+  readonly toolItemIds: ReadonlySet<string>;
   readonly names: ReadonlySet<string>;
+  readonly namesByRun: ReadonlyMap<string, ReadonlySet<string>>;
 }
 
-/** Collects the runs and normalized canvas names that already have persisted `canvas` items. */
+/** Collects the tool item ids and normalized canvas names that already have persisted `canvas` items. */
 export function recordedCanvasesIn(items: ReadonlyArray<CanvasItem>): RecordedCanvases {
-  const runs = new Set<string>();
+  const toolItemIds = new Set<string>();
   const names = new Set<string>();
+  const namesByRun = new Map<string, Set<string>>();
   for (const item of items) {
     if (item.type !== "canvas") continue;
-    if (typeof item.runId === "string" && item.runId.length > 0) runs.add(item.runId);
+    for (const toolItemId of item.sourceToolItemIds ?? []) {
+      if (toolItemId.length > 0) toolItemIds.add(toolItemId);
+    }
+    const runNames =
+      typeof item.runId === "string" && item.runId.length > 0
+        ? (namesByRun.get(item.runId) ??
+          (() => {
+            const set = new Set<string>();
+            namesByRun.set(item.runId, set);
+            return set;
+          })())
+        : undefined;
+    if (typeof item.id === "string" && item.id.length > 0) {
+      runNames?.add(item.id);
+    }
     if (typeof item.title === "string" && item.title.trim().length > 0) {
       const fileKey = canvasNameKey(canvasFileName(item.title));
       const titleKey = canvasNameKey(item.title);
-      if (fileKey.length > 0) names.add(fileKey);
-      if (titleKey.length > 0) names.add(titleKey);
+      if (fileKey.length > 0) {
+        names.add(fileKey);
+        runNames?.add(fileKey);
+      }
+      if (titleKey.length > 0) {
+        names.add(titleKey);
+        runNames?.add(titleKey);
+      }
     }
   }
-  return { runs, names };
+  return { toolItemIds, names, namesByRun };
 }
 
 // An item changes only as a new object, and timelines re-derive their rows on every thread update.
@@ -72,15 +96,15 @@ const viewsByItem = new WeakMap<
   CanvasItem,
   {
     readonly view: CanvasView | null | undefined;
-    readonly inputNames?: ReadonlyArray<string>;
-    readonly isUpdate?: boolean;
+    readonly titleNames?: ReadonlyArray<string>;
+    readonly updateNames?: ReadonlyArray<string>;
   }
 >();
 
 function viewOf(item: CanvasItem): {
   readonly view: CanvasView | null | undefined;
-  readonly inputNames?: ReadonlyArray<string>;
-  readonly isUpdate?: boolean;
+  readonly titleNames?: ReadonlyArray<string>;
+  readonly updateNames?: ReadonlyArray<string>;
 } {
   if (item.type === "canvas") {
     return {
@@ -96,15 +120,24 @@ function viewOf(item: CanvasItem): {
   if (compactDynamicToolOutput(item.output)?.canvasItemId !== undefined) return { view: null };
   const input = Option.getOrUndefined(decodeInput(toolArguments(item.input)));
   if (input === undefined) return { view: undefined };
-  const isUpdate = input.update !== undefined && input.update.trim().length > 0;
-  const inputNames = [
+  const titleNames = [
     canvasNameKey(canvasFileName(input.title)),
     canvasNameKey(input.title),
-    ...(isUpdate
-      ? [canvasNameKey(canvasFileName(input.update!)), canvasNameKey(input.update!)]
-      : []),
   ].filter((name) => name.length > 0);
-  return { view: { title: input.title, data: placeCanvas(input) }, inputNames, isUpdate };
+  const updateTarget = input.update?.trim();
+  const updateNames =
+    updateTarget !== undefined && updateTarget.length > 0
+      ? [
+          updateTarget,
+          canvasNameKey(canvasFileName(updateTarget)),
+          canvasNameKey(updateTarget),
+        ].filter((name) => name.length > 0)
+      : undefined;
+  return {
+    view: { title: input.title, data: placeCanvas(input) },
+    titleNames,
+    ...(updateNames === undefined ? {} : { updateNames }),
+  };
 }
 
 /**
@@ -133,12 +166,17 @@ export function canvasViewFromItem(
     cached.view !== null &&
     recorded
   ) {
-    if (typeof item.runId === "string" && recorded.runs.has(item.runId)) return null;
-    if (cached.isUpdate === true && (recorded.runs.size > 0 || recorded.names.size > 0))
+    if (typeof item.id === "string" && recorded.toolItemIds.has(item.id)) return null;
+    if (
+      typeof item.runId === "string" &&
+      cached.updateNames !== undefined &&
+      cached.updateNames.some((name) => recorded.namesByRun.get(item.runId!)?.has(name) === true)
+    ) {
       return null;
+    }
     if (
       recorded.names.size > 0 &&
-      cached.inputNames?.some((name) => recorded.names.has(name)) === true
+      cached.titleNames?.some((name) => recorded.names.has(name)) === true
     ) {
       return null;
     }

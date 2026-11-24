@@ -179,7 +179,8 @@ export function wikiParts(node: SyntaxNode): WikiParts | null {
 
 /** The raw target of a wikilink or embed, as typed: everything before the `|`. */
 export function rawTarget(c: LinkSource, parts: WikiParts) {
-  return c.slice(parts.open.to, parts.pipe ? parts.pipe.from : parts.close.from);
+  const raw = c.slice(parts.open.to, parts.pipe ? parts.pipe.from : parts.close.from);
+  return parts.pipe ? raw.replace(/\\$/, "") : raw;
 }
 
 /** How a host reads an alias: what shows of it, and whether it names only types. */
@@ -249,10 +250,11 @@ export function embed(c: Collector, node: SyntaxNode) {
   const parts = wikiParts(node);
   if (!parts) return;
   const raw = rawTarget(c, parts);
-  const path = parts.target ? c.slice(parts.target.from, parts.target.to).trim() : "";
-  const size = parts.alias
-    ? /^(\d+)(?:x\d+)?$/.exec(c.slice(parts.alias.from, parts.alias.to).trim())
-    : null;
+  const alias = parts.alias ? c.slice(parts.alias.from, parts.alias.to).trim() : "";
+  const path = parts.target
+    ? c.slice(parts.target.from, parts.target.to).replace(/\\$/, "").trim()
+    : "";
+  const size = alias ? /^(\d+)(?:x\d+)?$/.exec(alias) : null;
   const widget = IMAGE_EXTENSION.test(path)
     ? new ImageWidget({
         src: c.config.resolveEmbed(path),
@@ -270,5 +272,5 @@ export function embed(c: Collector, node: SyntaxNode) {
     if (widget && singleLine) c.widget(node.to, widget, 1);
     return;
   }
-  c.replace(node.from, node.to, widget ?? new EmbedChipWidget(raw));
+  c.replace(node.from, node.to, widget ?? new EmbedChipWidget(raw, alias || raw));
 }
