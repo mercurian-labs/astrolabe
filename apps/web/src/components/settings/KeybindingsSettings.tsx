@@ -1185,13 +1185,21 @@ function KeybindingShortcutBinding(props: KeybindingRowProps) {
             type="button"
             aria-label={gt("Edit shortcut for {command}: {shortcut}", {
               command: commandLabel(row.command),
-              shortcut: formatShortcutLabel(row.binding.shortcut),
+              shortcut: row.isUnassigned
+                ? gt("Unassigned", { $context: "keyboard shortcut with no key assigned" })
+                : formatShortcutLabel(row.binding.shortcut),
             })}
             className="inline-flex h-7 cursor-pointer items-center rounded-md border border-transparent px-1 outline-none transition-colors hover:border-border/70 hover:bg-accent focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/24 data-popup-open:bg-accent"
           />
         }
       >
-        <KeybindingPill value={row.key} />
+        {row.isUnassigned ? (
+          <span className="text-sm text-muted-foreground">
+            <T context="keyboard shortcut with no key assigned">Unassigned</T>
+          </span>
+        ) : (
+          <KeybindingPill value={row.key} />
+        )}
       </PopoverTrigger>
       <KeyFieldPopoverContent>
         <KeybindingSettingsRow {...props} startRecording />
@@ -1767,6 +1775,7 @@ export function KeybindingsSettingsPanel() {
   const changeCommandRow = (change: KeybindingCommandRowChange) => {
     if (change.type === "resetShortcut") resetKeybinding(change.row);
     else if (change.type === "removeShortcut") removeKeybinding(change.row);
+    else if (change.type === "unassignShortcut") unassignKeybinding(change.row);
     else if (change.change.type === "remove")
       removeKeybindingTarget(change.change.target, change.change.also);
     else saveKeybinding(change.change.input);

@@ -358,6 +358,8 @@ describe("sidebar settled pagination", () => {
           {
             scratchWorkspaceRoot: null,
             shellThreadFamilies: false,
+            // Astrolabe's thread filter lists the project, which reads its capabilities.
+            environment: { capabilities: {} },
           } as unknown as EnvironmentServerConfig,
         ],
       ]),

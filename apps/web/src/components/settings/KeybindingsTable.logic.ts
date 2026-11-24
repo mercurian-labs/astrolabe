@@ -157,12 +157,13 @@ export function filterKeybindingCommandRows(
 export type KeybindingCommandRowChange =
   | { readonly type: "resetShortcut"; readonly row: KeybindingRow }
   | { readonly type: "removeShortcut"; readonly row: KeybindingRow }
+  | { readonly type: "unassignShortcut"; readonly row: KeybindingRow }
   | { readonly type: "trigger"; readonly change: KeybindingTriggerChange };
 
 /**
  * A row's `⋯` menu, for the kinds shown: each binding's Remove, Reset to default, or (for a
  * removed default) Restore default. A shortcut follows upstream's rules: a changed one resets to
- * its default, and only a user's own is removed.
+ * its default, a default is unassigned, and only a user's own is removed.
  */
 export function commandRowActions(
   row: KeybindingCommandRow,
@@ -190,7 +191,14 @@ export function commandRowActions(
           change: { type: "resetShortcut", row: shortcut },
         });
       }
-      if (shortcut.source !== "Default") {
+      if (shortcut.source === "Default") {
+        actions.push({
+          id: `unassign:${shortcut.id}`,
+          label: `Unassign ${label}`,
+          destructive: true,
+          change: { type: "unassignShortcut", row: shortcut },
+        });
+      } else if (!shortcut.isUnassigned) {
         actions.push({
           id: `remove:${shortcut.id}`,
           label: `Remove ${label}`,

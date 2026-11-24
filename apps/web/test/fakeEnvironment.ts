@@ -441,6 +441,34 @@ const subscribe = <A>(first: ReadonlyArray<A>, register?: (queue: Queue.Queue<A>
     }),
   );
 
+const serverConfigSnapshot = () => ({
+  version: 1 as const,
+  type: "snapshot" as const,
+  config: serverConfig(),
+});
+const serverConfigSubscribers = new Set<Queue.Queue<ReturnType<typeof serverConfigSnapshot>>>();
+const subscribeServerConfig = () =>
+  subscribe([serverConfigSnapshot()], (queue) => {
+    serverConfigSubscribers.add(queue);
+    return () => serverConfigSubscribers.delete(queue);
+  });
+
+// Whether the open shell stream began under a config that serves families, as the client reads
+// that once per stream; a server without them sends every thread in the shell.
+let shellOmitsOlderSettled = false;
+const shellSnapshot = (): OrchestrationV2ShellStreamItem => ({
+  kind: "snapshot",
+  snapshot: {
+    schemaVersion: 1,
+    snapshotSequence: sequence,
+    projects,
+    threads: threads
+      .filter((thread) => !shellOmitsOlderSettled || !thread.olderSettled)
+      .map(shellOf),
+    archivedThreads: [],
+  },
+});
+
 const handlers: Record<string, (input: never) => unknown> = {
   // Recorded, and accepted only when the scenario asks, since a pending command holds every
   // later command on its thread. Accepted commands' events never arrive.
@@ -484,28 +512,18 @@ const handlers: Record<string, (input: never) => unknown> = {
         if (terminalMetadataSubscriber === queue) terminalMetadataSubscriber = null;
       };
     }),
-  [ORCHESTRATION_V2_WS_METHODS.subscribeShell]: () =>
-    subscribe<OrchestrationV2ShellStreamItem>(
-      [
-        {
-          kind: "snapshot",
-          snapshot: {
-            schemaVersion: 1,
-            snapshotSequence: sequence,
-            projects,
-            threads: threads.filter((thread) => !thread.olderSettled).map(shellOf),
-            archivedThreads: [],
-          },
-        },
-        { kind: "synchronized" },
-      ],
+  [ORCHESTRATION_V2_WS_METHODS.subscribeShell]: () => {
+    shellOmitsOlderSettled = serverConfig().shellThreadFamilies === true;
+    return subscribe<OrchestrationV2ShellStreamItem>(
+      [shellSnapshot(), { kind: "synchronized" }],
       (queue) => {
         shellSubscriber = queue;
         return () => {
           if (shellSubscriber === queue) shellSubscriber = null;
         };
       },
-    ),
+    );
+  },
   [ORCHESTRATION_V2_WS_METHODS.subscribeThread]: (input: { readonly threadId: ThreadId }) => {
     const thread = threads.find((candidate) => candidate.id === input.threadId);
     if (!thread) return Stream.never;
@@ -541,8 +559,7 @@ const handlers: Record<string, (input: never) => unknown> = {
         if (vcsStatusSubscriber === queue) vcsStatusSubscriber = null;
       };
     }),
-  [WS_METHODS.subscribeServerConfig]: () =>
-    subscribe([{ version: 1 as const, type: "snapshot" as const, config: serverConfig() }]),
+  [WS_METHODS.subscribeServerConfig]: () => subscribeServerConfig(),
 };
 
 // Unanswered calls stay pending, like a server that has not replied yet.
@@ -558,8 +575,7 @@ const client = new Proxy(handlers, {
 const session: EnvironmentConnectionLease["session"] = {
   client: client as unknown as WsRpcProtocolClient,
   initialConfig: Effect.sync(serverConfig),
-  subscribeServerConfig: () =>
-    subscribe([{ version: 1 as const, type: "snapshot" as const, config: serverConfig() }]),
+  subscribeServerConfig: () => subscribeServerConfig(),
   ready: Effect.void,
   probe: Effect.void,
   inboundFrames: Effect.succeed(0),
@@ -594,6 +610,8 @@ const encodedDescriptor = Schema.encodeSync(ExecutionEnvironmentDescriptor)(
 );
 
 /** Serves the environment's HTTP API and these threads until disposed. */
+let resetPanes: (() => void) | null = null;
+
 export function installFakeEnvironment(
   fixtures: ReadonlyArray<FakeThread>,
   options?: {
@@ -624,6 +642,22 @@ export function installFakeEnvironment(
     })),
   ];
   holdCommand = options?.holdCommand ?? (() => false);
+  // The connection outlives the app, so streams still open from the last test hear of these
+  // fixtures as the server's new state; Astrolabe closes chat tabs the shell lacks.
+  for (const queue of serverConfigSubscribers) {
+    Effect.runSync(Queue.offer(queue, serverConfigSnapshot()));
+  }
+  if (shellSubscriber !== null) {
+    sequence += 1;
+    Effect.runSync(Queue.offer(shellSubscriber, shellSnapshot()));
+  }
+  // Astrolabe's panes outlive the app, and a chat tab left behind pulls the next test's route.
+  // Imported here: the panes load the connection driver whose mock factory imports this module.
+  void Promise.all([import("~/panes/workspace"), import("~/panes/arrangement")]).then(
+    ([{ workspace }, { startingArrangement }]) => {
+      resetPanes = () => workspace.update(() => startingArrangement());
+    },
+  );
   globalThis.fetch = async (input, init) => {
     const url = new URL(input instanceof Request ? input.url : String(input), window.location.href);
     if (url.origin !== window.location.origin) return realFetch(input, init);
@@ -643,6 +677,7 @@ export function installFakeEnvironment(
   };
   return {
     [Symbol.dispose]: () => {
+      resetPanes?.();
       globalThis.fetch = realFetch;
       threads = [];
       baseServerConfig = makeServerConfig([CODEX_PROVIDER]);

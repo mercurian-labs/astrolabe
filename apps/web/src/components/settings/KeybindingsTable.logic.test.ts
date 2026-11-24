@@ -99,9 +99,10 @@ describe("the Keybindings table's rows", () => {
         (action) => action.label,
       );
     expect(labels("section.wikis")).toEqual(["Remove w w", "Restore default g w"]);
-    // A user's own shortcut can be removed; upstream's defaults cannot.
+    // A user's own shortcut can be removed; upstream's defaults are unassigned instead.
     expect(labels("tab.close")).toEqual(["Remove ⇧⌘W", "Remove q[uit]"]);
     expect(labels("tab.close", "alias")).toEqual(["Remove q[uit]"]);
-    expect(labels("terminal.toggle")).toEqual([]);
+    expect(labels("terminal.toggle")).toEqual(["Unassign ⌘J"]);
+    expect(labels("terminal.toggle", "menu")).toEqual([]);
   });
 });

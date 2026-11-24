@@ -137,7 +137,8 @@ it("unassigns a default shortcut and restores its condition when one is assigned
       await using screen = await render(<KeybindingsSettingsPanel />);
 
       await screen.getByRole("button", { name: "Actions for Sidebar: Toggle" }).click();
-      await screen.getByRole("menuitem", { name: "Unassign" }).click();
+      // Astrolabe: the row's menu names the shortcut it unassigns.
+      await page.getByRole("menuitem", { name: "Unassign ⌘B" }).click();
       expect(mutate).toHaveBeenLastCalledWith({
         environmentId: "env",
         input: {
@@ -151,14 +152,16 @@ it("unassigns a default shortcut and restores its condition when one is assigned
       const unassigned = screen.getByRole("button", {
         name: "Edit shortcut for Composer: Start in Background: Unassigned",
       });
-      const save = screen.getByRole("button", { name: "Save" });
+      // Astrolabe records an existing row's shortcut in a popover.
+      const save = page.getByRole("button", { name: "Save" });
       await unassigned.click();
       await userEvent.keyboard("{Control>}{Alt>}j{/Alt}{/Control}");
       await expect.element(save).toBeVisible();
       await userEvent.keyboard("{Escape}");
       await expect.element(save).not.toBeInTheDocument();
 
-      await unassigned.click();
+      // The popover stays open on its own row pill, after the table cell's.
+      await unassigned.last().click();
       await userEvent.keyboard("{Control>}{Alt>}j{/Alt}{/Control}");
       await save.click();
       expect(mutate).toHaveBeenLastCalledWith({

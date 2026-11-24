@@ -35,6 +35,7 @@ import { useTheme } from "~/hooks/useTheme";
 import { resolveShortcutCommand } from "~/keybindings";
 import { focusActiveDrawerTerminal, isTerminalFocused } from "~/lib/terminalFocus";
 import { cn } from "~/lib/utils";
+import { requestWorkspaceFocus } from "~/lib/workspaceFocus";
 import {
   selectThreadRightPanelState,
   useRightPanelStore,
@@ -60,7 +61,7 @@ import { LinkedTabsMarkMenu } from "./LinkedTabsFilter";
 import { TabIconButton } from "./TabParts";
 import type { Leaf } from "./tree";
 import { useChatTabLabel } from "~/chatTabs/chatTabLabel";
-import { readProject, readThreadShell } from "~/state/entities";
+import { readProject, readThreadShell, useQuietThreadShell } from "~/state/entities";
 import { TabLauncher } from "./TabLauncher";
 import {
   standaloneKeyOf,
@@ -104,6 +105,7 @@ export function createWorkspaceHost(): WorkspaceHost {
             : getLayoutBehavior().sidePanePlacement) === "new-tab",
       ),
     close: closeWorkspaceTab,
+    selected: focusSideChatComposer,
     minimize: workspace.minimizeLinkedTab,
     NewTab: NewTabButton,
     place: (slot, leaf) => {
@@ -142,6 +144,16 @@ export function createWorkspaceHost(): WorkspaceHost {
       }
     },
   };
+}
+
+/** As T3 Code's panel tab does, a side chat's tab hands focus to its composer. */
+function focusSideChatComposer(key: string) {
+  const surface = surfaceOfKey(key);
+  if (surface?.kind !== "side-chat") return;
+  requestWorkspaceFocus({
+    area: "pane",
+    selector: `[data-side-chat-pane="${CSS.escape(surface.threadId)}"] [data-workspace-area="composer"] [contenteditable="true"]`,
+  });
 }
 
 function focusMovedTerminal(key: string) {
@@ -324,6 +336,13 @@ function useTabLabel(tabKey: string): PaneTabLabel {
   const livePanel = usePanel();
   const panel = parsed !== null && parsed.chatKey === front ? livePanel : null;
   const surface = useSurface(tabKey);
+  const owner = parsed ? parseChatTabKey(parsed.chatKey) : null;
+  // A side chat is named by its thread, as T3 Code's panel tab names it.
+  const sideChatShell = useQuietThreadShell(
+    surface?.kind === "side-chat" && owner !== null
+      ? { environmentId: owner.environmentId, threadId: surface.threadId }
+      : null,
+  );
   const chat = useChatTabLabel(tabKey);
   const section = useSectionTabLabel(tabKey);
   const { resolvedTheme } = useTheme();
@@ -335,7 +354,8 @@ function useTabLabel(tabKey: string): PaneTabLabel {
   if (!surface) return { title: "New tab", icon: <SquareDashed className="size-3 shrink-0" /> };
   const sessions = panel?.previewSessions ?? {};
   const favicon = previewFaviconOf(surface, sessions, panel?.desktopByTabId ?? {});
-  const title = surfaceTitle(surface, sessions, panel?.terminalLabelsById ?? new Map());
+  const title =
+    sideChatShell?.title ?? surfaceTitle(surface, sessions, panel?.terminalLabelsById ?? new Map());
   const environmentId = panel?.environmentId ?? null;
   const previewTabId = previewTabIdOf(surface, sessions);
   const audio = tabAudioState(previewTabId ? (panel?.desktopByTabId[previewTabId] ?? null) : null);

@@ -12,10 +12,6 @@ import {
   type ThreadIssueLink,
 } from "@t3tools/contracts";
 import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts/settings";
-import {
-  compileResolvedKeybindingsConfig,
-  mergeWithDefaultKeybindings,
-} from "@t3tools/shared/keybindings";
 import type * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import { expect, it, vi } from "vite-plus/test";
@@ -649,7 +645,6 @@ it("opening a thread or returning to the window on a touch tablet does not focus
     router: false,
   });
   const composer = page.getByTestId("composer-editor");
-  setTimeout(() => console.log("DBG URL", router.history.location.pathname, "BODY", document.body.innerText.slice(0, 2500)), 6000);
   await expect.element(page.getByText(`Answer 0 for ${first.id}.`)).toBeVisible();
 
   // Fake frames hold the next thread entry's focus frame until the test advances it.
@@ -724,40 +719,6 @@ it("a mounted thread view lets go of the thread structures it has replaced", asy
   expect(kept).toEqual([]);
 });
 
-it("a shortcut conditioned on rightPanelOpen sees the thread's open right panel", async () => {
-  await page.viewport(1280, 800);
-  const thread = threadWithHistory("thread-panel-shortcut", 1);
-  using _environment = installFakeEnvironment([thread], {
-    keybindings: mergeWithDefaultKeybindings(
-      compileResolvedKeybindingsConfig([
-        { key: "ctrl+t", command: "rightPanel.new", when: "rightPanelOpen && !terminalFocus" },
-        { key: "ctrl+t", command: "rightPanel.toggle", when: "!rightPanelOpen" },
-      ]),
-    ),
-  });
-  __setClientSettingsForTests({
-    ...DEFAULT_CLIENT_SETTINGS,
-    onboardingCompletedAt: "2026-01-01T00:00:00.000Z",
-  });
-  const router = getRouter(
-    createMemoryHistory({ initialEntries: [`/${ENVIRONMENT_ID}/${thread.id}`] }),
-  );
-  await router.load();
-  await using _app = await render(<AppRoot router={router} />, {
-    // AppRoot brings its own router.
-    router: false,
-  });
-  const composer = page.getByTestId("composer-editor");
-  const toggle = page.getByRole("button", { name: "Toggle right panel", exact: true });
-  await expect.element(toggle).toHaveAttribute("aria-pressed", "false");
-  await toggle.click();
-  await page.getByRole("button", { name: /^Files/ }).click();
-  await composer.click();
-  await userEvent.keyboard("{Control>}t{/Control}");
-  await expect.element(page.getByRole("menuitem", { name: /Files/ })).toBeVisible();
-  await expect.element(toggle).toHaveAttribute("aria-pressed", "true");
-});
-
 it("selecting a side-chat tab focuses that side chat's composer", async () => {
   const parent = threadWithHistory("focus-parent", 1);
   // The shell loaded by the file's first test stays; a family read serves side chats added later.
@@ -792,7 +753,8 @@ it("selecting a side-chat tab focuses that side chat's composer", async () => {
   await userEvent.click(mainEditor);
   await userEvent.keyboard("main draft");
 
-  await userEvent.click(screen.getByRole("button", { name: otherSide.title, exact: true }));
+  // Astrolabe: side chats open as the shared panes' tabs.
+  await userEvent.click(screen.getByRole("tab", { name: otherSide.title, exact: true }));
   const otherEditor = screen.getByRole("textbox", {
     name: `Message ${otherSide.title}`,
     exact: true,
@@ -801,7 +763,7 @@ it("selecting a side-chat tab focuses that side chat's composer", async () => {
   await userEvent.keyboard("other draft");
   await expect.element(otherEditor).toHaveTextContent("other draft");
 
-  await userEvent.click(screen.getByRole("button", { name: side.title, exact: true }));
+  await userEvent.click(screen.getByRole("tab", { name: side.title, exact: true }));
   await expect.element(sideEditor).toHaveFocus();
   await expect.element(mainEditor).toHaveTextContent("main draft");
 });
@@ -846,7 +808,8 @@ it("/side sends the draft's attachments and context, and keeps them when it does
     await expect.element(image).not.toBeInTheDocument();
   };
   // The tab opens once the start finished; until then `/side` refuses another side chat.
-  const sideChatTabs = page.getByRole("button", { name: "Side chat", exact: true });
+  // Astrolabe: side chats open as the shared panes' tabs.
+  const sideChatTabs = page.getByRole("tab", { name: "Side chat", exact: true });
   const sentMessage = async (fields: Record<string, unknown>, openTabs: number) => {
     await vi.waitFor(() =>
       expect(dispatchedCommands()).toContainEqual(

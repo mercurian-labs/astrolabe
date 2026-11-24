@@ -174,6 +174,7 @@ function LabeledTabPill({
     }
     changeSelection(() => anchorAt(paneId, tabKey));
     activate();
+    tabs.selected?.(tabKey);
   };
 
   const showContextMenu = async (event: MouseEvent) => {

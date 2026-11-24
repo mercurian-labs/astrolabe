@@ -221,7 +221,12 @@ export function createWorkspaceFocusController(doc: Document) {
           ) ??
           areas.find((element) => element.dataset.workspaceArea === "conversation") ??
           areas.find((element) => element.dataset.workspaceArea === "panel"))
-        : areas.find((element) => element.dataset.workspaceArea === name);
+        : // Astrolabe: split panes share an area name, so a selector picks the one holding it.
+          (areas.find(
+            (element) =>
+              element.dataset.workspaceArea === name &&
+              (!selector || element.querySelector(selector) !== null),
+          ) ?? areas.find((element) => element.dataset.workspaceArea === name));
     if (!area) return false;
     const surface = area.querySelector("[data-right-panel-surface-content]");
     // A lazy surface's Suspense fallback is empty. Wait for its content instead

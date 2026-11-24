@@ -4,7 +4,12 @@ import { page, userEvent } from "vite-plus/test/browser";
 import { act, render } from "../../../test/render";
 import { SidebarProvider } from "../ui/sidebar";
 import { SettingsSidebarNav } from "./SettingsSidebarNav";
-import { SETTINGS_NAV_GROUPS, SETTINGS_SECTION_LABELS } from "./settingsSearch";
+import { hasCloudPublicConfig } from "~/cloud/publicConfig";
+import {
+  isSettingsSectionAvailable,
+  SETTINGS_NAV_GROUPS,
+  SETTINGS_SECTION_LABELS,
+} from "./settingsSearch";
 
 vi.mock("./useAvailableSettingsSearchItems", () => ({
   useAvailableSettingsSearchItems: () => [
@@ -44,6 +49,15 @@ it("ignores composing keys in the search", async () => {
   );
 });
 
+// Astrolabe hides sign-in sections (Workspaces) in builds without cloud config.
+function availableNavGroups() {
+  const availability = { hasCloudPublicConfig: hasCloudPublicConfig() };
+  return SETTINGS_NAV_GROUPS.map((group) => ({
+    ...group,
+    paths: group.paths.filter((to) => isSettingsSectionAvailable(to, availability)),
+  })).filter((group) => group.paths.length > 0);
+}
+
 function renderNav() {
   return render(
     <SidebarProvider defaultOpen>
@@ -76,9 +90,9 @@ it("moves Tab through every settings section", async () => {
   await using _screen = await renderNav();
   await userEvent.click(page.getByRole("combobox", { name: "Search settings" }));
 
-  const sections = SETTINGS_NAV_GROUPS.flatMap((group) => group.paths).map(
-    (to) => SETTINGS_SECTION_LABELS[to],
-  );
+  const sections = availableNavGroups()
+    .flatMap((group) => group.paths)
+    .map((to) => SETTINGS_SECTION_LABELS[to]);
   const tabbed: string[] = [];
   for (let step = 0; step < sections.length; step += 1) {
     await userEvent.tab();
@@ -103,7 +117,7 @@ it.each([1280, 390])("names each group by a heading outside it at %ipx wide", as
     );
   }
   const groups = page.getByRole("group").elements();
-  expect(groups).toHaveLength(SETTINGS_NAV_GROUPS.length);
+  expect(groups).toHaveLength(availableNavGroups().length);
   for (const group of groups) {
     const first = group.querySelector("[data-settings-section]")?.textContent;
     const heading = document.getElementById(group.getAttribute("aria-labelledby") ?? "");

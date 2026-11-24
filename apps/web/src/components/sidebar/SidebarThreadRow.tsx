@@ -145,6 +145,7 @@ import { workspace } from "../../panes/workspace";
 import { chatTabKey } from "../../sectionTabs/sectionTabs";
 import { ThreadDetailsIssueRows } from "../chat/ThreadDetailsIssueRows";
 import { IssueGlyph, issueStatePresentation } from "../issue/issuePresentation";
+import { useRightPanelStore } from "../../rightPanelStore";
 
 // The fields thread rows show. Provider status pushes refresh `checkedAt`,
 // status and auth on every provider; leaving those out keeps each
@@ -1146,6 +1147,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     openThreadChangeRequests(threadRef, { ownPane: !props.isRouteThread });
     if (!props.isRouteThread) onThreadActivate(threadRef);
   };
+  // No change group holds issues, so the issue badge keeps upstream's linked-items list.
+  const openLinkedIssues = () => {
+    useRightPanelStore.getState().open(threadRef, "pull-requests");
+    if (!props.isRouteThread) onThreadActivate(threadRef);
+  };
   const prBadge =
     prBadgeShape?.kind === "stack" || pr || currentLinkedPr ? (
       <ThreadPullRequestBadgeControl
@@ -1189,7 +1195,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => {
               event.stopPropagation();
-              openLinkedItems();
+              openLinkedIssues();
             }}
           />
         }
