@@ -492,7 +492,7 @@ syncBuiltinESMExports();
         const orphaned = "provider outlived the runtime by 30s";
         const provider = `process.on("SIGTERM", () => {}); setTimeout(() => { console.log(${JSON.stringify(orphaned)}); process.exit(0); }, 30_000);`;
         yield* fs.writeFileString(
-          path.join(versionDir, "t3"),
+          path.join(versionDir, "astrolabe"),
           `#!${process.execPath}
 const provider = require("node:child_process").spawn(process.execPath, ["-e", ${JSON.stringify(provider)}], { stdio: "inherit" });
 process.on("SIGTERM", () => setTimeout(() => { console.log(${JSON.stringify(stuck)}); process.exit(0); }, 30_000));
@@ -500,12 +500,12 @@ setInterval(() => {}, 1 << 30);
 console.log(process.pid, provider.pid);
 `,
         );
-        yield* fs.chmod(path.join(versionDir, "t3"), 0o755);
+        yield* fs.chmod(path.join(versionDir, "astrolabe"), 0o755);
 
         const launcher = NodeChildProcess.spawn(
           process.execPath,
-          [path.join(installed, "package/bin/t3.mjs"), "serve"],
-          { cwd: root, env: { PATH: hostPath, T3CODE_HOME: home }, stdio: "pipe" },
+          [path.join(installed, "package/bin/astrolabe.mjs"), "serve"],
+          { cwd: root, env: { PATH: hostPath, ASTROLABE_HOME: home }, stdio: "pipe" },
         );
         let pids: Array<number> = [];
         yield* Effect.addFinalizer(() =>
