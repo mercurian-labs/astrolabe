@@ -70,8 +70,12 @@ actions at its right end.
 - **Rail mark**: the small monogram on a bordered rounded tile (`[data-app-rail-mark]`) is the rail's first item, above Agents, on web and desktop alike. The cap above the rail (`[data-app-rail-cap]`) is an empty, aria-hidden cell. The sidebar toggle is a separate fixed element drawn over it (`[data-app-rail-toggle]`, centred, x ≈ 6), not a child of the cap: locate it by `[data-app-rail-toggle]` or `role=button[name='Toggle main sidebar']`, never scoped under the cap. In the macOS desktop app (not fullscreen), whose window buttons take that corner, the toggle sits just after them (`--rail-toggle-left`, 90px, outside the cap's 44px) and the header row's content starts after the toggle.
 - **Icon rail** (`nav[aria-label='Sections']`, at wide widths on web and desktop; absent in a
   narrow window, 700px for one): the sections on top
-  (Agents, Wikis, Projects, Changes when the server supports pull requests),
-  the current one marked with a bar and `aria-current="page"`; the update control
+  (Agents, Wikis, Projects, Changes when the server supports pull requests, Issues when it
+  supports issues), the current one marked with a bar and `aria-current="page"`. **Issues**
+  opens upstream's `/issues` page (`routes/_chat.issues.tsx`) in place of the panes: the rail
+  lights Issues (never Agents), the sidebar keeps the Agents list with no row lit, and the
+  arrangement comes back unchanged on leaving. There is no Issues link in the sidebar's own
+  chrome. It is also the palette's **Open issues** and Section: Issues (`g i`); the update control
   (a rail list row named `Check for updates` on desktop, or the pending summary such as
   `Update 1 provider`, which web shows too), then Usage and Settings, sit at the foot. Where cloud sign-in is
   configured, Settings is the account menu instead of a plain button (see
@@ -109,9 +113,9 @@ actions at its right end.
   the filter. Settings and Usage have no tabs: their headers
   (Settings / page, Usage / environment / provider) sit inside their modals.
 - **Thread rows** (`[data-testid=sidebar-row-card]`): upstream's three lines with the first two
-  swapped. The title leads, with the age or status beside it (hover swaps it for Snooze, Settle
-  and Unpin); then the project picture and name, a repository-named project without its owner;
-  then upstream's branch line (worktree glyph, branch, terminal, pull request, machine and agent
+  swapped. The title leads; then the project picture and name (a repository-named project
+  without its owner) with the age or status at the line's end (hover swaps it for Snooze, Settle
+  and Unpin); then upstream's branch line (worktree glyph, branch, terminal, pull request, machine and agent
   icons), which a row with none of those drops, moving the icons up a line. A row's context
   menu has **Pin thread**. Pinned rows sit under a resting **Pinned** heading
   (`[data-testid=sidebar-pinned-header]`, 24px tall, holding a `role=heading` `aria-level=3`
@@ -145,7 +149,10 @@ preview_act click  role=button[name='New thread']           # picker with >1 pro
 ```
 
 The trigger is a `role=combobox` button, and status rows carry their count in their name
-(`Working3`), so match them with a leading regex. Clicking the trigger through
+(`Working3`), so match them with a leading regex. A role click on an option can time out
+with the popup closed under it, and the trigger sometimes needs a second click to open right
+after the search field closes; read `aria-expanded`, then click an option at its measured
+centre. Clicking the trigger through
 `preview_evaluate` (`.click()`) does not open Base UI's popup; use `preview_act click`. Read
 the boxes from the drawn checkbox: `[...document.querySelectorAll('[role=option]')].map(o =>
 [o.textContent, o.querySelector('svg.lucide-check') ? 'x' : ' '])` (there is no partial
@@ -164,7 +171,8 @@ the first search result, take the `getBoundingClientRect` centre (nonzero height
 `document.elementFromPoint(cx, cy).closest(...)` returns that element. The borders are visual-only:
 read `getComputedStyle` widths on the header row (a bottom border) and `[data-app-rail-cap]` (none: the border stops above the rail). Colours: `[data-sidebar-chrome-header]` and `[data-app-rail]` share a `backgroundColor`; `[data-slot=sidebar-inner]` matches `main[data-slot=sidebar-inset]` (light and dark, Mercurian and another theme), and a hovered and the current row still show a fill. The edge: `getComputedStyle(document.querySelector('[data-app-sidebar]'), '::after').top` is `0px`. Check the pill is not clipped at the default sidebar width,
 and again after dragging `Resize Sidebar` narrower. Thread rows: a `sidebar-row-card`'s
-`getBoundingClientRect().height` is 78 with a branch line and 56 without (its `li` adds 4).
+`getBoundingClientRect().height` is 72 with a branch line and 54 without (its `li` adds 2:
+74 and 56, the `contain-intrinsic-size` hints in `SidebarCard.tsx` and `SidebarThreadRow.tsx`).
 
 ## Gotchas
 

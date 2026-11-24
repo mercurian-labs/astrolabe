@@ -7,7 +7,9 @@ pull requests, pull requests, change groups, files, diffs, local graphs, project
 problems and places (`repo-search:`, `repo-problems:`, `repo-locations:`), wiki notes and a thread's right-panel surfaces
 (Browser, Terminal, Files, Diff, Pull request, Device, Graph, Lineage, Side chat; a Linked pull
 requests tab only when restored from an older layout) are
-all tabs that split right or down. The sidebar section only decides what the sidebar lists. A
+all tabs that split right or down. The sidebar section only decides what the sidebar lists.
+The rail's Issues is not a panes route: upstream's `/issues` page replaces the panes while it is
+open (the sidebar keeps the Agents list), and the arrangement comes back unchanged on leaving. A
 thread's surfaces are tabs linked to its chat (`panes/linkedTabs.ts`): they show only while that
 chat is the one in front, and park, remembering where they stood, while another chat is. Nothing
 else links to a chat: chats, documents, wiki pull requests, change groups, project files and

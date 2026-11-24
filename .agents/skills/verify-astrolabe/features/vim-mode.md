@@ -198,7 +198,8 @@ under the text and a hit-test lands on the text.
 - The vimrc is the walk home's `userdata/vimrc` (or `dev/vimrc` under a dev URL
   without `--home-dir`), never `~/.t3/userdata/vimrc`.
 - `preview_act press` does send modifiers (`modifiers: ["Meta"]`); `preview_act click`
-  does not.
+  does not. Send an uppercase Vim key with `modifiers: ["Shift"]` (`G` that way works);
+  `key: "A"` alone arrived as `a`.
 
 ## Owns
 

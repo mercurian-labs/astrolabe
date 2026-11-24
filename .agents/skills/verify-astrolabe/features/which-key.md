@@ -27,11 +27,11 @@ same commands, and all three kinds of trigger (Shortcut, Menu keys, Alias) live 
   with nothing to act on here shows faint, **Not available here** (e.g. `g p` where
   Pull Requests is unsupported). Cmd+K shows it at once; the leader after ~300 ms,
   so a fast `Space g w` runs without it flashing.
-- **Top level** (defaults, eighteen rows in this order): `:` Command palette, `/`
+- **Top level** (defaults, twenty rows in this order): `:` Command palette, `/`
   Search (always enabled), `n` New thread or document, `f` Find file (upstream's
   file picker), `←`/`h`, `↓`/`j`, `↑`/`k`, `→`/`l` Focus left/down/up/right (rows
   read `← | h`; repeatable: a repeat window follows, see keyboard-nav.md), `d` Scroll
-  down and `u` Scroll up (repeatable), `g` Go to, `t` Tabs, `p` Panes, `s` Sidebar,
+  down and `u` Scroll up (repeatable), `z` Undo and `Z` Redo (`edit.undo`/`edit.redo`), `g` Go to, `t` Tabs, `p` Panes, `s` Sidebar,
   `w` Wikis, `e` Editor, `r` Projects, `,` Settings. `n`'s
   label follows the section (on Wikis "New document", on Projects "Add a project", which opens
   the palette's add flow; where no section header is mounted, such as Changes, it is
@@ -40,7 +40,7 @@ same commands, and all three kinds of trigger (Shortcut, Menu keys, Alias) live 
   popover fades out, so wait for `[data-which-key]` to detach before reading "closed".
   A prefix the user added with no built-in name shows as `+N` (its entry count).
 - **Groups** (defaults): `g` t Agents, w Wikis, r Projects, p Changes,
-  u Usage, s Settings. `t` `]` next tab, `[` previous, `c` close (all on the focused pane's
+  i Issues (`section.issues`, upstream's `/issues`), u Usage, s Settings. `t` `]` next tab, `[` previous, `c` close (all on the focused pane's
   tab), `k` the focused tab's link item (panes.md, Linked tabs): "Unlink tab", "Link to the file
   in front" for a pinned local graph, or a faint "Unlink tab" with nothing to link, `n` New linked tab for the focused chat (or the chat a
   focused linked tab belongs to; faint otherwise), `r` reopen closed (panel and
@@ -169,10 +169,10 @@ and copy the backup back when done. The server picks changes up live.
 ## Flows
 
 1. **Menu basics.** On a chat: Cmd+K → menu at the top right (the paint read above)
-   with the eighteen top-level rows (Search's row shows only `/`), `Esc close` footer
+   with the twenty top-level rows (Search's row shows only `/`), `Esc close` footer
    → Ctrl+N twice, Ctrl+P → `:` row highlighted → `g` (or click Go to) → heading
    `Menu › Go to`, rows Agents, Wikis, Projects, Changes (a faint "Section: Changes"
-   where pull requests are unsupported), Usage, Settings → click **Backspace back**
+   where pull requests are unsupported), Issues, Usage, Settings → click **Backspace back**
    → heading `Menu` → `g` → `z` → "Not bound", still open → click Agents, or `w`,
    or `r` (`/repositories`) → the URL changes, menu closed.
 2. **Leader across sections.** On Wikis, click the heading → Space → menu after the
