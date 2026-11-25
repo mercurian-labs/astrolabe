@@ -14,11 +14,13 @@ import type { EnvironmentChangeGroup } from "@t3tools/client-runtime/changeGroup
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { ThreadId, type ProjectId, type ScopedThreadRef } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
-import { Link, type NavigateFn } from "@tanstack/react-router";
+import { Link, useLocation, type NavigateFn } from "@tanstack/react-router";
 import { T } from "gt-react";
 import { MessageSquareIcon } from "lucide-react";
 
 import ChatView from "~/components/ChatView";
+import { HiddenThreadContext } from "~/components/chat/backgroundThread";
+import { isAppModalPage } from "~/components/sidebar/mainAppLocation";
 import { Button } from "~/components/ui/button";
 import {
   Empty,
@@ -261,28 +263,34 @@ export function PaneChat({ threadRef }: { readonly threadRef: ScopedThreadRef })
   const shell = useQuietThreadShell(threadRef);
   const shellStatus = useEnvironmentShellStatus(threadRef.environmentId);
   const environmentUnreachable = useAtomValue(environmentUnreachableAtom(threadRef.environmentId));
+  const coveredByModal = useLocation({ select: (location) => isAppModalPage(location.pathname) });
   useOpenThreadFamily(
     threadRef,
     isThreadRouteSnapshotAuthoritative(shellStatus) && shell === null && draftId === null,
   );
   // A link to a thread on an environment this app has no connection to says why, not a blank pane.
   if (!draftId && shell === null && environmentUnreachable) return <UnreachableEnvironmentState />;
-  return draftId ? (
-    <ChatView
-      draftId={draftId}
-      environmentId={threadRef.environmentId}
-      threadId={threadRef.threadId}
-      routeKind="draft"
-      reserveTitleBarControlInset={false}
-      forceExpandedMobileComposer
-    />
-  ) : (
-    <ChatView
-      environmentId={threadRef.environmentId}
-      threadId={threadRef.threadId}
-      routeKind="server"
-      reserveTitleBarControlInset={false}
-    />
+  // Settings and Usage open over the panes, which stay mounted; their composer menus close.
+  return (
+    <HiddenThreadContext value={coveredByModal}>
+      {draftId ? (
+        <ChatView
+          draftId={draftId}
+          environmentId={threadRef.environmentId}
+          threadId={threadRef.threadId}
+          routeKind="draft"
+          reserveTitleBarControlInset={false}
+          forceExpandedMobileComposer
+        />
+      ) : (
+        <ChatView
+          environmentId={threadRef.environmentId}
+          threadId={threadRef.threadId}
+          routeKind="server"
+          reserveTitleBarControlInset={false}
+        />
+      )}
+    </HiddenThreadContext>
   );
 }
 

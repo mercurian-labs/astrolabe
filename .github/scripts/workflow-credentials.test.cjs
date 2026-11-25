@@ -185,7 +185,9 @@ test("the store build record job runs the workflow's own action and passes the b
 
 test("release deploys give the Vercel token to the deploy step only", () => {
   const all = jobs("workflows/release.yml");
-  for (const name of ["build_web", "build_marketing"]) {
+  // Astrolabe deploys the hosted app to Cloudflare and has no marketing job, so neither Vercel
+  // build job exists there.
+  for (const name of ["build_web", "build_marketing"].filter((job) => job in all)) {
     assert.doesNotMatch(all[name].split(/^ {4}steps:\n/m)[0], /secrets\.VERCEL/);
     const withToken = steps(all[name]).filter((step) => step.includes("secrets.VERCEL_TOKEN"));
     assert.equal(withToken.length, 1);
@@ -195,6 +197,8 @@ test("release deploys give the Vercel token to the deploy step only", () => {
 
 test("the version override token covers this repository only", () => {
   const { version, production } = jobs("workflows/mobile-eas-production.yml");
+  // Astrolabe runs store builds by hand and commits no version override.
+  if (version === undefined) return;
   const mint = steps(version).find((step) => step.includes("create-github-app-token"));
   assert.doesNotMatch(mint, /^\s+(?:owner|repositories):/m);
   assert.match(mint, /^\s+permission-contents: write$/m);

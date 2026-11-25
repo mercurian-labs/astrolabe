@@ -583,7 +583,7 @@ describe("BrowserSession", () => {
       // Only the microphone is blocked, so the message does not send the user looking for Camera.
       assert.strictEqual(
         showMessageBox.mock.calls[2]?.[0].message,
-        "macOS blocked T3 Code from using your microphone",
+        "macOS blocked Astrolabe from using your microphone",
       );
       assert.isFalse(yield* requestMedia("https://second.test/", ["video", "audio"]));
       assert.strictEqual(showMessageBox.mock.calls.length, 3);
@@ -627,7 +627,7 @@ describe("BrowserSession", () => {
       assert.strictEqual(askForMediaAccess.mock.calls.length, 0);
       assert.strictEqual(
         yield* Deferred.await(recoveryShown),
-        "macOS blocked T3 Code from using your camera and microphone",
+        "macOS blocked Astrolabe from using your camera and microphone",
       );
     }).pipe(Effect.provide(layerDarwin)),
   );

@@ -52,7 +52,8 @@ const listedPaths = (command: Command.Command.Any, path: string): ReadonlyArray<
 ];
 
 it("feedback subjects name every listed t3 command", () => {
-  expect([...T3_CLI_COMMANDS].sort()).toEqual(
+  // Astrolabe: triage is unlisted while TRIAGE_REPOSITORY is unset.
+  expect([...T3_CLI_COMMANDS].filter((command) => command !== "t3 triage").sort()).toEqual(
     [...listedPaths(makeCli({ cloudEnabled: true }), "t3")].sort(),
   );
 });
@@ -113,9 +114,9 @@ it.effect("points to Labs only when the server hides the feedback tool", () =>
           Effect.fail(
             new McpBridge.AcpMcpBridgeError({ message: "fetch failed: connection refused" }),
           ),
-        stderr: `Could not reach the T3 Code server at ${runtimeState.origin}.`,
+        stderr: `Could not reach the Astrolabe server at ${runtimeState.origin}.`,
       },
-      { args: submit, running: false, stderr: "No running T3 Code server uses" },
+      { args: submit, running: false, stderr: "No running Astrolabe server uses" },
     ];
     for (const { args, running, call, stderr } of cases) {
       yield* running === false

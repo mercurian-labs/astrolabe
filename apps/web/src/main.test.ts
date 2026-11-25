@@ -15,7 +15,8 @@ async function bootThenFailLazyChunk(sessionStorage: Map<string, string>) {
       setItem: (key: string, value: string) => sessionStorage.set(key, value),
       removeItem: (key: string) => sessionStorage.delete(key),
     },
-    location: { reload },
+    // Astrolabe has a default hosted-app origin, which the relay telemetry check compares.
+    location: { reload, href: "http://localhost:3773/" },
   });
   vi.stubGlobal("window", page);
   vi.stubGlobal("document", { getElementById: () => ({}) });

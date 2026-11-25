@@ -259,70 +259,13 @@ jobs:
       cancel-in-progress: false
       queue: max
     permissions:
-      contents: write # pushes the build record tag
-      pull-requests: write
-    outputs:
-      client: ${{ steps.build.outputs.link || steps.record.outputs.link }}
-    env:
-      APP_VARIANT: preview
-      NODE_OPTIONS: --max-old-space-size=8192
-      MOBILE_VERSION_POLICY: fingerprint
-      EXPO_TOKEN: ${{ secrets.EXPO_PREVIEW_TOKEN }}
-      FINGERPRINT: ${{ needs.android.outputs.fingerprint }}
-      BUILD_TAG: mobile-android-preview-build/${{ needs.android.outputs.fingerprint }}
-      # Phones only: emulators use the development client from the native-client cache.
-      ORG_GRADLE_PROJECT_reactNativeArchitectures: armeabi-v7a,arm64-v8a
-    steps:
-      - name: Checkout
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          fetch-depth: 0
-
-      - id: record
-        name: Check build record
-        run: |
-          if git fetch --quiet origin "refs/tags/$BUILD_TAG:refs/tags/$BUILD_TAG" 2>/dev/null; then
-            echo "built=true" >> "$GITHUB_OUTPUT"
-            echo "link=$(git tag -l --format='%(contents:subject)' "$BUILD_TAG")" >> "$GITHUB_OUTPUT"
-          fi
-
-      # The steps below run dependency and build scripts; they get no token.
-      - name: Drop checkout credentials
-        uses: ./.github/actions/drop-checkout-credentials
-
-      - name: Build
-        if: steps.record.outputs.built != 'true'
-        uses: ./.github/actions/eas-local-build
-        with:
-          platform: android
-          profile: preview:dev
-          environment: preview
-          expo-token: ${{ secrets.EXPO_PREVIEW_TOKEN }}
-          output: ${{ runner.temp }}/t3code-preview.apk
-
-      # `eas upload` hosts the APK on EAS and returns the page testers install from.
-      - id: build
-        name: Upload
-        if: steps.record.outputs.built != 'true'
-        working-directory: apps/mobile
-        shell: bash
-        run: |
-          mkdir -p "$GRADLE_USER_HOME" "$CCACHE_DIR"
-          rm -rf "$EAS_LOCAL_BUILD_WORKINGDIR"
-          # No daemon: nothing should hold the sticky disk open when it is committed.
-          printf 'org.gradle.caching=true\norg.gradle.daemon=false\n' > "$GRADLE_USER_HOME/gradle.properties"
-          sudo sed -i 's|http://|https://|g' /etc/apt/blacksmith-ubuntu-mirrors.txt /etc/apt/sources.list.d/ubuntu.sources
-          sudo apt-get update -qq -o Acquire::AllowReleaseInfoChange::Label=true && sudo apt-get install -y -qq ccache
-          ccache --zero-stats
-
-      # The tag is the record later runs look up; its message is the install link.
-      - name: Record build
-        if: steps.record.outputs.built != 'true'
-        uses: ./.github/actions/record-build-tag
-        with:
-          tag: ${{ env.BUILD_TAG }}
-          message: ${{ steps.build.outputs.link }}
-          token: ${{ github.token }}
+      contents: write # the record job pushes the build record tag
+    uses: ./.github/workflows/mobile-eas-preview-build.yml
+    with:
+      platform: android
+      fingerprint: ${{ needs.android.outputs.fingerprint }}
+    secrets:
+      EXPO_PREVIEW_TOKEN: ${{ secrets.EXPO_PREVIEW_TOKEN }}
 
   ios-build:
     name: iOS preview client

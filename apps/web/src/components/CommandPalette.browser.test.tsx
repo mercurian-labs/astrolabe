@@ -337,14 +337,9 @@ describe("CommandPalette open intents", () => {
     setup({ projects: [makeProject("Acme"), makeProject("Beta")] });
     await using _screen = await render(<CommandPalette>{null}</CommandPalette>);
 
-    openCommandPalette({});
-    const rootInput = page.getByPlaceholder("Search commands, projects, and threads...");
-    await expect.element(rootInput).toHaveFocus();
-    await userEvent.keyboard("{ArrowDown}");
-    await expect
-      .element(page.getByRole("option", { name: /^New thread in\.\.\./ }))
-      .toHaveAttribute("data-highlighted");
-    await userEvent.keyboard("{Enter}");
+    // Astrolabe: the root is Search, whose actions sit behind `:`, so the submenu opens directly.
+    openCommandPalette({ open: "new-thread-in" });
+    const rootInput = page.getByPlaceholder("Search threads, documents, and projects...");
 
     const submenuInput = page.getByPlaceholder("Search...");
     await expect.element(submenuInput).toHaveFocus();
@@ -389,7 +384,7 @@ describe("CommandPalette open intents", () => {
     await userEvent.keyboard("{Escape}");
     await expect.element(palette).toHaveAttribute("data-palette-mode", "command");
     await expect
-      .element(page.getByPlaceholder("Search commands, projects, and threads..."))
+      .element(page.getByPlaceholder("Search threads, documents, and projects..."))
       .toHaveFocus();
 
     await act(() => {

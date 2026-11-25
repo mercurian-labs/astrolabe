@@ -223,6 +223,9 @@ describe("reporting changes", () => {
       next.length,
       false,
       ["term-1"],
+      // Typing changed the text, and not through undo or redo.
+      true,
+      false,
     );
   });
 

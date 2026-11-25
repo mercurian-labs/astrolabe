@@ -1250,8 +1250,8 @@ const make = Effect.gen(function* () {
       Effect.gen(function* () {
         const { target, ref } = yield* locate(input);
         yield* refuseWikiChangeRequest(ref);
-        const stack = input.stack === true ? yield* stackMergeScope(ref, input) : {};
-        if ("expectedStackHeads" in stack) {
+        const stack = input.stack === true ? yield* stackMergeScope(ref, input) : undefined;
+        if (stack !== undefined) {
           yield* refuseWikiChangeRequest(
             ref,
             stack.expectedStackHeads.map((layer) => layer.number),
