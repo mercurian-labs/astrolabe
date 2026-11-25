@@ -548,6 +548,23 @@ it.effect("waits for every fork below it, then erases the deleted forks above", 
     yield* purge(grandforkId);
     assert.lengthOf((yield* projections.getThreadProjection(rootId)).messages, 0);
     assert.lengthOf((yield* projections.getThreadProjection(forkId)).messages, 0);
+
+    // A thread forked from one of its runs, such as a side chat, reads its history too.
+    const sourceId = ThreadId.make("thread:purge-run-source");
+    const runForkId = ThreadId.make("thread:purge-run-fork");
+    yield* sink.write({
+      events: [
+        created(makeThread(sourceId)),
+        message(sourceId, "message:run-source"),
+        created({
+          ...makeThread(runForkId),
+          forkedFrom: { type: "run", threadId: sourceId, runId: RunId.make(`run:${sourceId}`) },
+        }),
+      ],
+    });
+    yield* deleteThread(sourceId);
+    yield* purge(sourceId);
+    assert.lengthOf((yield* projections.getThreadProjection(sourceId)).messages, 1);
   }).pipe(Effect.provide(layerTest([]))),
 );
 

@@ -59,7 +59,7 @@ describe("KeybindingsSettings.logic", () => {
       mergeWithDefaultKeybindings(
         compileResolvedKeybindingsConfig([
           { command: "chat.new", key: "mod+n", when: "!terminalFocus" },
-          { command: "chat.new", key: "f8", when: "!terminalFocus" },
+          { command: "chat.new", key: "f8", when: "!terminalFocus && !outlineFocus" },
         ]),
       ),
     );

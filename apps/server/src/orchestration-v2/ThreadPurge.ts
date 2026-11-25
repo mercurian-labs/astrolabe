@@ -183,7 +183,8 @@ const make = Effect.gen(function* () {
         LIMIT 1
       `;
       if (pendingTransfers.length > 0) return Option.none();
-      // A fork shows the history of every fork above it, and so does a thread forked from a run.
+      // A fork shows the history of every fork above it, and so does a thread forked from a run;
+      // subagents are deleted with their parent instead.
       const liveForks = yield* sql<{ readonly count: number }>`
         WITH RECURSIVE forks(thread_id, deleted_at) AS (
           SELECT thread_id, deleted_at
@@ -194,6 +195,8 @@ const make = Effect.gen(function* () {
             ) OR (
               json_extract(payload_json, '$.forkedFrom.threadId') = ${threadId}
               AND json_extract(payload_json, '$.forkedFrom.type') = 'run'
+              AND coalesce(json_extract(payload_json, '$.lineage.relationshipToParent'), '')
+                <> 'subagent'
             )
           UNION
           SELECT child.thread_id, child.deleted_at
@@ -205,6 +208,8 @@ const make = Effect.gen(function* () {
             ) OR (
               json_extract(child.payload_json, '$.forkedFrom.threadId') = forks.thread_id
               AND json_extract(child.payload_json, '$.forkedFrom.type') = 'run'
+              AND coalesce(json_extract(child.payload_json, '$.lineage.relationshipToParent'), '')
+                <> 'subagent'
             )
         )
         SELECT COUNT(*) AS count FROM forks WHERE deleted_at IS NULL

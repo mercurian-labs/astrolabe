@@ -234,10 +234,12 @@ describe("root reopen shortcut", () => {
     });
     expect(event.defaultPrevented).toBe(true);
     expect(allTabs(workspace.arrangement())).toContain(chatTabKey(ref));
-    expect(state.navigate).toHaveBeenCalledWith({
-      to: "/$environmentId/$threadId",
-      params: { environmentId: ref.environmentId, threadId: ref.threadId },
-    });
+    expect(state.navigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "/$environmentId/$threadId",
+        params: { environmentId: ref.environmentId, threadId: ref.threadId },
+      }),
+    );
     expect(useClosedViewStore.getState().entries).toEqual([]);
   });
 

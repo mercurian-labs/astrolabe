@@ -1082,15 +1082,15 @@ it.layer(NodeServices.layer)("launcher lookup on PATH", (it) => {
       const path = yield* Path.Path;
       const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-launcher-path-" });
       const versionsDir = path.join(root, ".t3", "runtime", "versions");
-      const executable = path.join(versionsDir, "1.0.0", "t3");
+      const executable = path.join(versionsDir, "1.0.0", "astrolabe");
       yield* fs.makeDirectory(path.dirname(executable), { recursive: true });
       yield* fs.writeFileString(executable, "", { mode: 0o755 });
       const bin = path.join(root, "bin");
       yield* fs.makeDirectory(bin);
-      yield* fs.writeFileString(path.join(bin, "t3"), posixLauncherScript(executable), {
+      yield* fs.writeFileString(path.join(bin, "astrolabe"), posixLauncherScript(executable), {
         mode: 0o755,
       });
-      const script = yield* fs.realPath(path.join(bin, "t3"));
+      const script = yield* fs.realPath(path.join(bin, "astrolabe"));
       const missing = path.join(root, "missing");
       const lookup = (searchPath: string) =>
         findPosixLauncher({ launchedAs: executable, versionsDir }).pipe(
