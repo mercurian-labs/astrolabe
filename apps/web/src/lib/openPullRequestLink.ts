@@ -137,7 +137,8 @@ export function useOpenChangeRequestLink(
           resolvedPanelRef.threadId === PULL_REQUESTS_PANEL_REF.threadId;
         if (onPage) showPullRequest(pullRequest, "replace");
         else useRightPanelStore.getState().openPullRequest(resolvedPanelRef, pullRequest);
-        if (!resolvedThreadRef) {
+        // The pull request list keeps its selection in the URL; the Issues page's panel does not.
+        if (onPage) {
           void navigate({
             to: "/pull-requests",
             search: (previous) => ({

@@ -9,6 +9,7 @@ import {
   PanelLeftCloseIcon,
   PanelLeftIcon,
   SettingsIcon,
+  WorkflowIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -25,6 +26,7 @@ import { useIssuesSupported, usePullRequestsSupported } from "~/state/environmen
 import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
 import { readIssueListPreferences } from "../issue/issueListPreferences";
 import { IssueGlyph } from "../issue/issuePresentation";
+import { useWorkflowEnvironmentIds } from "../workflows/useWorkflowEnvironmentIds";
 import {
   SidebarMenu,
   SidebarMenuButton,
@@ -39,6 +41,7 @@ import {
   isPullRequestsPath,
   isRepositoriesPath,
   isWikisPath,
+  isWorkflowsPath,
   useNavigateToAgents,
   useSectionPathname,
 } from "./mainAppLocation";
@@ -52,6 +55,7 @@ interface AppSection {
     | "repositories"
     | "pull-requests"
     | "issues"
+    | "workflows"
     | "usage"
     | "settings";
   readonly label: string;
@@ -76,6 +80,7 @@ export function useAppSections(): readonly AppSection[] {
   const navigateToAgents = useNavigateToAgents();
   const pullRequestsSupported = usePullRequestsSupported();
   const issuesSupported = useIssuesSupported();
+  const workflowsReachable = useWorkflowEnvironmentIds().length > 0;
 
   const onSettings = pathname === "/settings" || pathname.startsWith("/settings/");
   const onUsage = pathname === "/usage";
@@ -83,9 +88,11 @@ export function useAppSections(): readonly AppSection[] {
   const onWikis = isWikisPath(sectionPathname);
   const onRepositories = isRepositoriesPath(sectionPathname);
   const onIssues = isIssuesPath(sectionPathname);
+  const onWorkflows = isWorkflowsPath(sectionPathname);
   const onThreads =
     !onPullRequests &&
     !onIssues &&
+    !onWorkflows &&
     !onWikis &&
     !onRepositories &&
     !sectionPathname.startsWith("/projects/");
@@ -136,6 +143,18 @@ export function useAppSections(): readonly AppSection[] {
             icon: <IssueGlyph.issue />,
             active: onIssues,
             open: () => void navigate({ to: "/issues", search: readIssueListPreferences() }),
+            foot: false,
+          },
+        ]
+      : []),
+    ...(workflowsReachable
+      ? [
+          {
+            id: "workflows" as const,
+            label: gt("Workflows"),
+            icon: <WorkflowIcon />,
+            active: onWorkflows,
+            open: () => void navigate({ to: "/workflows" }),
             foot: false,
           },
         ]

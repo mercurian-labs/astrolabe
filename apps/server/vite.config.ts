@@ -110,6 +110,11 @@ export default mergeConfig(
           dependsOn: ["@t3tools/web#build"],
           cache: false,
         },
+        // A local tsbuildinfo is leftover build state, not a typecheck input.
+        typecheck: {
+          command: "effect-tsgo tsrs --noEmit",
+          cache: { input: [{ auto: true }, "!*.tsbuildinfo"] },
+        },
       },
     },
     pack: {
@@ -126,7 +131,7 @@ export default mergeConfig(
           },
         },
       ],
-      // SEA embeds one entry; expose the history worker as a hidden subcommand.
+      // SEA embeds one entry; expose the workers as hidden subcommands.
       // Astrolabe: the code index worker has no such room, so the executable indexes nothing.
       entry: packBootstrap
         ? ["src/bin.ts"]
@@ -135,6 +140,7 @@ export default mergeConfig(
           : [
               "src/bin.ts",
               "src/claude-history-worker.ts",
+              "src/process-launcher.ts",
               { "code-index-worker": "src/codeIndex/worker.ts" },
             ],
       ...(packExecutable

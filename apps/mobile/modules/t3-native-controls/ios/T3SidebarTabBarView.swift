@@ -115,6 +115,7 @@ final class T3SidebarTabBarView: ExpoView, UITabBarDelegate {
       "wikis": "Wikis",
       "repositories": "Projects",
       "issues": "Issues",
+      "workflows": "Workflows",
       "usage": "Usage",
       "settings": "Settings",
     ]
@@ -123,6 +124,7 @@ final class T3SidebarTabBarView: ExpoView, UITabBarDelegate {
       "threads": "text.bubble",
       "wikis": "book",
       "repositories": "folder",
+      "workflows": "point.3.connected.trianglepath.dotted",
       "usage": "chart.bar.xaxis",
       "settings": "gearshape",
     ]

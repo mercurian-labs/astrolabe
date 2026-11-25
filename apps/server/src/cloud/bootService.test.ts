@@ -1,3 +1,4 @@
+import { DESKTOP_UPDATE_RESTART_MARKER_FILE } from "@t3tools/contracts";
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- Cross-process launcher contention uses real filesystem leases and IPC barriers.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeSqlite from "node:sqlite";
@@ -21,6 +22,7 @@ import * as ProcessRunner from "../processRunner.ts";
 import { serviceLauncherLockPath } from "../serviceLauncher.ts";
 import * as BootService from "./bootService.ts";
 import { pinnedRuntimePaths } from "./pinnedRuntime.ts";
+import { RESTORE_OOMD_WATCH_SCRIPT } from "./userManagerOom.ts";
 import {
   decodeServiceUnit,
   disabledServiceTask,
@@ -50,6 +52,8 @@ vi.mock("node:fs", async (importOriginal) => {
     },
   };
 });
+
+const SCHTASKS = "D:\\WinNT\\System32\\schtasks.exe";
 
 const windowsTaskOptions = {
   userId: "PC\\theo",
@@ -105,7 +109,7 @@ it("protects the server unit from agents under CPU and memory pressure", () => {
     program: ["/home/theo/.t3/runtime/versions/1.2.3/astrolabe", "__service-launcher"],
     baseDir: "/home/theo/.t3",
     logPath: "/home/theo/.t3/userdata/logs/boot-service.log",
-    unitPath: "/home/theo/.config/systemd/user/t3code.service",
+    unitPath: "/home/theo/.config/systemd/user/astrolabe.service",
   });
   const service = unit.slice(unit.indexOf("[Service]"), unit.indexOf("[Install]"));
   for (const line of [
@@ -155,7 +159,7 @@ it.each([
       program: [`${baseDir}/runtime/versions/1.2.3/astrolabe`, "__service-launcher"],
       baseDir,
       logPath: `${baseDir}/userdata/logs/boot-service.log`,
-      unitPath: "/home/theo/.config/systemd/user/t3code.service",
+      unitPath: "/home/theo/.config/systemd/user/astrolabe.service",
     });
   } catch {
     return;
@@ -204,11 +208,14 @@ const makeHarness = Effect.fn("test.make_boot_service_harness")(function* (
   yield* fs.writeFileString(runtime.entryPath, "#!/bin/sh\n");
   yield* fs.writeFileString(runtime.sentinelPath, "1.2.3\n");
 
+  const markersAtStop: boolean[] = [];
+  const markersAtPreparation: boolean[] = [];
   const commands: string[] = [];
   const invocations: ProcessRunner.ProcessRunInput[] = [];
   const timeouts = new Map<string, unknown>();
   const control: {
     failCommand: string | undefined;
+    interruptCommand?: string;
     stateAfterStop?: string;
     /** `undefined` makes `loginctl show-user` fail, as when logind does not know the user. */
     linger: string | undefined;
@@ -240,6 +247,23 @@ const makeHarness = Effect.fn("test.make_boot_service_harness")(function* (
     ) {
       const command = `${input.command} ${input.args.join(" ")}`;
       commands.push(command);
+      const marker = path.join(baseDir, "runtime", DESKTOP_UPDATE_RESTART_MARKER_FILE);
+      if (
+        command === "systemctl --user stop astrolabe.service" ||
+        command === "systemctl --user disable --now astrolabe.service" ||
+        command === "systemctl --user restart --no-block astrolabe.service" ||
+        command.startsWith("launchctl bootout --wait ") ||
+        (input.command === SCHTASKS && input.args[0] === "/End")
+      ) {
+        markersAtStop.push(yield* fs.exists(marker));
+      }
+      if (
+        command === "systemctl --user daemon-reload" ||
+        (input.command === SCHTASKS && input.args[0] === "/Create")
+      ) {
+        markersAtPreparation.push(yield* fs.exists(marker));
+      }
+      if (command === control.interruptCommand) return yield* Effect.interrupt;
       invocations.push(input);
       timeouts.set(command, input.timeout);
       if (command === "systemctl --user reset-failed astrolabe.service")
@@ -256,8 +280,8 @@ const makeHarness = Effect.fn("test.make_boot_service_harness")(function* (
       if (!failed && command === "systemctl --user enable astrolabe.service")
         control.enabled = true;
       const taskMissing =
-        input.command === "schtasks" && input.args[0] !== "/Create" && control.task === undefined;
-      if (input.command === "schtasks" && !failed) {
+        input.command === SCHTASKS && input.args[0] !== "/Create" && control.task === undefined;
+      if (input.command === SCHTASKS && !failed) {
         if (input.args[0] === "/Create") {
           const xml = decodeServiceUnit(yield* fs.readFile(input.args[2] ?? ""));
           control.task = { xml, enabled: !serviceTaskIsDisabled(xml) };
@@ -298,7 +322,7 @@ const makeHarness = Effect.fn("test.make_boot_service_harness")(function* (
               })
             : input.args[0] === "--version"
               ? `t3 v${/versions[\\/]([^\\/]+)[\\/]/.exec(input.command)?.[1] ?? "1.2.3"}\n`
-              : input.command === "schtasks" && input.args.includes("/XML")
+              : input.command === SCHTASKS && input.args.includes("/XML")
                 ? control.task?.enabled === false
                   ? disabledServiceTask(control.task.xml)
                   : (control.task?.xml ?? "")
@@ -377,6 +401,7 @@ const makeHarness = Effect.fn("test.make_boot_service_harness")(function* (
                 USERPROFILE: home,
                 LOCALAPPDATA: path.join(home, "AppData", "Local"),
                 USERDOMAIN: "PC",
+                windir: "D:\\WinNT",
                 USERNAME: "theo",
                 ...(environmentPath === undefined || environmentPath === ""
                   ? {}
@@ -405,12 +430,51 @@ const makeHarness = Effect.fn("test.make_boot_service_harness")(function* (
     commands,
     invocations,
     timeouts,
+    markersAtStop,
+    markersAtPreparation,
     control,
     runtime,
   };
 });
 
 it.layer(NodeServices.layer)("boot service install", (it) => {
+  it.effect(
+    "marks immediate and deferred service restarts without blocking on a marker error",
+    () =>
+      Effect.gen(function* () {
+        const { service, fs, baseDir, control, markersAtStop, makeService } = yield* makeHarness();
+        const path = yield* Path.Path;
+        const marker = path.join(baseDir, "runtime", DESKTOP_UPDATE_RESTART_MARKER_FILE);
+        yield* service.install();
+        expect(markersAtStop).toEqual([]);
+        expect(yield* fs.exists(marker)).toBe(false);
+
+        const newer = yield* makeService(undefined, "1.2.4");
+        yield* newer.install();
+        expect(markersAtStop).toEqual([true]);
+        expect(yield* fs.exists(marker)).toBe(false);
+
+        const next = yield* makeService(undefined, "1.2.5");
+        yield* next.install({ start: false });
+        expect(markersAtStop).toEqual([true]);
+        expect(yield* fs.exists(marker)).toBe(false);
+        yield* next.restart;
+        expect(markersAtStop).toEqual([true, true]);
+        expect(yield* fs.exists(marker)).toBe(false);
+
+        control.failCommand = "systemctl --user stop astrolabe.service";
+        const error = yield* next.restart.pipe(Effect.flip);
+        expect(error._tag).toBe("BootServiceCommandError");
+        expect(markersAtStop).toEqual([true, true, true]);
+        expect(yield* fs.exists(marker)).toBe(false);
+
+        control.failCommand = undefined;
+        yield* fs.makeDirectory(marker);
+        expect(yield* next.restart).toBe("restarted");
+        expect((yield* fs.stat(marker)).type).toBe("Directory");
+      }),
+  );
+
   it.effect(
     "fails before installing files or validating a runtime when lingering needs an administrator",
     () =>
@@ -1160,12 +1224,13 @@ process.disconnect();
 
   it.effect("pauses only this home's running service for maintenance, even when it fails", () =>
     Effect.gen(function* () {
-      const { service, commands, control, makeService } = yield* makeHarness();
+      const { service, commands, control, makeService, markersAtStop } = yield* makeHarness();
       yield* service.install();
       const failure = yield* service
         .withStopped(Effect.failSync(() => (control.active ? "running" : "repair failed")))
         .pipe(Effect.flip);
       expect(failure).toBe("repair failed");
+      expect(markersAtStop).toEqual([false]);
       expect(control.active).toBe(true);
 
       control.failCommand = "systemctl --user stop astrolabe.service";
@@ -1248,6 +1313,28 @@ process.disconnect();
     }),
   );
 
+  it.effect("treats a symlinked T3 home path as the same home", () =>
+    Effect.gen(function* () {
+      const { service, fs, baseDir, commands, makeService } = yield* makeHarness();
+      yield* service.install();
+      const path = yield* Path.Path;
+      const linkDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-symlink-home-" });
+      const aliasDir = path.join(linkDir, "a$$b");
+      yield* fs.symlink(baseDir, aliasDir);
+
+      const alias = yield* makeService(undefined, "1.2.3", aliasDir);
+      expect(yield* alias.status).toMatchObject({ current: true });
+      expect((yield* alias.status).otherBaseDir).toBeUndefined();
+      expect(yield* alias.restart).toBe("restarted");
+      commands.length = 0;
+      yield* alias.withStopped(Effect.void);
+      expect(commands).toContain("systemctl --user stop astrolabe.service");
+      expect((yield* alias.install()).baseDir).toBe(aliasDir);
+      expect(yield* service.status).toMatchObject({ current: true });
+      expect((yield* service.status).otherBaseDir).toBeUndefined();
+    }),
+  );
+
   it.effect("hands the whole install to systemd without changing the running service", () =>
     Effect.gen(function* () {
       const { fs, commands, invocations, control, makeService } = yield* makeHarness();
@@ -1301,9 +1388,19 @@ process.disconnect();
     "queues an in-service restart without stopping the caller, even on handoff failure",
     () =>
       Effect.gen(function* () {
-        const { service, fs, statePath, commands, control, makeService } = yield* makeHarness();
+        const {
+          service,
+          fs,
+          statePath,
+          commands,
+          control,
+          makeService,
+          markersAtStop,
+          markersAtPreparation,
+        } = yield* makeHarness();
         const plan = yield* service.install();
         const state = yield* fs.readFileString(statePath);
+        const relayMarker = `${plan.baseDir}/runtime/${DESKTOP_UPDATE_RESTART_MARKER_FILE}`;
         const marker = `${plan.baseDir}/runtime/${SERVICE_RESTART_PENDING_FILE}`;
         yield* fs.writeFileString(marker, "1.2.3\n");
         const inside = yield* makeService(undefined, "1.2.3", undefined, true);
@@ -1314,17 +1411,38 @@ process.disconnect();
         expect(error).toMatchObject({ _tag: "BootServiceCommandError", exitCode: 1 });
         expect(commands).toEqual(["systemctl --user daemon-reload"]);
         expect(control.active).toBe(true);
+        expect(yield* fs.exists(relayMarker)).toBe(false);
+        expect(markersAtPreparation.at(-1)).toBe(false);
+        expect(markersAtStop).toEqual([]);
+
+        const queueCommand = "systemctl --user restart --no-block astrolabe.service";
+        control.failCommand = queueCommand;
+        expect((yield* inside.restart.pipe(Effect.flip))._tag).toBe("BootServiceCommandError");
+        expect(markersAtStop).toEqual([true]);
+        expect(yield* fs.exists(relayMarker)).toBe(false);
+
+        control.failCommand = undefined;
+        control.interruptCommand = queueCommand;
+        const interrupted = yield* inside.restart.pipe(Effect.forkScoped);
+        expect((yield* Fiber.await(interrupted))._tag).toBe("Failure");
+        expect(markersAtStop).toEqual([true, true]);
+        expect(yield* fs.exists(relayMarker)).toBe(false);
+        delete control.interruptCommand;
 
         control.failCommand = undefined;
         commands.length = 0;
         const outcome = yield* inside.restart;
         expect(commands).toEqual([
           "systemctl --user daemon-reload",
+          `/bin/sh -c ${RESTORE_OOMD_WATCH_SCRIPT}`,
           "systemctl --user enable astrolabe.service",
           "systemctl --user reset-failed astrolabe.service",
           "systemctl --user restart --no-block astrolabe.service",
         ]);
         expect(outcome).toBe("queued");
+        expect(markersAtStop).toEqual([true, true, true]);
+        expect(markersAtPreparation).not.toContain(true);
+        expect(yield* fs.exists(relayMarker)).toBe(true);
         expect(yield* fs.readFileString(statePath)).toBe(state);
         expect(yield* fs.readFileString(marker)).toBe("1.2.3\n");
       }),
@@ -1408,7 +1526,8 @@ process.disconnect();
 
   it.effect("installs, reports current state, and uninstalls on macOS", () =>
     Effect.gen(function* () {
-      const { service, fs, statePath, commands, timeouts, runtime } = yield* makeHarness("darwin");
+      const { service, fs, statePath, commands, timeouts, runtime, markersAtStop } =
+        yield* makeHarness("darwin");
       const path = yield* Path.Path;
       const plan = yield* service.install();
 
@@ -1431,7 +1550,13 @@ process.disconnect();
         current: true,
         installedVersion: "1.2.3",
       });
+      const relayMarker = path.join(plan.baseDir, "runtime", DESKTOP_UPDATE_RESTART_MARKER_FILE);
+      expect(yield* service.restart).toBe("restarted");
+      expect(markersAtStop).toEqual([true]);
+      expect(yield* fs.exists(relayMarker)).toBe(false);
       expect(yield* service.uninstall).toBe(true);
+      expect(markersAtStop).toEqual([true, false]);
+      expect(yield* fs.exists(relayMarker)).toBe(false);
       expect((yield* service.status).installed).toBe(false);
       expect(commands.some((command) => command.startsWith("systemctl "))).toBe(false);
       // launchd can take 90s to bootout; the runner's 60s default could let bootstrap race it.
@@ -1467,9 +1592,9 @@ process.disconnect();
         protocol: SERVICE_LAUNCHER_PROTOCOL,
         activeVersion: "1.2.3",
       });
-      expect(commands.filter((command) => command.startsWith("schtasks "))).toEqual([
-        `schtasks /Create /XML ${plan.unitPath} /TN astrolabe-PC-theo /F`,
-        "schtasks /Run /TN astrolabe-PC-theo",
+      expect(commands.filter((command) => command.startsWith(`${SCHTASKS} `))).toEqual([
+        `${SCHTASKS} /Create /XML ${plan.unitPath} /TN astrolabe-PC-theo /F`,
+        `${SCHTASKS} /Run /TN astrolabe-PC-theo`,
       ]);
       // No launcher holds the lock here.
       expect(yield* service.status).toMatchObject({
@@ -1479,7 +1604,7 @@ process.disconnect();
       });
 
       // A task that Task Scheduler refuses to delete stays installed, so a retry finds it.
-      control.failCommand = "schtasks /Delete /TN astrolabe-PC-theo /F";
+      control.failCommand = `${SCHTASKS} /Delete /TN astrolabe-PC-theo /F`;
       expect((yield* service.uninstall.pipe(Effect.flip))._tag).toBe("BootServiceCommandError");
       expect((yield* service.status).installed).toBe(true);
       control.failCommand = undefined;
@@ -1487,9 +1612,9 @@ process.disconnect();
       commands.length = 0;
       expect(yield* service.uninstall).toBe(true);
       expect(commands).toEqual([
-        "schtasks /Change /TN astrolabe-PC-theo /DISABLE",
-        "schtasks /End /TN astrolabe-PC-theo",
-        "schtasks /Delete /TN astrolabe-PC-theo /F",
+        `${SCHTASKS} /Change /TN astrolabe-PC-theo /DISABLE`,
+        `${SCHTASKS} /End /TN astrolabe-PC-theo`,
+        `${SCHTASKS} /Delete /TN astrolabe-PC-theo /F`,
       ]);
       expect(control.task).toBeUndefined();
       expect((yield* service.status).installed).toBe(false);
@@ -1529,37 +1654,61 @@ process.disconnect();
       commands.length = 0;
       yield* service.withStopped(Effect.sync(() => commands.push("repair")));
       expect(commands.filter((command) => !command.includes("/Query"))).toEqual([
-        "schtasks /Change /TN astrolabe-PC-theo /DISABLE",
-        "schtasks /End /TN astrolabe-PC-theo",
+        `${SCHTASKS} /Change /TN astrolabe-PC-theo /DISABLE`,
+        `${SCHTASKS} /End /TN astrolabe-PC-theo`,
         "repair",
-        "schtasks /Change /TN astrolabe-PC-theo /ENABLE",
-        "schtasks /Run /TN astrolabe-PC-theo",
+        `${SCHTASKS} /Change /TN astrolabe-PC-theo /ENABLE`,
+        `${SCHTASKS} /Run /TN astrolabe-PC-theo`,
       ]);
     }),
   );
 
   it.effect("hands an in-service install and restart to Task Scheduler on Windows", () =>
     Effect.gen(function* () {
-      const { service, fs, statePath, commands, makeService } = yield* makeHarness("win32");
+      const {
+        service,
+        fs,
+        statePath,
+        commands,
+        control,
+        makeService,
+        markersAtStop,
+        markersAtPreparation,
+      } = yield* makeHarness("win32");
       const plan = yield* service.install();
       const inside = yield* makeService(undefined, "1.2.4", undefined, true);
+      const relayMarker = `${plan.baseDir}/runtime/${DESKTOP_UPDATE_RESTART_MARKER_FILE}`;
       const handoff = [
-        `schtasks /Create /XML ${plan.unitPath} /TN astrolabe-PC-theo /F`,
-        "schtasks /End /TN astrolabe-PC-theo",
-        "schtasks /Run /TN astrolabe-PC-theo",
+        `${SCHTASKS} /Create /XML ${plan.unitPath} /TN astrolabe-PC-theo /F`,
+        `${SCHTASKS} /End /TN astrolabe-PC-theo`,
+        `${SCHTASKS} /Run /TN astrolabe-PC-theo`,
       ];
       commands.length = 0;
 
       expect(yield* inside.install()).toMatchObject({ handedOff: true, logPath: plan.logPath });
-      expect(commands.filter((command) => command.startsWith("schtasks "))).toEqual(handoff);
+      expect(commands.filter((command) => command.startsWith(`${SCHTASKS} `))).toEqual(handoff);
       expect(parseServiceState(yield* fs.readFileString(statePath))?.activeVersion).toBe("1.2.4");
       expect(
         yield* fs.readFileString(`${plan.baseDir}/runtime/${SERVICE_RESTART_PENDING_FILE}`),
       ).toBe("1.2.4\n");
 
+      expect(markersAtStop).toEqual([true]);
+      expect(yield* fs.exists(relayMarker)).toBe(true);
+      yield* fs.remove(relayMarker);
+
       commands.length = 0;
       expect(yield* inside.restart).toBe("queued");
       expect(commands).toEqual(handoff);
+      expect(markersAtStop).toEqual([true, true]);
+      expect(yield* fs.exists(relayMarker)).toBe(true);
+      yield* fs.remove(relayMarker);
+
+      expect(markersAtPreparation).not.toContain(true);
+      control.failCommand = handoff[0];
+      expect((yield* inside.restart.pipe(Effect.flip))._tag).toBe("BootServiceCommandError");
+      expect(yield* fs.exists(relayMarker)).toBe(false);
+      expect(markersAtPreparation.at(-1)).toBe(false);
+      expect(markersAtStop).toEqual([true, true]);
     }),
   );
 

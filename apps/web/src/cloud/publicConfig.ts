@@ -1,6 +1,8 @@
 import { normalizeAuthOrigin } from "@t3tools/shared/mercurianAccount";
 import { normalizeSecureRelayUrl } from "@t3tools/shared/relayUrl";
 
+import { isHostedStaticApp } from "../hostedPairing";
+
 export interface CloudPublicConfig {
   /** The sign-in pages' origin, e.g. https://app.astrolabe.sh. */
   readonly authUrl: string | null;
@@ -46,12 +48,19 @@ export function resolveCloudPublicConfig(): CloudPublicConfig {
 }
 
 let desktopRelayTelemetry: boolean | null = null;
+let serverRelayTelemetry: boolean | null = null;
 
-/** Whether relay spans may be exported now; the desktop host may not know yet at startup. */
+export function setServerRelayTelemetry(allowed: boolean | null): void {
+  serverRelayTelemetry = allowed;
+}
+
 export function relayTelemetryEnabled(): boolean | null {
-  if (typeof window === "undefined" || !window.desktopBridge) return true;
-  desktopRelayTelemetry ??= window.desktopBridge.getRelayTelemetryEnabled();
-  return desktopRelayTelemetry;
+  if (typeof window === "undefined") return true;
+  if (window.desktopBridge) {
+    desktopRelayTelemetry ??= window.desktopBridge.getRelayTelemetryEnabled();
+    return desktopRelayTelemetry;
+  }
+  return serverRelayTelemetry ?? (isHostedStaticApp() ? true : null);
 }
 
 export function resolveRelayTracingConfig() {

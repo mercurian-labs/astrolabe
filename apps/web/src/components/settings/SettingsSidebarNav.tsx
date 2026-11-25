@@ -49,13 +49,16 @@ import {
   searchSettings,
   isSettingsSectionAvailable,
   revealSettingsSearchTarget,
-  SETTINGS_NAV_GROUPS,
+  settingsNavGroups,
   SETTINGS_NAV_LABELS,
   SETTINGS_SECTION_LABELS,
   type SettingsPath,
   type SettingsSearchItem,
 } from "./settingsSearch";
-import { useAvailableSettingsSearchItems } from "./useAvailableSettingsSearchItems";
+import {
+  useAvailableSettingsSearchItems,
+  useHasSecretProvidersEnvironment,
+} from "./useAvailableSettingsSearchItems";
 import { handleSettingsSectionKeyDown } from "./settingsSectionNavigation";
 import { workspaceAreaProps } from "../../lib/workspaceFocus";
 
@@ -126,12 +129,15 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
   const currentHash = useLocation({ select: (location) => location.hash });
   const activePath = SETTINGS_DETAIL_PAGE_PARENTS[pathname] ?? pathname;
   const cloudPublicConfig = hasCloudPublicConfig();
-  const navGroups = SETTINGS_NAV_GROUPS.map((group) => ({
-    ...group,
-    paths: group.paths.filter((to) =>
-      isSettingsSectionAvailable(to, { hasCloudPublicConfig: cloudPublicConfig }),
-    ),
-  })).filter((group) => group.paths.length > 0);
+  const hasSecretProvidersEnvironment = useHasSecretProvidersEnvironment();
+  const navGroups = settingsNavGroups(hasSecretProvidersEnvironment)
+    .map((group) => ({
+      ...group,
+      paths: group.paths.filter((to) =>
+        isSettingsSectionAvailable(to, { hasCloudPublicConfig: cloudPublicConfig }),
+      ),
+    }))
+    .filter((group) => group.paths.length > 0);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   // Below md the nav is an icon rail; searching expands it over the page.
@@ -225,7 +231,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
 
   const handleSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.nativeEvent.isComposing || event.keyCode === 229) return;
-    if (event.key === "Escape" && isSearching) {
+    if (event.key === "Escape" && (query || event.repeat)) {
       event.preventDefault();
       event.stopPropagation();
       clearSearch();

@@ -588,6 +588,7 @@ export function AppSidebarLayout({
                       : gt("Agents")
               }
               resizable={{
+                collapseOnResize: true,
                 maxWidth: sidebarMaximumWidth,
                 minWidth: sidebarMinimumWidth,
                 shouldAcceptWidth: ({ currentWidth, nextWidth, wrapper }) =>

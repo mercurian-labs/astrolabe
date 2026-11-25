@@ -56,6 +56,11 @@ export class RelayConfiguration extends Context.Service<
     readonly fcmServiceAccount?: Redacted.Redacted<string>;
     /** Sign in with Mercurian's origin; client tokens must come from it. */
     readonly accountJwtIssuer: string;
+    /**
+     * Verifies Clerk `user.deleted` webhooks. Astrolabe accounts are Better Auth's, which deletes
+     * relay data itself (apps/cloud), so the worker never sets it and the route stays disabled.
+     */
+    readonly clerkWebhookSigningSecret?: Redacted.Redacted<string>;
     readonly apnsDeliveryJobSigningSecret: Redacted.Redacted<string>;
     readonly cloudMintPrivateKey: Redacted.Redacted<string>;
     readonly cloudMintPublicKey: string;

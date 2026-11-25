@@ -400,6 +400,14 @@ describe("the keyboard menu built from the menu rules", () => {
 
   it("toggles the terminal only with its chat, a linked tab or its terminal in focus", () => {
     using _cleanup = cleanup();
+    const emptyLinked = {
+      arrangement: startingArrangement(),
+      owners: {},
+      parked: {},
+      front: null,
+    };
+    using linkedSpy = vi.spyOn(workspace, "linked").mockReturnValue(emptyLinked);
+    using behindSpy = vi.spyOn(workspace, "terminalBehindFocusedTab").mockReturnValue(null);
     const pressed = pressedCommands();
     const select = vi.fn();
     const close = vi.fn();
@@ -416,16 +424,16 @@ describe("the keyboard menu built from the menu rules", () => {
     press(focused(chatTerminalKey(chat)), ["o", "j"]);
     expect(pressed).toEqual(["terminal.toggle", "terminal.toggle"]);
     // A New tab in front of the terminal, in the terminal's own pane.
-    const behind = vi.spyOn(workspace, "terminalBehindFocusedTab").mockReturnValue(chat);
+    behindSpy.mockReturnValue(chat);
     press(focused("empty/1"), ["o", "j"]);
     expect(pressed).toEqual(["terminal.toggle", "terminal.toggle", "terminal.toggle"]);
-    behind.mockRestore();
+    behindSpy.mockReturnValue(null);
     // A file linked to the chat, as the key answers there too.
-    const linked = workspace.linked();
-    const front = focusedPane(linked.arrangement).active;
-    using _linked = vi
-      .spyOn(workspace, "linked")
-      .mockReturnValue({ ...linked, owners: { ...linked.owners, [front]: chat } });
+    const front = focusedPane(emptyLinked.arrangement).active;
+    linkedSpy.mockReturnValue({
+      ...emptyLinked,
+      owners: { [front]: chat },
+    });
     press(focused("file"), ["o", "j"]);
     expect(pressed).toHaveLength(4);
   });

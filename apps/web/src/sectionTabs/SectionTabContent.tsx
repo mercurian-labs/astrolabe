@@ -11,17 +11,24 @@ import {
   useRepositoryTabLabel,
 } from "~/components/repositories/RepositoryTabView";
 import type { EnvironmentChangeGroup } from "@t3tools/client-runtime/changeGroups";
-import {
-  parseScopedThreadKey,
-  scopedThreadKey,
-  scopeThreadRef,
-} from "@t3tools/client-runtime/environment";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { ThreadId, type ProjectId, type ScopedThreadRef } from "@t3tools/contracts";
-import type { NavigateFn } from "@tanstack/react-router";
+import { useAtomValue } from "@effect/atom-react";
+import { Link, useLocation, type NavigateFn } from "@tanstack/react-router";
+import { T } from "gt-react";
 import { MessageSquareIcon } from "lucide-react";
-import { useEffect, useState } from "react";
 
 import ChatView from "~/components/ChatView";
+import { HiddenThreadContext } from "~/components/chat/backgroundThread";
+import { isAppModalPage } from "~/components/sidebar/mainAppLocation";
+import { Button } from "~/components/ui/button";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle,
+} from "~/components/ui/empty";
 import { PullRequestDetailPanel } from "~/components/pullRequest/PullRequestDetailPanel";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 import {
@@ -54,12 +61,12 @@ import { workspace } from "~/panes/workspace";
 import { leafWithTab } from "~/panes/tree";
 import { pullRequestSurface } from "~/rightPanelStore";
 import { useComposerDraftStore } from "~/composerDraftStore";
-import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { useQuietThreadShell, useThreadShell } from "~/state/entities";
+import { environmentUnreachableAtom } from "~/state/presentation";
 import { useEnvironmentShellStatus } from "~/state/shell";
-import { threadFamilies } from "~/state/threads";
 import { isThreadRouteSnapshotAuthoritative } from "~/threadRoutes";
 import { chatTabKey, parseChatTabKey } from "./sectionTabs";
+import { useOpenThreadFamily } from "./useOpenThreadFamily";
 
 /** An arrangement showing `key`: brought forward where it is, else opened in the focused pane. */
 function showKeyIn(
@@ -247,24 +254,6 @@ function openTabGroup(keys: ReadonlyArray<string>, group: EnvironmentChangeGroup
 }
 
 /**
- * Keeps the family of an open thread the shell leaves out (an older settled thread) in the shell
- * rows until the chat leaves it, so every reader of its shell row finds it.
- */
-function useOpenThreadFamily(threadRef: ScopedThreadRef, missing: boolean) {
-  const key = scopedThreadKey(threadRef);
-  // Sticks to the chat's thread, so the row the family brings in does not release it.
-  const [mountedKey, setMountedKey] = useState<string | null>(null);
-  const nextKey = missing || mountedKey === key ? key : null;
-  if (nextKey !== mountedKey) setMountedKey(nextKey);
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- holds the open thread's family in the thread family registry until the chat leaves it
-  useEffect(() => {
-    const ref = mountedKey === null ? null : parseScopedThreadKey(mountedKey);
-    if (ref === null) return;
-    return threadFamilies.mount(appAtomRegistry, ref.environmentId, ref.threadId);
-  }, [mountedKey]);
-}
-
-/**
  * A thread's chat in a pane: its tab is the pane's, and its surfaces are tabs linked to it
  * (`LinkedPanel`). A thread with a draft shows the draft, as the draft's route does, until the
  * draft becomes the thread; one unkeyed ChatView carries the chat through that change.
@@ -273,26 +262,55 @@ export function PaneChat({ threadRef }: { readonly threadRef: ScopedThreadRef })
   const draftId = useComposerDraftStore((store) => store.getDraftIdByRef(threadRef));
   const shell = useQuietThreadShell(threadRef);
   const shellStatus = useEnvironmentShellStatus(threadRef.environmentId);
+  const environmentUnreachable = useAtomValue(environmentUnreachableAtom(threadRef.environmentId));
+  const coveredByModal = useLocation({ select: (location) => isAppModalPage(location.pathname) });
   useOpenThreadFamily(
     threadRef,
     isThreadRouteSnapshotAuthoritative(shellStatus) && shell === null && draftId === null,
   );
-  return draftId ? (
-    <ChatView
-      draftId={draftId}
-      environmentId={threadRef.environmentId}
-      threadId={threadRef.threadId}
-      routeKind="draft"
-      reserveTitleBarControlInset={false}
-      forceExpandedMobileComposer
-    />
-  ) : (
-    <ChatView
-      environmentId={threadRef.environmentId}
-      threadId={threadRef.threadId}
-      routeKind="server"
-      reserveTitleBarControlInset={false}
-    />
+  // A link to a thread on an environment this app has no connection to says why, not a blank pane.
+  if (!draftId && shell === null && environmentUnreachable) return <UnreachableEnvironmentState />;
+  // Settings and Usage open over the panes, which stay mounted; their composer menus close.
+  return (
+    <HiddenThreadContext value={coveredByModal}>
+      {draftId ? (
+        <ChatView
+          draftId={draftId}
+          environmentId={threadRef.environmentId}
+          threadId={threadRef.threadId}
+          routeKind="draft"
+          reserveTitleBarControlInset={false}
+          forceExpandedMobileComposer
+        />
+      ) : (
+        <ChatView
+          environmentId={threadRef.environmentId}
+          threadId={threadRef.threadId}
+          routeKind="server"
+          reserveTitleBarControlInset={false}
+        />
+      )}
+    </HiddenThreadContext>
+  );
+}
+
+function UnreachableEnvironmentState() {
+  return (
+    <Empty className="flex-1">
+      <EmptyHeader>
+        <EmptyTitle>
+          <T>Thread unavailable</T>
+        </EmptyTitle>
+        <EmptyDescription>
+          <T>This thread is on an environment this app is not connected to.</T>
+        </EmptyDescription>
+      </EmptyHeader>
+      <EmptyContent>
+        <Button render={<Link to="/settings/connections" />} size="sm">
+          <T>Open Environments</T>
+        </Button>
+      </EmptyContent>
+    </Empty>
   );
 }
 

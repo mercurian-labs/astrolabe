@@ -12,7 +12,7 @@ import { AppText as Text } from "../../components/ui/AppText";
 import { ProjectFavicon } from "../../components/ProjectFavicon";
 import { RowPressable } from "../../components/ui/RowPressable";
 import { cn } from "../../lib/cn";
-import { projectMonogram } from "../../lib/projectIcon";
+import { projectMonogram } from "@t3tools/shared/projectMonogram";
 import { relativeTime } from "../../lib/time";
 import { useThreadShell } from "../../state/entities";
 import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";

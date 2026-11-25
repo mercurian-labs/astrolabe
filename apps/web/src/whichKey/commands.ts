@@ -160,6 +160,7 @@ const SECTION_IDS: Partial<Record<AstrolabeKeybindingCommand, string>> = {
   "section.repositories": "repositories",
   "section.pullRequests": "pull-requests",
   "section.issues": "issues",
+  "section.workflows": "workflows",
   "section.usage": "usage",
   "section.settings": "settings",
 };
@@ -426,6 +427,7 @@ function astrolabeCommand(
     case "section.repositories":
     case "section.pullRequests":
     case "section.issues":
+    case "section.workflows":
     case "section.usage":
     case "section.settings": {
       const target = context.sections.find((candidate) => candidate.id === SECTION_IDS[command]);

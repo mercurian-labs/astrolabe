@@ -87,6 +87,8 @@ uses an old name, change the test to the Astrolabe name; don't revert the source
 - `apps/desktop/src/app/DesktopEnvironment.ts`: `appUserModelId` and `linuxWmClass`.
 - `apps/desktop/src/app/DesktopEarlyElectronStartup.ts`: `linuxWmClass` and
   `resolveLinuxDesktopEntryName`.
+- `apps/desktop/src/backend/DesktopBackendRecovery.ts`: the `astrolabe-backend-recovery` records
+  folder, so a T3 Code install never reaps Astrolabe's backend or the other way round.
 - `apps/desktop/src/app/DesktopUserData.ts`: profile folder names. Upstream's V1 to V2 migration is
   left in place but inert, because no earlier Astrolabe profile exists. If upstream reworks this
   function, keep it inert rather than pointing it at T3 Code's folders.
@@ -142,6 +144,20 @@ Astrolabe's own feature modules rarely conflict. These upstream files carry its 
 - Language: Astrolabe ships in English. `vp run i18n:generate`, then
   `node scripts/astrolabe-rekey-catalogs.ts --upstream <ref>`, carries upstream's translations onto
   rebranded keys; Astrolabe-only UI files carry a file-level `no-untranslated-copy` disable.
+- `apps/desktop/src/app/DesktopClerk.ts`: no Clerk bridge, only the single-instance lock and deep
+  links. It still exports `desktopClerkFrontendApiHostname` (always `undefined`) for upstream's
+  window header policy; keep the stub when upstream edits the Clerk parts.
+- `apps/web/src/markdown/wordsHast.ts`: web chat Markdown renders through Words, not remark, so
+  `[[Name.canvas]]` links come from `hastCanvasLinks` (`packages/shared/src/canvasLinks.ts`) and
+  the sanitizer in `markdownHast.ts` allows the `t3-canvas:` scheme. Mobile still uses
+  `remarkCanvasLinks`.
+- Workflows: the icon rail lists them after Issues while some server offers them, `/workflows` is
+  a section (`isWorkflowsPath`), and the Go-to menu takes `g f` (`g w` is Wikis). Mobile keeps
+  upstream's unlisted `workflows` tab.
+- Side threads: upstream's thread surfaces live in the shared panes as linked tabs. `openSideThread`
+  shows a thread's own chat tab when one is open rather than hosting it twice, and the tab menu has
+  Open in main view. `useOpenThreadFamily` lives in `apps/web/src/sectionTabs/`, since upstream's
+  `ThreadRouteView` is gone here; `PaneChat` shows its unreachable-environment state.
 - `packages/client-runtime/src/relay/cloudAccountService.ts` and
   `apps/mobile/src/features/cloud/cloudAccountService.ts`: upstream types the account service on
   Clerk. Astrolabe adapts it to the Mercurian account and keeps `@clerk/*` out of the dependency
@@ -152,6 +168,11 @@ Astrolabe's own feature modules rarely conflict. These upstream files carry its 
 - `apps/server/src/os-jank.ts` (`resolveBaseDir`), `apps/server/src/cli/browser.ts`,
   `apps/desktop/src/app/DesktopStatePaths.ts`, `scripts/dev-runner.ts` (`DEFAULT_T3_HOME`),
   `scripts/install.sh`, `scripts/install.ps1`: the `~/.astrolabe` default.
+- `apps/desktop/src/wsl/DesktopWslEnvironment.ts` and `DesktopBackendConfiguration.ts`: the WSL
+  probe reads the distro's `ASTROLABE_HOME` (never its `T3CODE_HOME`, which a T3 Code install may
+  set) and passes it on as `ASTROLABE_HOME`, because the WSL server's `applyAstrolabeEnv` drops an
+  inherited `T3CODE_HOME`. The desktop's login-shell probe likewise reads `ASTROLABE_FEATURE_FLAGS`,
+  `ASTROLABE_TELEMETRY_ENABLED` and `ASTROLABE_RELEASE_BASE_URL` over their `T3CODE_` names.
 - `apps/server/src/device/sshDeviceScript.ts`, `apps/desktop/src/wsl/DesktopWslEnvironment.ts`,
   `packages/ssh/src/tunnel.ts` (the launch scripts, including the dangling-symlink guard):
   remote-host folders under `~/.astrolabe`.
@@ -282,8 +303,16 @@ Upstream adds new "T3 Code" strings often. Change them in the merge commit.
 ### Product analytics
 
 Upstream's server sends product events to T3 Code's own ingest with T3 Code's PostHog key. Astrolabe
-removes both defaults in `apps/server/src/telemetry/AnalyticsService.ts`, so it records and sends
-nothing until `T3CODE_POSTHOG_KEY` and `T3CODE_POSTHOG_HOST` are set. Keep that on every sync.
+removes both defaults in `apps/server/src/telemetry/AnalyticsService.ts` (`Config.withDefault("")`),
+and `enabledAtStartup` needs both set before it reads upstream's `T3CODE_TELEMETRY_ENABLED` option,
+CI default and `DO_NOT_TRACK`, so it records and sends nothing until `T3CODE_POSTHOG_KEY` and
+`T3CODE_POSTHOG_HOST` are set. Keep that on every sync.
+
+Agent feedback (upstream's reports to the T3 team) travels through the same service, so it sends
+nothing either. Its mode stays off by default and clients show no control for it: the Labs rows on
+web (`LabsSettingsPanel.tsx`) and mobile (`ThreadSettingsSections.tsx`) are removed and the web
+search entry is `astrolabeHidden`. Its strings still name the T3 team; turning it on means pointing
+it at Astrolabe first.
 If Astrolabe starts collecting to its own project, also change the onboarding note in
 `WelcomeWizard.tsx`, the privacy row in `SettingsPanels.tsx` and `docs/user/telemetry.md`, which say
 it collects nothing.
@@ -295,9 +324,16 @@ Upstream only hides a deleted thread. Astrolabe erases it: a `thread.purge` effe
 upstream counterpart. Keep these smaller edits on every sync:
 
 - `ThreadDeletion.ts`: the tombstone on `thread.deleted`, which also clears `guestShare`, and the
-  queued purge.
+  queued purge. Upstream now queues its own `thread-content.purge`; Astrolabe queues only
+  `thread.purge`.
 - `EffectOutbox.ts`, `EffectWorker.ts`, `runtimeLayer.ts`: the `thread.purge` request, its case,
-  and the service with its sweep worker.
+  and the service with its sweep worker. Upstream's `thread-content.purge` literal and case stay,
+  unused, so later syncs merge cleanly.
+- `ProjectionMaintenance.ts`: `pruneEventStore` reports `purgedRowCount = 0` instead of running
+  upstream's sweep, which would erase deleted threads under ThreadPurge's feet. This merges
+  cleanly, so check it by hand on every sync.
+- `ThreadPurge.ts`: a thread waits for a live fork below it by `lineage.relationshipToParent` or by
+  `forkedFrom.type === "run"`, upstream's run-fork marker.
 - `OrchestrationEventStore.ts`: the prompt-hint key includes the thread id, so a subagent prompt
   anchor never sits in another thread's stream.
 - `Orchestrator.ts`: a message drops a pending merge-back from a deleted fork.
@@ -307,7 +343,7 @@ upstream counterpart. Keep these smaller edits on every sync:
 - `packages/client-runtime/src/state/threadDeletion.ts`: the confirmation copy all clients show.
 
 A new upstream table that stores thread content belongs in `THREAD_CONTENT_TABLES` in
-`ThreadPurge.ts`. The message search index (`orchestration_v2_message_search`, FTS5) has no thread
+`ThreadPurge.ts` (v0.1.12 added `agent_feedback`). The message search index (`orchestration_v2_message_search`, FTS5) has no thread
 id, so it can't be listed there: deleting a message only marks its text deleted inside the index,
 and the purge runs the index's `optimize` after deleting messages so the text leaves the file.
 Backfills run from the purge's sweep, never as migrations: the migration ids are shared with

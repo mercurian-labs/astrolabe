@@ -1,3 +1,4 @@
+import type { Element as HastElement, ElementContent as HastContent, Root as HastRoot } from "hast";
 import type { Root, RootContent, Text } from "mdast";
 
 /**
@@ -121,4 +122,41 @@ function splitText(node: Text): RootContent[] | null {
   }
   if (at < node.value.length) pieces.push({ type: "text", value: node.value.slice(at) });
   return pieces;
+}
+
+const HAST_SKIPPED = new Set(["a", "code", "pre"]);
+
+/** remarkCanvasLinks over hast, for renderers that build hast without remark (Words). */
+export function hastCanvasLinks(tree: HastRoot | HastElement): void {
+  const next: HastContent[] = [];
+  let changed = false;
+  for (const child of tree.children as HastContent[]) {
+    if (child.type === "text") {
+      const found = canvasLinksIn(child.value);
+      if (found.length > 0) {
+        let at = 0;
+        for (const link of found) {
+          if (link.index > at)
+            next.push({ type: "text", value: child.value.slice(at, link.index) });
+          next.push({
+            type: "element",
+            tagName: "a",
+            properties: {
+              href: canvasLinkHref(link),
+              dataMarkdownCopy: child.value.slice(link.index, link.index + link.length),
+            },
+            children: [{ type: "text", value: link.text }],
+          });
+          at = link.index + link.length;
+        }
+        if (at < child.value.length) next.push({ type: "text", value: child.value.slice(at) });
+        changed = true;
+        continue;
+      }
+    } else if (child.type === "element" && !HAST_SKIPPED.has(child.tagName)) {
+      hastCanvasLinks(child);
+    }
+    next.push(child);
+  }
+  if (changed) tree.children = next;
 }

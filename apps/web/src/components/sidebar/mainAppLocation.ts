@@ -27,6 +27,11 @@ export function isIssuesPath(pathname: string) {
   return pathname === "/issues";
 }
 
+/** Workflow runs, a section of their own on the icon rail. */
+export function isWorkflowsPath(pathname: string) {
+  return pathname === "/workflows";
+}
+
 /** Astrolabe: Repositories, a section of its own beside the wikis. */
 export function isRepositoriesPath(pathname: string) {
   return pathname === "/repositories";

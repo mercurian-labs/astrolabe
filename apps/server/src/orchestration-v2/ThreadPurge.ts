@@ -110,6 +110,8 @@ const THREAD_CONTENT_TABLES = [
   "projection_thread_sessions",
   "provider_session_runtime",
   "mcp_app_model_context",
+  // Feedback reports quote what happened in the thread.
+  "agent_feedback",
 ] as const;
 
 // Kept by triggers on turn items, a row per run; WITHOUT ROWID, so not deleted in rowid batches.
@@ -181,19 +183,34 @@ const make = Effect.gen(function* () {
         LIMIT 1
       `;
       if (pendingTransfers.length > 0) return Option.none();
-      // A fork shows the history of every fork above it.
+      // A fork shows the history of every fork above it, and so does a thread forked from a run;
+      // subagents are deleted with their parent instead.
       const liveForks = yield* sql<{ readonly count: number }>`
         WITH RECURSIVE forks(thread_id, deleted_at) AS (
           SELECT thread_id, deleted_at
           FROM orchestration_v2_projection_threads
-          WHERE json_extract(payload_json, '$.lineage.parentThreadId') = ${threadId}
-            AND json_extract(payload_json, '$.lineage.relationshipToParent') = 'fork'
+          WHERE (
+              json_extract(payload_json, '$.lineage.parentThreadId') = ${threadId}
+              AND json_extract(payload_json, '$.lineage.relationshipToParent') = 'fork'
+            ) OR (
+              json_extract(payload_json, '$.forkedFrom.threadId') = ${threadId}
+              AND json_extract(payload_json, '$.forkedFrom.type') = 'run'
+              AND coalesce(json_extract(payload_json, '$.lineage.relationshipToParent'), '')
+                <> 'subagent'
+            )
           UNION
           SELECT child.thread_id, child.deleted_at
           FROM orchestration_v2_projection_threads AS child
           JOIN forks
-            ON json_extract(child.payload_json, '$.lineage.parentThreadId') = forks.thread_id
-          WHERE json_extract(child.payload_json, '$.lineage.relationshipToParent') = 'fork'
+            ON (
+              json_extract(child.payload_json, '$.lineage.parentThreadId') = forks.thread_id
+              AND json_extract(child.payload_json, '$.lineage.relationshipToParent') = 'fork'
+            ) OR (
+              json_extract(child.payload_json, '$.forkedFrom.threadId') = forks.thread_id
+              AND json_extract(child.payload_json, '$.forkedFrom.type') = 'run'
+              AND coalesce(json_extract(child.payload_json, '$.lineage.relationshipToParent'), '')
+                <> 'subagent'
+            )
         )
         SELECT COUNT(*) AS count FROM forks WHERE deleted_at IS NULL
       `;

@@ -59,6 +59,7 @@ function createWorkspaceTabsModel(selectedTab?: WorkspaceTab) {
     wikis: 0,
     repositories: 0,
     issues: 0,
+    workflows: 0,
     usage: 0,
     settings: 0,
   };
