@@ -257,10 +257,10 @@ it.effect("starts the hub requiring a session token and reports the one it print
           encoding: "utf8",
         });
       try {
-        const state = NodePath.join(home, ".t3/device/hosts/owner");
+        const state = NodePath.join(home, ".astrolabe/device/hosts/owner");
         const install = NodePath.join(
           home,
-          ".t3/device/tools",
+          ".astrolabe/device/tools",
           `expo-device-hub@${DEVICE_HUB_VERSION}`,
         );
         const entry = NodePath.join(install, "node_modules/expo-device-hub/dist/server/cli.mjs");
