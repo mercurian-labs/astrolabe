@@ -2211,6 +2211,10 @@ export const makeMuseAdapterV2 = Effect.fn("makeMuseAdapterV2")(function* (
               orchestrationDelivered: delivered.orchestration,
               deviceInstructionsDelivered: delivered.device,
             });
+            const extraWorkspaceRoots = yield* Effect.forEach(
+              turnInput.runtimePolicy.workspace?.extraRoots ?? [],
+              (root) => museCanonicalPath(root).pipe(Effect.flatMap(museWorkspaceRoot)),
+            );
             const result = yield* request(
               "turn/start",
               {
@@ -2221,6 +2225,7 @@ export const makeMuseAdapterV2 = Effect.fn("makeMuseAdapterV2")(function* (
                       harness: "Muse Code",
                       model: session.model ?? undefined,
                       reasoningEffort: effort,
+                      runtimePolicy: turnInput.runtimePolicy,
                     }),
                   },
                   ...(orchestration === undefined
@@ -2229,8 +2234,8 @@ export const makeMuseAdapterV2 = Effect.fn("makeMuseAdapterV2")(function* (
                   ...parts,
                 ],
                 displayText: turnInput.message.text || "Image attachment",
-                // Resumed sessions retain old roots; pin edits to the current checkout.
-                workspaceRoots,
+                // Resumed sessions retain old roots; pin edits to the current checkouts.
+                workspaceRoots: [...workspaceRoots, ...extraWorkspaceRoots],
                 ifBusy: "queue",
                 ...(effort ? { reasoningEffort: effort } : {}),
               },

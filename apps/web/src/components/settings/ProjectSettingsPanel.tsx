@@ -57,6 +57,7 @@ import { LanguageServerProjectSettings } from "./LanguageServerSettings";
 import { ProjectActionsSettings } from "./ProjectActionsSettings";
 import { ProjectWikiLinks } from "../wiki/WikiLinks";
 import { ProjectDefaultsSettings } from "./ProjectDefaultsSettings";
+import { ProjectRepositoriesSettings } from "./ProjectRepositoriesSettings";
 import {
   defaultProjectIcon,
   hasDefaultProjectIcon,
@@ -698,6 +699,7 @@ function ProjectDetail({
         <CodeIndexProjectSettings members={group.memberProjects} />
         <LanguageServerProjectSettings members={group.memberProjects} />
         <ProjectActionsSettings />
+        <ProjectRepositoriesSettings members={group.memberProjects} />
         {checkoutChoices}
         <SettingsSection title={gt("Danger")}>
           <SettingsRow

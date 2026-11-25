@@ -73,6 +73,10 @@ export interface ComposerEditorHost {
     expandedCursor: number,
     suppressTrigger: boolean,
     contextIds: string[],
+    /** False when only the caret or selection moved. */
+    textChanged: boolean,
+    /** True when the change came from undo or redo. */
+    fromHistory?: boolean,
   ) => void;
   onVisibleSelectionChange?: (() => void) | undefined;
   onCommandKeyDown?:
@@ -435,6 +439,8 @@ export class ComposerEditor {
       next.expandedCursor,
       this.suppressesTrigger(update.state, next),
       next.contextIds,
+      previous.value !== next.value,
+      update.transactions.some((tr) => tr.isUserEvent("undo") || tr.isUserEvent("redo")),
     );
   }
 
@@ -540,6 +546,7 @@ export class ComposerEditor {
       expandedCursor,
       this.mode === "literal",
       this.snapshot.contextIds,
+      false,
     );
   }
 

@@ -85,6 +85,8 @@ export type AcpSessionRuntimeEvent =
     };
 
 const defaultSessionLoadTimeout = Duration.seconds(90);
+// A live child that never answers the handshake would otherwise hold the start open forever.
+const startupRequestTimeout = Duration.seconds(90);
 const defaultSessionLoadReplayIdleGap = Duration.seconds(2);
 const defaultCancelTimeout = Duration.seconds(15);
 const maxStartupMetadataUpdates = 32;
@@ -137,6 +139,8 @@ export interface AcpSessionRuntimeOptions {
   readonly additionalDirectories?: ReadonlyArray<string>;
   /** More additional directories, sent only to an agent that advertises them. */
   readonly advertisedAdditionalDirectories?: ReadonlyArray<string>;
+  /** The thread's other folders, sent the same way when the agent advertises the capability. */
+  readonly extraRoots?: ReadonlyArray<string>;
   /** Session `_meta`, chosen from the negotiated agent before each session setup or activation. */
   readonly sessionMeta?: (
     initializeResult: EffectAcpSchema.InitializeResponse,
@@ -1399,6 +1403,25 @@ export const make = Effect.fn("AcpSessionRuntime.make")(function* (
       Effect.andThen(runLoggedRequest(method, payload, effect)),
     );
 
+  const withStartupTimeout = <A>(
+    method: string,
+    effect: Effect.Effect<A, EffectAcpErrors.AcpError>,
+  ): Effect.Effect<A, EffectAcpErrors.AcpError> =>
+    effect.pipe(
+      Effect.timeoutOrElse({
+        duration: startupRequestTimeout,
+        orElse: () =>
+          Effect.fail(
+            new EffectAcpErrors.AcpTransportError({
+              operation: "call-rpc",
+              method,
+              detail: `${method} timed out waiting for RPC response`,
+              cause: undefined,
+            }),
+          ),
+      }),
+    );
+
   const runLoggedRequest = <A>(
     method: string,
     payload: unknown,
@@ -2297,7 +2320,7 @@ export const make = Effect.fn("AcpSessionRuntime.make")(function* (
     const initializeResult = yield* runLoggedRequest(
       "initialize",
       initializePayload,
-      acp.agent.initialize(initializePayload),
+      withStartupTimeout("initialize", acp.agent.initialize(initializePayload)),
     );
     yield* options.onInitialized?.(initializeResult) ?? Effect.void;
     return initializeResult;
@@ -2354,14 +2377,14 @@ export const make = Effect.fn("AcpSessionRuntime.make")(function* (
 
   const sessionSetupFields = (initializeResult: EffectAcpSchema.InitializeResponse) => {
     const meta = options.sessionMeta?.(initializeResult);
-    const directories = [
+    const additionalDirectories = [
       ...(options.additionalDirectories ?? []),
       ...(initializeResult.agentCapabilities?.sessionCapabilities?.additionalDirectories == null
         ? []
-        : (options.advertisedAdditionalDirectories ?? [])),
+        : [...(options.extraRoots ?? []), ...(options.advertisedAdditionalDirectories ?? [])]),
     ];
     return {
-      ...(directories.length ? { additionalDirectories: directories } : {}),
+      ...(additionalDirectories.length > 0 ? { additionalDirectories } : {}),
       ...(meta == null ? {} : { _meta: meta }),
     };
   };
@@ -2445,7 +2468,7 @@ export const make = Effect.fn("AcpSessionRuntime.make")(function* (
           sessionSetupResult = yield* runLoggedRequest(
             "session/resume",
             resumePayload,
-            acp.agent.resumeSession(resumePayload),
+            withStartupTimeout("session/resume", acp.agent.resumeSession(resumePayload)),
           );
         } else {
           return yield* new EffectAcpErrors.AcpRequestError({
@@ -2462,7 +2485,7 @@ export const make = Effect.fn("AcpSessionRuntime.make")(function* (
         const created = yield* runLoggedRequest(
           "session/new",
           createPayload,
-          acp.agent.createSession(createPayload),
+          withStartupTimeout("session/new", acp.agent.createSession(createPayload)),
         );
         sessionId = created.sessionId;
         sessionSetupResult = created;
@@ -3061,10 +3084,25 @@ const handleSessionUpdate =
       );
     }
     const parsed = parseSessionUpdateEvent(params);
-    if (parsed.modeId) {
+    const modeId = parsed.modeId;
+    if (modeId) {
       yield* Ref.update(modeStateRef, (current) =>
-        current === undefined ? current : updateModeState(current, parsed.modeId!),
+        current === undefined ? current : updateModeState(current, modeId),
       );
+      // A mode-only update would otherwise leave the mode option showing the old mode.
+      const configOptions = yield* SubscriptionRef.get(configOptionsRef);
+      const isStaleMode = (option: (typeof configOptions)[number]) =>
+        option.category === "mode" && option.type === "select" && option.currentValue !== modeId;
+      if (configOptions.some(isStaleMode)) {
+        yield* SubscriptionRef.set(
+          configOptionsRef,
+          configOptions.map((option) =>
+            option.category === "mode" && option.type === "select"
+              ? { ...option, currentValue: modeId }
+              : option,
+          ),
+        );
+      }
     }
     for (const event of parsed.events) {
       if (event._tag === "ToolCallUpdated") {

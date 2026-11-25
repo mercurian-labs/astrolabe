@@ -149,7 +149,7 @@ export function createWorkspaceHost(): WorkspaceHost {
 /** As T3 Code's panel tab does, a side chat's tab hands focus to its composer. */
 function focusSideChatComposer(key: string) {
   const surface = surfaceOfKey(key);
-  if (surface?.kind !== "side-chat") return;
+  if (surface?.kind !== "thread") return;
   requestWorkspaceFocus({
     area: "pane",
     selector: `[data-side-chat-pane="${CSS.escape(surface.threadId)}"] [data-workspace-area="composer"] [contenteditable="true"]`,
@@ -339,7 +339,7 @@ function useTabLabel(tabKey: string): PaneTabLabel {
   const owner = parsed ? parseChatTabKey(parsed.chatKey) : null;
   // A side chat is named by its thread, as T3 Code's panel tab names it.
   const sideChatShell = useQuietThreadShell(
-    surface?.kind === "side-chat" && owner !== null
+    surface?.kind === "thread" && owner !== null
       ? { environmentId: owner.environmentId, threadId: surface.threadId }
       : null,
   );

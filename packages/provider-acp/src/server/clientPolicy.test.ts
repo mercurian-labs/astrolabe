@@ -67,12 +67,22 @@ describe("acpPermissionDisposition", () => {
       "allow",
     );
     const wikiCheckout = NodePath.resolve(process.cwd(), "acp-wiki-checkout");
-    const edit = permissionRequest("edit", [{ path: NodePath.join(wikiCheckout, "Note.md") }]);
-    assert.equal(acpPermissionDisposition(policy, edit), "deny");
+    const wikiEdit = permissionRequest("edit", [{ path: NodePath.join(wikiCheckout, "Note.md") }]);
+    assert.equal(acpPermissionDisposition(policy, wikiEdit), "deny");
     assert.equal(
-      acpPermissionDisposition({ ...policy, writableRoots: [wikiCheckout] }, edit),
+      acpPermissionDisposition({ ...policy, writableRoots: [wikiCheckout] }, wikiEdit),
       "allow",
     );
+    // A multi-folder thread's other folders are writable roots too.
+    const tracked: AcpRuntimePolicy = {
+      ...policy,
+      sandboxPolicy: { type: "workspaceWrite", networkAccess: false },
+      workspace: { extraRoots: [writableRoot] },
+    };
+    const edit = (path: string) =>
+      acpPermissionDisposition(tracked, permissionRequest("edit", [{ path }]));
+    assert.equal(edit(NodePath.join(writableRoot, "generated.ts")), "allow");
+    assert.equal(edit(NodePath.resolve(process.cwd(), "untracked-folder", "file.ts")), "deny");
   });
 
   it("denies missing or out-of-root mutation locations", () => {

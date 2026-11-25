@@ -7,7 +7,7 @@ import { SettingsSidebarNav } from "./SettingsSidebarNav";
 import { hasCloudPublicConfig } from "~/cloud/publicConfig";
 import {
   isSettingsSectionAvailable,
-  SETTINGS_NAV_GROUPS,
+  settingsNavGroups,
   SETTINGS_SECTION_LABELS,
 } from "./settingsSearch";
 
@@ -15,6 +15,7 @@ vi.mock("./useAvailableSettingsSearchItems", () => ({
   useAvailableSettingsSearchItems: () => [
     { id: "theme", title: "Theme", to: "/settings/appearance" },
   ],
+  useHasSecretProvidersEnvironment: () => false,
 }));
 
 it("ignores composing keys in the search", async () => {
@@ -52,10 +53,12 @@ it("ignores composing keys in the search", async () => {
 // Astrolabe hides sign-in sections (Workspaces) in builds without cloud config.
 function availableNavGroups() {
   const availability = { hasCloudPublicConfig: hasCloudPublicConfig() };
-  return SETTINGS_NAV_GROUPS.map((group) => ({
-    ...group,
-    paths: group.paths.filter((to) => isSettingsSectionAvailable(to, availability)),
-  })).filter((group) => group.paths.length > 0);
+  return settingsNavGroups(false)
+    .map((group) => ({
+      ...group,
+      paths: group.paths.filter((to) => isSettingsSectionAvailable(to, availability)),
+    }))
+    .filter((group) => group.paths.length > 0);
 }
 
 function renderNav() {
