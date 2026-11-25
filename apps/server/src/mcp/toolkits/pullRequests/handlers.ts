@@ -309,10 +309,9 @@ const make = Effect.gen(function* () {
       | typeof PullRequestUnlinkFailedError
       | typeof PullRequestForgeError,
   ) =>
-    projects.getShell(thread.projectId).pipe(
-      Effect.map(Option.getOrUndefined),
-      Effect.mapError((cause) => new Failure({ cause })),
-    );
+    pullRequests
+      .addressedProject(thread.projectId)
+      .pipe(Effect.mapError((cause) => new Failure({ cause })));
 
   const dispatchFailure =
     (Failure: typeof PullRequestLinkFailedError | typeof PullRequestUnlinkFailedError) =>
@@ -362,7 +361,12 @@ const make = Effect.gen(function* () {
     const known = yield* projects
       .listShells()
       .pipe(Effect.mapError((cause) => new PullRequestListFailedError({ cause })));
-    const callerProject = known.find((project) => project.id === callerThread?.projectId);
+    const callerProject =
+      callerThread === undefined
+        ? undefined
+        : yield* pullRequests
+            .addressedProject(callerThread.projectId)
+            .pipe(Effect.mapError((cause) => new PullRequestListFailedError({ cause })));
     // A pull request named by host and repository builds its URL through the project that holds
     // it, which need not be the caller's.
     const urlProject = (input: PullRequestTargetInput) =>
@@ -418,10 +422,8 @@ const make = Effect.gen(function* () {
   // Layers below the target are pinned to the heads read here; the host refuses if any moved.
   const stackMergeScope = Effect.fnUntraced(function* (
     ref: PullRequestRef,
-    input: { readonly expectedHeadSha: string; readonly auto?: boolean | undefined },
+    input: { readonly expectedHeadSha: string },
   ) {
-    if (input.auto === true)
-      return yield* new PullRequestForgeError({ detail: "A stack merge cannot wait with auto." });
     const stack = yield* pullRequests
       .stack(ref, { bypassCache: true })
       .pipe(Effect.mapError(forgeFailure));
@@ -475,6 +477,8 @@ const make = Effect.gen(function* () {
     comments: ReadonlyArray<ReviewLineComment>,
   ) {
     const placed = new Map<ReviewLineComment, PullRequestReviewCommentDraft>();
+    // Comments whose end line some page showed, so a failure names the line that is missing.
+    const lineShown = new Set<ReviewLineComment>();
     const unplaced = () => comments.filter((comment) => !placed.has(comment));
     let cursor: string | undefined;
     for (let page = 0; page < REVIEW_DIFF_PAGES && unplaced().length > 0; page += 1) {
@@ -488,6 +492,7 @@ const make = Effect.gen(function* () {
           comment.startLine === undefined
             ? undefined
             : reviewPositionInPatch(diff.patch, comment.path, comment.startLine, side);
+        if (position !== null) lineShown.add(comment);
         if (position === null || start === null) continue;
         placed.set(comment, {
           path: comment.path,
@@ -501,8 +506,12 @@ const make = Effect.gen(function* () {
     }
     const missing = unplaced()[0];
     if (missing !== undefined) {
+      const missingLine =
+        missing.startLine !== undefined && lineShown.has(missing)
+          ? missing.startLine
+          : missing.line;
       return yield* new PullRequestForgeError({
-        detail: `${missing.path} line ${missing.startLine ?? missing.line} (${missing.side ?? "new"} side) is not in this PR's diff. Comment on a changed line or one shown around it.`,
+        detail: `${missing.path} line ${missingLine} (${missing.side ?? "new"} side) is not in this PR's diff. Comment on a changed line or one shown around it.`,
       });
     }
     return comments.map((comment) => placed.get(comment)!);
@@ -553,25 +562,32 @@ const make = Effect.gen(function* () {
   });
 
   // Astrolabe: a host wiki's change request merges through the wiki, which keeps its index in step.
+  // `numbers` widens the check to a stack's other layers, which a stacked merge lands too.
   const refuseWikiChangeRequest = Effect.fn("PullRequestsToolkit.refuseWikiChangeRequest")(
-    function* (ref: PullRequestRef) {
+    function* (ref: PullRequestRef, numbers: ReadonlyArray<number> = [ref.number]) {
       const wikis = yield* Effect.serviceOption(WikiService.WikiService);
       if (Option.isNone(wikis)) return;
       const hosted = yield* wikis.value.hosted.pipe(Effect.orElseSucceed(() => []));
       for (const wikiId of hosted) {
         const wiki = yield* wikis.value.get(wikiId).pipe(Effect.option);
         if (Option.isNone(wiki) || wiki.value.host?.projectId !== ref.projectId) continue;
-        const { changeRequests } = yield* wikis.value
-          .changeRequestsList({ wikiId })
-          .pipe(Effect.orElseSucceed(() => ({ changeRequests: [] })));
-        const owned = changeRequests.some(
-          (entry) =>
-            entry.pullRequest?.number === ref.number &&
-            entry.pullRequest.repository.toLowerCase() === ref.repository.toLowerCase(),
-        );
-        if (owned) {
+        // This repository hosts the wiki, so an unreadable list could hide one of its changes.
+        const listed = yield* wikis.value.changeRequestsList({ wikiId }).pipe(Effect.option);
+        if (Option.isNone(listed)) {
           return yield* new PullRequestForgeError({
-            detail: `#${ref.number} is a change request of the wiki "${wiki.value.name}". Merge, close or edit it from the wiki's Changes in Astrolabe, which keeps the wiki in step.`,
+            detail: `Could not read the change requests of the wiki "${wiki.value.name}", which this repository hosts, so #${ref.number} was not merged in case it is one of them. Try again.`,
+          });
+        }
+        const owned = numbers.find((number) =>
+          listed.value.changeRequests.some(
+            (entry) =>
+              entry.pullRequest?.number === number &&
+              entry.pullRequest.repository.toLowerCase() === ref.repository.toLowerCase(),
+          ),
+        );
+        if (owned !== undefined) {
+          return yield* new PullRequestForgeError({
+            detail: `#${owned} is a change request of the wiki "${wiki.value.name}". Merge, close or edit it from the wiki's Changes in Astrolabe, which keeps the wiki in step.`,
           });
         }
       }
@@ -1208,10 +1224,24 @@ const make = Effect.gen(function* () {
     ),
     pull_request_review: McpToolAccess.writesWithCapability((input) =>
       Effect.gen(function* () {
+        if (input.verdict === "approve" && input.expectedHeadSha === undefined) {
+          return yield* new PullRequestForgeError({
+            detail:
+              "Approving needs expectedHeadSha: the headSha pull_request_read reported for the commits you reviewed.",
+          });
+        }
         const { target, ref } = yield* locate(input);
         const comments = yield* reviewComments(ref, input.comments ?? []);
         yield* pullRequests
-          .submitReview({ ...ref, verdict: input.verdict, body: input.body ?? "", comments })
+          .submitReview({
+            ...ref,
+            verdict: input.verdict,
+            body: input.body ?? "",
+            comments,
+            ...(input.expectedHeadSha === undefined
+              ? {}
+              : { expectedHeadSha: input.expectedHeadSha }),
+          })
           .pipe(Effect.mapError(forgeFailure));
         return identityOf(target);
       }),
@@ -1221,6 +1251,12 @@ const make = Effect.gen(function* () {
         const { target, ref } = yield* locate(input);
         yield* refuseWikiChangeRequest(ref);
         const stack = input.stack === true ? yield* stackMergeScope(ref, input) : {};
+        if ("expectedStackHeads" in stack) {
+          yield* refuseWikiChangeRequest(
+            ref,
+            stack.expectedStackHeads.map((layer) => layer.number),
+          );
+        }
         yield* pullRequests
           .runAction({
             ...ref,

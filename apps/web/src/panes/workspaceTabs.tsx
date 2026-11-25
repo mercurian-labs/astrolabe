@@ -184,8 +184,9 @@ function useSurface(tabKey: string): RightPanelSurface | null {
 }
 
 /**
- * What a tab's menu offers of its own: a thread's surface opened as its own tab, then a workspace
- * file's Copy path and a browser tab's Mute or Unmute, as T3 Code's panel tabs do; then a local
+ * What a tab's menu offers of its own: a thread's surface opened as its own tab, then a side
+ * thread's Open in main view, a workspace file's Copy path and a browser tab's Mute or Unmute, as
+ * T3 Code's panel tabs do; then a local
  * graph's link, or unlinking a tab still linked.
  */
 function tabMenuItems(tabKey: string): PaneTabMenuItem[] {
@@ -253,6 +254,10 @@ function surfaceMenuItems(tabKey: string): PaneTabMenuItem[] {
   const parsed = parseChatSurfaceKey(tabKey);
   const panel = parsed ? panelOf(parsed.chatKey) : null;
   if (!surface || !panel) return [];
+  const { onOpenInMainView } = panel;
+  if ((surface.kind === "thread" || surface.kind === "linked-thread") && onOpenInMainView) {
+    return [{ label: "Open in main view", run: () => onOpenInMainView(surface) }];
+  }
   if (surface.kind === "file" && surface.attachment === undefined) {
     return [{ label: "Copy path", run: () => panel.onCopyFilePath(surface.relativePath) }];
   }

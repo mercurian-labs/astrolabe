@@ -36,7 +36,7 @@ import {
 } from "./workspace/workspace-selection-store";
 import { workspaceTabColumns, workspaceTabPage } from "./workspace/workspace-tab-navigation";
 import { Platform, StyleSheet, View } from "react-native";
-import { Split, type SplitHostCommands } from "react-native-screens";
+import { Split, Stack, type SplitHostCommands } from "react-native-screens";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
@@ -46,9 +46,9 @@ import { WorkspaceTabsProvider, useWorkspaceTabs } from "./workspace/WorkspaceTa
 import { WorkspaceNativeTabs } from "./workspace/WorkspaceNativeTabs.ios";
 import { WorkspaceTabDock } from "./workspace/WorkspaceTabDock";
 import { isCanvasName } from "@t3tools/client-runtime/wikiLogic";
+import { NAVIGATION_TAB_ORDER } from "./workspace/navigation-tab-order";
 import { workspaceUsesColumns } from "./workspace/workspace-tabs-state";
 import { useWorkspaceCompose } from "./workspace/useWorkspaceCompose";
-import { NAVIGATION_TAB_ORDER } from "./workspace/navigation-tab-order";
 import { selectedIssueKeyOf } from "../issues/issueParams";
 import { isSettingsRoute, settingsOpenIn } from "../settings/settings-navigation";
 import { workspaceRoutesOf } from "./workspace-overlay-routes";
@@ -159,13 +159,12 @@ function ColumnScreen(props: {
     : null;
   const key = descriptor.route.key;
   return (
-    <Split.Screen
+    <Stack.Screen
       screenKey={props.screenKey ?? key}
       activityMode={props.attached === false ? "detached" : "attached"}
       animatesPush={props.animatesPush}
-      onDismiss={(event) => {
-        props.onDismiss(key, event.nativeEvent.isNativeDismiss);
-      }}
+      onDismiss={() => props.onDismiss(key, false)}
+      onNativeDismiss={() => props.onDismiss(key, true)}
       onWillAppear={() => {
         props.onAppearance("willAppear", key);
         props.navigation.emit({ type: "transitionStart", target: key, data: { closing: false } });
@@ -210,7 +209,7 @@ function ColumnScreen(props: {
           </NavigationRouteContext>
         </NavigationContext>
       </PaneContext>
-    </Split.Screen>
+    </Stack.Screen>
   );
 }
 
@@ -436,7 +435,7 @@ function WorkspaceColumns(
       }}
     >
       <Split.Column>
-        <Split.Stack>
+        <Stack.Host>
           <ColumnScreen
             descriptor={primary}
             primary
@@ -448,11 +447,11 @@ function WorkspaceColumns(
             onAppearance={followCollapsedSplit}
             navigation={props.navigation}
           />
-        </Split.Stack>
+        </Stack.Host>
       </Split.Column>
       <Split.Column>
-        <Split.Stack>
-          <Split.Screen
+        <Stack.Host>
+          <Stack.Screen
             screenKey="workspace-empty"
             activityMode={layout.usesSplitView && !activeDetailKey ? "attached" : "detached"}
           >
@@ -468,7 +467,7 @@ function WorkspaceColumns(
                 }
               />
             </ColumnContent>
-          </Split.Screen>
+          </Stack.Screen>
           {screens.routes.map((route) => {
             const descriptor = props.descriptors[route.key] ?? screens.descriptors[route.key];
             const inSettingsSlot = settingsDetailIn(props.detail)?.key === route.key;
@@ -487,7 +486,7 @@ function WorkspaceColumns(
               />
             ) : null;
           })}
-        </Split.Stack>
+        </Stack.Host>
       </Split.Column>
       <InspectorColumnScreens
         content={inspector.content}

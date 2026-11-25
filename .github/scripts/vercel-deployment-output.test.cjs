@@ -7,7 +7,7 @@ const { test } = require("node:test");
 
 const preview = readFileSync(join(__dirname, "../workflows/web-preview.yml"), "utf8");
 const stepPattern =
-  /        name: Deploy preview\n        shell: bash\n        run: \|\n((?:          .*\n|\n)+)/g;
+  /        name: Deploy preview\n        shell: bash\n(?:        env:\n(?:          .*\n)+)?        run: \|\n((?:          .*\n|\n)+)/g;
 const steps = Array.from(preview.matchAll(stepPattern), (match) => ["web preview", match[1]]);
 assert.equal(steps.length, 1, "Expected the web preview deploy step");
 

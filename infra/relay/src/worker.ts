@@ -73,6 +73,8 @@ import * as ManagedTunnelLimits from "./environments/ManagedTunnelLimits.ts";
 import * as T3ChatAccounts from "./t3chat/T3ChatAccounts.ts";
 import * as MobileRegistrations from "./agentActivity/MobileRegistrations.ts";
 import * as HookForwarder from "./hooks/HookForwarder.ts";
+import * as ManagedTunnelBinding from "./environments/ManagedTunnelBinding.ts";
+import * as AccountDeletion from "./accounts/AccountDeletion.ts";
 import * as HeldHooks from "./hooks/HeldHooks.ts";
 import * as HookInbox from "./hooks/HookInbox.ts";
 import * as HookInboxObject from "./hooks/HookInboxObject.ts";
@@ -192,7 +194,7 @@ export const layer = Api.make(
       : yield* Effect.gen(function* () {
           const relayApiZone = yield* RelayApiZone;
           const managedEndpointZone = yield* ManagedEndpointZone;
-          const managedEndpointTunnelBinding = yield* Cloudflare.Tunnel.ReadWriteTunnel();
+          const managedEndpointTunnelBinding = yield* ManagedTunnelBinding.ManagedTunnel();
           // Keep Worker custom-domain reconciliation ordered after API zone provisioning.
           yield* yield* relayApiZone.zoneId;
           const managedEndpointDnsBinding = yield* Cloudflare.DNS.ReadWriteDns(managedEndpointZone);
@@ -288,6 +290,7 @@ export const layer = Api.make(
           EnvironmentPublishSignatures.layer,
           ManagedEndpointReaper.layer,
           HeldHooks.layer,
+          AccountDeletion.layer,
         ),
       ),
       Layer.provideMerge(managedEndpoints.layer),
@@ -455,6 +458,7 @@ export const layer = Api.make(
         Layer.provide(layerHookRateLimiter),
       ),
       MobileTelemetry.layerApi.pipe(Layer.provide(layerMobileTelemetry)),
+      AccountDeletion.layerApi,
     ).pipe(
       Layer.provideMerge(RelayHttpApi.layerClientAuth),
       Layer.provideMerge(RelayHttpApi.layerDpopClientAuth),
@@ -519,6 +523,19 @@ export const layer = Api.make(
                 : Effect.logWarning("Failed to prune expired relay state", { cause }),
             ),
           ),
+          AccountDeletion.AccountDeletion.pipe(
+            Effect.flatMap((accounts) => accounts.processPending.pipe(Effect.timeout("2 minutes"))),
+            Effect.tap((result) =>
+              result.failed > 0
+                ? Effect.logError("Account deletions failed; retrying next sweep", result)
+                : Effect.void,
+            ),
+            Effect.catchCause((cause) =>
+              Cause.hasInterrupts(cause)
+                ? Effect.interrupt
+                : Effect.logError("Failed to process account deletions", { cause }),
+            ),
+          ),
           ManagedEndpointReaper.ManagedEndpointReaper.pipe(
             Effect.flatMap((reaper) => reaper.sweep.pipe(Effect.timeout("2 minutes"))),
             Effect.tap((result) =>
@@ -541,7 +558,7 @@ export const layer = Api.make(
             ),
           ),
         ],
-        { concurrency: 3, discard: true },
+        { concurrency: 4, discard: true },
       ).pipe(
         Effect.withSpan("relay.cron.prune_expired_state"),
         Observability.withSchemaErrorSpanAttributes,
@@ -579,7 +596,7 @@ export const layer = Api.make(
         Layer.provideMerge(Cloudflare.Workers.CronEventSourceLive),
         Layer.provideMerge(Cloudflare.Queues.WriteQueueBinding),
         Layer.provideMerge(Cloudflare.Queues.EventSourceLive),
-        Layer.provideMerge(Cloudflare.Tunnel.ReadWriteTunnelBinding),
+        Layer.provideMerge(ManagedTunnelBinding.ManagedTunnelBinding),
         Layer.provideMerge(Cloudflare.DNS.ReadWriteDnsHttp),
         Layer.provideMerge(Cloudflare.Workers.RateLimitBinding),
         Layer.provideMerge(Cloudflare.R2.ReadBucketBinding),

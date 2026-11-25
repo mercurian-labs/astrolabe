@@ -22,6 +22,9 @@ import * as DesktopUserData from "./DesktopUserData.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 import * as DesktopWebLinks from "./DesktopWebLinks.ts";
 
+/** Astrolabe ships no Clerk, so the window's content security policy names no Clerk host. */
+export const desktopClerkFrontendApiHostname: string | undefined = undefined;
+
 export class DesktopClerk extends Context.Service<
   DesktopClerk,
   {

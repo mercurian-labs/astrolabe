@@ -104,7 +104,7 @@ wins in this order: `.gemini/skills`, `.agents/skills`, `.agent/skills`. See
 Skills for every project go in `~/.gemini/config/skills` or
 `~/.gemini/antigravity-cli/skills`. Antigravity does not read `~/.agents/skills`
 on its own; to share a folder like that one, list it in `~/.gemini/config/skills.json`
-(or a project's `.agents/skills.json`), and T3 Code shows the skills it declares,
+(or a project's `.agents/skills.json`), and Astrolabe shows the skills it declares,
 honoring `inherits`, `include_only`, and `exclude`.
 
 Antigravity receives images and audio directly, and reads PDFs and text files as

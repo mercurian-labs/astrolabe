@@ -1,7 +1,7 @@
 # Astrolabe release destinations
 
 > For maintainers. Where an Astrolabe release ships today, what is off and why, and the one-time
-> steps before the first run. The workflow mechanics are upstream's, in [release.md](./release.md);
+> steps before the first run. The workflow mechanics are upstream's, in [03_release.md](./03_release.md);
 > where the two disagree, this page describes Astrolabe.
 
 Last reviewed: 2026-10-25, against `astrolabe/launch`.

@@ -53,6 +53,7 @@ export const layerManagedEndpoints = ManagedEndpointProvider.layer.pipe(
         putConfiguration: (tunnelId) => tunnelError("put-configuration", { tunnelId }),
         getToken: (tunnelId) => tunnelError("get-token", { tunnelId }),
         delete: (tunnelId) => tunnelError("delete", { tunnelId }),
+        disconnect: (tunnelId) => tunnelError("disconnect", { tunnelId }),
       }),
       ManagedEndpointProvider.layerDnsClient({
         listRecords: () => Effect.succeed([]),

@@ -11,20 +11,25 @@ the client version, traces can include connection timings, environment identifie
 connected machine's name. Failed spans can include error messages and stack traces; error text can
 quote a value the app was handling.
 
-To make sure relay tracing stays off from the server, set `ASTROLABE_TELEMETRY_ENABLED=false` in
-its environment before starting it. Relay tracing also stops when `ASTROLABE_OTEL_SDK_DISABLED` or
+To make sure relay tracing stays off from the server, set `ASTROLABE_TELEMETRY_ENABLED=false` or
+`DO_NOT_TRACK=1` in its environment before starting it. `DO_NOT_TRACK=1` wins over
+`ASTROLABE_TELEMETRY_ENABLED=true`. Relay tracing also stops when `ASTROLABE_OTEL_SDK_DISABLED` or
 `OTEL_SDK_DISABLED` turns OpenTelemetry export off.
+
+On a CI runner, the server sends no relay traces by default. It treats a run as CI when a common CI
+variable is set, such as `CI`, `GITHUB_ACTIONS`, `GITLAB_CI`, or `JENKINS_URL`. `CI=false` and
+`CI=0` do not count. To send them from CI anyway, set `ASTROLABE_TELEMETRY_ENABLED=true`.
 
 An administrator can turn relay tracing off in the server and desktop app with
 a [managed policy](./managed-policy.md#other-capabilities). This does not control traces sent by
-separate browser or mobile clients.
+the hosted web app or mobile clients.
 
-The desktop app reads `ASTROLABE_TELEMETRY_ENABLED` from your shell profile (for example `~/.zshrc`) on macOS and
-Linux, so export it there and restart the app. On Windows, set it as a user environment variable.
+The desktop app reads `ASTROLABE_TELEMETRY_ENABLED` and `DO_NOT_TRACK` from your shell profile (for example `~/.zshrc`) on macOS and
+Linux, so export them there and restart the app. On Windows, set them as user environment variables.
 
-The web app in a browser, including one the `astrolabe` CLI opens, does not read these environment
-variables. When its build has relay tracing configured, it sends its own connection traces even
-if the server has opted out. The browser app has no relay tracing toggle.
+A browser opened from an Astrolabe server sends relay traces only while connected and allowed by
+that server's policy. The hosted web app sends relay traces when configured and has no tracing
+toggle.
 
 ## Mobile app diagnostics
 
@@ -32,9 +37,10 @@ The iOS and Android apps include crash reporting through the remote access relay
 builds ship with it switched off, so the apps send no crash reports.
 
 The mobile app also sends relay connection traces when its build has tracing configured. These
-carry an identifier for the current app session. **Send crash reports** does not control these
-traces, and the mobile app has no separate relay tracing toggle. Server environment variables and
-managed policy do not disable mobile tracing.
+carry an identifier for the current app session. To stop them, turn off **Send connection traces**
+in **Settings > About Astrolabe > Diagnostics**, or on the remote access setup sheet shown after you
+sign in. This is separate from crash reports. Server environment variables and managed policy do
+not disable mobile tracing.
 
 ## Agent activity for mobile notifications
 

@@ -164,15 +164,12 @@ const make = Effect.gen(function* () {
   /** What this environment's Connections calls the client that asked. */
   const clientLabelOf = (sessionId: AuthSessionId) =>
     auth.listClientSessions(sessionId).pipe(
-      Effect.map((sessions) => {
-        const client = sessions.find((session) => session.sessionId === sessionId)?.client;
-        return (
-          client?.label ??
-          ([client?.browser, client?.os].filter((part) => part !== undefined).join(" on ") ||
-            "T3 Code client")
-        );
-      }),
-      Effect.orElseSucceed(() => "T3 Code client"),
+      Effect.map((sessions) =>
+        EnvironmentAuth.clientSessionLabel(
+          sessions.find((session) => session.sessionId === sessionId)?.client,
+        ),
+      ),
+      Effect.orElseSucceed(() => "Astrolabe client"),
     );
 
   /** Asks the linked environment for a pairing; `payload` says for whom. */

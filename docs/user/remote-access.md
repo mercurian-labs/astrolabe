@@ -228,7 +228,8 @@ If that port is already in use, choose another with
 
 [app.astrolabe.sh](https://app.astrolabe.sh) needs an HTTPS endpoint. It connects directly
 to your server; a hosted pairing link does not make an unreachable backend
-reachable or convert HTTP to HTTPS.
+reachable or convert HTTP to HTTPS. Opening a hosted pairing link shows the
+server address and asks you to confirm before adding it.
 
 To pair it with a nightly server, open [nightly.astrolabe.sh](https://nightly.astrolabe.sh)
 first, or switch under **Settings → About → Update track**. Either keeps this browser
@@ -346,9 +347,9 @@ continue. Read-only connections can watch without changing the page.
 
 While you have control, the tab works with your device: text the page copies or
 cuts goes to your clipboard, a file picker on the page opens your device's
-picker, and a finished download is offered for you to save. Popups such as
-sign-in windows open as their own tabs. Downloads stay on the host until the
-tab closes. Audio does not play on your device.
+picker, a dropdown on the page shows its options on your device, and a finished
+download is offered for you to save. Popups such as sign-in windows open as
+their own tabs. Downloads stay on the host until the tab closes. Audio does not play on your device.
 
 On a phone, tap **Pop into separate window** in the floating preview's bar to
 keep watching in picture-in-picture over other apps.
@@ -468,7 +469,7 @@ an address you trust: the code is sent there.
 - The link shows up in that machine's **Settings → Sharing & access** like any
   outside agent, and can be revoked there. **Forget** on this machine also ends
   it there when that machine confirms it. If it can't, such as when it is
-  offline or on an older T3 Code, Forget says so; revoke it in that machine's
+  offline or on an older Astrolabe, Forget says so; revoke it in that machine's
   Sharing & access.
 - A link stays valid while agents use it. One unused for 30 days expires, as
   does one to a machine on an older T3 Code after 30 days; link again with a
@@ -486,7 +487,8 @@ it needs no pairing code.
 A machine this app is not connected to, shown only because another environment
 links to it, can still be linked without a code when that link has full access:
 drop the plus on it and the environment holding the link gets the pairing code
-from it. Your session on that environment must manage access there. The result
+from it. Your session on that environment must manage access there and already
+have the access you pick. The result
 is a separate link with the access you pick, listed and revocable on the linked
 machine like any other. Links still do not chain.
 
@@ -554,7 +556,7 @@ any other thread on web and desktop, and a shorter read-only list on mobile.
 - If this app is already connected to that machine, the thread opens there as
   usual instead.
 - You need permission to read threads on the machine you are connected to, and
-  Linked environments must be on there. Both machines need a version of T3 Code
+  Linked environments must be on there. Both machines need a version of Astrolabe
   that has this view.
 
 ## Manage or revoke access
@@ -601,7 +603,13 @@ checkout use that checkout's permissions.
 client: pushing, switching or creating branches, cloning, and removing
 worktrees. It does not restrict what a task does. Starting a task in a new
 worktree still creates that branch and worktree with `orchestration:operate`,
-and the agent it runs can use Git however the environment allows.
+and the agent it runs can use Git however the environment allows. A project
+that [lays out its worktrees with its own command](multi-repo-projects.md#lay-the-folder-out-yourself)
+runs that command on the host, so creating a worktree there from the client also
+needs `orchestration:operate` or `terminal:operate`; without one of them,
+removing a worktree skips the project's `remove` command. The command also has
+to be [approved](multi-repo-projects.md#approve-the-commands) first, from a
+client with `terminal:operate`.
 
 Settings changes, provider management, environment maintenance, access
 management, and remote access preferences can each be granted separately. Setting

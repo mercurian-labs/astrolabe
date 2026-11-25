@@ -123,9 +123,9 @@ row in the thread; open it to see every step.
 When an MCP server you added to Claude needs you to sign in, the thread shows a notice with
 **Sign in**, once per session; on mobile, tap the notice. Approve access on the page it opens. Your
 browser then goes to a page that may not load, especially when Claude runs on another machine:
-copy that page's address, paste it into T3 Code, and choose **Finish sign-in**. Claude keeps the
+copy that page's address, paste it into Astrolabe, and choose **Finish sign-in**. Claude keeps the
 sign-in and reconnects the server. Connectors you added on claude.ai are signed in on claude.ai,
-so T3 Code doesn't ask about them. Signing in needs permission to manage providers.
+so Astrolabe doesn't ask about them. Signing in needs permission to manage providers.
 
 ## Claude in Chrome
 

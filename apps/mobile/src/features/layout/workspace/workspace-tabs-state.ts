@@ -30,6 +30,7 @@ export const WORKSPACE_SEARCH_LABELS: Readonly<Record<WorkspaceSearchTab, string
   wikis: msg("Search wikis"),
   repositories: msg("Search files"),
   issues: msg("Search issues"),
+  workflows: msg("Search threads"),
   usage: msg("Search threads"),
   settings: msg("Search settings"),
 };
@@ -75,6 +76,7 @@ export function initialWorkspaceTabsState(
       wikis: emptyTab(),
       repositories: emptyTab(),
       issues: emptyTab(),
+      workflows: emptyTab(),
       usage: emptyTab(),
       settings: emptyTab(),
     },
@@ -102,7 +104,7 @@ export function workspaceTabsReducer(
           selectionRevision: state.selectionRevision + 1,
         };
   const tab = action.tab ?? state.selectedTab;
-  if (tab === "usage") return state;
+  if (tab === "usage" || tab === "workflows") return state;
   const current = state.tabs[tab];
   let next: WorkspaceTabState;
   switch (action.type) {

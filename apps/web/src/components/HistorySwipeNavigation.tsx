@@ -44,16 +44,12 @@ function readMainContentBounds(): SwipeBounds {
 }
 
 // `event.target` stops at a shadow host; the composed path also reaches scrollers inside it.
-function canScrollHorizontally(path: readonly EventTarget[], deltaX: number): boolean {
+function hasHorizontalScroller(path: readonly EventTarget[]): boolean {
   for (const element of path) {
     if (!(element instanceof Element) || element.scrollWidth <= element.clientWidth) continue;
     const { overflowX } = getComputedStyle(element);
     if (overflowX !== "auto" && overflowX !== "scroll") continue;
-    const canScroll =
-      deltaX < 0
-        ? element.scrollLeft > 0
-        : element.scrollLeft + element.clientWidth < element.scrollWidth - 1;
-    if (canScroll) return true;
+    return true;
   }
   return false;
 }
@@ -72,11 +68,13 @@ function lockSwipeAxis(
     return { kind: "ignored" };
   }
   // Astrolabe: graph canvases and code editors pan or scroll on a horizontal wheel themselves.
-  const ignoredTarget = '[role="dialog"], canvas, .cm-editor';
+  // Preview contents can scroll in another document or on the server, outside this DOM.
+  const ignoredTarget =
+    '[role="dialog"], [role="alertdialog"], [data-preview-panel-mode], [data-preview-viewport], [data-server-browser-surface], canvas, .cm-editor';
   if (path.some((node) => node instanceof Element && node.matches(ignoredTarget))) {
     return { kind: "ignored" };
   }
-  if (canScrollHorizontally(path, sumX)) return { kind: "ignored" };
+  if (hasHorizontalScroller(path)) return { kind: "ignored" };
   const direction = sumX < 0 ? "back" : "forward";
   if (!canNavigateHistory(direction)) return { kind: "ignored" };
   return {
@@ -136,6 +134,11 @@ export function HistorySwipeNavigation() {
       gesture = null;
     });
     const onWheel = (event: WheelEvent) => {
+      if (event.shiftKey) {
+        if (gesture?.kind === "tracking") hideIndicator();
+        gesture = { kind: "ignored" };
+        return;
+      }
       if (gesture === null) {
         gesture =
           event.ctrlKey || event.deltaMode !== WheelEvent.DOM_DELTA_PIXEL

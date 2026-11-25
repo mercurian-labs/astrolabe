@@ -277,7 +277,7 @@ function PairingForm({
               {pairingConnectionError ??
                 (linked
                   ? gt(
-                      "Create a pairing code on {environment}, in its Settings → Sharing & access or with `t3 auth pairing create`, and enter it here.",
+                      "Create a pairing code on {environment}, in its Settings → Sharing & access or with `astrolabe auth pairing create`, and enter it here.",
                       { environment: linked.label },
                     )
                   : gt(

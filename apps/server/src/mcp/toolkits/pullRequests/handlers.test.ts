@@ -210,7 +210,10 @@ const makeHarness = Effect.fn("makePullRequestsToolkitHarness")(function* (
         Effect.succeed(id === thread?.id ? v2PullRequestThread(thread) : null),
       dispatch,
     }),
-    Layer.mock(PullRequestService.PullRequestService)(options.pullRequests ?? {}),
+    Layer.mock(PullRequestService.PullRequestService)({
+      addressedProject: () => Effect.succeed(project ?? undefined),
+      ...options.pullRequests,
+    }),
     Layer.mock(GitManager.GitManager)(options.git ?? {}),
     Layer.mock(WikiService.WikiService)({ hosted: Effect.succeed([]), ...options.wikis }),
     Layer.succeed(SecureRandom.SecureRandom, testCrypto),
@@ -417,6 +420,18 @@ describe("pull request toolkit handlers", () => {
       expect(yield* Ref.get(harness.commands)).toMatchObject([
         { type: "thread.pull-request.link", number: 123, url: supplied },
       ]);
+    }),
+  );
+
+  it.effect("says when repository is not owner/repo on a known host", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ project: makeProject() });
+      const error = yield* harness
+        .call("link_pull_request", { repository: "github.com/org/repo", number: 1 })
+        .pipe(Effect.flip);
+      expect(error).toMatchObject({ _tag: "PullRequestRepositoryInvalidError" });
+      expect(error.message).toContain("owner/repo");
+      expect(yield* Ref.get(harness.commands)).toEqual([]);
     }),
   );
 
@@ -933,6 +948,40 @@ describe("source control tools", () => {
     }),
   );
 
+  it.effect("reads an Azure DevOps PR by number at its organization and project", () =>
+    Effect.gen(function* () {
+      const asked: Array<PullRequestRef> = [];
+      const harness = yield* makeHarness({
+        project: makeProject({
+          canonicalKey: "dev.azure.com/contoso/project/_git/repo",
+          locator: {
+            source: "git-remote",
+            remoteName: "origin",
+            remoteUrl: "https://contoso@dev.azure.com/contoso/project/_git/repo",
+          },
+          provider: SourceControlProviderKind.make("azure-devops"),
+          displayName: "contoso/project/_git/repo",
+          owner: "contoso",
+          name: "repo",
+        }),
+        pullRequests: {
+          detail: (ref) => Effect.sync(() => asked.push(ref)).pipe(Effect.as(detail)),
+          activity: () => Effect.succeed(activity),
+        },
+      });
+      const result = yield* harness.call("pull_request_read", { number: 123 });
+      expect(result).toMatchObject({
+        host: "dev.azure.com",
+        repository: "contoso/project/_git/repo",
+        number: 123,
+        url: "https://dev.azure.com/contoso/project/_git/repo/pullrequest/123",
+      });
+      expect(asked).toMatchObject([
+        { host: "dev.azure.com", repository: "contoso/project/_git/repo", number: 123 },
+      ]);
+    }),
+  );
+
   it.effect("pages a long conversation and the PR list through the cursors they return", () =>
     Effect.gen(function* () {
       const comment = (body: string) =>
@@ -1110,6 +1159,56 @@ describe("source control tools", () => {
       }
       expect(actions).toEqual([]);
     }),
+  );
+
+  it.effect(
+    "a stacked merge leaves a wiki's lower layer to the wiki, and an unreadable wiki stops it",
+    () =>
+      Effect.gen(function* () {
+        const actions: Array<PullRequestActionInput> = [];
+        const wikiId = WikiId.make("wiki:plans");
+        let listed: Effect.Effect<never, never> | null = null;
+        const harness = yield* makeHarness({
+          thread: branchThread,
+          pullRequests: {
+            stack: () =>
+              Effect.succeed({
+                id: "stack-1",
+                number: 7,
+                url: "https://github.com/acme/app/stacks/7",
+                base: "main",
+                layers: [
+                  { number: 41, state: "open", headSha: "bbb", headBranch: "layer-41" },
+                  { number: 42, state: "open", headSha: "ccc", headBranch: "layer-42" },
+                ],
+              } as never),
+            runAction: (input) => Effect.sync(() => void actions.push(input)),
+            summary: () => Effect.succeed({ state: "merged" } as never),
+          },
+          wikis: {
+            hosted: Effect.succeed([wikiId]),
+            get: () =>
+              Effect.succeed({ wikiId, name: "Plans", host: { projectId: PROJECT_ID } } as never),
+            changeRequestsList: () =>
+              listed ??
+              (Effect.succeed({
+                changeRequests: [{ pullRequest: { number: 41, repository: "T3Tools/T3Code" } }],
+              }) as never),
+          },
+        });
+        const stacked = yield* Effect.flip(
+          harness.call("pull_request_merge", { expectedHeadSha: "ccc", stack: true }),
+        );
+        expect(stacked.message).toContain('#41 is a change request of the wiki "Plans"');
+        listed = Effect.fail("list failed") as never;
+        const unreadable = yield* Effect.flip(
+          harness.call("pull_request_merge", { expectedHeadSha: "ccc" }),
+        );
+        expect(unreadable.message).toContain(
+          'Could not read the change requests of the wiki "Plans"',
+        );
+        expect(actions).toEqual([]);
+      }),
   );
 
   it.effect("a stack merge pins every open layer up to the PR", () =>
@@ -1352,6 +1451,52 @@ describe("source control tools", () => {
         .pipe(Effect.flip);
       expect(error.message).toContain("a.ts line 40 (new side) is not in this PR's diff");
       expect(reviews).toHaveLength(1);
+
+      // A range whose start the diff shows names its end, the line that is missing.
+      const rangeError = yield* harness
+        .call("pull_request_review", {
+          verdict: "comment",
+          comments: [{ path: "b.ts", line: 40, startLine: 9, body: "Here?" }],
+        })
+        .pipe(Effect.flip);
+      expect(rangeError.message).toContain("b.ts line 40 (new side) is not in this PR's diff");
+
+      // A range whose end the diff shows still names its start.
+      const startError = yield* harness
+        .call("pull_request_review", {
+          verdict: "comment",
+          comments: [{ path: "b.ts", line: 10, startLine: 2, body: "Here?" }],
+        })
+        .pipe(Effect.flip);
+      expect(startError.message).toContain("b.ts line 2 (new side) is not in this PR's diff");
+      expect(reviews).toHaveLength(1);
+    }),
+  );
+
+  it.effect("pins a review to the head the caller read, and approves only with one", () =>
+    Effect.gen(function* () {
+      const reviews: Array<PullRequestSubmitReviewInput> = [];
+      const harness = yield* makeHarness({
+        thread: branchThread,
+        pullRequests: {
+          submitReview: (input) => Effect.sync(() => void reviews.push(input)),
+        },
+      });
+      yield* harness.call("pull_request_review", {
+        verdict: "approve",
+        expectedHeadSha: "abc1234def5678",
+      });
+      expect(reviews).toMatchObject([{ verdict: "approve", expectedHeadSha: "abc1234def5678" }]);
+
+      const error = yield* harness
+        .call("pull_request_review", { verdict: "approve" })
+        .pipe(Effect.flip);
+      expect(error.message).toContain("expectedHeadSha");
+      expect(reviews).toHaveLength(1);
+
+      yield* harness.call("pull_request_review", { verdict: "comment", body: "A question." });
+      expect(reviews).toHaveLength(2);
+      expect(reviews[1]).not.toHaveProperty("expectedHeadSha");
     }),
   );
 

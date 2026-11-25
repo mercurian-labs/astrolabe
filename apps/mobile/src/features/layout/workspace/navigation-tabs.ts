@@ -22,6 +22,7 @@ export const NAVIGATION_TAB_ICONS = {
   wikis: "book",
   repositories: "folder",
   issues: "git.issue",
+  workflows: "point.3.connected.trianglepath.dotted",
   usage: "chart.bar.xaxis",
 } as const satisfies Readonly<Record<NavigationTab, AppSymbolName>>;
 

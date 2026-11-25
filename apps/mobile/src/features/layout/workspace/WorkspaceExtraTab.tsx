@@ -3,6 +3,7 @@ import { NativeStackScreenOptions } from "../../../native/StackHeader";
 import { RepositoriesScreen } from "../../repositories/RepositoriesScreen";
 import { UsageRouteScreen } from "../../usage/UsageRouteScreen";
 import { WikisScreen } from "../../wikis/WikisScreen";
+import { WorkflowsScreen } from "../../workflows/WorkflowsScreen";
 
 export function WorkspaceExtraTab(props: {
   tab: Exclude<NavigationTab, "threads" | "pullRequests" | "issues">;
@@ -13,7 +14,7 @@ export function WorkspaceExtraTab(props: {
   return (
     <>
       <NativeStackScreenOptions options={{ headerSearchBarOptions: undefined }} />
-      <UsageRouteScreen workspace />
+      {props.tab === "workflows" ? <WorkflowsScreen /> : <UsageRouteScreen workspace />}
     </>
   );
 }

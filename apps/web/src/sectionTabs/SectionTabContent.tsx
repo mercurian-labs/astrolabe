@@ -13,10 +13,20 @@ import {
 import type { EnvironmentChangeGroup } from "@t3tools/client-runtime/changeGroups";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { ThreadId, type ProjectId, type ScopedThreadRef } from "@t3tools/contracts";
-import type { NavigateFn } from "@tanstack/react-router";
+import { useAtomValue } from "@effect/atom-react";
+import { Link, type NavigateFn } from "@tanstack/react-router";
+import { T } from "gt-react";
 import { MessageSquareIcon } from "lucide-react";
 
 import ChatView from "~/components/ChatView";
+import { Button } from "~/components/ui/button";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle,
+} from "~/components/ui/empty";
 import { PullRequestDetailPanel } from "~/components/pullRequest/PullRequestDetailPanel";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 import {
@@ -50,6 +60,7 @@ import { leafWithTab } from "~/panes/tree";
 import { pullRequestSurface } from "~/rightPanelStore";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { useQuietThreadShell, useThreadShell } from "~/state/entities";
+import { environmentUnreachableAtom } from "~/state/presentation";
 import { useEnvironmentShellStatus } from "~/state/shell";
 import { isThreadRouteSnapshotAuthoritative } from "~/threadRoutes";
 import { chatTabKey, parseChatTabKey } from "./sectionTabs";
@@ -249,10 +260,13 @@ export function PaneChat({ threadRef }: { readonly threadRef: ScopedThreadRef })
   const draftId = useComposerDraftStore((store) => store.getDraftIdByRef(threadRef));
   const shell = useQuietThreadShell(threadRef);
   const shellStatus = useEnvironmentShellStatus(threadRef.environmentId);
+  const environmentUnreachable = useAtomValue(environmentUnreachableAtom(threadRef.environmentId));
   useOpenThreadFamily(
     threadRef,
     isThreadRouteSnapshotAuthoritative(shellStatus) && shell === null && draftId === null,
   );
+  // A link to a thread on an environment this app has no connection to says why, not a blank pane.
+  if (!draftId && shell === null && environmentUnreachable) return <UnreachableEnvironmentState />;
   return draftId ? (
     <ChatView
       draftId={draftId}
@@ -269,6 +283,26 @@ export function PaneChat({ threadRef }: { readonly threadRef: ScopedThreadRef })
       routeKind="server"
       reserveTitleBarControlInset={false}
     />
+  );
+}
+
+function UnreachableEnvironmentState() {
+  return (
+    <Empty className="flex-1">
+      <EmptyHeader>
+        <EmptyTitle>
+          <T>Thread unavailable</T>
+        </EmptyTitle>
+        <EmptyDescription>
+          <T>This thread is on an environment this app is not connected to.</T>
+        </EmptyDescription>
+      </EmptyHeader>
+      <EmptyContent>
+        <Button render={<Link to="/settings/connections" />} size="sm">
+          <T>Open Environments</T>
+        </Button>
+      </EmptyContent>
+    </Empty>
   );
 }
 

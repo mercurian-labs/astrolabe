@@ -15,7 +15,10 @@ import type { useNavigate } from "@tanstack/react-router";
 
 import { getClientSettings } from "../hooks/useSettings";
 import { linkedThreadRouteParams } from "../linkedThreadSurface";
+import { allTabs } from "../panes/arrangement";
+import { workspace } from "../panes/workspace";
 import { rightPanelHostRef, useRightPanelStore } from "../rightPanelStore";
+import { chatTabKey } from "../sectionTabs/sectionTabs";
 
 /** Whether an event started in the side chat pane (`data-side-chat-pane`), which the main chat ignores. */
 export function isInSideChatPane(target: EventTarget | null): boolean {
@@ -78,6 +81,13 @@ export function openSideThread(input: {
     intent: input.intent,
     panelAvailable: canOpenThreadInPanel(threadRef, panelRef),
   });
+  // Astrolabe: a thread already open in a chat tab is shown there; a second host would run two
+  // views of one thread side by side.
+  const chatKey = chatTabKey(threadRef);
+  if (target === "panel" && allTabs(workspace.arrangement()).includes(chatKey)) {
+    workspace.show(chatKey);
+    return "main";
+  }
   if (target === "panel" && panelRef !== null) {
     useRightPanelStore.getState().openThread(panelRef, threadRef.threadId);
   } else {

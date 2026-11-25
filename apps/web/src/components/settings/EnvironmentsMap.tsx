@@ -205,7 +205,7 @@ const ROUTE_STYLES: Record<
 function routeKindLabel(kind: ConnectionRouteKind, gt: GT): string {
   switch (kind) {
     case "relay":
-      return "T3 Connect";
+      return gt("Remote access");
     case "loopback":
       return gt("This device");
     case "lan":
@@ -1044,7 +1044,7 @@ function FleetCanvas({
         )}
       </div>
       {/* Below the canvas, not over it: nothing on the map can end up under the controls. */}
-      <div className="flex items-end justify-between gap-3 bg-background/50 px-3 pb-2">
+      <div className="flex items-center justify-between gap-3 bg-background/50 px-3 py-1">
         <FleetLegend twoWay={fleetTwoWayLinks(graph).size > 0} />
         <div className="flex shrink-0 items-center gap-1 rounded-lg border border-border/60 bg-popover/90 p-0.5 shadow-xs/5">
           <Button
@@ -1094,7 +1094,7 @@ function FleetLegend({ twoWay }: { readonly twoWay: boolean }) {
   return (
     <ul
       aria-label={gt("How to read the lines")}
-      className="flex min-w-0 items-center gap-x-3 overflow-clip pb-1 text-2xs whitespace-nowrap text-muted-foreground"
+      className="flex min-w-0 items-center gap-x-3 overflow-clip text-2xs whitespace-nowrap text-muted-foreground"
     >
       <li className="flex items-center gap-1.5">
         {sample("in-use")}
@@ -2115,7 +2115,7 @@ const FleetScene = memo(function FleetScene({
               {...focusProps(
                 target,
                 rect,
-                gt("{label}, on your T3 Connect account, not added to this app. {status}", {
+                gt("{label}, on your remote access account, not added to this app. {status}", {
                   label: node.label,
                   status: connectAvailabilityText(node.availability, gt),
                 }),
