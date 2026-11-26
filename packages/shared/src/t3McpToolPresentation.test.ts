@@ -45,6 +45,18 @@ describe("resolveT3McpToolPresentation", () => {
     expect(resolveT3McpToolPresentation("mcp__t3-code__t3_code_find")).toBeNull();
   });
 
+  it("names the project docs tools, and still the wiki tools past turns called", () => {
+    expect(resolveT3McpToolPresentation("mcp__t3-code__astrolabe_project_links")?.displayName).toBe(
+      "Read project links",
+    );
+    expect(resolveT3McpSummaryAction("mcp__t3-code__astrolabe_project_transform", {})).toBe(
+      "wiki-amend",
+    );
+    for (const retired of ["astrolabe_wiki_read", "astrolabe_wiki_write", "t3_wiki_search"]) {
+      expect(resolveT3McpToolPresentation(`mcp__t3-code__${retired}`), retired).not.toBeNull();
+    }
+  });
+
   it("matches OpenCode 2's per-thread server names, whose thread ids hold underscores", () => {
     expect(
       resolveT3McpToolPresentation("t3-code-thread_opencode2-adapter_delegate_task")?.displayName,

@@ -18,12 +18,15 @@ import {
   parseMoves,
   planAmendment,
   planMove,
+  planProjectFolderRename,
+  planProjectRename,
   planCanvasEdits,
   planTransform,
   WikiFormatError,
   type AmendmentStamp,
   type PlannedAmendment,
   type PlannedMove,
+  type ProjectIndex,
   type WikiAttachment,
   type WikiChanges,
   type WikiBlob,
@@ -179,6 +182,7 @@ import {
   wikiTerms,
 } from "./wikiStorage.ts";
 import {
+  docPaths as docPathsOf,
   indexResult,
   linksResult,
   locateBase,
@@ -265,6 +269,26 @@ export interface WikiCheckoutWriteResult {
   readonly warnings?: ReadonlyArray<string>;
 }
 
+/** One root of a project as a call across its roots reads it: in `checkout`, as its files stand. */
+export interface ProjectRootRead {
+  /** What its addresses and links name it by. */
+  readonly key: string;
+  readonly wikiId: WikiId;
+  /** The root's own folder or one of its worktrees. */
+  readonly checkout: string;
+  readonly writable: boolean;
+}
+
+/** A rename across a project's roots: each root it wrote, the moving one first, and each it may not. */
+export interface ProjectRenameResult {
+  readonly changed: ReadonlyArray<WikiCheckoutTransformResult & { readonly root: string }>;
+  /** Roots whose links led to what moved, with the files that keep them. */
+  readonly unchanged: ReadonlyArray<{
+    readonly root: string;
+    readonly files: ReadonlyArray<string>;
+  }>;
+}
+
 /** What the code index knows of a wiki's code files at one commit. */
 export type CodeFacts =
   | { readonly state: "off" }
@@ -318,6 +342,14 @@ export class WikiService extends Context.Service<
     /** Pushes main to the mirror now; a failed push is recorded on the summary, not raised. */
     readonly pushMirror: (input: WikiTarget) => Effect.Effect<WikiSummary, WikiError>;
     readonly index: (input: WikiReadTarget) => Effect.Effect<WikiIndexResult, WikiError>;
+    /**
+     * Astrolabe: what the Projects tree's Docs filter keeps of `checkout` (the root's own folder
+     * when absent), read on disk: `docPaths` of the root and of the project's roots inside it.
+     */
+    readonly docPaths: (input: {
+      readonly wikiId: WikiId;
+      readonly checkout?: string;
+    }) => Effect.Effect<ReadonlyArray<string>, WikiError>;
     readonly readNote: (
       input: WikiReadTarget & { readonly name: string },
     ) => Effect.Effect<WikiNoteResult, WikiError>;
@@ -388,6 +420,19 @@ export class WikiService extends Context.Service<
       input: WikiTransformInput,
       author: WikiAuthor,
     ) => Effect.Effect<WikiAmendResult | WikiCheckoutTransformResult, WikiError>;
+    /** Every root's index as its checkout stands, by key: what links across the roots resolve over. */
+    readonly projectIndex: (
+      roots: ReadonlyArray<ProjectRootRead>,
+    ) => Effect.Effect<ProjectIndex, WikiError>;
+    /**
+     * A rename in `root`'s checkout, uncommitted, with the links to what moved rewritten in every
+     * other root's; a root that isn't writable keeps its links and is reported.
+     */
+    readonly projectRename: (input: {
+      readonly roots: ReadonlyArray<ProjectRootRead>;
+      readonly root: string;
+      readonly transform: Extract<WikiTransform, { readonly kind: "rename" }>;
+    }) => Effect.Effect<ProjectRenameResult, WikiError>;
     /**
      * A document in the thread's checkout of the wiki as it stands on disk, whole or lines
      * `startLine` to `endLine`: for a session whose own file tools can't reach the checkout.
@@ -3268,19 +3313,24 @@ const make = Effect.gen(function* () {
   const ioError = (message: string) => (cause: unknown) =>
     new WikiError({ reason: "git-failed", message, cause });
 
+  /** A checkout's files as a change plans on them: in Git, its HEAD with every unsaved edit over it. */
+  const checkoutFiles = (
+    wiki: WikiRecord,
+    folder: string,
+  ): Effect.Effect<{ readonly snapshot: Snapshot }, WikiError> =>
+    wiki.plain ? plainRead(wiki, folder) : checkoutSnapshot(wiki, folder);
+
   /**
-   * Plans a transform on a checkout's files and writes the result there, uncommitted. In Git its
+   * Plans a change on a checkout's files and writes the result there, uncommitted. In Git its
    * stamps carry the amendment id a turn's save would land under. Callers hold the lock and the
    * lease.
    */
-  const transformInCheckout = Effect.fn("WikiService.transformInCheckout")(function* (
+  const inCheckout = Effect.fn("WikiService.inCheckout")(function* (
     wiki: WikiRecord,
     folder: string,
-    change: WikiTransform,
+    plan: (snapshot: Snapshot, stamp: AmendmentStamp) => PlannedAmendment & CarriedBlobs,
   ): Effect.fn.Return<WikiCheckoutTransformResult, WikiError> {
-    const { snapshot } = wiki.plain
-      ? yield* plainRead(wiki, folder)
-      : yield* checkoutSnapshot(wiki, folder);
+    const { snapshot } = yield* checkoutFiles(wiki, folder);
     const stored = wiki.plain ? Option.none() : yield* readPending(folder);
     const pending = Option.isSome(stored)
       ? stored.value
@@ -3291,10 +3341,7 @@ const make = Effect.gen(function* () {
       at: yield* nowIso,
       newId: () => `${pending.amendment}-${++minted}`,
     };
-    const planned = yield* Effect.try({
-      try: () => planWikiTransform(change)(snapshot.files, stamp, snapshot.others),
-      catch: planningError,
-    });
+    const planned = yield* Effect.try({ try: () => plan(snapshot, stamp), catch: planningError });
     const blobs = planned.blobs ?? {};
     if (carriedNames({ changes: planned.changes, blobs }).length === 0) {
       return yield* new WikiError({ reason: "invalid", message: NOTHING_CHANGED });
@@ -3366,6 +3413,11 @@ const make = Effect.gen(function* () {
     };
   });
 
+  const transformInCheckout = (wiki: WikiRecord, folder: string, change: WikiTransform) =>
+    inCheckout(wiki, folder, (snapshot, stamp) =>
+      planWikiTransform(change)(snapshot.files, stamp, snapshot.others),
+    );
+
   const transformCheckout: WikiService["Service"]["transformCheckout"] = (input, author) =>
     withAnyWiki(
       input.wikiId,
@@ -3386,6 +3438,102 @@ const make = Effect.gen(function* () {
         }),
       input.changeRequestId,
     );
+
+  /** A project root and the folder its read names, once that folder is known to be its checkout. */
+  const openRoot = (root: ProjectRootRead) =>
+    withAnyWiki(root.wikiId, (wiki) =>
+      checkoutFolder(wiki, root.checkout).pipe(Effect.map((folder) => ({ root, wiki, folder }))),
+    );
+
+  const projectIndex: WikiService["Service"]["projectIndex"] = (roots) =>
+    Effect.forEach(
+      roots,
+      (root) =>
+        openRoot(root).pipe(
+          Effect.flatMap(({ wiki, folder }) => diskRead(wiki, folder)),
+          Effect.map(({ snapshot }) => [root.key, snapshot.index] as const),
+        ),
+      { concurrency: 4 },
+    ).pipe(
+      Effect.map((entries) => {
+        const indexes = new Map(entries);
+        return {
+          roots: indexes,
+          documents: new Map([...indexes].map(([key, each]) => [key, each.documents] as const)),
+        };
+      }),
+    );
+
+  /** Holds each repository's lock in one order, so two calls over the same roots never deadlock. */
+  const lockedAll = <A, E, R>(wikis: ReadonlyArray<WikiRecord>, body: Effect.Effect<A, E, R>) =>
+    [...new Map(wikis.map((wiki) => [wiki.root, wiki])).values()]
+      .toSorted((a, b) => a.root.localeCompare(b.root))
+      .reduceRight((inner, wiki) => locked(wiki, inner), body);
+
+  const projectRename: WikiService["Service"]["projectRename"] = Effect.fn(
+    "WikiService.projectRename",
+  )(function* (input) {
+    const opened = yield* Effect.forEach(input.roots, openRoot, { concurrency: 4 });
+    const moving = opened.find(({ root }) => root.key === input.root);
+    if (moving === undefined) {
+      return yield* new WikiError({
+        reason: "not-found",
+        message: `The project has no folder ${input.root}.`,
+      });
+    }
+    if (!moving.root.writable) {
+      return yield* new WikiError({
+        reason: "invalid",
+        message: `This thread cannot write ${input.root}.`,
+      });
+    }
+    const ordered = [moving, ...opened.filter((each) => each !== moving)];
+    const writers = ordered.filter(({ root }) => root.writable);
+    return yield* lockedAll(
+      writers.map(({ wiki }) => wiki),
+      Effect.gen(function* () {
+        const snapshots = yield* Effect.forEach(
+          ordered,
+          ({ wiki, folder }) => checkoutFiles(wiki, folder),
+          { concurrency: 4 },
+        );
+        const roots = new Map(
+          ordered.map(({ root }, position) => {
+            const { files, others } = snapshots[position]!.snapshot;
+            return [root.key, { files, others }] as const;
+          }),
+        );
+        const { from, to, folder } = input.transform;
+        const plans = yield* Effect.try({
+          try: () =>
+            (folder === true ? planProjectFolderRename : planProjectRename)(
+              roots,
+              input.root,
+              from.trim(),
+              to.trim(),
+            ),
+          catch: planningError,
+        });
+        const changed: Array<ProjectRenameResult["changed"][number]> = [];
+        const unchanged: Array<ProjectRenameResult["unchanged"][number]> = [];
+        for (const { root, wiki, folder: at } of ordered) {
+          const plan = plans.get(root.key);
+          if (plan === undefined) continue;
+          if (!root.writable) {
+            const files = [...Object.keys(plan.changes), ...Object.keys(plan.blobs)];
+            unchanged.push({ root: root.key, files: files.toSorted() });
+            continue;
+          }
+          const written = yield* withWorkspaceLease(
+            at,
+            inCheckout(wiki, at, (snapshot, stamp) => planMoved(snapshot.files, stamp, plan)),
+          );
+          changed.push({ ...written, root: root.key });
+        }
+        return { changed, unchanged };
+      }),
+    );
+  });
 
   /** The thread's checkout of the wiki, which the fallback file tools work in alone. */
   const requireCheckout = Effect.fn("WikiService.requireCheckout")(function* (
@@ -3985,6 +4133,49 @@ const make = Effect.gen(function* () {
           return indexResult(wiki.wikiId, commit, snapshot.index, times.modified);
         }),
       input.changeRequestId,
+    );
+
+  const docPaths: WikiService["Service"]["docPaths"] = (input) =>
+    withAnyWiki(input.wikiId, (wiki) =>
+      Effect.gen(function* () {
+        const folder = yield* checkoutFolder(wiki, input.checkout ?? wiki.root);
+        const read = (record: WikiRecord, at: string) =>
+          diskRead(record, at).pipe(
+            Effect.map(({ snapshot }) =>
+              docPathsOf(
+                snapshot.index,
+                snapshot.others.map((entry) => entry.file),
+              ),
+            ),
+          );
+        const own = yield* read(wiki, folder);
+        const parsed = parseProjectRootId(wiki.wikiId);
+        if (parsed === null) return own;
+        const project = yield* projects
+          .getById(parsed.projectId)
+          .pipe(Effect.orElseSucceed(() => Option.none()));
+        if (Option.isNone(project)) return own;
+        const roots = yield* projectRootFolders
+          .list(parsed.projectId)
+          .pipe(Effect.orElseSucceed((): ReadonlyArray<ProjectRoot> => []));
+        // A root inside this checkout shows in its tree, though its documents index on their own.
+        const nested = yield* Effect.forEach(
+          roots.filter((root) => root.key !== parsed.rootKey && root.state !== "missing"),
+          (root) =>
+            Effect.gen(function* () {
+              const real = yield* fileSystem
+                .realPath(root.path)
+                .pipe(Effect.orElseSucceed(() => root.path));
+              if (real === folder || !isWithinRoot(path, real, folder)) return [];
+              const prefix = path.relative(folder, real).split(path.sep).join("/");
+              const files = yield* read(yield* rootRecord(project.value, root), real);
+              return files.map((file) => `${prefix}/${file}`);
+            }).pipe(Effect.orElseSucceed((): ReadonlyArray<string> => [])),
+          { concurrency: 4 },
+        );
+        // A Git checkout's untracked files can hold a nested root's documents already.
+        return [...new Set([...own, ...nested.flat()])].toSorted();
+      }),
     );
 
   const readNote: WikiService["Service"]["readNote"] = (input) =>
@@ -5306,6 +5497,7 @@ const make = Effect.gen(function* () {
     agentNote,
     pushMirror,
     index,
+    docPaths,
     readNote,
     query,
     readFiles,
@@ -5319,6 +5511,8 @@ const make = Effect.gen(function* () {
     amend,
     transform,
     transformCheckout,
+    projectIndex,
+    projectRename,
     checkoutRead,
     checkoutSearch,
     checkoutWrite,

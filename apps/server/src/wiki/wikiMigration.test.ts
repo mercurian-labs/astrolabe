@@ -144,8 +144,7 @@ const withMigration = <A, E>(body: (harness: Harness) => Effect.Effect<A, E, Ser
           Effect.flatMap((runner) =>
             runner.run({ command: "git", args: ["-C", folder, "init", "--quiet", "-b", "main"] }),
           ),
-          Effect.provide(ProcessRunner.layer),
-          Effect.provide(NodeServices.layer),
+          Effect.provide(ProcessRunner.layer.pipe(Layer.provideMerge(NodeServices.layer))),
         );
         return yield* fileSystem.realPath(folder);
       }).pipe(Effect.orDie);

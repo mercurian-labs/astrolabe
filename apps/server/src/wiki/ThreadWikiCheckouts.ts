@@ -23,7 +23,7 @@ import * as WikiService from "./WikiService.ts";
 import { THREAD_CHECKOUTS_FOLDER } from "./wikiStorage.ts";
 
 /** The thread and wiki whose checkout `folder` is, by where it sits under the state dir. */
-export const checkoutOwner = (
+const checkoutOwner = (
   path: Path.Path,
   stateDir: string,
   folder: string | null,
@@ -57,7 +57,7 @@ export function brokenBasesMessage(bases: ReadonlyArray<BrokenBase>): string {
       ),
     ),
     `How a base is written:\n${BASE_SYNTAX_REMINDER}`,
-    `Fix ${one ? "it" : "them"}, then run ${one ? "it" : "each"} with astrolabe_wiki_query to check what it lists.`,
+    `Fix ${one ? "it" : "them"}, then run ${one ? "it" : "each"} with astrolabe_project_query to check what it lists.`,
   ].join("\n\n");
 }
 

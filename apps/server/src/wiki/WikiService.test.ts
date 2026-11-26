@@ -3921,3 +3921,72 @@ it.effect("moves a note on disk with its links, in a folder without Git and in a
     }),
   ),
 );
+
+it.effect("lists a root's documents and the files they link, with roots inside it, for Docs", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const wikis = yield* WikiService.WikiService;
+      const path = yield* Path.Path;
+      const app = yield* commitNotes(yield* harness.folder("app"), {
+        "README.md": "# App\n\nSee ![[diagram.png]].\n",
+        "diagram.png": "png",
+        "src/main.ts": "export {};\n",
+      });
+      yield* write(app, { "notes/Inner.md": "# Inner\n", "notes/scratch.txt": "x" });
+      const plain = yield* harness.folder("plain");
+      yield* write(plain, {
+        "Alpha.md": "# Alpha\n\n![[pic.png]] and [the spec](files/spec.pdf), [[Beta]].\n",
+        "Beta.md": "# Beta\n",
+        "Open.base": OPEN_BASE,
+        "Board.canvas": JSON.stringify({
+          nodes: [{ id: "a", type: "file", file: "img/card.png", x: 0, y: 0, width: 1, height: 1 }],
+          edges: [],
+        }),
+        "pic.png": "png",
+        "files/spec.pdf": "pdf",
+        "img/card.png": "png",
+        "unused.png": "png",
+        "code.ts": "export {};\n",
+      });
+      const project = yield* projectOver({
+        id: "project-doc-paths",
+        workspaceRoot: app,
+        trackedFolders: [
+          { name: "plain", path: plain },
+          { name: "notes", path: path.join(app, "notes") },
+        ],
+      });
+
+      assert.deepEqual(yield* wikis.docPaths({ wikiId: rootIdOf(project.id, "plain") }), [
+        "Alpha.md",
+        "Beta.md",
+        "Board.canvas",
+        "Open.base",
+        "files/spec.pdf",
+        "img/card.png",
+        "pic.png",
+      ]);
+      // The project folder's tree holds the notes folder, whose documents it lists under it.
+      assert.deepEqual(yield* wikis.docPaths({ wikiId: rootIdOf(project.id, "app") }), [
+        "README.md",
+        "diagram.png",
+        "notes/Inner.md",
+      ]);
+
+      const worktree = path.join(path.dirname(app), "app-feature");
+      yield* git(app, ["worktree", "add", "--quiet", "-b", "feature", worktree]);
+      yield* write(worktree, { "Feature.md": "# Feature\n" });
+      assert.deepEqual(
+        yield* wikis.docPaths({ wikiId: rootIdOf(project.id, "app"), checkout: worktree }),
+        ["Feature.md", "README.md", "diagram.png"],
+      );
+      const elsewhere = yield* harness.folder("elsewhere");
+      assert.equal(
+        (yield* failure(
+          wikis.docPaths({ wikiId: rootIdOf(project.id, "app"), checkout: elsewhere }),
+        )).reason,
+        "invalid",
+      );
+    }),
+  ),
+);

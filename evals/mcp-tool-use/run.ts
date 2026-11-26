@@ -53,7 +53,10 @@ import { projectComposerContextForProvider } from "@t3tools/shared/composerConte
 import { THEME_GUIDE } from "@t3tools/shared/themeCss";
 import { formatThreadLink } from "@t3tools/shared/threadLinks";
 import { buildCodexAdditionalContext } from "../../apps/server/src/provider/CodexDeveloperInstructions.ts";
-import { PULL_REQUEST_LINKING_INSTRUCTIONS } from "@t3tools/provider-core/server/runtimeInstructions";
+import {
+  buildWorkspaceInstructions,
+  PULL_REQUEST_LINKING_INSTRUCTIONS,
+} from "@t3tools/provider-core/server/runtimeInstructions";
 import { makeSideChatContext } from "../../apps/server/src/orchestration-v2/ContextHandoffService.ts";
 import { withInlineContext } from "../../apps/server/src/orchestration-v2/ContextHandoffDelivery.ts";
 import { AttachmentToolkit } from "../../apps/server/src/mcp/toolkits/attachment/tools.ts";
@@ -93,7 +96,7 @@ import {
 } from "../../apps/server/src/mcp/toolkits/pullRequests/tools.ts";
 import { ThemeToolkit } from "../../apps/server/src/mcp/toolkits/theme/tools.ts";
 import { ThreadToolkit } from "../../apps/server/src/mcp/toolkits/thread/tools.ts";
-import { WikiToolkit } from "../../apps/server/src/mcp/toolkits/wiki/tools.ts";
+import { ProjectDocsToolkit } from "../../apps/server/src/mcp/toolkits/projectDocs/tools.ts";
 import { brokenBasesMessage } from "../../apps/server/src/wiki/ThreadWikiCheckouts.ts";
 import { WorktreeToolkit } from "../../apps/server/src/mcp/toolkits/worktree/tools.ts";
 import {
@@ -395,15 +398,17 @@ export const McpToolUseCase = Schema.Struct({
       Schema.Array(Schema.Struct({ match: Schema.String, output: Schema.String })),
     ),
     /**
-     * Wikis linked to the thread's repository. T3 appends their note to `prompt`. `folder` is the
-     * thread's checkout of it: the repository itself for a project wiki. `reach` is how the
-     * session's file tools reach it, as `wikiCheckoutReach` decides per provider; default `edit`.
+     * The folders of the thread's project, its working folder first; Git repositories unless `git`
+     * is false. With several, T3's list of them follows `prompt`. `reach` is how the session's file
+     * tools reach a folder, as `wikiCheckoutReach` decides per provider; default `edit`. A folder
+     * they can't edit is named in T3's wikis note, also after `prompt`.
      */
-    linkedWikis: Schema.optional(
+    projectRoots: Schema.optional(
       Schema.Array(
         Schema.Struct({
           name: Schema.String,
           folder: Schema.String,
+          git: Schema.optional(Schema.Boolean),
           reach: Schema.optional(Schema.Literals(["edit", "shell", "none"])),
         }),
       ),
@@ -556,7 +561,7 @@ const t3SourceTools: ReadonlyArray<Tool.Any> = [
   DeviceToolkit,
   HtmlToolkit,
   CodeToolkit,
-  WikiToolkit,
+  ProjectDocsToolkit,
   CanvasToolkit,
   ChangeGroupToolkit,
   MessageToolkit,
@@ -1312,10 +1317,29 @@ export const buildMessages = (sample: Sample) => {
       : testCase.promptContext === undefined
         ? testCase.prompt
         : projectComposerContextForProvider({ text: testCase.prompt, ...testCase.promptContext });
-  const wikiNote = linkedWikiAgentNote(
-    (testCase.setup.linkedWikis ?? []).map((wiki) => ({ ...wiki, reach: wiki.reach ?? "edit" })),
+  const roots = testCase.setup.projectRoots ?? [];
+  const folderNote =
+    roots.length < 2
+      ? ""
+      : buildWorkspaceInstructions({
+          cwd: roots[0]!.folder,
+          workspace: {
+            folders: roots.map((root) => ({
+              name: root.name,
+              path: root.folder,
+              isGitRepository: root.git ?? true,
+            })),
+            extraRoots: [],
+          },
+        });
+  const reachNote = linkedWikiAgentNote(
+    roots.flatMap(({ name, folder, reach }) =>
+      reach === undefined || reach === "edit" ? [] : [{ name, folder, reach }],
+    ),
   );
-  const userText = wikiNote === null ? composed : `${composed}\n\n${wikiNote}`;
+  const folderNotes = [folderNote, reachNote ?? ""].filter((note) => note !== "");
+  const userText =
+    folderNotes.length === 0 ? composed : `${composed}\n\n${folderNotes.join("\n\n")}`;
   const prompt =
     sideChatContext === undefined ? userText : withInlineContext(sideChatContext, userText);
   const childPrompt = () => taskPrompt({ task: prompt, role: delegateRole });

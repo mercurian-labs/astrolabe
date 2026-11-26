@@ -455,6 +455,14 @@ const CURRENT_T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
     ["Update", "Updating", "Updated", "a change group"],
     "wiki-amend",
   ),
+  astrolabe_project_orient: tool(["Read", "Reading", "Read", "a skill map"], "wiki-read"),
+  astrolabe_project_links: tool(["Read", "Reading", "Read", "project links"], "wiki-read"),
+  astrolabe_project_query: tool(["Query", "Querying", "Queried", "a base"], "wiki-read"),
+  astrolabe_project_transform: tool(
+    ["Change", "Changing", "Changed", "project docs"],
+    "wiki-amend",
+  ),
+  // Retired tools, kept so past turns still read as what they did.
   astrolabe_wiki_list: tool(["List", "Listing", "Listed", "wikis"], "wiki-read"),
   astrolabe_wiki_read: tool(["Read", "Reading", "Read", "a wiki note"], "wiki-read"),
   astrolabe_wiki_search: tool(["Search", "Searching", "Searched", "a wiki"], "wiki-read"),
