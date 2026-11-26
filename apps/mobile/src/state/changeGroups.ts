@@ -12,7 +12,6 @@ import { connectionAtomRuntime } from "../connection/runtime";
 import { appAtomRegistry } from "./atom-registry";
 import { serverEnvironment } from "./server";
 import { environmentThreadShells } from "./threads";
-import { wikiEnvironment } from "./wiki";
 import { useWorkspaceState } from "./workspace";
 
 /** Astrolabe: what people decided about each change group, and deciding more. */
@@ -32,7 +31,8 @@ const changeGroupsAtom = Atom.family((key: string) =>
       return environmentChangeGroups({
         environmentId,
         threads,
-        overviews: get(wikiEnvironment.overview(environmentId)) ?? [],
+        // Changes are host pull requests and change groups; a docs draft is no member.
+        overviews: [],
         decisions: decisions?.decisions ?? [],
         settings: settings?.changeGroupGrouping ?? null,
         threadBranches: decisions?.threadBranches ?? {},

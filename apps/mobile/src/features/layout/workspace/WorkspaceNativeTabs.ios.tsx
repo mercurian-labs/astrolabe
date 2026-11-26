@@ -41,7 +41,6 @@ const ISSUE_ICON = require("../../../../assets/icons/issue.png");
 
 const SELECTED_SYMBOLS: Partial<Record<NavigationTab, string>> = {
   threads: "text.bubble.fill",
-  wikis: "book.fill",
   repositories: "folder.fill",
 };
 

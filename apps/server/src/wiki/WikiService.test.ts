@@ -3705,6 +3705,38 @@ it.effect("reads a Git checkout on disk, uncommitted notes included, and no othe
   ),
 );
 
+it.effect("reads files in a Git checkout as they stand, as a board on disk reads its cards", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const wikis = yield* WikiService.WikiService;
+      const docs = yield* commitNotes(yield* harness.folder("docs-files"));
+      const project = yield* projectOver({ id: "project-files", workspaceRoot: docs });
+      const wikiId = rootIdOf(project.id, "docs-files");
+      yield* write(docs, {
+        "Board.canvas": '{"nodes":[],"edges":[]}',
+        "Beta.md": "# Beta\n\nEdited.\n",
+        "notes/Fresh.md": "# Fresh\n",
+      });
+      const read = yield* wikis.readFiles({
+        wikiId,
+        checkout: docs,
+        paths: ["Board.canvas", "Beta", "Fresh", "Gone.md"],
+      });
+      assert.deepEqual(
+        read.files.map(({ file, exists, text }) => ({ file, exists, text })),
+        [
+          { file: "Board.canvas", exists: true, text: '{"nodes":[],"edges":[]}' },
+          { file: "Beta.md", exists: true, text: "# Beta\n\nEdited.\n" },
+          { file: "notes/Fresh.md", exists: true, text: "# Fresh\n" },
+          { file: "Gone.md", exists: false, text: null },
+        ],
+      );
+      const committed = yield* wikis.readFiles({ wikiId, paths: ["Board.canvas"] });
+      assert.isFalse(committed.files[0]?.exists);
+    }),
+  ),
+);
+
 it.effect("moves a note on disk with its links, in a folder without Git and in a worktree", () =>
   withWikis((harness) =>
     Effect.gen(function* () {

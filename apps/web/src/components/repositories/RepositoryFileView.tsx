@@ -137,6 +137,7 @@ import { useRepositoryDocument } from "./useRepositoryDocument";
 import { fileView, type RenderedForm } from "./fileView";
 import { RenderedFormToggle, useRenderedForm } from "./RepositoryFileHeader";
 import { onOwnEditsSaved } from "./ownEditsSaved";
+import { opensAsProjectDocument, projectDocumentOwner } from "./projectDocument";
 
 // The editor reads the app's theme tokens, as a wiki note does. Module-level: a new object would
 // rebuild the editor's styles.
@@ -212,6 +213,15 @@ export function RepositoryFileView({
 }) {
   const { environmentId, cwd, path } = tab;
   const key = `${environmentId}\0${cwd}\0${path}`;
+  // A project's notes, canvases and bases open in the document editors; a thread's linked tab
+  // keeps the code editor, which shows its turn's changes.
+  if (linked === undefined && projectDocumentOwner(tab) !== null && opensAsProjectDocument(path)) {
+    return (
+      <Suspense fallback={<FileNotice>Opening…</FileNotice>}>
+        <ProjectDocumentView key={key} tabKey={tabKey} tab={tab} />
+      </Suspense>
+    );
+  }
   const view = fileView(path);
   if (view.kind !== "text") {
     return (
@@ -232,6 +242,8 @@ export function RepositoryFileView({
   );
 }
 
+// The document editors bring the Markdown and canvas machinery; a code file never loads them.
+const ProjectDocumentView = lazy(() => import("./ProjectDocumentView"));
 // Viewers stay out of the bundle until a file needs one, as in the thread's file panel.
 const RepositoryFileViewer = lazy(() => import("./RepositoryFileViewers"));
 const RenderedFileView = lazy(() =>

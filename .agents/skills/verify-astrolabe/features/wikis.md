@@ -231,16 +231,11 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   saving the worktree to agree with main clears it. Revert an amendment that later work drew an
   arrow on: a toast says the arrow was dropped. Invalid JSON on a side is a conflict and the file is
   left as it was.
-- **Canvas review on the phone** (`WikiCanvasReviewRouteScreen.tsx`, `WikiCanvasChanges.tsx`): the
-  pull request's row shows a count such as `2 added, 1 moved`, and a deleted canvas's row opens
-  too. It opens the board with marks and the list below; a row selects its card. A conflict says it
-  can't be settled from the phone, and the notes show under the merge card.
 - **Canvases on the phone** (`WikiCanvasScreen.tsx`, the page's `mobileCanvas.tsx`): an agent's
-  change shows in the feed as a row, `Changed the canvas <name>`, that opens it in the change
-  request, with the same marks and one highlight per commit. A `.canvas`
-  lists in the tree as `button "<name>.canvas"`, and opens in `WikiDocument`
-  from the list, a pull request's documents, links in notes and a base's rows, subtitle
-  `<wiki> · Main · Canvas` (`· read only` where it can't be edited), full screen with no tab bar,
+  change shows in the feed as a row, `Changed the canvas <name>`, that opens it. A `.canvas`
+  lists in the tree as `button "<name>.canvas"`, and opens in `ProjectDocument`
+  from Projects, links in notes and a base's rows, subtitle
+  `<folder> · Main · Canvas` (`On disk` in place of Main, `· read only` where it can't be edited), full screen with no tab bar,
   and a `Jump to section` header menu when it has labelled
   groups. Walk: touch pan, pinch, left-edge back swipe, first tap selects and a second acts (a link,
   a code card, a file card's name; Back returns to the board with its camera). File cards read in
@@ -251,27 +246,21 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   fail). Base cards, nested canvases as minimaps, `![[Board.canvas]]` in a note, Mermaid on cards and
   in notes (each diagram type injected the first time it draws, `peleOnDemand.ts`). Android is
   the same code and needs its own walk.
-- **Mobile** (iPhone; iPad drops the tab, `workspace-tabs-state.ts`): a Wikis tab
-  (`apps/mobile/src/features/wikis/WikisScreen.tsx`) with its search `Search wikis` and a
-  `Filter by wiki` menu (All wikis, each wiki), then a `Show or hide hidden files` pill. The pills
-  share one scroll area, so a snapshot ref's centre can land on the next pill: tap a pill by its
-  coordinate. With any open, the first row reads "Open
-  changes · N" but is named `button "N open changes"` ("1 open change"); it narrows Change
-  requests to wikis and this filter's wiki, then switches there. A draft adds a
-  `Draft · N documents` row. Documents follow as a tree by folder, each wiki under its name:
-  folders are `button "<folder>"` (a tap folds it), files `button "<path>"` (`Home.md`,
-  `ops/Runbook.md`). Search results name a document with its wiki, `button "<doc>, <wiki>"`. A document (route `WikiDocument`) is the wiki editor in a web
-  view; its header has `Edit the document`/`Stop editing` (iOS exposes them as `button "Edit"`/`"Done"`;
-  not on read-only skill maps), and
-  there is no Save: the subtitle reads `Saving…` then `Saved`, or `saves when the turn ends`
-  while an agent works. With a draft a bar in place of Main (`Draft · N documents`) opens the "Your
-  draft" sheet: `Pull request title` and Make it a pull request, Move with its documents, and
-  Discard. A
-  pull request (route `WikiChangeRequest`, from the Changes tab) has `Pull
-  request actions` (on iOS the ⋯ button is named after the pull request; Merge into main,
-  Close/Reopen, and Open thread when it has one; a draft's offers the sheet instead of Merge and Close), "Amendments (N)" with
-  `Revert <subject>` while open, and "Documents changed (N)". Adding a wiki or a document
-  stays on the computer. Walk it on an iPhone with test-t3-mobile.
+- **Mobile** (iPhone; iPad and Android have no Projects tab, `workspace-tabs-state.ts`): no
+  Wikis tab. A note, canvas or base in the Projects tab (`RepositoriesScreen.tsx`: recent,
+  uncommitted, search) or its file tree (`Browse all files`, and a `Browse <folder>` row per
+  tracked folder outside the project's own) opens `ProjectDocument`
+  (`projects/:environmentId/:projectId/:rootKey/documents/:name`, `features/wikis/`), found by
+  the deepest root holding it (`locateProjectRoot`). The tree's filter menu (`Show`: All files /
+  Docs) keeps notes, canvases, bases, skill maps, the files they link, their folders and the open
+  file (`projectRoots.docPaths`). Edits route by `projectDocEditTarget`: a hosted repository's
+  main checkout on its default branch saves to a draft (subtitle `In your draft`), whose bar opens
+  "Your draft" with a title, **Open pull request** and Discard; anything else (another branch, a
+  thread's worktree, no host, a plain folder) writes the file on disk (subtitle `On disk`). There
+  is no Save: the subtitle reads `Saving…` then `Saved`. Links resolve across the project's
+  folders: `[[Plan]]` in its own folder first, `folder:Plan` in another, and several matches ask
+  which one. Old `wikis/...` links redirect to the document, or to Projects. Walk it on an iPhone
+  with test-t3-mobile.
 
 - **What reviews are called**: every label on a wiki names its host's word: merge request on
   a GitLab wiki, pull request on the others and on a local wiki.
@@ -398,8 +387,8 @@ Needs a real agent (its cheapest model); Replay doesn't edit files.
 Changes), `wiki/wikiFilter.ts` and `components/projects/storedChoice.ts` (behind
 `astrolabe:wiki-filter:v1`; storedChoice is shared with Projects and the Agents filter),
 `projects/ThreadsFilterParts.tsx` (the pills, shared with Agents), the Wikis branches in `AppSidebarLayout.tsx` and
-`sidebar/mainAppLocation.ts`, and `apps/mobile/src/features/wikis/` (the iPhone Wikis tab;
-`WikiChangesSection.tsx` is pull-requests.md's). Linking and the agent note: `wikiLinkStep.tsx`
+`sidebar/mainAppLocation.ts`, and `apps/mobile/src/features/wikis/` (the phone's document screens, opened from Projects;
+`features/files/fileTreeDocs.ts` for its Docs filter). Linking and the agent note: `wikiLinkStep.tsx`
 and the palette's link step in `CommandPalette.tsx`, the Wikis section in
 `settings/ProjectSettingsPanel.tsx`, server `wiki/WikiService.ts` and
 `orchestration-v2/ProviderTurnStartService.ts`. Settings → Wikis:

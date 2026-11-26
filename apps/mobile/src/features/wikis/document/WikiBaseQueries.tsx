@@ -4,14 +4,7 @@ import {
   type WikiEditorEmbeddedFile,
   type WikiEditorResolvedLink,
 } from "@mercurian/wiki-editor/protocol";
-import { exactWikiPath, wikiDocumentScope } from "@t3tools/client-runtime/wikiLogic";
-import { resolveLink, unwrittenFile, type WikiLinkFiles } from "@mercurian/wiki/resolve-link";
-import type {
-  EnvironmentId,
-  WikiChangeRequest,
-  WikiChangeRequestId,
-  WikiId,
-} from "@t3tools/contracts";
+import type { EnvironmentId, WikiChangeRequestId, WikiId, WikiNoteInput } from "@t3tools/contracts";
 import { useEffect } from "react";
 
 import { useEnvironmentQuery } from "../../../state/query";
@@ -29,13 +22,15 @@ interface Scope {
   readonly environmentId: EnvironmentId;
   readonly wikiId: WikiId;
   readonly changeRequestId: WikiChangeRequestId | undefined;
+  /** The folder the notes are read in on disk, when the document is. */
+  readonly checkout: string | null;
   /** The note the blocks sit in, which `this` names inside them. */
   readonly note: string;
   readonly onAnswer: (source: string, answer: WikiBaseAnswer) => void;
 }
 
 function WikiBaseQuery({ source, ...scope }: Scope & { readonly source: string }) {
-  const { environmentId, wikiId, changeRequestId, note, onAnswer } = scope;
+  const { environmentId, wikiId, changeRequestId, checkout, note, onAnswer } = scope;
   // An embedded base runs by its file and view; a block, by its YAML in the note.
   const embedded = embeddedBase(source);
   const { data, error } = useEnvironmentQuery(
@@ -44,6 +39,7 @@ function WikiBaseQuery({ source, ...scope }: Scope & { readonly source: string }
       input: {
         wikiId,
         ...(changeRequestId === undefined ? {} : { changeRequestId }),
+        ...(checkout === null ? {} : { checkout }),
         ...(embedded === null
           ? { source, note }
           : { base: embedded.base, note, ...(embedded.view ? { view: embedded.view } : {}) }),
@@ -72,46 +68,31 @@ export function WikiBaseQueries({
 function WikiNoteRead({
   name,
   environmentId,
-  wikiId,
-  changeRequestId,
-  draft,
-  files,
-  from,
+  locate,
   onRead,
 }: Omit<WikiNoteReadsProps, "names"> & { readonly name: string }) {
-  const { file: landed, others } =
-    files === null ? { file: null, others: NO_FILES } : resolveLink(name, from, files);
-  const file = landed ?? unwrittenFile(name, from);
-  const readsFrom = wikiDocumentScope({ tabChangeRequestId: changeRequestId, draft, file });
-  const { data } = useEnvironmentQuery(
-    wikiEnvironment.note({
-      environmentId,
-      input: {
-        wikiId,
-        name: exactWikiPath(file),
-        ...(readsFrom === undefined ? {} : { changeRequestId: readsFrom }),
-      },
-    }),
-  );
-  const otherFiles = others.join("\0");
+  const { input, link } = locate(name);
+  const { data } = useEnvironmentQuery(wikiEnvironment.note({ environmentId, input }));
+  const landed = link.file;
+  const otherFiles = link.others.join("\0");
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- each read crosses into the editor's web view, outside React
   useEffect(() => {
-    const link = { file: landed, others: otherFiles === "" ? NO_FILES : otherFiles.split("\0") };
-    if (data !== null) onRead(name, data.exists ? data.source : null, link);
+    const found = { file: landed, others: otherFiles === "" ? NO_FILES : otherFiles.split("\0") };
+    if (data !== null) onRead(name, data.exists ? data.source : null, found);
   }, [data, name, landed, otherFiles, onRead]);
   return null;
+}
+
+/** Where a link's preview reads its note, in whichever of the project's roots it lands. */
+export interface WikiNoteLocation {
+  readonly input: WikiNoteInput;
+  readonly link: WikiEditorResolvedLink;
 }
 
 export interface WikiNoteReadsProps {
   readonly names: ReadonlyArray<string>;
   readonly environmentId: EnvironmentId;
-  readonly wikiId: WikiId;
-  readonly changeRequestId: WikiChangeRequestId | undefined;
-  readonly draft: WikiChangeRequest | null;
-  /** What the links search, once it's here. */
-  readonly files: WikiLinkFiles | null;
-  /** The file the links are written in. */
-  readonly from: string;
+  readonly locate: (name: string) => WikiNoteLocation;
   readonly onRead: (name: string, source: string | null, link: WikiEditorResolvedLink) => void;
 }
 

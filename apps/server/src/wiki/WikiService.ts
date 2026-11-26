@@ -4254,11 +4254,61 @@ const make = Effect.gen(function* () {
       Effect.map((disk) => ({ commit: disk.commit, plain: disk.plain! })),
     );
 
+  /** `readFiles` in a Git checkout: its HEAD's files with the documents edited on disk over them. */
+  const filesOnDisk = Effect.fn("WikiService.filesOnDisk")(function* (
+    wiki: WikiRecord,
+    folder: string,
+    input: Pick<WikiReadFilesInput, "paths" | "from">,
+  ) {
+    const disk = yield* gitDiskRead(wiki, folder);
+    const listing = yield* fileListingAt(wiki, disk.commit);
+    const sizes = new Map(listing.entries.map((entry) => [entry.file, entry.size] as const));
+    for (const [file, text] of Object.entries(disk.changes)) {
+      if (text === null) sizes.delete(file);
+      else sizes.set(file, Buffer.byteLength(text));
+    }
+    const links = linkFiles(sizes.keys());
+    const files = yield* Effect.forEach(input.paths, (asked) =>
+      Effect.gen(function* () {
+        const { file } = resolveLink(asked, input.from ?? null, links);
+        const size = file === null ? undefined : sizes.get(file);
+        if (file === null || size === undefined) {
+          return {
+            path: asked,
+            exists: false,
+            file: asked.replace(/^\/+/, ""),
+            size: 0,
+            text: null,
+          };
+        }
+        const text =
+          size > READ_TEXT_BYTES || isMediaFile(file)
+            ? null
+            : (disk.snapshot.files[file] ??
+              (yield* fileSystem
+                .readFileString(path.join(folder, file))
+                .pipe(Effect.orElseSucceed(() => null))));
+        return {
+          path: asked,
+          exists: true,
+          file,
+          size,
+          text: text === null || /[\0\uFFFD]/.test(text) ? null : text,
+        };
+      }),
+    );
+    return { commit: disk.commit, files };
+  });
+
   const readFiles: WikiService["Service"]["readFiles"] = (input) =>
     withAnyWiki(
       input.wikiId,
       (wiki) =>
         Effect.gen(function* () {
+          if (input.checkout !== undefined && !wiki.plain) {
+            const folder = yield* diskFolder(wiki, input);
+            if (folder !== null) return yield* filesOnDisk(wiki, folder, input);
+          }
           const plain = wiki.plain ? yield* plainListing(wiki) : null;
           const commit = plain?.commit ?? (yield* fileCommit(wiki, input));
           const listing = plain?.plain.listing ?? (yield* fileListingAt(wiki, commit));

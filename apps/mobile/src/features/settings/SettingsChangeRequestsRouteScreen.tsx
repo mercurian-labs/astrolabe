@@ -26,7 +26,7 @@ const ROWS: ReadonlyArray<{
   {
     key: "sameThread",
     label: "Same thread",
-    subtitle: "A thread's pull requests and its wiki changes form one group.",
+    subtitle: "A thread's pull requests form one group.",
   },
   {
     key: "coordinator",

@@ -1,12 +1,12 @@
 /* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
-import { useAtomValue } from "@effect/atom-react";
+import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import {
   canvasGroups,
   parseCanvas,
   type CanvasData,
   type CanvasMarks,
-  type CanvasReview,
 } from "@mercurian/wiki/canvas";
+import { isWikiDocument } from "@mercurian/wiki/resolve-link";
 import type { CanvasHandEdit } from "@mercurian/wiki/canvas-edits";
 import type { CanvasBoardSettings } from "@mercurian/wiki-editor/canvas-board";
 import {
@@ -36,14 +36,13 @@ import {
   wikiDocumentScope,
   wikiDraft,
   NO_NOTE_FROM_RELATIVE_LINK,
-  wikiLinkOpens,
   wikiTerms,
 } from "@t3tools/client-runtime/wikiLogic";
-import type { EnvironmentId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
+import type { WikiChangeRequestId } from "@t3tools/contracts";
 import { mediaMimeTypeFromExtension } from "@t3tools/shared/filePreview";
 import { DEFAULT_WIKI_CANVAS_SETTINGS } from "@t3tools/contracts";
 import { typedNoteFile } from "@mercurian/wiki/placement";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { use, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, View } from "react-native";
 
 import { FilePreviewModal, type FilePreviewSource } from "../../components/ui/FilePreviewModal";
@@ -57,7 +56,7 @@ import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { assetEnvironment } from "../../state/assets";
 import { useProjects } from "../../state/entities";
 import { useEnvironments } from "../../state/environments";
-import { useWikiPlacement } from "./wikiPreferences";
+import { projectEnvironment } from "../../state/projects";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
 import { usePreparedConnection } from "../../state/session";
@@ -66,14 +65,20 @@ import { useAtomQueryRunner } from "../../state/use-atom-query-runner";
 import { wikiEnvironment } from "../../state/wiki";
 import { fileRoutePathSegments } from "../files/filePath";
 import { useEditorTheme } from "./document/useEditorTheme";
-import { useWikiAutosave, useWikiAutosaveCommand, wikiSaveLabel } from "./document/useWikiAutosave";
+import {
+  useWikiAutosave,
+  useWikiAutosaveCommand,
+  useWikiDiskCommands,
+  wikiSaveLabel,
+} from "./document/useWikiAutosave";
+import { openProjectLink } from "./document/openProjectLink";
+import { useProjectLinkRoots, type ProjectDocument } from "./document/useProjectDocument";
 import { WikiBaseQueries, type WikiBaseAnswer } from "./document/WikiBaseQueries";
-import { wikiDocumentSubtitle } from "./document/wikiDocument.logic";
+import { projectLinkOpens, wikiDocumentSubtitle } from "./document/wikiDocument.logic";
 import { WikiBelowHeader } from "./document/WikiBelowHeader";
 import { WikiNotice } from "./document/WikiNotice";
 import { WikiDraftBar } from "./document/WikiDraftBar";
 import { WikiEditorWebView, type WikiEditorHandle } from "./document/WikiEditorWebView";
-import { WikiCanvasChanges } from "./WikiCanvasChanges";
 import type { WikiDocumentParams } from "./wikiRoutes";
 
 const QUIET_READ = { reportFailure: false, reportDefect: false };
@@ -126,25 +131,25 @@ function previewKind(path: string): FilePreviewSource["kind"] | null {
 }
 
 /**
- * A `.canvas` file on its own, read at the commit the wiki stands at and refreshed per commit with
- * the camera kept. The editor page draws the board; this screen reads for it. With `review`, a
- * change request's board with marks takes its place, its cards read at that head; without it, a
- * canvas read in a change request still marks what that changes.
+ * A `.canvas` file on its own, read at the commit its folder stands at and refreshed per commit
+ * with the camera kept, or as it stands on disk when that is where its edits go. The editor page
+ * draws the board; this screen reads for it. A canvas read in a change request marks what that
+ * changes.
  */
 export function WikiCanvasScreen({
   params,
-  review,
+  doc,
 }: {
   readonly params: WikiDocumentParams;
-  readonly review?: { readonly board: CanvasReview; readonly commit: string };
+  readonly doc: ProjectDocument;
 }) {
   const navigation = useNavigation();
-  const environmentId = params.environmentId as EnvironmentId;
-  const wikiId = params.wikiId as WikiId;
+  const registry = use(RegistryContext);
+  const { environmentId, wikiId, routeChangeRequestId, disk, placement } = doc;
   const file = params.name;
-  const routeChangeRequestId = params.changeRequestId as WikiChangeRequestId | undefined;
+  const onDisk = disk === null ? {} : { checkout: disk };
   const changeRequests = useEnvironmentQuery(
-    wikiEnvironment.changeRequests({ environmentId, input: { wikiId } }),
+    disk === null ? wikiEnvironment.changeRequests({ environmentId, input: { wikiId } }) : null,
   );
   const all = changeRequests.data?.changeRequests;
   const draft = wikiDraft(all);
@@ -156,15 +161,47 @@ export function WikiCanvasScreen({
   const scope = changeRequestId === undefined ? {} : { changeRequestId };
   const title = documentTitle(file);
 
-  const query = useEnvironmentQuery(
-    wikiEnvironment.files({
-      environmentId,
-      input: { wikiId, ...scope, paths: [exactWikiPath(file)] },
-    }),
+  const fromLine = useEnvironmentQuery(
+    disk === null
+      ? wikiEnvironment.files({
+          environmentId,
+          input: { wikiId, ...scope, paths: [exactWikiPath(file)] },
+        })
+      : null,
+  );
+  const diskRead = disk === null ? null : { cwd: disk, relativePath: file, allowMissing: true };
+  const fromDisk = useEnvironmentQuery(
+    diskRead === null ? null : projectEnvironment.readFile({ environmentId, input: diskRead }),
   );
   const index = useEnvironmentQuery(
-    wikiEnvironment.index({ environmentId, input: { wikiId, ...scope } }),
+    wikiEnvironment.index({ environmentId, input: { wikiId, ...scope, ...onDisk } }),
   );
+  const linkRoots = useProjectLinkRoots({
+    environmentId,
+    projectId: doc.projectId,
+    roots: doc.roots,
+    rootKey: doc.rootKey,
+    ownIndex: index.data,
+    disk: disk !== null,
+  });
+  // On disk the folder's index says what it stands at; the board reads the file as it is.
+  const diskCommit = index.data?.commit ?? null;
+  const diskData = useMemo(
+    () =>
+      fromDisk.data === null || diskCommit === null
+        ? null
+        : {
+            commit: diskCommit,
+            files: [
+              {
+                exists: fromDisk.data.exists !== false,
+                text: fromDisk.data.truncated ? null : fromDisk.data.contents,
+              },
+            ],
+          },
+    [fromDisk.data, diskCommit],
+  );
+  const query = disk === null ? fromLine : { error: fromDisk.error, data: diskData };
   const wikis = useEnvironmentQuery(wikiEnvironment.list({ environmentId, input: {} }));
   const wiki = wikis.data?.wikis.find((entry) => entry.wikiId === wikiId) ?? null;
   const viewing =
@@ -175,23 +212,26 @@ export function WikiCanvasScreen({
   if (query.data !== null && query.data !== files) setFiles(query.data);
   const read = files?.files[0];
   const text = read?.text ?? null;
-  const commit = review?.commit ?? files?.commit ?? null;
+  const commit = files?.commit ?? null;
   const parsed = useMemo(() => (text === null ? null : parseCanvas(text)), [text]);
-  // Reviewing has its board already. Read in a change request, it marks what that changes.
+  // Read in a change request, it marks what that changes.
   const detail = useEnvironmentQuery(
-    changeRequestId === undefined || review !== undefined
+    changeRequestId === undefined
       ? null
       : wikiEnvironment.changeRequest({ environmentId, input: { wikiId, changeRequestId } }),
   );
   const changes = detail.data;
-  const live = useMemo(() => changeRequestCanvasReview(changes, file, text), [changes, file, text]);
-  const board = review?.board ?? live;
+  const board = useMemo(
+    () => changeRequestCanvasReview(changes, file, text),
+    [changes, file, text],
+  );
   const data = board?.data ?? (parsed?.ok ? parsed.data : null);
   // Your own draft's cards all read as changed, which says nothing a person doesn't know.
   const marks = changes?.changeRequest.draft === true ? undefined : board?.marks;
-  const canWrite = useAtomValue(wikiEnvironment.autosave.permissionAtom(environmentId));
+  const canDraft = useAtomValue(wikiEnvironment.autosave.permissionAtom(environmentId));
+  const canWriteDisk = useAtomValue(wikiEnvironment.transform.permissionAtom(environmentId));
+  const canWrite = disk === null ? canDraft : canWriteDisk;
   const editable =
-    review === undefined &&
     canWrite &&
     (routeChangeRequestId === undefined || changes !== null) &&
     !isSettledChangeRequest(changes?.changeRequest);
@@ -202,7 +242,6 @@ export function WikiCanvasScreen({
   const settings =
     environments.find((each) => each.environmentId === environmentId)?.serverConfig?.settings
       .wikiCanvas ?? DEFAULT_WIKI_CANVAS_SETTINGS;
-  const placement = useWikiPlacement(environmentId);
   const updateSettings = useAtomCommand(serverEnvironment.updateSettings, {
     label: "canvas settings update",
     reportFailure: true,
@@ -279,6 +318,21 @@ export function WikiCanvasScreen({
   }, [commit]);
 
   const runFiles = useAtomQueryRunner(wikiEnvironment.files, QUIET_READ);
+  const runRead = useAtomQueryRunner(projectEnvironment.readFile, QUIET_MINT);
+  /** A document as it stands in the folder on disk; null where it can't be read as text. */
+  const readOnDisk = async (folder: string, path: string) => {
+    const result = await runRead({
+      environmentId,
+      input: { cwd: folder, relativePath: path, allowMissing: true },
+    });
+    if (result._tag !== "Success") return { file: path, exists: false, text: null };
+    const read = result.value;
+    return {
+      file: path,
+      exists: read.exists !== false,
+      text: read.exists === false || read.truncated ? null : read.contents,
+    };
+  };
   // The first note of a new draft reads back before the list of change requests has it.
   const noteDraft = useRef<WikiChangeRequestId | undefined>(undefined);
   const runCode = useAtomQueryRunner(wikiEnvironment.codeStatus, QUIET_READ);
@@ -287,6 +341,29 @@ export function WikiCanvasScreen({
   const httpBaseUrl = connection._tag === "Some" ? connection.value.httpBaseUrl : null;
 
   const answerFiles = async (requestId: number, paths: ReadonlyArray<string>) => {
+    if (disk !== null) {
+      // Documents as they stand on disk; any other file as the folder's commit holds it.
+      const documents = paths.filter((path) => isWikiDocument(path));
+      const others = paths.filter((path) => !isWikiDocument(path));
+      const [read, held] = await Promise.all([
+        Promise.all(documents.map((path) => readOnDisk(disk, path))),
+        others.length === 0
+          ? null
+          : runFiles({ environmentId, input: { wikiId, from: file, paths: others } }),
+      ]);
+      const byPath = new Map<string, { file: string; exists: boolean; text: string | null }>(
+        read.map((each) => [each.file, each]),
+      );
+      if (held?._tag === "Success") {
+        held.value.files.forEach((each, position) => byPath.set(others[position]!, each));
+      }
+      const cards = paths.flatMap((path) => {
+        const each = byPath.get(path);
+        return each === undefined ? [] : [cardFile(each.file, each)];
+      });
+      for (const message of filesReadMessages(requestId, cards)) editor.current?.send(message);
+      return;
+    }
     const cardsFrom = draft?.changeRequestId ?? noteDraft.current;
     const revision = shown.current.commit;
     const result = await runFiles({
@@ -348,6 +425,21 @@ export function WikiCanvasScreen({
   };
 
   const send = useWikiAutosaveCommand();
+  const writeDisk = useWikiDiskCommands();
+  /** Lands a transform: on disk in the folder, else in the change request or the draft. */
+  const land = (
+    document: string,
+    transform: Parameters<typeof writeDisk.transform>[0]["input"]["transform"],
+  ) =>
+    disk !== null
+      ? writeDisk.transform({
+          environmentId,
+          input: { wikiId, checkout: disk, message: `Edit ${documentTitle(document)}`, transform },
+        })
+      : send({
+          environmentId,
+          input: { wikiId, ...landing, document, write: { kind: "transform", transform } },
+        });
   // The page's latest list of everything unlanded: each `canvasEdited` replaces the last.
   const unlanded = useRef<{
     readonly edits: ReadonlyArray<CanvasHandEdit>;
@@ -360,25 +452,17 @@ export function WikiCanvasScreen({
     save: async () => {
       const taken = unlanded.current;
       if (taken === null) return { ok: true };
-      const outcome = await send({
-        environmentId,
-        input: {
-          wikiId,
-          ...landing,
-          document: file,
-          write: {
-            kind: "transform",
-            transform: { kind: "canvas", file, edits: [...taken.edits] },
-          },
-        },
-      });
+      const outcome = await land(file, { kind: "canvas", file, edits: [...taken.edits] });
       if (!outcome.ok) return outcome;
       if (unlanded.current === taken) unlanded.current = null;
       editor.current?.send({
         type: "canvasLanded",
         through: taken.through,
-        commit: outcome.value.commit,
+        commit: "commit" in outcome.value ? outcome.value.commit : null,
       });
+      if (diskRead !== null) {
+        registry.refresh(projectEnvironment.readFile({ environmentId, input: diskRead }));
+      }
       return { ok: true };
     },
   });
@@ -393,6 +477,9 @@ export function WikiCanvasScreen({
         };
       }
       case "read-file": {
+        if (disk !== null) {
+          return { kind: "value", value: (await readOnDisk(disk, ask.path)).text };
+        }
         const revision = shown.current.commit;
         const result = await runFiles({
           environmentId,
@@ -426,6 +513,13 @@ export function WikiCanvasScreen({
         };
       case "write-note": {
         const { file: note, text, readAt } = ask;
+        if (disk !== null) {
+          const written = await writeDisk.writeText({
+            environmentId,
+            input: { cwd: disk, relativePath: note, contents: text },
+          });
+          return { kind: "failure", message: written.ok ? null : written.message };
+        }
         const outcome = await send({
           environmentId,
           input: {
@@ -444,21 +538,10 @@ export function WikiCanvasScreen({
         return { kind: "failure", message: outcome.ok ? null : outcome.message };
       }
       case "rename": {
-        const outcome = await send({
-          environmentId,
-          input: {
-            wikiId,
-            ...landing,
-            document: ask.file,
-            write: {
-              kind: "transform",
-              transform: {
-                kind: "rename",
-                from: ask.file.replace(/\.md$/i, ""),
-                to: ask.to,
-              },
-            },
-          },
+        const outcome = await land(ask.file, {
+          kind: "rename",
+          from: ask.file.replace(/\.md$/i, ""),
+          to: ask.to,
         });
         return { kind: "failure", message: outcome.ok ? null : outcome.message };
       }
@@ -493,23 +576,29 @@ export function WikiCanvasScreen({
   const openLink = (name: string, from: string = file) => {
     // A bare name is a note's. Anything with a file's extension that's no document opens as a file.
     const media = !["other", "note", "canvas", "base"].includes(canvasFileKind(name));
-    const document = wikiLinkOpens(index.data, name, from, placement);
-    if (document === null) {
+    const opens = projectLinkOpens({
+      roots: linkRoots,
+      root: doc.rootKey,
+      target: name,
+      from,
+      placement,
+    });
+    if (opens.kind === "none") {
       Dialog.alert("No note made", NO_NOTE_FROM_RELATIVE_LINK);
       return;
     }
-    if (media || !isDocumentFile(document)) {
+    if (media || (opens.kind === "open" && !isDocumentFile(opens.file))) {
       openFile(name);
       return;
     }
-    navigation.dispatch(
-      StackActions.push("WikiDocument", {
-        environmentId: params.environmentId,
-        wikiId: params.wikiId,
-        name: document,
-        ...scope,
-      }),
-    );
+    openProjectLink({
+      roots: linkRoots,
+      params,
+      target: name,
+      from,
+      placement,
+      open: (next) => navigation.dispatch(StackActions.push("ProjectDocument", next)),
+    });
   };
 
   const onEvent = (event: WikiEditorEvent) => {
@@ -603,18 +692,17 @@ export function WikiCanvasScreen({
   const saveLabel = wikiSaveLabel(status);
   const subtitle = [
     wikiDocumentSubtitle({
-      wikiName: wiki?.name ?? null,
+      wikiName: doc.root?.name ?? wiki?.name ?? null,
       file: file,
       changeRequest: viewing,
       readsChangeRequest: changeRequestId !== undefined,
+      onDisk: disk !== null,
       noun: wikiTerms(wiki).singular,
       agentWorking: false,
     }),
-    review !== undefined
-      ? "Canvas · changes"
-      : editable && !readOnly
-        ? `Canvas${saveLabel === null ? "" : ` · ${saveLabel}`}`
-        : "Canvas · read only",
+    editable && !readOnly
+      ? `Canvas${saveLabel === null ? "" : ` · ${saveLabel}`}`
+      : "Canvas · read only",
   ].join(" · ");
   const header = (
     <NativeStackScreenOptions
@@ -624,24 +712,6 @@ export function WikiCanvasScreen({
   );
 
   const body = () => {
-    if (review !== undefined) {
-      return (
-        <>
-          <View className="flex-1">
-            <WikiEditorWebView
-              ref={editor}
-              onEvent={onEvent}
-              initialCommands={initialCommands}
-              fixed
-            />
-          </View>
-          <WikiCanvasChanges
-            review={review.board}
-            onPick={(id) => editor.current?.send({ type: "focusCard", id, select: true })}
-          />
-        </>
-      );
-    }
     if (files === null) {
       return query.error !== null ? (
         <EmptyState title={`Couldn't open ${title}`} detail={query.error} />
@@ -702,13 +772,10 @@ export function WikiCanvasScreen({
         </Toolbar>
       ) : null}
       <WikiBelowHeader>
-        {draft !== null &&
-        review === undefined &&
-        (routeChangeRequestId === undefined || viewing?.draft) ? (
+        {draft !== null && (routeChangeRequestId === undefined || viewing?.draft) ? (
           <WikiDraftBar
             environmentId={environmentId}
             draft={draft}
-            changeRequests={all ?? []}
             onLanded={(id, files) => {
               // The document on screen follows where its edits went.
               if (filesHoldDocument(files, file)) navigation.setParams({ changeRequestId: id });
@@ -729,6 +796,7 @@ export function WikiCanvasScreen({
         environmentId={environmentId}
         wikiId={wikiId}
         changeRequestId={changeRequestId}
+        checkout={disk}
         note={file}
         onAnswer={onBaseAnswer}
       />

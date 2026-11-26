@@ -280,7 +280,7 @@ const UPDATE_BRANCH_REBASE_FAILURE_HINT = msg(
 
 const TABS: ReadonlyArray<{ value: PullRequestDetailTab; label: string }> = [
   { value: "summary", label: msg("Summary", { $context: "pull request tab" }) },
-  { value: "wiki", label: msg("Wiki", { $context: "pull request tab" }) },
+  { value: "wiki", label: msg("Docs", { $context: "pull request tab" }) },
   { value: "guide", label: msg("Guide", { $context: "pull request tab" }) },
   { value: "timeline", label: msg("Timeline", { $context: "pull request tab" }) },
   { value: "code", label: msg("Code", { $context: "pull request tab" }) },

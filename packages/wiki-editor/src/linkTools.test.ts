@@ -43,6 +43,18 @@ describe("peekOf", () => {
     expect(peekOf(state, "b/Name", scope)?.types).toEqual(["three"]);
     expect(peekOf(state, "Name", null)?.types).toEqual(["one"]);
   });
+
+  it("asks a scope that searches past its files where a link lands", () => {
+    const state = EditorState.create({ doc: "[[api:Plan|a @one]] [[Plan|b @two]] [[x|c @three]]" });
+    const project = {
+      ...scope,
+      resolve: (target: string) => ({
+        file: target === "x" ? null : "api:Plan.md",
+        others: [],
+      }),
+    };
+    expect(peekOf(state, "Plan", project)?.types).toEqual(["one", "two"]);
+  });
 });
 
 describe("nameSuggestions", () => {

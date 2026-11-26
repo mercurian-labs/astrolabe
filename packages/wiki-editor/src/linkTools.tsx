@@ -33,11 +33,25 @@ export interface WikiLinkOption {
   readonly apply: string;
 }
 
+/** Where a link went: a file, else nothing, or several files it could mean and never picks. */
+export interface WikiLinkLanding {
+  readonly file: string | null;
+  readonly others: ReadonlyArray<string>;
+  /** Set when the link names a document in several places and opens none of them. */
+  readonly ambiguous?: ReadonlyArray<string>;
+}
+
 /** What a note's links search: its wiki's files, from the note's own place. */
 export interface WikiLinkScope {
   readonly files: WikiLinkFiles;
   readonly from: string | null;
+  /** Searches past `files`, as a project's folders do; each answer names one place. */
+  readonly resolve?: (target: string) => WikiLinkLanding;
 }
+
+/** Where `target` lands in `scope`. */
+const landingIn = (scope: WikiLinkScope, target: string): WikiLinkLanding =>
+  scope.resolve?.(target) ?? resolveLink(target, scope.from, scope.files);
 
 export interface WikiLinkToolsHost {
   readonly linkTypes: () => ReadonlyArray<string>;
@@ -100,7 +114,7 @@ export function peekOf(
   const name = wikilinkNoteName(target);
   if (name === null) return null;
   const landed = (text: string) =>
-    (scope === null ? null : resolveLink(text, scope.from, scope.files).file) ?? key(text);
+    (scope === null ? null : landingIn(scope, text).file) ?? key(text);
   const wanted = landed(name);
   const types = typedLinks(state.doc.toString()).flatMap((link) =>
     landed(link.target) === wanted ? link.types : [],
@@ -120,6 +134,7 @@ const pressed = StateField.define<Tooltip | null>({
 
 const scopeMoved = StateEffect.define<null>();
 const MISSING = Decoration.mark({ class: "cm-wiki-link-missing" });
+const AMBIGUOUS = Decoration.mark({ class: "cm-wiki-link-ambiguous" });
 
 /** A name with a file's extension: an attachment, which the scope's documents can't answer for. */
 export const namesAttachment = (target: string) =>
@@ -128,17 +143,17 @@ export const namesAttachment = (target: string) =>
 function missingLinks(view: EditorView, scope: WikiLinkScope | null): DecorationSet {
   if (scope === null) return Decoration.none;
   const marks = view.visibleRanges.flatMap(({ from, to }) =>
-    wikilinksBetween(view.state, from, to).flatMap((link) =>
-      namesAttachment(link.target) ||
-      resolveLink(link.target, scope.from, scope.files).file !== null
-        ? []
-        : [MISSING.range(link.from, link.to)],
-    ),
+    wikilinksBetween(view.state, from, to).flatMap((link) => {
+      if (namesAttachment(link.target)) return [];
+      const landed = landingIn(scope, link.target);
+      if (landed.ambiguous?.length) return [AMBIGUOUS.range(link.from, link.to)];
+      return landed.file === null ? [MISSING.range(link.from, link.to)] : [];
+    }),
   );
   return Decoration.set(marks, true);
 }
 
-/** Marks a link that lands nowhere, drawn red as the links under a note are. */
+/** Marks a link that lands nowhere, drawn red as the links under a note are, or in several places. */
 const missingLinkMarks = (host: WikiLinkToolsHost) =>
   ViewPlugin.fromClass(
     class {
@@ -167,6 +182,10 @@ const missingLinkMarks = (host: WikiLinkToolsHost) =>
 const previewTheme = EditorView.baseTheme({
   ".cm-wiki-link-missing, .cm-wiki-link-missing .cm-md-wikilink": {
     color: "var(--destructive-foreground, #dc2626)",
+  },
+  ".cm-wiki-link-ambiguous, .cm-wiki-link-ambiguous .cm-md-wikilink": {
+    color: "var(--warning-foreground, #b45309)",
+    textDecoration: "underline wavy",
   },
   ".cm-tooltip:has(.cm-wiki-link-preview)": {
     border: "1px solid var(--atlas-md-border-color)",
@@ -367,6 +386,7 @@ export function WikiLinkPreview({
   source,
   resolved,
   onOpen,
+  children,
 }: {
   readonly link: WikiLinkPeek;
   /** The note's text; null when it isn't written, undefined while it loads. */
@@ -376,6 +396,8 @@ export function WikiLinkPreview({
     | { readonly file: string | null; readonly others: ReadonlyArray<string> }
     | undefined;
   readonly onOpen?: (() => void) | undefined;
+  /** More to say under the excerpt, such as where an ambiguous link could go. */
+  readonly children?: ReactNode;
 }) {
   const excerpt = typeof source === "string" ? noteExcerpt(source) : "";
   const ambiguous = resolved === undefined ? undefined : ambiguousLink(resolved);
@@ -409,6 +431,7 @@ export function WikiLinkPreview({
         </p>
       )}
       {ambiguous === undefined ? null : <p className="cm-wiki-link-preview-text">{ambiguous}</p>}
+      {children}
     </div>
   );
 }

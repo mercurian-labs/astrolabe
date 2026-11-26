@@ -969,6 +969,22 @@ it.effect(
           assert.equal(merged.commit, yield* git(bare, ["rev-parse", "main"]));
           assert.equal(yield* git(root, ["rev-parse", "main"]), main);
           assert.isTrue(Option.isNone(yield* projects.getByWorkspaceRoot(root)));
+
+          // A person's draft opens a draft pull request too, and only when they publish it.
+          const saved = yield* wikis.autosave(
+            {
+              wikiId,
+              document: "Two.md",
+              write: { kind: "text", file: "Two.md", text: "# Two\n" },
+            },
+            WikiService.person,
+          );
+          assert.lengthOf(host.pulls, 1, "an autosave opens nothing");
+          const draft = { wikiId, changeRequestId: saved.changeRequest!.changeRequestId };
+          yield* wikis.draftPromote({ ...draft, title: "Two" }, WikiService.person);
+          const opened = yield* hosts.publish(draft);
+          assert.equal(opened.pullRequest?.number, 2);
+          assert.isTrue(host.pulls[1]?.isDraft);
         }),
       { connect: false },
     ),

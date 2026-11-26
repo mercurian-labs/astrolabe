@@ -9,16 +9,12 @@ import {
   isSettledChangeRequest,
   wikiDocumentScope,
   wikiDraft,
-  NO_NOTE_FROM_RELATIVE_LINK,
-  wikiLinkOpens,
   wikiTerms,
 } from "@t3tools/client-runtime/wikiLogic";
-import type { EnvironmentId, WikiBaseEdit, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
-import { useAtomValue } from "@effect/atom-react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { WikiBaseEdit } from "@t3tools/contracts";
+import { RegistryContext, useAtomValue } from "@effect/atom-react";
+import { use, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
-import * as Dialog from "../../components/ui/Dialog";
-import { useWikiPlacement } from "./wikiPreferences";
 import { Linking, View } from "react-native";
 
 import { Toolbar } from "../../components/ui/Toolbar";
@@ -32,24 +28,35 @@ import { WikiDraftBar } from "./document/WikiDraftBar";
 import { WikiEditorWebView, type WikiEditorHandle } from "./document/WikiEditorWebView";
 import { WikiBelowHeader } from "./document/WikiBelowHeader";
 import { WikiNotice } from "./document/WikiNotice";
-import { useWikiAutosave, useWikiAutosaveCommand, wikiSaveLabel } from "./document/useWikiAutosave";
+import { openProjectLink } from "./document/openProjectLink";
+import { useProjectLinkRoots, type ProjectDocument } from "./document/useProjectDocument";
+import {
+  useWikiAutosave,
+  useWikiAutosaveCommand,
+  useWikiDiskCommands,
+  wikiSaveLabel,
+} from "./document/useWikiAutosave";
 import type { WikiDocumentParams } from "./wikiRoutes";
 
 /**
  * A `.base` file on its own, drawn by the editor page as a ```base block in a note is, with the
  * header's View menu picking among its views. A note's cell edits in place, and a board's card
  * moves with its picker; edits show at once and save by themselves, to the change request the
- * route names, else the person's draft.
+ * route names, else the person's draft, or on disk in the folder when that is where edits go.
  */
-export function WikiBaseScreen({ params }: { readonly params: WikiDocumentParams }) {
+export function WikiBaseScreen({
+  params,
+  doc,
+}: {
+  readonly params: WikiDocumentParams;
+  readonly doc: ProjectDocument;
+}) {
   const navigation = useNavigation();
-  const environmentId = params.environmentId as EnvironmentId;
-  const wikiId = params.wikiId as WikiId;
+  const { environmentId, wikiId, routeChangeRequestId, disk, placement } = doc;
   const file = params.name;
-  const placement = useWikiPlacement(environmentId);
-  const routeChangeRequestId = params.changeRequestId as WikiChangeRequestId | undefined;
+  const onDisk = disk === null ? {} : { checkout: disk };
   const changeRequests = useEnvironmentQuery(
-    wikiEnvironment.changeRequests({ environmentId, input: { wikiId } }),
+    disk === null ? wikiEnvironment.changeRequests({ environmentId, input: { wikiId } }) : null,
   );
   const all = changeRequests.data?.changeRequests;
   const draft = wikiDraft(all);
@@ -61,26 +68,38 @@ export function WikiBaseScreen({ params }: { readonly params: WikiDocumentParams
   const scope = changeRequestId === undefined ? {} : { changeRequestId };
 
   const index = useEnvironmentQuery(
-    wikiEnvironment.index({ environmentId, input: { wikiId, ...scope } }),
+    wikiEnvironment.index({ environmentId, input: { wikiId, ...scope, ...onDisk } }),
   );
+  const linkRoots = useProjectLinkRoots({
+    environmentId,
+    projectId: doc.projectId,
+    roots: doc.roots,
+    rootKey: doc.rootKey,
+    ownIndex: index.data,
+    disk: disk !== null,
+  });
   const [view, setView] = useState<string | null>(null);
   const [edits, setEdits] = useState<ReadonlyArray<WikiBaseEdit>>([]);
   const [savedCommit, setSavedCommit] = useState<string | null>(null);
-  const canEdit = useAtomValue(wikiEnvironment.autosave.permissionAtom(environmentId));
+  const canDraft = useAtomValue(wikiEnvironment.autosave.permissionAtom(environmentId));
+  const canWriteDisk = useAtomValue(wikiEnvironment.transform.permissionAtom(environmentId));
+  const canEdit = disk === null ? canDraft : canWriteDisk;
   const viewing = all?.find((entry) => entry.changeRequestId === changeRequestId) ?? null;
   const editable = canEdit && !isSettledChangeRequest(viewing ?? undefined);
+  const viewInput = {
+    wikiId,
+    ...scope,
+    ...onDisk,
+    base: file,
+    ...(view === null ? {} : { view }),
+  };
   const query = useEnvironmentQuery(
     wikiEnvironment.query({
       environmentId,
-      input: {
-        wikiId,
-        ...scope,
-        base: file,
-        ...(view === null ? {} : { view }),
-        ...(edits.length ? { edits: [...edits] } : {}),
-      },
+      input: { ...viewInput, ...(edits.length ? { edits: [...edits] } : {}) },
     }),
   );
+  const registry = use(RegistryContext);
   const wikis = useEnvironmentQuery(wikiEnvironment.list({ environmentId, input: {} }));
   const wiki = wikis.data?.wikis.find((entry) => entry.wikiId === wikiId) ?? null;
 
@@ -96,6 +115,7 @@ export function WikiBaseScreen({ params }: { readonly params: WikiDocumentParams
   const result = current ?? lastResult;
 
   const send = useWikiAutosaveCommand();
+  const writeDisk = useWikiDiskCommands();
   // How many edits are on their way; those can't merge with a new one any more.
   const sent = useRef(0);
   const { autosave, status } = useWikiAutosave({
@@ -105,18 +125,29 @@ export function WikiBaseScreen({ params }: { readonly params: WikiDocumentParams
       const batch = edits;
       if (batch.length === 0) return { ok: true };
       sent.current = batch.length;
-      const outcome = await send({
-        environmentId,
-        input: {
-          wikiId,
-          ...(routeChangeRequestId === undefined ? {} : { changeRequestId: routeChangeRequestId }),
-          document: file,
-          write: { kind: "transform", transform: { kind: "base-edits", edits: [...batch] } },
-        },
-      });
+      const transform = { kind: "base-edits" as const, edits: [...batch] };
+      const outcome =
+        disk === null
+          ? await send({
+              environmentId,
+              input: {
+                wikiId,
+                ...(routeChangeRequestId === undefined
+                  ? {}
+                  : { changeRequestId: routeChangeRequestId }),
+                document: file,
+                write: { kind: "transform", transform },
+              },
+            })
+          : await writeDisk.transform({
+              environmentId,
+              input: { wikiId, checkout: disk, message: `Edit ${documentTitle(file)}`, transform },
+            });
       sent.current = 0;
       if (!outcome.ok) return outcome;
-      setSavedCommit(outcome.value.commit);
+      if ("commit" in outcome.value) setSavedCommit(outcome.value.commit);
+      // On disk no commit says the save landed: the view without the edits reads the folder again.
+      else registry.refresh(wikiEnvironment.query({ environmentId, input: viewInput }));
       setEdits((waiting) => waiting.slice(batch.length));
       return { ok: true };
     },
@@ -165,22 +196,16 @@ export function WikiBaseScreen({ params }: { readonly params: WikiDocumentParams
           editor.current?.send({ type: "baseResult", source: file, ...shown.current.answer });
         }
         return;
-      case "openNote": {
-        const name = wikiLinkOpens(index.data, event.name, event.from ?? file, placement);
-        if (name === null) {
-          Dialog.alert("No note made", NO_NOTE_FROM_RELATIVE_LINK);
-          return;
-        }
-        navigation.dispatch(
-          StackActions.push("WikiDocument", {
-            environmentId: params.environmentId,
-            wikiId: params.wikiId,
-            name,
-            ...scope,
-          }),
-        );
+      case "openNote":
+        openProjectLink({
+          roots: linkRoots,
+          params,
+          target: event.name,
+          from: event.from ?? file,
+          placement,
+          open: (next) => navigation.dispatch(StackActions.push("ProjectDocument", next)),
+        });
         return;
-      }
       case "openUrl":
         void Linking.openURL(event.href).catch(() => undefined);
         return;
@@ -207,10 +232,11 @@ export function WikiBaseScreen({ params }: { readonly params: WikiDocumentParams
 
   const subtitle = [
     wikiDocumentSubtitle({
-      wikiName: wiki?.name ?? null,
+      wikiName: doc.root?.name ?? wiki?.name ?? null,
       file: file,
       changeRequest: viewing,
       readsChangeRequest: changeRequestId !== undefined,
+      onDisk: disk !== null,
       noun: wikiTerms(wiki).singular,
       agentWorking: false,
       saving: wikiSaveLabel(status),
@@ -247,7 +273,6 @@ export function WikiBaseScreen({ params }: { readonly params: WikiDocumentParams
           <WikiDraftBar
             environmentId={environmentId}
             draft={draft}
-            changeRequests={all ?? []}
             flush={autosave.flush}
             drop={() => {
               setEdits([]);

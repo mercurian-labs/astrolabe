@@ -1,6 +1,7 @@
 /* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { usePreventRemove, useNavigation } from "@react-navigation/native";
 import {
+  type AtomCommandResult,
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
@@ -14,18 +15,32 @@ import { useEffect, useLayoutEffect, useState, useSyncExternalStore } from "reac
 import { AppState } from "react-native";
 
 import * as Dialog from "../../../components/ui/Dialog";
+import { projectEnvironment } from "../../../state/projects";
 import { useAtomCommand } from "../../../state/use-atom-command";
 import { wikiEnvironment } from "../../../state/wiki";
 
-/** Lands an autosave, reading a failure as the autosave store does. */
+/** A command's result as the autosave store reads a failure. */
+function saveOutcome<A>(result: AtomCommandResult<A, unknown>) {
+  if (result._tag === "Success") return { ok: true as const, value: result.value };
+  return isAtomCommandInterrupted(result)
+    ? { ok: false as const, message: "The save was cancelled.", retry: true }
+    : wikiSaveFailure(squashAtomCommandFailure(result));
+}
+
+/** Lands an autosave in the draft or a named change request. */
 export function useWikiAutosaveCommand() {
   const run = useAtomCommand(wikiEnvironment.autosave, { reportFailure: false });
-  return async (value: Parameters<typeof run>[0]) => {
-    const result = await run(value);
-    if (result._tag === "Success") return { ok: true as const, value: result.value };
-    return isAtomCommandInterrupted(result)
-      ? { ok: false as const, message: "The save was cancelled.", retry: true }
-      : wikiSaveFailure(squashAtomCommandFailure(result));
+  return async (value: Parameters<typeof run>[0]) => saveOutcome(await run(value));
+}
+
+/** Astrolabe: a document's edits written on disk, uncommitted: a note's text, or a transform. */
+export function useWikiDiskCommands() {
+  const write = useAtomCommand(projectEnvironment.writeFile, { reportFailure: false });
+  const transform = useAtomCommand(wikiEnvironment.transform, { reportFailure: false });
+  return {
+    writeText: async (value: Parameters<typeof write>[0]) => saveOutcome(await write(value)),
+    transform: async (value: Parameters<typeof transform>[0]) =>
+      saveOutcome(await transform(value)),
   };
 }
 

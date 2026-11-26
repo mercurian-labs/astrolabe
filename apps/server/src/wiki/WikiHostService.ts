@@ -6,6 +6,7 @@
  */
 import {
   CommandId,
+  parseProjectRootId,
   ProjectId,
   type PullRequestMergeCapabilities,
   type PullRequestMergeMethod,
@@ -256,8 +257,12 @@ const make = Effect.gen(function* () {
       changeRequestId: entry.changeRequestId,
       pullRequest: link,
     });
-    // An agent's work asks no reviewer until a person marks it ready, where the host can say so.
-    if (existing === undefined && entry.threadId !== null) {
+    // An agent's work asks no reviewer until a person marks it ready, where the host can say so;
+    // nor does a person's draft from a project's folder (D3).
+    if (
+      existing === undefined &&
+      (entry.threadId !== null || parseProjectRootId(wiki.wikiId) !== null)
+    ) {
       yield* pullRequests.detail(refOf(wiki, projectId, link)).pipe(
         Effect.flatMap((detail) =>
           detail.capabilities.actions.includes("draft")

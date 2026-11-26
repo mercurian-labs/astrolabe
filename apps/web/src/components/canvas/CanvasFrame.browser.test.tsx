@@ -12,7 +12,31 @@ import { canvasViewsKey } from "~/state/canvasViews";
 import "~/index.css";
 
 import type { ChatComposerHandle } from "../chat/ChatComposer";
+import { workspace } from "~/panes/workspace";
+import { repositoryTabKey } from "../repositories/repositoryTabs";
 import { CanvasFrame, LazyCanvasBoard } from "./CanvasFrame";
+
+const folders = vi.hoisted(() => ({ shell: null as unknown, roots: [] as unknown[] }));
+
+vi.mock(import("~/state/entities"), async (original) => {
+  const real = await original();
+  return {
+    ...real,
+    useThreadShell: ((ref: Parameters<typeof real.useThreadShell>[0]) => {
+      const shell = real.useThreadShell(ref);
+      return folders.shell ?? shell;
+    }) as never,
+  };
+});
+vi.mock(import("~/state/projectRoots"), async (original) => {
+  const { AsyncResult, Atom } = await import("effect/reactivity");
+  const listed = Atom.make(AsyncResult.success({ roots: folders.roots }));
+  const real = await original();
+  return {
+    ...real,
+    projectRootsEnvironment: { ...real.projectRootsEnvironment, list: () => listed } as never,
+  };
+});
 import { useThreadCanvasStore } from "./threadCanvasStore";
 
 const threadRef = scopeThreadRef(EnvironmentId.make("environment"), ThreadId.make("thread"));
@@ -143,6 +167,59 @@ describe("CanvasFrame", () => {
     expect(
       guest.getByRole("button", { name: `Open ${view.title} in a linked tab` }).query(),
     ).toBeNull();
+  });
+});
+
+describe("a code card of another folder", () => {
+  it("opens that folder's file in its own tab, never the thread's folder's same path", async () => {
+    using openFile = vi
+      .spyOn(useRightPanelStore.getState(), "openFile")
+      .mockImplementation(() => undefined);
+    using show = vi.spyOn(workspace, "show").mockImplementation(() => undefined);
+    folders.shell = { projectId: "proj", worktreePath: null };
+    const folder = (key: string, path: string, kind: string) => ({
+      key,
+      name: key,
+      path,
+      kind,
+      state: "git",
+      hostBacked: false,
+      checkout: path,
+      writable: true,
+    });
+    folders.roots.splice(
+      0,
+      folders.roots.length,
+      folder("app", "/dev/app", "workspace"),
+      folder("api", "/dev/api", "tracked"),
+    );
+    using _reset = { [Symbol.dispose]: () => void (folders.shell = null) };
+    const data = {
+      ...view.data,
+      nodes: view.data.nodes.map((node) =>
+        node.type === "link" && node.astrolabe?.code
+          ? {
+              ...node,
+              astrolabe: { ...node.astrolabe, code: { ...node.astrolabe.code, root: "api" } },
+            }
+          : node,
+      ),
+    };
+    await using screen = await render(
+      <CanvasFrame id="item-1" view={{ ...view, data }} threadRef={threadRef} source={source} />,
+      { router: false }, // The frame reads no route.
+    );
+    await userEvent.click(screen.getByText("WikiService.ts:1160–1200"));
+    expect(openFile).not.toHaveBeenCalled();
+    expect(show).toHaveBeenCalledExactlyOnceWith(
+      repositoryTabKey({
+        kind: "file",
+        environmentId: threadRef.environmentId,
+        wikiId: "proj:api" as never,
+        checkout: { cwd: "/dev/api" },
+        path: "apps/server/src/wiki/WikiService.ts",
+      }),
+    );
   });
 });
 

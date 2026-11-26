@@ -9,7 +9,6 @@ import { describeWikiFailure, keepCanvasName } from "@t3tools/client-runtime/wik
 import {
   COMPOSER_CONTEXT_CANVAS_COMMENT_MAX_CHARS,
   type EnvironmentId,
-  projectRootId,
   type RootKey,
   type ThreadId,
   type TurnItemId,
@@ -144,7 +143,7 @@ export function KeepCanvasSheet(props: {
               {note}
             </Text>
           ))}
-          {changeRequest === null || projectId === null ? (
+          {projectId === null ? (
             <Button label="Done" tone="primary" fullWidth onPress={props.onClose} />
           ) : (
             <Button
@@ -153,11 +152,16 @@ export function KeepCanvasSheet(props: {
               fullWidth
               onPress={() => {
                 props.onClose();
-                navigation.navigate("WikiDocument", {
+                navigation.navigate("ProjectDocument", {
                   environmentId: String(environmentId),
-                  wikiId: projectRootId(projectId, kept.rootKey),
+                  projectId: String(projectId),
+                  rootKey: kept.rootKey,
                   name: file,
-                  changeRequestId: String(changeRequest.changeRequestId),
+                  // A draft reads by itself; a change request it went to is named.
+                  ...(changeRequest !== null && !changeRequest.draft
+                    ? { changeRequestId: String(changeRequest.changeRequestId) }
+                    : {}),
+                  ...(kept.checkout === undefined ? {} : { checkout: kept.checkout }),
                 });
               }}
             />

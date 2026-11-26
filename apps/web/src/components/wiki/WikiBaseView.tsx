@@ -63,7 +63,7 @@ import {
   WikiSaveStatus,
 } from "./wikiAutosave";
 import { ColumnMenu, WikiBaseToolbar } from "./WikiBaseToolbar";
-import { useWikiAutosaveCommand } from "./wikiEnvironment";
+import { useWikiAutosaveCommand, useWikiCommand } from "./wikiEnvironment";
 import type { WikiDraftEdits } from "./WikiNoteView";
 import { WikiPart } from "./WikiParts";
 
@@ -256,6 +256,7 @@ function webHost({
 export function WikiBaseResults({
   environmentId,
   wikiId,
+  checkout,
   result,
   onOpenNote,
   onOpenFile,
@@ -263,6 +264,8 @@ export function WikiBaseResults({
 }: {
   readonly environmentId: EnvironmentId;
   readonly wikiId: WikiId;
+  /** The folder the base was read in on disk, whose images it shows. */
+  readonly checkout?: string | undefined;
   readonly result: WikiQueryResult;
   readonly editing?: BaseEditing | undefined;
 } & RowOpeners) {
@@ -275,7 +278,7 @@ export function WikiBaseResults({
   };
   const host = webHost({
     environmentId,
-    root: wiki?.root ?? null,
+    root: checkout ?? wiki?.root ?? null,
     backgrounds: wiki?.mapBackgrounds ?? [],
     result,
     dark: resolvedTheme === "dark",
@@ -296,6 +299,8 @@ export function WikiBase({
   environmentId,
   wikiId,
   changeRequestId,
+  checkout,
+  revision,
   from,
   view: initialView,
   onOpenNote,
@@ -305,6 +310,10 @@ export function WikiBase({
   readonly environmentId: EnvironmentId;
   readonly wikiId: WikiId;
   readonly changeRequestId: WikiChangeRequestId | undefined;
+  /** Astrolabe: a project root's folder, read on disk instead of a commit. */
+  readonly checkout?: string | undefined;
+  /** Changes when the folder's files change on disk, which runs the view again. */
+  readonly revision?: string | undefined;
   readonly from: WikiBaseSource;
   /** The view to show first, as an embed names it. */
   readonly view?: string | undefined;
@@ -319,13 +328,25 @@ export function WikiBase({
       environmentId,
       input: {
         wikiId,
-        ...(changeRequestId === undefined ? {} : { changeRequestId }),
+        ...(checkout !== undefined
+          ? { checkout }
+          : changeRequestId === undefined
+            ? {}
+            : { changeRequestId }),
         ...from,
         ...(view === null ? {} : { view }),
         ...(edits.length ? { edits: [...edits] } : {}),
       },
     }),
   );
+  const refresh = query.refresh;
+  const ranAt = useRef(revision);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a folder's files change on disk with no wiki event, so its watch is what says to run the view again
+  useEffect(() => {
+    if (ranAt.current === revision) return;
+    ranAt.current = revision;
+    refresh();
+  }, [revision, refresh]);
   // An edit keeps the last view on screen until the new one lands.
   const [lastResult, setLastResult] = useState(query.data);
   const savedCommit = editing?.savedCommit ?? null;
@@ -412,6 +433,7 @@ export function WikiBase({
       <WikiBaseResults
         environmentId={environmentId}
         wikiId={wikiId}
+        checkout={checkout}
         result={result}
         onOpenNote={onOpenNote}
         onOpenFile={onOpenFile}
@@ -494,10 +516,19 @@ export function WikiBasePage({
   onOpenNote,
   onOpenFile,
   registerUnsaved,
+  checkout,
+  canWrite,
+  diskRevision,
 }: {
   readonly environmentId: EnvironmentId;
   readonly wikiId: WikiId;
   readonly file: string;
+  /** Astrolabe: a project root's folder, read and written on disk rather than in a draft. */
+  readonly checkout?: string | undefined;
+  /** Whether this person can write where the base saves; the draft's permission without it. */
+  readonly canWrite?: boolean | undefined;
+  /** Changes when the folder's files change on disk. */
+  readonly diskRevision?: string | undefined;
   /** The change request the base reads from; none reads main. */
   readonly changeRequestId: WikiChangeRequestId | undefined;
   /** The change request the tab is in; none saves to the draft. */
@@ -519,7 +550,11 @@ export function WikiBasePage({
   };
   const [creating, setCreating] = useState<Readonly<Record<string, WikiBaseCell>> | null>(null);
   const [savedCommit, setSavedCommit] = useState<string | null>(null);
-  const canEdit = useAtomValue(wikiEnvironment.autosave.permissionAtom(environmentId));
+  const canAutosave = useAtomValue(wikiEnvironment.autosave.permissionAtom(environmentId));
+  const canEdit = canWrite ?? canAutosave;
+  const transform = useWikiCommand(wikiEnvironment.transform);
+  // Each save on disk runs the view again: no wiki event says the folder changed.
+  const [savedOnDisk, setSavedOnDisk] = useState(0);
   const viewingChange = changeRequests.find(
     (changeRequest) => changeRequest.changeRequestId === changeRequestId,
   );
@@ -538,6 +573,24 @@ export function WikiBasePage({
       const batch = edits;
       if (batch.length === 0) return { ok: true };
       sent.current = batch.length;
+      if (checkout !== undefined) {
+        const written = await transform({
+          environmentId,
+          input: {
+            wikiId,
+            checkout,
+            message: `Edit ${documentTitle(file)}`,
+            transform: { kind: "base-edits", edits: [...batch] },
+          },
+        });
+        sent.current = 0;
+        if (!written.ok) {
+          return { ok: false, message: written.message ?? "The save was cancelled.", retry: true };
+        }
+        setEdits((current) => current.slice(batch.length));
+        setSavedOnDisk((count) => count + 1);
+        return { ok: true };
+      }
       const outcome = await send({
         environmentId,
         input: {
@@ -630,6 +683,8 @@ export function WikiBasePage({
             environmentId={environmentId}
             wikiId={wikiId}
             changeRequestId={changeRequestId}
+            checkout={checkout}
+            revision={`${diskRevision ?? ""}:${savedOnDisk}`}
             from={{ base: file }}
             onOpenNote={onOpenNote}
             onOpenFile={onOpenFile}

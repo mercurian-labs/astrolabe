@@ -17,8 +17,6 @@ import { SplitButton } from "../../components/ui/SplitButton";
 import { useEnvironmentServerConfig } from "../../state/entities";
 import { mobilePreferencesAtom, saveMobilePreferences } from "../../state/preferences";
 import { composerPullRequests } from "../../state/pull-requests";
-import { useEnvironmentQuery } from "../../state/query";
-import { wikiEnvironment } from "../../state/wiki";
 import { useAtomCommand } from "../../state/use-atom-command";
 import {
   allowedMergeMethods,
@@ -35,9 +33,13 @@ import { pullRequestTarget, type PullRequestParams } from "./usePullRequestDiff"
 import { usePullRequestAction } from "./usePullRequestAction";
 import { usePullRequestPermissions } from "./usePullRequestPermissions";
 import { PullRequestGlyph } from "./pullRequestGlyphs";
-import type { AppSymbolName } from "../../components/ui/AppSymbol";
+import { SymbolView, type AppSymbolName } from "../../components/ui/AppSymbol";
 import type { PullRequestStackState } from "./usePullRequestStack";
 import { m as resolveMessage } from "../../i18n/messages";
+
+/** Astrolabe: a pull request opened from a person's docs draft, whose branch is its `cr/` ref. */
+const isDocsPullRequest = (pr: Pick<PullRequestDetail, "headBranch">) =>
+  /^cr\/[^/]+$/.test(pr.headBranch);
 
 export function PullRequestMergeControls(props: {
   readonly pr: PullRequestDetail;
@@ -61,14 +63,11 @@ export function PullRequestMergeControls(props: {
   const [busy, setBusy] = useState(false);
   const pending = useRef(false);
   const methods = allowedMergeMethods(pr);
-  // Astrolabe: a host wiki's pull request keeps each amendment its own commit where it can.
-  const wikis = useEnvironmentQuery(
-    wikiEnvironment.list({ environmentId: target.environmentId, input: {} }),
-  );
-  const isWiki = wikis.data?.wikis.some((wiki) => wiki.host?.projectId === target.input.projectId);
+  // Astrolabe: a docs draft's pull request keeps each amendment its own commit where it can.
+  const docs = isDocsPullRequest(pr);
   const method = resolveMergeMethod(
     pr,
-    selectedMethod ?? (isWiki ? (wikiMergeMethod(methods) ?? null) : null),
+    selectedMethod ?? (docs ? (wikiMergeMethod(methods) ?? null) : null),
     serverSettings
       ? resolveProjectSettings(serverSettings, target.input.projectId).settings
           .pullRequestMergeMethod
@@ -324,6 +323,12 @@ export function PullRequestMergeControls(props: {
   };
   return (
     <View className="gap-2 border-t border-border-subtle p-3">
+      {docs ? (
+        <View className="flex-row items-center gap-1.5 px-1">
+          <SymbolView name="doc.text" size={12} tintColorClassName="accent-icon" />
+          <Text className="text-xs text-foreground-muted">{gt("Docs")}</Text>
+        </View>
+      ) : null}
       <SplitButton
         label={
           busy || stateAction.busy

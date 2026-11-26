@@ -35,16 +35,7 @@ import { pullRequestViewMatches } from "./pullRequestSavedViews";
 import { usePullRequestList } from "./usePullRequestList";
 import { usePullRequestListControls } from "./usePullRequestListControls";
 import { usePullRequestListActions } from "./usePullRequestListActions";
-import { useChangeRequestProjectFilter } from "../wikis/useChangeRequestProjectFilter";
 import { ChangeGroupsSection } from "../changeGroups/ChangeGroupsSection";
-import {
-  hostedPullRequestKeys,
-  hostedWikis,
-  isHostedPullRequest,
-} from "@t3tools/client-runtime/wikiLogic";
-import type { EnvironmentId } from "@t3tools/contracts";
-import { useWikiOverviews } from "../wikis/useWikiOverviews";
-import { WikiChangesSection } from "../wikis/WikiChangesSection";
 import {
   filterPullRequestList,
   pullRequestListFacets,
@@ -59,8 +50,6 @@ import { useDebouncedValue } from "../../state/queries";
 import { useWorkspaceTabs } from "../layout/workspace/WorkspaceTabsContext";
 import { useSearchScrollRestoration } from "../layout/workspace/useSearchScrollRestoration";
 import { useSelectWorkspaceDetail } from "../layout/workspace/useSelectWorkspaceDetail";
-
-const NO_ENTRIES: EnvironmentPullRequestListEntry[] = [];
 
 function PullRequestListError(props: { readonly message: string }) {
   const [expanded, setExpanded] = useState(false);
@@ -194,30 +183,18 @@ export function PullRequestsScreen(
   const sidebar = props.sidebar === true || (primaryColumn !== null && paneRole === "sidebar");
   const selectedKey = props.selectedPullRequestKey ?? primaryColumn?.selectedPullRequestKey;
   const connectedKey = connectedTargets.map((target) => target.environmentId).join("\n");
-  // Astrolabe: the project filter's kind: the wikis picked list only the wikis' change requests,
-  // the repositories only the pull requests.
-  const wikiSource = useChangeRequestProjectFilter();
-  // Astrolabe: where the wiki changes list above these, a host wiki's change shows once, there.
-  const wikiEnvironmentIds = useMemo(
-    () => (connectedKey === "" ? [] : (connectedKey.split("\n") as EnvironmentId[])),
-    [connectedKey],
+  const entries = useMemo(
+    () =>
+      filterPullRequestList(
+        result.entries,
+        controls,
+        result.data?.viewers ?? {},
+        query,
+        result.data.localSearchHosts,
+        new Set(connectedKey.split("\n")),
+      ),
+    [result.entries, controls, query, result.data, connectedKey],
   );
-  const { overviews: wikiOverviews } = useWikiOverviews(wikiEnvironmentIds);
-  const hostedSignature =
-    wikiSource.kind === "all" && !controls.projectId
-      ? [...hostedPullRequestKeys(hostedWikis(wikiOverviews))].join("\n")
-      : "";
-  const entries = useMemo(() => {
-    const hosted = new Set(hostedSignature.split("\n").filter(Boolean));
-    return filterPullRequestList(
-      result.entries,
-      controls,
-      result.data?.viewers ?? {},
-      query,
-      result.data.localSearchHosts,
-      new Set(connectedKey.split("\n")),
-    ).filter((entry) => !isHostedPullRequest(hosted, entry));
-  }, [result.entries, controls, query, result.data, connectedKey, hostedSignature]);
   const facets = pullRequestListFacets(result.entries);
   const [knownFacets, setKnownFacets] = useState({ environmentId, source: facets, ...facets });
   if (knownFacets.environmentId !== environmentId || knownFacets.source !== facets) {
@@ -276,10 +253,6 @@ export function PullRequestsScreen(
     labels: knownFacets.environmentId === environmentId ? knownFacets.labels : facets.labels,
     labelColors,
     projects,
-    wikis: wikiSource.choices,
-    wikiValue: wikiSource.selected,
-    repositoriesOnly: wikiSource.repositoriesOnly,
-    onSource: wikiSource.select,
     onSearch: (kind) =>
       navigation.navigate("PullRequestFilterSearch", {
         kind,
@@ -304,7 +277,7 @@ export function PullRequestsScreen(
     <View className={sidebar ? "flex-1 bg-drawer" : "flex-1 bg-screen"}>
       <LegendList
         ref={listRef}
-        data={wikiSource.wikisOnly ? NO_ENTRIES : entries}
+        data={entries}
         extraData={`${selectedKey}:${busyKey}`}
         keyExtractor={pullRequestKey}
         itemsAreEqual={pullRequestListRowsAreEqual}
@@ -398,15 +371,8 @@ export function PullRequestsScreen(
                 ))}
               </View>
             ) : null}
-            {/* Astrolabe: the wikis' change requests, a group of their own above. */}
+            {/* Astrolabe: change groups, a group of their own above. */}
             <ChangeGroupsSection query={query} />
-            {wikiSource.wikisOnly || (wikiSource.kind === "all" && !controls.projectId) ? (
-              <WikiChangesSection
-                query={query}
-                scope={wikiSource.scope}
-                pullRequestsFollow={!wikiSource.wikisOnly}
-              />
-            ) : null}
           </>
         }
         ListFooterComponent={
@@ -438,7 +404,7 @@ export function PullRequestsScreen(
           ) : undefined
         }
         ListEmptyComponent={
-          wikiSource.wikisOnly ? null : result.isPending && connectedTargets.length > 0 ? (
+          result.isPending && connectedTargets.length > 0 ? (
             <View className="items-center py-12">
               <AppActivityIndicator colorClassName="accent-icon" />
             </View>

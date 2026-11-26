@@ -35,14 +35,10 @@ thread's own Pull request tab. Shown only when a connected server reports
   "Pull request #N merged" with **Merge docs**; all closed unmerged → **Close change
   request**. **Merge** while one is open confirms first. Nothing merges on its own; the
   pull request's own view is upstream's and shows no link back.
-- **Mobile**: the tab reads "Changes"; a "Wiki changes · N" section (open rows,
-  a folded "Merged and closed · N" shelf, then a "Pull requests" rule) sits above the pull
-  requests (`features/wikis/WikiChangesSection.tsx`); the Wikis tab's first row "Open
-  changes · N" (`button "N open changes"`) switches to it. A wiki pull request's screen
-  lists its thread's pull requests (`#N · State`, tap opens the review), the merge/close
-  prompt, and Merge into main's dialog names an unmerged one. No kind switch on mobile.
-  Walk on an iPhone with agent-device; rows are buttons named
-  `<title>, pull request in <wiki>`.
+- **Mobile**: the tab reads "Changes": change groups above the host's pull requests, and no
+  wiki change requests or wiki choices in the project filter. A pull request opened from a docs
+  draft (its branch is `cr/<id>`) shows a `Docs` label over its merge button and starts on a
+  merge commit. Walk on an iPhone with agent-device.
 - **Change groups** (`components/changeRequests/groups/`, `@t3tools/shared/changeGroups`,
   server `changeGroups/ChangeGroupService.ts`, decisions in `<state>/change-groups.json`, every
   branch a thread was on in `<state>/thread-branches.json`):

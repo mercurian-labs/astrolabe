@@ -16,18 +16,17 @@ export type WorkspaceTab = NavigationTab;
 /** Lists with their own search: the searchable tabs and the Settings list. */
 export type WorkspaceSearchTab = WorkspaceTab | "settings";
 
-/** Astrolabe: Wikis and Projects wait on their own iPad and Android design. */
+/** Astrolabe: Projects waits on its own iPad and Android design. */
 export function registeredWorkspaceTabs(device: "iphone" | "other"): readonly WorkspaceTab[] {
   return device === "iphone"
     ? NAVIGATION_TAB_ORDER
-    : NAVIGATION_TAB_ORDER.filter((tab) => tab !== "wikis" && tab !== "repositories");
+    : NAVIGATION_TAB_ORDER.filter((tab) => tab !== "repositories");
 }
 
 /** The label each list's search goes by. Usage has no search of its own. */
 export const WORKSPACE_SEARCH_LABELS: Readonly<Record<WorkspaceSearchTab, string>> = {
   threads: msg("Search threads"),
   pullRequests: msg("Search changes"),
-  wikis: msg("Search wikis"),
   repositories: msg("Search files"),
   issues: msg("Search issues"),
   workflows: msg("Search threads"),
@@ -73,7 +72,6 @@ export function initialWorkspaceTabsState(
     tabs: {
       threads: emptyTab(),
       pullRequests: emptyTab(),
-      wikis: emptyTab(),
       repositories: emptyTab(),
       issues: emptyTab(),
       workflows: emptyTab(),

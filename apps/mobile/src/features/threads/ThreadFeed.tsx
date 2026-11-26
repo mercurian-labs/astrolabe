@@ -356,6 +356,7 @@ import { openSettings } from "../settings/settings-navigation";
 import { loopbackUrlForDevice } from "../browser/browserTabs";
 import { useOpenLocalPreview } from "../browser/useOpenLocalPreview";
 import { useSelectWorkspaceDetail } from "../layout/workspace/useSelectWorkspaceDetail";
+import { legacyWikiRedirect } from "../wikis/wikiRoutes";
 import {
   THREAD_FEED_MAINTAIN_SCROLL_AT_END,
   THREAD_FEED_MAINTAIN_SCROLL_AT_END_THRESHOLD,
@@ -2881,11 +2882,14 @@ function UserMessageContent(props: UserMessageContentProps) {
       return;
     }
     if (record?.kind === "wiki-note" && "wikiId" in record) {
-      navigation.navigate("WikiDocument", {
+      const link = {
         environmentId: String(props.environmentId),
         wikiId: String(record.wikiId),
         name: record.name,
-      });
+      };
+      const redirect = legacyWikiRedirect(link, null);
+      if (redirect.kind === "document") navigation.navigate("ProjectDocument", redirect.params);
+      else navigation.navigate("WikiDocument", link);
       return;
     }
     if (record?.kind === "canvas" && "itemId" in record) {

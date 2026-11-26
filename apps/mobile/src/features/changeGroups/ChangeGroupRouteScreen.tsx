@@ -65,16 +65,6 @@ export function ChangeGroupRouteScreen(props: Props) {
 
   const openMember = (member: ChangeGroupMember) => {
     const { ref } = member;
-    if (ref.kind === "wiki-change-request") {
-      navigation.dispatch(
-        StackActions.push("WikiChangeRequest", {
-          environmentId: String(environmentId),
-          wikiId: String(ref.wikiId),
-          changeRequestId: String(ref.changeRequestId),
-        }),
-      );
-      return;
-    }
     const thread = threads.find(
       (candidate) => candidate.environmentId === environmentId && candidate.id === member.threadId,
     );

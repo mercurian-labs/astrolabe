@@ -244,6 +244,10 @@
       "types": "./src/wikiLogic.ts",
       "default": "./src/wikiLogic.ts"
     },
+    "./projectDocEditTarget": {
+      "types": "./src/projectDocEditTarget.ts",
+      "default": "./src/projectDocEditTarget.ts"
+    },
     "./wikiBaseEdits": {
       "types": "./src/wikiBaseEdits.ts",
       "default": "./src/wikiBaseEdits.ts"

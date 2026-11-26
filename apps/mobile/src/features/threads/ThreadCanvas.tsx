@@ -8,6 +8,7 @@ import {
   type CanvasNode,
 } from "@mercurian/wiki/canvas";
 import { documentTitle } from "@t3tools/client-runtime/wikiLogic";
+import { legacyWikiRedirect } from "../wikis/wikiRoutes";
 import type { CanvasView } from "@t3tools/client-runtime/canvasViews";
 import { canvasEdgeShapes } from "@mercurian/wiki-editor/canvas-geometry";
 import { canvasInkShapes } from "@mercurian/wiki-editor/canvas-ink";
@@ -104,14 +105,17 @@ export function ThreadWikiCanvas(props: {
       accessibilityLabel={`Open ${title}`}
       className="flex-row items-center gap-2 active:opacity-70"
       style={{ height: WIKI_CANVAS_ROW_HEIGHT }}
-      onPress={() =>
-        navigation.navigate("WikiDocument", {
+      onPress={() => {
+        const link = {
           environmentId: String(props.environmentId),
           wikiId,
           name: file,
           changeRequestId,
-        })
-      }
+        };
+        const redirect = legacyWikiRedirect(link, null);
+        if (redirect.kind === "document") navigation.navigate("ProjectDocument", redirect.params);
+        else navigation.navigate("WikiDocument", link);
+      }}
     >
       <Text className="flex-1 text-sm text-foreground-secondary" numberOfLines={1}>
         {`Changed the canvas ${title}`}
