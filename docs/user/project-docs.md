@@ -8,7 +8,7 @@ turn on. Your agents read and edit them with the same tools they use for code.
 - **Notes** are `.md` files, joined by `[[links]]`.
 - **Skill maps** are `*.skillmap.md` files. They arrange notes and teach agents how to work in
   them.
-- **Bases** are `.base` files: saved questions over a folder's files (see [Bases](#bases)).
+- **Bases** are `.base` files: saved questions over the project's files (see [Bases](#bases)).
 - **Canvases** are `.canvas` files: boards of cards and arrows (see [Canvases](#canvases)).
 
 All four use Obsidian's formats, so a folder you keep as an Obsidian vault works here as it is.
@@ -111,10 +111,20 @@ go. They apply to every project on that computer.
 
 ## Move and rename
 
-Ask an agent to move or rename a note, a canvas or a folder. It moves them through Astrolabe, so
-every link to them follows, in every folder of the project its thread can write. If some folder
-is out of its reach, the agent tells you which links still name the old place. A file moved in
-Finder, a terminal or another editor keeps its old links.
+To move or rename a note, a canvas, a base or a folder, choose **Move or rename…** on it in the
+Projects tree, or **Move or rename this document** in the command palette for the one in front.
+Every link to it follows, across the project's folders. The phone doesn't move documents yet.
+
+A move saves the way your edits do (see [Where your edits go](#where-your-edits-go)): from a
+hosted repository's main checkout it goes in your draft, and happens when its pull request merges.
+Links in the project's other folders are rewritten on disk. Two kinds keep their old links:
+another hosted repository's main checkout, whose edits go to a draft, and, when you move from a
+worktree, every folder but that worktree. Astrolabe then names the folders whose links still
+lead to the old place.
+
+Agents move and rename through Astrolabe too, in every folder their thread can write, and tell you
+which links they couldn't reach. A file moved in Finder, a terminal or another editor keeps its
+old links.
 
 A moved link is written the shortest way that still finds the file, and a link that would have
 started finding it instead gets its full path, so it stays where it was. A folder's move is a move
@@ -124,12 +134,13 @@ is renamed in place.
 
 ## Bases
 
-A base is a saved question over every file in its folder: which files, filtered, sorted and
+A base is a saved question over every file in its project: which files, filtered, sorted and
 grouped by their properties, links and formulas, with summaries such as a column's sum or
-earliest date. It uses Obsidian's Bases format and gives the same results as Obsidian 1.14: a base
-written in Obsidian works here and the other way round. Its results are worked out each time you
-look, never stored, so a base keeps up as the folder grows. A useful shape for an index note is a
-hand-ordered list of the notes to read first, then a base listing everything else in the area.
+earliest date. It uses Obsidian's Bases format, and over a single folder it gives the same results
+as Obsidian 1.14: a base written in Obsidian works here and the other way round. Its results are
+worked out each time you look, never stored, so a base keeps up as the project grows. A useful
+shape for an index note is a hand-ordered list of the notes to read first, then a base listing
+everything else in the area.
 
 To make one, write a `base` code block in a note, or embed a `.base` file with `![[Name.base]]`
 (or `![[Name.base#View]]` for one view) on a line of its own. A `.base` file opens as its view.
@@ -157,11 +168,14 @@ view settings are read only.
 When a note is renamed where it is, names in bases that link to it or compare a file's name with
 it follow the new name. A move to another folder leaves bases alone, as Obsidian's rename does.
 
-As in Obsidian, a base with no filters lists every file in its folder: notes in every subfolder,
+A base with no filters lists every file in every folder of the project: notes in every subfolder,
 other bases, canvases and attachments. Folders starting with a dot, such as `.git` and
 `.obsidian`, are left out. Add a filter such as `file.ext == "md"` or `file.inFolder("projects")`
-to narrow it. In a git repository, a file's created and modified times are those of the first and
-last commit that changed it.
+to narrow it. A file from another folder than the base's own has that folder's key before its
+path (`api:plans/Launch.md`), and `file.root` is the key of the folder a file is in, so
+`file.root == "api"` keeps one repository's files. Obsidian sees only the vault it opened, so
+there the same base lists that folder's files alone, and has no `file.root`. In a git repository,
+a file's created and modified times are those of the first and last commit that changed it.
 
 Bases support Obsidian's whole language: filters, formulas, every function, regular expressions,
 summaries, `groupBy` and `groupOrder`. Two details catch people out, in Obsidian too. A property's

@@ -153,9 +153,8 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   `[data-pane-tab]`. A chat whose thread is in several groups joins the run before it
   when it shares that run's group. Click shows the group's own tab
   (`change-group:<env>:<id>`): in front where that arrangement has it open (its pane takes
-  focus), else opened at the head of the run. Right-click gives Expand/Collapse the group,
-  Merge with the code (Stop merging with the code when armed), Close the group's tabs
-  (each through its own close, so a pull request leaves the thread's record too);
+  focus), else opened at the head of the run. Right-click gives Expand/Collapse the group and
+  Close the group's tabs (each through its own close, so a pull request leaves the thread's record too);
   collapsed, for the page only and in every strip at once, the run shows the marker and
   only the strip's tab in front. The number is one numbering for the window
   (`panes/tabGroupNumbers.ts`, `localStorage['astrolabe:tab-group-numbers:v1']`): a

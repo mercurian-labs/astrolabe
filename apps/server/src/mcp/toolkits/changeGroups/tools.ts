@@ -21,7 +21,7 @@ const shared = {
 };
 
 const RULES =
-  "A change group is the pull requests in different projects that are one effort: a repository's and the wiki's documenting them, plus the threads working on it. A thread's own pull requests, a coordinator's children's, and a fork's join its group on their own; so do threads on its pull requests' branches and threads naming its issue key. People add, take out, and accept suggestions on top. A pull request is in one group; a thread can be in several. Each member is reviewed and merged in its own place.";
+  "A change group is the pull requests in different projects that are one effort: a repository's code and the pull requests documenting it, plus the threads working on it. A thread's own pull requests, a coordinator's children's, and a fork's join its group on their own; so do threads on its pull requests' branches and threads naming its issue key. People add, take out, and accept suggestions on top. A pull request is in one group; a thread can be in several. Each member is reviewed and merged in its own place.";
 
 // TrimmedNonEmptyString's annotations never reach the advertised schema, so these stay plain.
 const groupId = Schema.NonEmptyString.annotate({
@@ -30,14 +30,13 @@ const groupId = Schema.NonEmptyString.annotate({
 });
 const memberKey = Schema.NonEmptyString.annotate({
   description:
-    "A pull request's or a thread's key, as astrolabe_change_groups shows it: `pr:<host>/<owner>/<repo>#<number>`, `wiki:<wikiId>/<changeRequestId>`, or `thread:<threadId>`.",
+    "A pull request's or a thread's key, as astrolabe_change_groups shows it: `pr:<host>/<owner>/<repo>#<number>` or `thread:<threadId>`.",
 });
 
 export const ChangeGroupSummary = Schema.Struct({
   groupId: Schema.String,
   title: Schema.String,
   state: Schema.Literals(["in-sync", "docs-behind", "waiting-on-code", "docs-missing", "merged"]),
-  armed: Schema.Boolean,
   threadIds: Schema.Array(Schema.String),
   threads: Schema.Array(
     Schema.Struct({
@@ -72,7 +71,7 @@ export const ChangeGroupSummary = Schema.Struct({
 
 const ChangeGroupsTool = Tool.make("astrolabe_change_groups", {
   ...shared,
-  description: `List this environment's change groups: each group's members (code and documentation, with why each is there), the threads working on it (with why each is there), its state, and whether its documentation merges with its code. Pass groupId to read one group in full instead, as a change group the user attached says to: each member's branches, state, checks and link, and its threads. ${RULES}`,
+  description: `List this environment's change groups: each group's members (code and documentation, with why each is there), the threads working on it (with why each is there), and its state. Pass groupId to read one group in full instead, as a change group the user attached says to: each member's branches, state, checks and link, and its threads. ${RULES}`,
   parameters: Schema.Struct({
     groupId: Schema.optional(
       Schema.NonEmptyString.annotate({

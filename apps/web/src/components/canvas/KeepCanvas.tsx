@@ -87,8 +87,8 @@ function PlaceForm({
       }}
     >
       <p className="text-xs text-muted-foreground">
-        It's saved as a file in the project. In a hosted repository's main checkout it goes to a
-        change request for review; anywhere else it's written for you to commit.
+        It's saved as a file in the project. In a hosted repository's main checkout it goes in your
+        draft, for a pull request when you open one; anywhere else it's written for you to commit.
       </p>
       {roots.length < 2 ? null : (
         <div className="flex flex-col gap-1.5">
@@ -187,7 +187,7 @@ function Kept({
       <p className="text-xs text-muted-foreground">
         {changeRequest === null
           ? `${file} is written in ${folder}, uncommitted: commit it with your other changes. The canvas stays in this thread either way.`
-          : `${file} is in “${changeRequest.title}” in ${folder}. Merge it to put it on main, or close it to discard it. The canvas stays in this thread either way.`}
+          : `${file} is in your draft in ${folder}. Open a pull request from the draft's menu when you're ready. The canvas stays in this thread either way.`}
       </p>
       {notes.length === 0 ? null : (
         <Alert variant="warning">

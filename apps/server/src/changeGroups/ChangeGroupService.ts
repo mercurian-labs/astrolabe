@@ -133,7 +133,6 @@ export const ChangeGroupDetail = Schema.Struct({
   groupId: Schema.String,
   title: Schema.String,
   state: Schema.Literals(["in-sync", "docs-behind", "waiting-on-code", "docs-missing", "merged"]),
-  armed: Schema.Boolean,
   members: Schema.Array(
     Schema.Struct({
       key: Schema.String,
@@ -201,7 +200,6 @@ export function describeChangeGroup(
     groupId: group.groupId,
     title: group.title,
     state: group.state,
-    armed: group.armed,
     members: group.members.map((member) => {
       const snapshot = linkOf(member)?.snapshot ?? null;
       return {
@@ -336,8 +334,6 @@ export function applyChangeGroupChange(
         updatedAt,
       };
     }
-    case "arm":
-      return { ...decisions, armed: change.armed, updatedAt };
     case "title":
       return { ...decisions, title: change.title, updatedAt };
   }
@@ -466,7 +462,6 @@ const make = Effect.gen(function* () {
         ) ?? {
           groupId: input.groupId,
           title: null,
-          armed: null,
           added: [],
           removed: [],
           dismissed: [],

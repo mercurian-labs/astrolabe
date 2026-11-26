@@ -321,8 +321,10 @@ which the Command Palette also lists: `c` comment, `d` duplicate the selection, 
 unfold everything.
 
 Code files wrap long lines when **Settings → Appearance → Typography → Word wrap** is on; Space
-`e` `w` switches one file. Markdown files in a repository edit the same way, but always wrap,
-and `mod+i` and `mod+shift+k` stay italic and link there.
+`e` `w` switches one file. Notes in Projects open in the document editor instead (see
+[Project docs](project-docs.md)). Markdown that still opens here, a skill map (`*.skillmap.md`) or
+a note in one of a chat's [linked tabs](./thread-sidebar.md#linked-tabs), edits the same way, but
+always wraps, and `mod+i` and `mod+shift+k` stay italic and link there.
 
 With Vim on, normal mode keeps its keys. Selecting occurrences enters visual mode, where `c`
 changes them all and Escape keeps a cursor at each. On Windows and Linux `mod` is Ctrl, so in

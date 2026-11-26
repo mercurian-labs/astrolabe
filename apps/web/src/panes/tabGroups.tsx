@@ -5,7 +5,6 @@ import { LayersIcon } from "lucide-react";
 import { useSyncExternalStore, type DragEvent, type MouseEvent, type ReactNode } from "react";
 
 import { parseChangeGroupTabKey } from "~/components/changeRequests/groups/changeGroupTabs";
-import { useUpdateChangeGroup } from "~/components/changeRequests/groups/useChangeGroupActions";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { parseRepositoryTabKey } from "~/components/repositories/repositoryTabs";
 import { cn } from "~/lib/utils";
@@ -194,7 +193,6 @@ function TabGroupMarker({
   readonly dragging: boolean;
   readonly actions: TabGroupRunActions;
 }) {
-  const update = useUpdateChangeGroup();
   const id = tabGroupId(group);
   const number = useTabGroupNumber(id);
   const state = CHANGE_GROUP_STATE_LABELS[group.state];
@@ -203,14 +201,10 @@ function TabGroupMarker({
     event.stopPropagation();
     const api = readLocalApi();
     if (!api) return;
-    type Action = "toggle" | "arm" | "close";
+    type Action = "toggle" | "close";
     const action = await api.contextMenu.show<Action>(
       [
         { id: "toggle", label: collapsedNow ? "Expand the group" : "Collapse the group" },
-        {
-          id: "arm",
-          label: group.armed ? "Stop merging with the code" : "Merge with the code",
-        },
         { id: "close", label: "Close the group's tabs" },
       ],
       { x: event.clientX, y: event.clientY },
@@ -218,9 +212,6 @@ function TabGroupMarker({
     switch (action) {
       case "toggle":
         toggleCollapsed(id);
-        return;
-      case "arm":
-        void update(group, { type: "arm", armed: !group.armed });
         return;
       case "close":
         actions.close();

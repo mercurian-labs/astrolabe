@@ -62,7 +62,7 @@ export function useWikiDraftActions({
   };
   const discard = async () => {
     const confirmed = await ensureLocalApi().dialogs.confirm(
-      "Discard this draft? Its edits leave your documents. You can reopen it from Changes.",
+      "Discard this draft? Its edits leave your documents.",
       { variant: "destructive" },
     );
     if (!confirmed) return;

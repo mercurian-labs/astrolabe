@@ -116,8 +116,6 @@ export interface ChangeGroup {
   readonly threadIds: ReadonlyArray<string>;
   readonly members: ReadonlyArray<ChangeGroupMember>;
   readonly state: ChangeGroupState;
-  /** Whether the documentation merges the moment the code has. */
-  readonly armed: boolean;
 }
 
 const ISSUE_KEY = /\b[A-Z][A-Z0-9]*-\d+\b/g;
@@ -361,7 +359,6 @@ export function deriveChangeGroups(input: {
       threadIds: groupThreads.map((entry) => entry.threadId),
       members: list,
       state: changeGroupState(list, settings),
-      armed: decision?.armed ?? settings.armByDefault,
     });
   }
   // Copies sorted, not `toSorted`: the phone's Hermes has no ES2023 methods.

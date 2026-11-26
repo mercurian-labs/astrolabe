@@ -69,8 +69,6 @@ export type ChangeGroupAddedMember = typeof ChangeGroupAddedMember.Type;
 export const ChangeGroupDecisions = Schema.Struct({
   groupId: TrimmedNonEmptyString,
   title: Schema.NullOr(TrimmedNonEmptyString),
-  /** Whether its documentation merges the moment its code does; null follows the settings. */
-  armed: Schema.NullOr(Schema.Boolean),
   added: Schema.Array(ChangeGroupAddedMember),
   /** Member keys taken out of the group; the rules leave them out from then on. */
   removed: Schema.Array(TrimmedNonEmptyString),
@@ -99,7 +97,6 @@ export const ChangeGroupGroupingSettings = Schema.Struct({
   sameBranch: on,
   flagDocsBehind: on,
   offerDocDrafts: off,
-  armByDefault: on,
 });
 export type ChangeGroupGroupingSettings = typeof ChangeGroupGroupingSettings.Type;
 
@@ -115,7 +112,6 @@ export const ChangeGroupGroupingSettingsPatch = Schema.Struct({
   sameBranch: Schema.optionalKey(Schema.Boolean),
   flagDocsBehind: Schema.optionalKey(Schema.Boolean),
   offerDocDrafts: Schema.optionalKey(Schema.Boolean),
-  armByDefault: Schema.optionalKey(Schema.Boolean),
 });
 
 export const ChangeGroupListInput = Schema.Struct({});
@@ -145,7 +141,6 @@ export const ChangeGroupChange = Schema.Union([
     member: ChangeGroupMemberRef,
     note: Schema.String,
   }),
-  Schema.Struct({ type: Schema.Literal("arm"), armed: Schema.Boolean }),
   Schema.Struct({ type: Schema.Literal("title"), title: Schema.NullOr(TrimmedNonEmptyString) }),
 ]);
 export type ChangeGroupChange = typeof ChangeGroupChange.Type;

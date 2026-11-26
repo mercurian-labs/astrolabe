@@ -1498,7 +1498,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/change-requests",
     searchTerms: [
       msg(
-        "change groups group wiki documentation docs sync same thread coordinator lineage fork references issue key agent suggestions merge with the code",
+        "change groups group wiki documentation docs sync same thread coordinator lineage fork references issue key agent suggestions",
       ),
     ],
     environmentOnly: true,

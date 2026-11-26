@@ -174,7 +174,7 @@ const make = Effect.gen(function* () {
   /**
    * The folder it goes in, as `ProjectRoots.writeTarget` picks it, and where it lands there: on
    * disk in the author's checkout, or, for a person in a hosted repository's main checkout on its
-   * default branch, in a change request.
+   * default branch, in their draft.
    */
   const placeOf = Effect.fn("CanvasKeep.placeOf")(function* (
     input: WikiKeepCanvasInput,
@@ -399,8 +399,16 @@ const make = Effect.gen(function* () {
         message: input.comment ?? title,
         transform: { kind: "canvas-create" as const, file, source },
       };
+      // A person's keep in a hosted main checkout joins their draft, as their own edits do (D2).
       const changeRequest = place.review
-        ? (yield* wikis.transform(transform, author)).changeRequest
+        ? (yield* wikis.autosave(
+            {
+              wikiId,
+              document: file,
+              write: { kind: "transform", transform: transform.transform },
+            },
+            author,
+          )).changeRequest
         : null;
       if (!place.review) {
         yield* wikis.transformCheckout({ ...transform, checkout: place.folder }, author);

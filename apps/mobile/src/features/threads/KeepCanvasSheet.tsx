@@ -136,7 +136,7 @@ export function KeepCanvasSheet(props: {
           <Text className="text-sm text-foreground-muted">
             {changeRequest === null
               ? `${file} is written in ${folder}, uncommitted: commit it with your other changes. The canvas stays in this thread either way.`
-              : `${file} is in “${changeRequest.title}” in ${folder}. Merge it to put it on main, or close it to discard it. The canvas stays in this thread either way.`}
+              : `${file} is in your draft in ${folder}. Open a pull request from the draft's menu when you're ready. The canvas stays in this thread either way.`}
           </Text>
           {notes.map((note) => (
             <Text key={note} className="text-sm text-foreground">
@@ -218,8 +218,9 @@ export function KeepCanvasSheet(props: {
     return (
       <>
         <Text className="text-sm text-foreground-muted">
-          It's saved as a file in the project. In a hosted repository's main checkout it goes to a
-          change request for review; anywhere else it's written for you to commit.
+          It's saved as a file in the project. In a hosted repository's main checkout it goes in
+          your draft, for a pull request when you open one; anywhere else it's written for you to
+          commit.
         </Text>
         {roots.length < 2 ? null : (
           <View className="overflow-hidden rounded-[20px] bg-grouped-card">

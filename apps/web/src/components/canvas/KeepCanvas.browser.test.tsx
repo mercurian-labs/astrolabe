@@ -125,7 +125,7 @@ it("keeps in the only folder it can write without asking, and opens the file wri
   ]);
 });
 
-it("asks which folder when several qualify, and says which change request it joined", async () => {
+it("asks which folder when several qualify, and says it joined the draft", async () => {
   reset([root("app"), root("api")], {
     rootKey: "api",
     file: "Refund flow.canvas",
@@ -140,9 +140,7 @@ it("asks which folder when several qualify, and says which change request it joi
   await userEvent.click(page.getByRole("button", { name: "Place it" }));
 
   expect(state.kept).toMatchObject([{ repository: "api" }]);
-  await expect
-    .element(page.getByText(/Refund flow\.canvas is in “Keep Refund flow” in api/))
-    .toBeVisible();
+  await expect.element(page.getByText(/Refund flow\.canvas is in your draft in api/)).toBeVisible();
   await userEvent.click(page.getByRole("button", { name: "Open it" }));
   expect(state.opened).toMatchObject([
     { kind: "note", file: "Refund flow.canvas", changeRequestId: "cr-1" },

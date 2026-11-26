@@ -56,7 +56,6 @@ const decided = (
 ): ChangeGroupDecisions => ({
   groupId,
   title: null,
-  armed: null,
   added: change.added ?? [],
   removed: change.removed ?? [],
   dismissed: [],
@@ -111,7 +110,6 @@ describe("change groups", () => {
     const decision: ChangeGroupDecisions = {
       groupId: "b",
       title: "Three and two",
-      armed: false,
       added: [
         {
           member: { kind: "pull-request", host: "github.com", repository: "acme/app", number: 2 },
@@ -127,7 +125,6 @@ describe("change groups", () => {
     const groups = derive(threads, [decision]);
     const b = groups.find((group) => group.groupId === "b");
     expect(b?.title).toBe("Three and two");
-    expect(b?.armed).toBe(false);
     expect(b?.members.map((member) => [member.key, member.reason, member.note])).toEqual([
       ["pr:github.com/acme/app#3", "same-thread", ""],
       ["pr:github.com/acme/app#2", "suggested", "Both change the importer"],

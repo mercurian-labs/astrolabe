@@ -16,7 +16,8 @@ import {
   RootKey,
   ThreadId,
   TurnItemId,
-  type WikiAmendResult,
+  type WikiAutosaveInput,
+  type WikiAutosaveResult,
   type WikiError,
   type WikiTransformInput,
 } from "@t3tools/contracts";
@@ -101,7 +102,7 @@ interface World {
 }
 
 const keep = (world: World) => {
-  const transforms: WikiTransformInput[] = [];
+  const transforms: WikiAutosaveInput[] = [];
   const onDisk: WikiTransformInput[] = [];
   const authors: WikiService.WikiAuthor[] = [];
   const remotes: string[] = [];
@@ -188,12 +189,12 @@ const keep = (world: World) => {
           },
         }),
         Layer.mock(WikiService.WikiService)({
-          transform: (input, author) => {
+          autosave: (input, author) => {
             transforms.push(input);
             authors.push(author);
             return Effect.succeed({
-              changeRequest: { changeRequestId: "cr-1" },
-            } as unknown as WikiAmendResult);
+              changeRequest: { changeRequestId: "cr-1", draft: true },
+            } as unknown as WikiAutosaveResult);
           },
           transformCheckout: (input, author) => {
             onDisk.push(input);
@@ -220,7 +221,8 @@ const keep = (world: World) => {
     ),
     Effect.provide(layer),
     Effect.map((result) => {
-      const transform = (transforms[0] ?? onDisk[0])?.transform;
+      const drafted = transforms[0]?.write;
+      const transform = drafted?.kind === "transform" ? drafted.transform : onDisk[0]?.transform;
       const source = transform?.kind === "canvas-create" ? (transform.source ?? "") : "";
       return { result, source, transforms, onDisk, authors, remotes, targets };
     }),
@@ -238,7 +240,8 @@ it.effect("keeps a board in the folder its name gives, refusing what no folder c
   Effect.gen(function* () {
     const { result, transforms } = yield* keep({ name: "/ops/deep/The merge" });
     assert.equal(result.file, "ops/deep/The merge.canvas");
-    const transform = transforms[0]?.transform;
+    const write = transforms[0]?.write;
+    const transform = write?.kind === "transform" ? write.transform : undefined;
     assert.equal(transform?.kind === "canvas-create" ? transform.file : "", result.file);
 
     const refused = yield* Effect.flip(keep({ name: "../The merge" }));
@@ -252,11 +255,10 @@ it.effect("lands a board as a new canvas, at the coordinates the thread showed",
     assert.equal(result.file, "The merge.canvas");
     assert.equal(result.rootKey, "app");
     assert.deepEqual(result.notes, []);
-    assert.equal(transforms[0]?.title, "Keep The merge");
+    assert.equal(transforms[0]?.document, "The merge.canvas");
     assert.equal(transforms[0]?.wikiId, projectRootId(PROJECT, RootKey.make("app")));
     assert.isUndefined(transforms[0]?.changeRequestId);
     assert.deepEqual(authors, [WikiService.person]);
-    assert.equal(transforms[0]?.message, "Keep The merge");
 
     const shown = placeCanvas(drawing);
     const { nodes, edges } = JSON.parse(source);

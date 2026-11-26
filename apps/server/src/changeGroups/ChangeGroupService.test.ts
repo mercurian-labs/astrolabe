@@ -1,4 +1,5 @@
 import {
+  ChangeGroupGroupingSettings,
   DEFAULT_CHANGE_GROUP_GROUPING_SETTINGS,
   type ChangeGroupDecisions,
   type ThreadPullRequestLink,
@@ -19,7 +20,6 @@ import {
 const empty: ChangeGroupDecisions = {
   groupId: "thread-1",
   title: null,
-  armed: null,
   added: [],
   removed: [],
   dismissed: [],
@@ -27,6 +27,7 @@ const empty: ChangeGroupDecisions = {
   updatedAt: "2026-10-19T00:00:00Z",
 };
 const decodeStoredChangeGroups = Schema.decodeSync(ChangeGroupStoreJson);
+const decodeGroupingSettings = Schema.decodeUnknownSync(ChangeGroupGroupingSettings);
 const pr = { kind: "pull-request" as const, host: "github.com", repository: "acme/app", number: 7 };
 const at = "2026-10-19T01:00:00Z";
 
@@ -82,11 +83,19 @@ describe("a change group's decisions", () => {
     ).toBe(dismissed);
   });
 
-  it("arm and name the group", () => {
-    const armed = applyChangeGroupChange(empty, { type: "arm", armed: false }, at);
-    expect(armed.armed).toBe(false);
-    expect(applyChangeGroupChange(armed, { type: "title", title: "Search" }, at).title).toBe(
+  it("name the group", () => {
+    expect(applyChangeGroupChange(empty, { type: "title", title: "Search" }, at).title).toBe(
       "Search",
+    );
+  });
+
+  it("still read a file that remembers merging with the code", () => {
+    const stored = decodeStoredChangeGroups(
+      JSON.stringify({ version: 1, decisions: [{ ...empty, armed: true }] }),
+    );
+    expect(stored.decisions).toEqual([empty]);
+    expect(decodeGroupingSettings({ armByDefault: false })).toEqual(
+      DEFAULT_CHANGE_GROUP_GROUPING_SETTINGS,
     );
   });
 });
