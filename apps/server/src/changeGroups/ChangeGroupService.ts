@@ -2,12 +2,15 @@ import {
   ChangeGroupDecisions,
   ChangeGroupError,
   ChangeGroupReason,
+  type ChangeGroupMemberRef,
   changeGroupMemberKey,
+  changeGroupMemberRefOfKey,
   PullRequestChecksState,
   PullRequestReviewDecision,
   type ChangeGroupListResult,
   type ChangeGroupUpdateInput,
   type WikiChangeRequestId,
+  WikiId,
 } from "@t3tools/contracts";
 import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
 import {
@@ -64,6 +67,10 @@ export class ChangeGroupService extends Context.Service<
     }) => Effect.Effect<ChangeGroupDetail | null, ChangeGroupError>;
     /** Merges the documentation of armed groups whose code has merged. */
     readonly mergeArmed: Effect.Effect<void>;
+    /** Rewrites stored decisions that name wikis' change requests, as `migrateWikiMembers` does. */
+    readonly adoptWikiMigration: (
+      migration: WikiMemberMigration,
+    ) => Effect.Effect<void, ChangeGroupError>;
   }
 >()("t3/changeGroups/ChangeGroupService") {}
 
@@ -204,6 +211,61 @@ export function describeChangeGroup(
       .filter((entry) => !isAgentRun(entry.threadId))
       .map((entry) => ({ ...entry, branch: byId.get(entry.threadId)?.branch ?? null })),
     agentRuns: group.threads.filter((entry) => isAgentRun(entry.threadId)).length,
+  };
+}
+
+type PullRequestRef = Extract<ChangeGroupMemberRef, { readonly kind: "pull-request" }>;
+
+export interface WikiMemberMigration {
+  /** The pull request each wiki change request (by member key) became, when it had one. */
+  readonly pullRequests: ReadonlyMap<string, PullRequestRef>;
+  /** Each registered wiki's id, to the id of the project root it became. */
+  readonly wikiIds: ReadonlyMap<string, string>;
+}
+
+/**
+ * Decisions with wikis' change requests gone: one with a pull request becomes that pull request,
+ * one without leaves (`dropped` lists them). Keys taken out or dismissed follow the same way, or
+ * else move to the wiki's project root.
+ */
+export function migrateWikiMembers(
+  decisions: ChangeGroupDecisions,
+  migration: WikiMemberMigration,
+): { readonly decisions: ChangeGroupDecisions; readonly dropped: ReadonlyArray<string> } {
+  const dropped: string[] = [];
+  const member = (ref: ChangeGroupMemberRef): ChangeGroupMemberRef | null => {
+    if (ref.kind !== "wiki-change-request") return ref;
+    const key = changeGroupMemberKey(ref);
+    const pullRequest = migration.pullRequests.get(key);
+    if (pullRequest === undefined) dropped.push(key);
+    return pullRequest ?? null;
+  };
+  const keyOf = (key: string) => {
+    const ref = changeGroupMemberRefOfKey(key);
+    if (ref?.kind !== "wiki-change-request") return key;
+    const pullRequest = migration.pullRequests.get(key);
+    if (pullRequest !== undefined) return changeGroupMemberKey(pullRequest);
+    const wikiId = migration.wikiIds.get(ref.wikiId);
+    return wikiId === undefined
+      ? key
+      : changeGroupMemberKey({ ...ref, wikiId: WikiId.make(wikiId) });
+  };
+  const keys = (list: ReadonlyArray<string>) => [...new Set(list.map(keyOf))];
+  return {
+    decisions: {
+      ...decisions,
+      added: decisions.added.flatMap((entry) => {
+        const ref = member(entry.member);
+        return ref === null ? [] : [{ ...entry, member: ref }];
+      }),
+      removed: keys(decisions.removed),
+      dismissed: keys(decisions.dismissed),
+      pending: decisions.pending.flatMap((entry) => {
+        const ref = member(entry.member);
+        return ref === null ? [] : [{ ...entry, member: ref }];
+      }),
+    },
+    dropped,
   };
 }
 
@@ -358,6 +420,33 @@ const make = Effect.gen(function* () {
     return { decisions: store.decisions, threadBranches: yield* threadBranches };
   });
 
+  const adoptWikiMigration: ChangeGroupService["Service"]["adoptWikiMigration"] = (migration) =>
+    lock.withPermits(1)(
+      Effect.gen(function* () {
+        const store = yield* load;
+        const migrated = store.decisions.map((decision) => {
+          const result = migrateWikiMembers(decision, migration);
+          return { groupId: decision.groupId, ...result };
+        });
+        for (const { groupId, dropped } of migrated) {
+          for (const memberKey of dropped) {
+            yield* Effect.logWarning(
+              "A change group's wiki change request had no pull request, so it left the group",
+              { groupId, memberKey },
+            );
+          }
+        }
+        const nextStore: ChangeGroupStore = {
+          version: 1,
+          decisions: migrated.map(({ decisions }) => decisions),
+        };
+        const contents = yield* encodeStore(nextStore).pipe(Effect.mapError(storeError));
+        if ((yield* encodeStore(store).pipe(Effect.mapError(storeError))) === contents) return;
+        yield* writeAtomically(storePath, contents);
+        yield* Ref.set(cache, nextStore);
+      }),
+    );
+
   const update: ChangeGroupService["Service"]["update"] = (input) =>
     lock.withPermits(1)(
       Effect.gen(function* () {
@@ -487,7 +576,7 @@ const make = Effect.gen(function* () {
   // sweep follows a merge closely without watching each one.
   yield* forkParked(mergeArmed.pipe(Effect.repeat(Schedule.spaced("1 minute")), Effect.asVoid));
 
-  return ChangeGroupService.of({ list, update, groups, group, mergeArmed });
+  return ChangeGroupService.of({ list, update, groups, group, mergeArmed, adoptWikiMigration });
 });
 
 export const layer = Layer.effect(ChangeGroupService, make);

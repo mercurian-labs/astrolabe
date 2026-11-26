@@ -72,6 +72,7 @@ import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts
 import * as CanvasKeep from "../wiki/CanvasKeep.ts";
 import * as ThreadWikiCheckouts from "../wiki/ThreadWikiCheckouts.ts";
 import * as WikiService from "../wiki/WikiService.ts";
+import * as WikiMigration from "../wiki/wikiMigration.ts";
 import * as CodeIndex from "../codeIndex/CodeIndex.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as FeedbackStore from "../feedback/FeedbackStore.ts";
@@ -323,12 +324,13 @@ export const layerProjectSetupScriptRunner = ProjectSetupScriptRunner.layer.pipe
 const layerManagedProjectFoldersProvided = ManagedProjectFolders.layer.pipe(
   Layer.provide(layerProjectService),
 );
+const layerProjectRootsProvided = ProjectRoots.layer.pipe(
+  Layer.provide(Layer.merge(ProjectStore.layer, TaskFolderStore.layer)),
+);
 // One per server: it holds each wiki's write lock, the event stream, and index caches.
 const layerWikiServiceProvided = WikiService.layer.pipe(
   Layer.provide(layerProjectService),
-  Layer.provide(
-    ProjectRoots.layer.pipe(Layer.provide(Layer.merge(ProjectStore.layer, TaskFolderStore.layer))),
-  ),
+  Layer.provide(layerProjectRootsProvided),
 );
 const layerThreadWikiCheckoutsProvided = ThreadWikiCheckouts.layer.pipe(
   Layer.provide(layerWikiServiceProvided),
@@ -502,6 +504,16 @@ export const layerProduction = Layer.mergeAll(
   ),
   layerCodeIndexProvided,
   layerChangeGroupServiceProvided,
+  // Astrolabe: registered wikis become project roots, once.
+  WikiMigration.layer.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        layerWikiServiceProvided,
+        layerChangeGroupServiceProvided,
+        layerProjectRootsProvided,
+      ),
+    ),
+  ),
   layerProjectWorktreeServiceProvided,
   layerThreadLaunchProvided,
   layerScheduledTaskProvided,

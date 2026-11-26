@@ -1,6 +1,6 @@
 /**
- * What the wiki service keeps on disk: the registry (`<stateDir>/wikis.json`) and change request
- * metadata, a commit under `refs/wiki/change-requests/<id>` holding `change-request.json` with one
+ * What the wiki service keeps on disk: the registry (`<stateDir>/wikis.json`, until the migration
+ * to project roots sets it aside), where each registered wiki went, and change request metadata, a commit under `refs/wiki/change-requests/<id>` holding `change-request.json` with one
  * child commit per update. Everything else (amendments, files, indexes) derives from the repo.
  *
  * @module wikiStorage
@@ -10,6 +10,7 @@ import { parseAmendmentTrailers, type WikiMove } from "@mercurian/wiki";
 import {
   IsoDateTime,
   ProjectId,
+  RootKey,
   ThreadId,
   TrimmedNonEmptyString,
   type WikiAmendmentSummary,
@@ -53,6 +54,23 @@ export const WikiRegistry = Schema.Struct({
 export type WikiRegistry = typeof WikiRegistry.Type;
 
 export const WikiRegistryJson = fromJsonStringPretty(WikiRegistry);
+
+export const WIKI_REGISTRY_FILE = "wikis.json";
+/** Where the registry goes once every wiki in it has become a project's root. */
+export const RETIRED_WIKI_REGISTRY_FILE = "wikis.json.pre-projects";
+export const WIKI_MIGRATION_FILE = "wiki-migration.json";
+
+/** Where each registered wiki went, so its old id keeps resolving, and the mirrors that stopped. */
+export const WikiMigration = Schema.Struct({
+  version: Schema.Literal(1),
+  wikis: Schema.Record(WikiId, Schema.Struct({ projectId: ProjectId, rootKey: RootKey })),
+  droppedMirrors: Schema.Array(
+    Schema.Struct({ wikiId: WikiId, name: Schema.String, url: Schema.String }),
+  ),
+});
+export type WikiMigration = typeof WikiMigration.Type;
+
+export const WikiMigrationJson = fromJsonStringPretty(WikiMigration);
 
 export const ChangeRequestRecord = Schema.Struct({
   version: Schema.Literal(1),

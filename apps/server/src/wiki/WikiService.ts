@@ -83,6 +83,7 @@ import {
   type WikiHostRelation,
   type WikiHostStatus,
   WikiId,
+  type WikiMapBackground,
   type WikiIndexResult,
   type WikiListFilesInput,
   type WikiListFilesResult,
@@ -133,6 +134,7 @@ import * as Stream from "effect/Stream";
 
 import * as ServerConfig from "../config.ts";
 import * as ProjectService from "../project/ProjectService.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import { isWithinRoot } from "../workspace/KnownWorkspaces.ts";
 import * as ProjectRoots from "../workspace/ProjectRoots.ts";
@@ -165,7 +167,12 @@ import {
   parseMergeTree,
   type PendingCheckoutAmendment,
   PendingCheckoutAmendmentJson,
+  RETIRED_WIKI_REGISTRY_FILE,
   THREAD_CHECKOUTS_FOLDER,
+  type WikiMigration,
+  WikiMigrationJson,
+  WIKI_MIGRATION_FILE,
+  WIKI_REGISTRY_FILE,
   type WikiRecord,
   type WikiRegistry,
   WikiRegistryJson,
@@ -488,6 +495,11 @@ export class WikiService extends Context.Service<
       input: WikiSetChangeRequestStatusInput,
     ) => Effect.Effect<WikiChangeRequest, WikiError>;
     readonly get: (wikiId: WikiId) => Effect.Effect<WikiSummary, WikiError>;
+    /**
+     * Records where each registered wiki went, then sets the registry aside: old ids resolve to
+     * those project roots from then on.
+     */
+    readonly retireRegistry: (migration: WikiMigration) => Effect.Effect<void, WikiError>;
     /** The wikis on a host, read from the registry alone. */
     readonly hosted: Effect.Effect<ReadonlyArray<WikiId>, WikiError>;
     /** Makes `remote` the wiki's main line, or with null makes it local again; drops a mirror. */
@@ -690,6 +702,9 @@ const isMediaFile = (file: string) => {
 
 const decodeRegistry = Schema.decodeEffect(WikiRegistryJson);
 const encodeRegistry = Schema.encodeEffect(WikiRegistryJson);
+const decodeMigration = Schema.decodeEffect(WikiMigrationJson);
+const isWikiId = Schema.is(WikiId);
+const encodeMigration = Schema.encodeEffect(WikiMigrationJson);
 const decodeChangeRequest = Schema.decodeEffect(ChangeRequestRecordJson);
 const encodeChangeRequest = Schema.encodeEffect(ChangeRequestRecordJson);
 
@@ -772,11 +787,14 @@ const make = Effect.gen(function* () {
   const random = yield* SecureRandom.SecureRandom;
   const projects = yield* ProjectService.ProjectService;
   const projectRootFolders = yield* ProjectRoots.ProjectRoots;
+  const serverSettings = yield* ServerSettings.ServerSettingsService;
 
   const events = yield* PubSub.sliding<WikiEvent>(256);
-  const registryPath = path.join(config.stateDir, "wikis.json");
+  const registryPath = path.join(config.stateDir, WIKI_REGISTRY_FILE);
+  const migrationPath = path.join(config.stateDir, WIKI_MIGRATION_FILE);
   const registryLock = yield* Semaphore.make(1);
   const registryCache = yield* Ref.make<WikiRegistry | undefined>(undefined);
+  const migrationCache = yield* Ref.make<WikiMigration | undefined>(undefined);
   const wikiLocks = new Map<string, Semaphore.Semaphore>();
   const fetchLocks = new Map<string, Semaphore.Semaphore>();
   const snapshots = lru<Snapshot>(24);
@@ -1267,6 +1285,41 @@ const make = Effect.gen(function* () {
     return registry;
   });
 
+  const loadMigration = Effect.gen(function* () {
+    const cached = yield* Ref.get(migrationCache);
+    if (cached !== undefined) return cached;
+    const exists = yield* fileSystem.exists(migrationPath).pipe(Effect.mapError(registryError));
+    const migration: WikiMigration = exists
+      ? yield* fileSystem
+          .readFileString(migrationPath)
+          .pipe(Effect.flatMap(decodeMigration), Effect.mapError(registryError))
+      : { version: 1, wikis: {}, droppedMirrors: [] };
+    yield* Ref.set(migrationCache, migration);
+    return migration;
+  });
+
+  const retireRegistry: WikiService["Service"]["retireRegistry"] = (migration) =>
+    registryLock.withPermits(1)(
+      Effect.gen(function* () {
+        const contents = yield* encodeMigration(migration).pipe(Effect.mapError(registryError));
+        yield* writeFileStringAtomically({
+          filePath: migrationPath,
+          contents: `${contents}\n`,
+        }).pipe(
+          Effect.provideService(FileSystem.FileSystem, fileSystem),
+          Effect.provideService(Path.Path, path),
+          Effect.mapError(registryError),
+        );
+        if (yield* fileSystem.exists(registryPath).pipe(Effect.mapError(registryError))) {
+          yield* fileSystem
+            .rename(registryPath, path.join(config.stateDir, RETIRED_WIKI_REGISTRY_FILE))
+            .pipe(Effect.mapError(registryError));
+        }
+        yield* Ref.set(migrationCache, migration);
+        yield* Ref.set(registryCache, { version: 1, wikis: [] });
+      }),
+    );
+
   const updateRegistry = <A>(
     update: (registry: WikiRegistry) => Effect.Effect<readonly [WikiRegistry, A], WikiError>,
   ) =>
@@ -1345,20 +1398,22 @@ const make = Effect.gen(function* () {
       projectLinkedAt: {},
       mirror: null,
       createdAt: project.createdAt,
+      mapBackgrounds: yield* serverSettings.getSettings.pipe(
+        Effect.map((settings) => settings.wikiMapBackgrounds),
+        Effect.orElseSucceed((): ReadonlyArray<WikiMapBackground> => []),
+      ),
     };
     if (root.state === "plain") {
       const plain: WikiRecord = {
         ...named,
         mainBranch: "main",
         host: null,
-        mapBackgrounds: [],
         plain: true,
       };
       return plain;
     }
     const host = root.hostBacked ? yield* projectRootFolders.host(root.path) : null;
     const mainBranch = yield* defaultBranch(folder, host?.remote ?? "origin");
-    const { wikis } = yield* loadRegistry;
     const record: WikiRecord = {
       ...named,
       mainBranch,
@@ -1376,8 +1431,6 @@ const make = Effect.gen(function* () {
               relation: null,
               lastError: null,
             },
-      // Until map backgrounds leave wikis, a registered wiki's folder keeps drawing on its own.
-      mapBackgrounds: wikis.find((wiki) => wiki.root === folder)?.mapBackgrounds ?? [],
     };
     return record;
   });
@@ -1440,6 +1493,11 @@ const make = Effect.gen(function* () {
     if (byId !== undefined) return byId;
     const byRoot = yield* projectRootRecord(reference);
     if (byRoot !== undefined) return byRoot;
+    const migrated = isWikiId(reference) ? (yield* loadMigration).wikis[reference] : undefined;
+    if (migrated !== undefined) {
+      const moved = yield* projectRootRecord(projectRootId(migrated.projectId, migrated.rootKey));
+      if (moved !== undefined) return moved;
+    }
     const byName = wikis.filter((wiki) => wiki.name.toLowerCase() === reference.toLowerCase());
     if (byName.length === 1 && byName[0] !== undefined) return byName[0];
     return yield* new WikiError({
@@ -4589,7 +4647,7 @@ const make = Effect.gen(function* () {
     );
 
   const setMapBackgrounds: WikiService["Service"]["setMapBackgrounds"] = (input) =>
-    withRegisteredWiki(input.wikiId, (wiki) =>
+    withAnyWiki(input.wikiId, (wiki) =>
       Effect.gen(function* () {
         const names = new Set(input.backgrounds.map(({ name }) => name.toLowerCase()));
         if (names.size !== input.backgrounds.length) {
@@ -4607,10 +4665,20 @@ const make = Effect.gen(function* () {
             message: "A map background's address starts with http:// or https://.",
           });
         }
-        const next = yield* locked(
-          wiki,
-          replaceWiki({ ...wiki, mapBackgrounds: input.backgrounds }),
-        );
+        // A project's folder draws on the server's backgrounds, which every folder shares.
+        const next = isProjectFolder(wiki)
+          ? yield* serverSettings.updateSettings({ wikiMapBackgrounds: input.backgrounds }).pipe(
+              Effect.as({ ...wiki, mapBackgrounds: input.backgrounds }),
+              Effect.mapError(
+                (cause) =>
+                  new WikiError({
+                    reason: "invalid",
+                    message: "The map backgrounds could not be saved.",
+                    cause,
+                  }),
+              ),
+            )
+          : yield* locked(wiki, replaceWiki({ ...wiki, mapBackgrounds: input.backgrounds }));
         // A kind older clients decode; every kind only tells them to read again.
         yield* publish("mirror", wiki.wikiId, null);
         return yield* summary(next);
@@ -5212,6 +5280,7 @@ const make = Effect.gen(function* () {
     list,
     root,
     get,
+    retireRegistry,
     hosted,
     setHost,
     syncFromHost,

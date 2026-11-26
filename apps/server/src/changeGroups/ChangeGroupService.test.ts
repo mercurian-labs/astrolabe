@@ -2,6 +2,8 @@ import {
   DEFAULT_CHANGE_GROUP_GROUPING_SETTINGS,
   type ChangeGroupDecisions,
   type ThreadPullRequestLink,
+  WikiChangeRequestId,
+  WikiId,
 } from "@t3tools/contracts";
 import { deriveChangeGroups, type ChangeGroupThread } from "@t3tools/shared/changeGroups";
 import { describe, expect, it } from "vite-plus/test";
@@ -10,6 +12,7 @@ import {
   applyChangeGroupChange,
   describeChangeGroup,
   foldThreadBranches,
+  migrateWikiMembers,
 } from "./ChangeGroupService.ts";
 
 const empty: ChangeGroupDecisions = {
@@ -160,5 +163,53 @@ describe("one group in full", () => {
       ["root", "feature-1"],
     ]);
     expect(detail.agentRuns).toBe(1);
+  });
+});
+
+describe("a group's wiki change requests after wikis become project roots", () => {
+  const wikiMember = (wikiId: string, changeRequestId: string) => ({
+    kind: "wiki-change-request" as const,
+    wikiId: WikiId.make(wikiId),
+    changeRequestId: WikiChangeRequestId.make(changeRequestId),
+  });
+  const thread = { kind: "thread" as const, threadId: "thread-2" };
+  const migration = {
+    pullRequests: new Map([["wiki:w1/cr-open", pr]]),
+    wikiIds: new Map([["w1", "app:notes"]]),
+  };
+
+  it("become their pull requests, and leave without one", () => {
+    const { decisions, dropped } = migrateWikiMembers(
+      {
+        ...empty,
+        added: [
+          { member: wikiMember("w1", "cr-open"), reason: "manual", note: "The docs" },
+          { member: wikiMember("w1", "cr-local"), reason: "manual", note: "" },
+          { member: thread, reason: "manual", note: "" },
+        ],
+        pending: [{ member: wikiMember("w1", "cr-draft"), note: "Same plan" }],
+      },
+      migration,
+    );
+    expect(decisions.added).toEqual([
+      { member: pr, reason: "manual", note: "The docs" },
+      { member: thread, reason: "manual", note: "" },
+    ]);
+    expect(decisions.pending).toEqual([]);
+    expect(dropped).toEqual(["wiki:w1/cr-local", "wiki:w1/cr-draft"]);
+  });
+
+  it("rewrite the keys taken out or dismissed", () => {
+    const { decisions, dropped } = migrateWikiMembers(
+      {
+        ...empty,
+        removed: ["wiki:w1/cr-open", "pr:github.com/acme/app#7", "wiki:w1/cr-local"],
+        dismissed: ["wiki:other/cr-1", "thread:thread-3"],
+      },
+      migration,
+    );
+    expect(decisions.removed).toEqual(["pr:github.com/acme/app#7", "wiki:app:notes/cr-local"]);
+    expect(decisions.dismissed).toEqual(["wiki:other/cr-1", "thread:thread-3"]);
+    expect(dropped).toEqual([]);
   });
 });

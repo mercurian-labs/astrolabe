@@ -122,6 +122,7 @@ const withWikis = <A, E>(
     | WikiService.WikiService
     | ProjectService.ProjectService
     | ServerConfig.ServerConfig
+    | ServerSettings.ServerSettingsService
     | NodeServices.NodeServices
     | Scope.Scope
   >,
@@ -3520,6 +3521,36 @@ it.effect("reads a project folder's notes by its root id, and keeps no wiki sett
       assert.equal((yield* failure(wikis.remove({ wikiId }))).reason, "invalid");
       assert.equal((yield* wikis.get(rootIdOf(project.id, "plain"))).root, plain);
       assert.equal((yield* failure(wikis.get(rootIdOf(project.id, "gone")))).reason, "not-found");
+    }),
+  ),
+);
+
+it.effect("draws every project folder's maps on the server's backgrounds", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const wikis = yield* WikiService.WikiService;
+      const app = yield* commitNotes(yield* harness.folder("app"), { "README.md": "# App\n" });
+      const plain = yield* harness.folder("plain");
+      const project = yield* projectOver({
+        id: "project-maps",
+        workspaceRoot: app,
+        trackedFolders: [{ name: "plain", path: plain }],
+      });
+      const backgrounds = [
+        { name: "Streets", lightTiles: "https://tiles.test/{z}/{x}/{y}.png", darkTiles: null },
+      ];
+
+      yield* wikis.setMapBackgrounds({ wikiId: rootIdOf(project.id, "app"), backgrounds });
+
+      assert.deepEqual(
+        (yield* (yield* ServerSettings.ServerSettingsService).getSettings).wikiMapBackgrounds,
+        backgrounds,
+      );
+      assert.deepEqual(
+        (yield* wikis.get(rootIdOf(project.id, "plain"))).mapBackgrounds,
+        backgrounds,
+      );
+      assert.equal(yield* git(app, ["status", "--porcelain"]), "");
     }),
   ),
 );
