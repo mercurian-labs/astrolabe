@@ -149,6 +149,8 @@ import * as T3ProjectFileLoader from "./project/T3ProjectFileLoader.ts";
 import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
 import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 import * as WorkspaceFolders from "./workspace/WorkspaceFolders.ts";
+// Astrolabe
+import * as ProjectRoots from "./workspace/ProjectRoots.ts";
 import * as LayoutCommandApprovals from "./workspace/LayoutCommandApprovals.ts";
 import * as LayoutCommandApprovalWrites from "./workspace/LayoutCommandApprovalWrites.ts";
 import * as TaskFolders from "./workspace/TaskFolders.ts";
@@ -618,6 +620,11 @@ const layerWorkspace = Layer.mergeAll(
   layerLanguageServers,
   WorkspaceFolders.layer.pipe(
     Layer.provide(Layer.merge(ProjectStore.layer, TaskFolderStore.layer)),
+  ),
+  ProjectRoots.layer.pipe(
+    Layer.provide(
+      Layer.mergeAll(ProjectStore.layer, TaskFolderStore.layer, layerSourceControlProviderRegistry),
+    ),
   ),
 );
 

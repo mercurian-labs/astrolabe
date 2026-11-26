@@ -618,6 +618,12 @@ import {
   LanguageServerUpdateSettingsInput,
 } from "./languageServers.ts";
 import { Project, ProjectMutation, ProjectMutationError } from "./project.ts";
+// Astrolabe
+import {
+  ProjectRootsError,
+  ProjectRootsListInput,
+  ProjectRootsListResult,
+} from "./projectRoots.ts";
 
 export const WS_METHODS = {
   projectsListEntries: "projects.listEntries",
@@ -790,6 +796,9 @@ export const WS_METHODS = {
   // Astrolabe: the text an open file's change markers compare against, and its changes.
   vcsReadBaseText: "vcs.readBaseText",
   subscribeVcsBaseText: "subscribeVcsBaseText",
+
+  // Astrolabe: one address space over a project's folders.
+  projectRootsList: "projectRoots.list",
 
   // Astrolabe: local wikis.
   wikiList: "wiki.list",
@@ -2662,6 +2671,13 @@ const WsSubscribeVcsBaseTextRpc = Rpc.make(WS_METHODS.subscribeVcsBaseText, {
   stream: true,
 });
 
+// Astrolabe
+const WsProjectRootsListRpc = Rpc.make(WS_METHODS.projectRootsList, {
+  payload: ProjectRootsListInput,
+  success: ProjectRootsListResult,
+  error: Schema.Union([ProjectRootsError, EnvironmentAuthorizationError]),
+});
+
 // Astrolabe: local wikis. Every change is pushed on `wiki.subscribe` so open views read again.
 const WsWikiListRpc = Rpc.make(WS_METHODS.wikiList, {
   payload: Schema.Struct({}),
@@ -3509,6 +3525,7 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsServerSetVimOptionRpc,
   WsVcsReadBaseTextRpc,
   WsSubscribeVcsBaseTextRpc,
+  WsProjectRootsListRpc,
   WsWikiListRpc,
   WsWikiSubscribeRpc,
   WsWikiRegisterRpc,

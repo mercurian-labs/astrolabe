@@ -231,6 +231,8 @@ import { deletePendingAttachment, issueAttachmentUploadUrl } from "./assets/Atta
 import * as PortScanner from "./preview/PortScanner.ts";
 import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 import * as WorkspaceFolders from "./workspace/WorkspaceFolders.ts";
+// Astrolabe
+import * as ProjectRoots from "./workspace/ProjectRoots.ts";
 import * as LayoutCommandApprovalWrites from "./workspace/LayoutCommandApprovalWrites.ts";
 import * as TaskFolders from "./workspace/TaskFolders.ts";
 import * as KnownWorkspaces from "./workspace/KnownWorkspaces.ts";
@@ -1490,6 +1492,7 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
     const documents = yield* Documents.Documents;
     const codeIndex = yield* CodeIndex.CodeIndex;
     const languageServers = yield* LanguageServers.LanguageServers;
+    const projectRoots = yield* ProjectRoots.ProjectRoots;
     return ServerWsAstrolabeRpcGroup.of({
       [WS_METHODS.worktreesList]: (input) => worktrees.list(input),
       [WS_METHODS.worktreesOpen]: (input) => worktrees.open(input),
@@ -1514,6 +1517,10 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
       [WS_METHODS.serverUpsertVimMapping]: (input) => vimrc.upsertMapping(input),
       [WS_METHODS.serverRemoveVimMapping]: (input) => vimrc.removeMapping(input),
       [WS_METHODS.serverSetVimOption]: (input) => vimrc.setOption(input),
+      [WS_METHODS.projectRootsList]: (input) =>
+        projectRoots
+          .forThread({ projectId: input.projectId, worktreePath: input.worktreePath ?? null })
+          .pipe(Effect.map((roots) => ({ roots }))),
       [WS_METHODS.wikiList]: (_input) => wikis.list,
       [WS_METHODS.wikiSubscribe]: (_input) => wikis.subscribe,
       [WS_METHODS.wikiRegister]: (input) => wikis.register(input),
