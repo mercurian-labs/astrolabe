@@ -1,10 +1,10 @@
 # Shared tabs, splits and linked tabs
 
-Agents, Wikis, Projects and Changes share one set of panes (`panes/workspace.ts`,
+Agents, Projects and Changes share one set of panes (`panes/workspace.ts`,
 `panes/WorkspaceView.tsx`, rendered by `routes/_chat.tsx` for thread and draft routes, `/` unless
-the panes hold only their starting empty tab, `/wikis`, `/repositories` and `/pull-requests`): chats,
+the panes hold only their starting empty tab, `/repositories` and `/pull-requests`): chats,
 pull requests, pull requests, change groups, files, diffs, local graphs, project search results,
-problems and places (`repo-search:`, `repo-problems:`, `repo-locations:`), wiki notes and a thread's right-panel surfaces
+problems and places (`repo-search:`, `repo-problems:`, `repo-locations:`), documents and a thread's right-panel surfaces
 (Browser, Terminal, Files, Diff, Pull request, Device, Graph, Lineage, Side chat; a Linked pull
 requests tab only when restored from an older layout) are
 all tabs that split right or down. The sidebar section only decides what the sidebar lists.
@@ -12,7 +12,7 @@ The rail's Issues is not a panes route: upstream's `/issues` page replaces the p
 open (the sidebar keeps the Agents list), and the arrangement comes back unchanged on leaving. A
 thread's surfaces are tabs linked to its chat (`panes/linkedTabs.ts`): they show only while that
 chat is the one in front, and park, remembering where they stood, while another chat is. Nothing
-else links to a chat: chats, documents, wiki pull requests, change groups, project files and
+else links to a chat: chats, documents, change groups, project files and
 diffs stand on their own (a change group's **Open as a tab group** still links to the group, and
 a following local graph to its file). There
 is no right-panel frame: `ChatRightPanel` renders `panes/LinkedPanel.tsx`, which lends the panes
@@ -20,7 +20,7 @@ ChatView's panel props and renders the live surface into the pane showing its ta
 
 ## Sub-features
 
-- **Switching sections** (rail, which-key `g`, Command Palette's Open wikis/projects/pull
+- **Switching sections** (rail, which-key `g`, Command Palette's Open projects/pull
   requests, the narrow window's footer): changes only the sidebar, never the arrangement, focus,
   the front chat or which ChatViews are mounted. The rail's Agents (`useNavigateToAgents`,
   `panes/agentsRoute.ts`) goes to the focused tab's thread when focus is on a chat or one of its
@@ -43,8 +43,7 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   `rightPanel.new`, in the focused pane): opens an unowned empty tab at the end of that
   pane's tabs, in front, at once (no menu). It shows `panes/TabLauncher.tsx`
   (`[aria-label="Open a tab"]`): **New chat** `N` (the front chat's project with one
-  project; with several, always the palette's project list), **Document** `O` (wiki
-  finder), **Project file** `R` (project list, then its files; one project skips
+  project; with several, always the palette's project list), **Project file** `R` (project list, then its files; one project skips
   the list), **Project diff** `C` (each project's Uncommitted changes and Branch
   changes), **Change group** `K`. Rows with nothing to offer are faint with a reason on
   hover. Letters act only while that pane is focused, and differ from the surface
@@ -144,7 +143,7 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   a turn) and thread details' change group row.
 - **Tab groups** (`panes/tabGroups.tsx`, runs from `panes/tabGroupRuns.ts`): in any
   strip, a change
-  group's run of tabs (its chats, wiki pull requests and own tab, pull requests
+  group's run of tabs (its chats and own tab, pull requests
   matched by repository#number, and Projects file, changes and graph tabs keyed by a branch
   its threads ever worked on, main/master/develop/trunk excepted; folder-keyed tabs, such as
   the main checkout's, join none) is headed by a marker,
@@ -227,8 +226,7 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   `[data-pane-id][data-focused-place] [data-pane-tab][aria-selected=true]`. The view
   header below has no bottom border and the strip's height, so tab and header read as one
   surface: a chat's, and every Astrolabe tab's (`[data-tab-header]`, `panes/TabHeader.tsx`: a
-  file, a checkout's changes, a local graph, the thread's Graph tab, a wiki note, a wiki change
-  request, a change group, a pull request), each a breadcrumb in the chat's type (muted place,
+  file, a checkout's changes, a local graph, the thread's Graph tab, a document, a change group, a pull request), each a breadcrumb in the chat's type (muted place,
   then the page) with quiet status and ghost icon actions.
 - **Back and Forward in the header**: every header above starts with ← → (`[data-tab-history]`,
   `TabHeader.History`), as Obsidian's tab headers do. They step that tab's own history
@@ -348,7 +346,7 @@ and returning shows the first chat's again. After a reload both reads return the
   using the keyboard menu (or the leader key; Cmd+K is the default `whichKey.open`).
 - The panes engine (`panesHost.ts`, `PaneView.tsx`, `PaneTree.tsx`, `maximize.ts`,
   `paneCommands.ts`, `tabGroups.tsx`) is shared with the Changes area; a change there walks
-  pull-requests.md too, and any change to the shared panes walks wikis.md and repositories.md.
+  pull-requests.md too, and any change to the shared panes walks repositories.md.
   The menu acts on whichever panes registered last (one `panesSlot`).
 - While a pane is maximized the others are `inert`, so role locators skip them and
   `nth` indexes shift.

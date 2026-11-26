@@ -223,7 +223,7 @@ of the root menu, a group and the Command Palette.
   types. A focused sidebar row, rail button or pane/chat tab opens the menu; on any
   other focused switch or button, Space presses it (correctly, not a leader).
 - Inside the terminal, Cmd+K clears the terminal instead (by design).
-- Cmd+K opens the menu from a wiki note too; the editor's link key is Cmd+Shift+K.
+- Cmd+K opens the menu from a note too; the editor's link key is Cmd+Shift+K.
   Cmd+/ in a note opens Search, not a comment toggle. In a Projects code file Cmd+/ toggles
   a comment and Cmd+Shift+K deletes the line.
 - Cmd+K while the palette is open closes it.

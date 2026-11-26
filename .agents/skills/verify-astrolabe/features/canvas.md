@@ -32,6 +32,6 @@ real model, and ask for a diagram of boxes and arrows that cites a file.
   dialog says so; a file only in unpushed commits, a repository with no remote, and a self-hosted
   Bitbucket write a text card with the folder, path and commit. A name already taken says so. A
   guest page has no Keep.
-- **Settings:** the canvas settings are under Settings → Wikis → **Canvases**.
+- **Settings:** the canvas settings are under Settings → Projects → a project → **Canvases** (one set per server).
 - **Hermes:** the phone runs the layout code on an engine without newer array methods. A broken
   build shows as a render error on any thread holding a canvas.

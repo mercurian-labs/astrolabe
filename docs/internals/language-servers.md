@@ -67,8 +67,9 @@ server's status, and speaks to whatever stands behind it.
   only the primary.
 - **Activation is evidence at the checkout's root** (`activation` in the registry), read with the
   routes whenever a server starts and on Restart, which also adds and drops holds on files already
-  open. `notInWikis` leaves a server out of the routes of a wiki's checkouts the same way, so
-  agents and Settings don't reach it either: Marksman would call a wiki's links broken.
+  open. `notInWikis` leaves a server out of the routes of every checkout of a project's git
+  folders the same way, so agents and Settings don't reach it either: Marksman would call links across
+  the project's folders broken.
 - **Holds are what keep a companion alive.** It has no sessions of its own, so idle timing sees
   only its documents, and a hold and its record are made uninterruptibly: a session ending
   between them would leave a server nothing stops.

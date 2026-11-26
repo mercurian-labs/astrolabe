@@ -3,7 +3,7 @@
 Focus moves between the app's places the way Vim and tmux move between windows,
 the sidebar's and the rail's lists move with Vim's keys, and `d`/`u` scroll the
 focused place. A place is a whole region: the icon rail (`nav[data-app-rail]`,
-leftmost), the sidebar on screen (Agents, Wikis, Projects or Changes), each pane of the
+leftmost), the sidebar on screen (Agents, Projects or Changes), each pane of the
 one shared set (panes.md), and a chat column outside the panes; a page with neither
 panes nor a chat (Settings) makes the main area (`[data-slot='sidebar-inset']`) a place. A chat tab belongs to its
 pane's place (`keyboardNav/regions.ts` `CHAT_COLUMN`); moving into that pane lands on its
@@ -67,7 +67,7 @@ composer. Never anything inside one (no stop for a tab strip, the timeline or th
   and the rail have no mark of their own beyond the attribute: their focused row or
   button's light ring shows where focus is.
 - **Sidebar list** (focus on a row: `sidebar-row-card`, `sidebar-row-slim`,
-  `sidebar-draft-row`, `wiki-sidebar-row[-slim]` outside search results, a PR row's
+  `sidebar-draft-row`, a PR row's
   button under `[data-pull-request-key]`, a project folder's header
   (`[data-testid='sidebar-project-folder'] > [data-sidebar-row]`) and the thread rows inside it
   (`sidebar-row-folder`); `keyboardNav/placeLists.ts`):
@@ -78,7 +78,7 @@ composer. Never anything inside one (no stop for a tab strip, the timeline or th
   tab; any other Alt chord stays the page's). On a thread row, Enter, a plain click and
   Alt+Enter all open the chat as `openChat` does (panes.md): an open one comes forward,
   one not yet open lands in a new tab after the chat in front. Mod+Enter Mod-clicks it (Agents:
-  toggles selection, in Wikis and PRs too); `/` opens the sidebar's search (Escape in its empty field returns focus to the row); Escape focuses the place to the right;
+  toggles selection, in PRs too); `/` opens the sidebar's search (Escape in its empty field returns focus to the row); Escape focuses the place to the right;
   Space opens the keyboard menu. Keys act only with the row itself focused, not a
   control in it (nor the Agents filter's pills above the list, `[aria-label='Thread
   filters']`, which are plain buttons: `j`/`k` do nothing there and Space presses them). The right panel's launcher letters leave a focused row its list keys
@@ -90,7 +90,7 @@ composer. Never anything inside one (no stop for a tab strip, the timeline or th
   its first focusable control, not the current file.
 - **Rail list** (focus on a rail button, `[data-app-rail] [data-sidebar=menu-button]`;
   each is a tooltip trigger, so its `data-slot` reads `tooltip-trigger`): the sections
-  (Agents, Wikis, Projects, Changes, Issues where supported),
+  (Agents, Projects, Changes, Issues where supported),
   then at the foot the update control when shown (`Check for updates`, or the providers'
   "Update N providers" pill), **Usage**, and **Settings**. With cloud sign-in configured the
   Settings slot is the account menu: signed in it is named after the user, uses the solid
@@ -123,7 +123,7 @@ Space `d` scrolls the place half a page.
 ```
 preview_act press     key=k modifiers=["Meta"]                    # Cmd+K, then
 preview_act press     key=h                                       # h focuses a row (a click hands focus to the composer)
-preview_act press     key=l modifiers=["Control"]                 # to the main area (run this on Wikis: on a chat it lands in the composer, where Ctrl+H does nothing)
+preview_act press     key=l modifiers=["Control"]                 # to the main area (run this on Projects: on a chat it lands in the composer, where Ctrl+H does nothing)
 preview_act press     key=h modifiers=["Control"]                 # back to the sidebar
 preview_act press     j                                           # next row
 preview_act press     Space                                       # leader
@@ -248,8 +248,8 @@ dark: only one pill carries the bar.
    opens and focus stays on the row → ArrowDown → the next row → Escape → the chat
    (what last had focus there, the composer if nothing did)
    → Ctrl+H, `/` → the search field focused → Escape, click a row, Escape → focus in
-   the main area. On Wikis: `j` to a document → Mod+Enter → it joins the selection. On
-   Changes: fold "Wiki changes" → `j` passes over its rows; ArrowDown, `j`, Enter →
+   the main area. On
+   Changes: fold a group → `j` passes over its rows; ArrowDown, `j`, Enter →
    that PR in a pane, focus still on the row → `k` → the row above.
 8. **Rebind in the vimrc.** Settings › Keybindings › Vim, add Normal `<C-h>` → `<C-w>h`
    (not recursive) → in the composer's normal mode Ctrl+H → the sidebar → remove the
@@ -265,7 +265,7 @@ dark: only one pill carries the bar.
     the timeline's height) → Cmd+K `d` → `scrollTop`
     of the timeline up by half its height → `d` `d` within half a second → two more →
     Space `u` → back up. Ctrl+D/Ctrl+U the same; in the composer Ctrl+D stays the
-    editor's. Cmd+K `l` to a pane with a long note (Wikis) or a diff → Ctrl+D scrolls
+    editor's. Cmd+K `l` to a pane with a long note or a diff → Ctrl+D scrolls
     that pane. At the top, Cmd+K shows `u` faint; on the rail both are faint. Ctrl+D on
     a sidebar row scrolls the list.
 

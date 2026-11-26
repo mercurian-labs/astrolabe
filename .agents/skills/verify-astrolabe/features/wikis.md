@@ -4,7 +4,7 @@ Astrolabe's second section, beside the threads: folders of linked markdown notes
 kept in git, edited through pull requests. Its rail item swaps the sidebar for
 the Wikis sidebar, built from the thread list's parts, and fills the main area
 with Obsidian-style tabs and splits over documents (the one shared workspace, see
-[panes.md](panes.md)). User guide: `docs/user/wikis.md`.
+[panes.md](panes.md)). User guide: `docs/user/project-docs.md`.
 
 ## Sub-features
 

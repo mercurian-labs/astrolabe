@@ -365,8 +365,8 @@ current title and opens it when selected. Your prompt only carries a reference: 
 history on demand, so attaching a long thread costs nothing until the agent looks. Attaching a
 thread does not change it, and the agent cannot send messages to it unless you ask.
 
-On web and desktop, type `[[` to point the agent at a wiki note. Notes from the project's
-linked wikis list first. See [Wikis](wikis.md).
+On web and desktop, type `[[` to point the agent at one of the project's notes, canvases or bases.
+It goes in as a link to the file, as `@` does. See [Project docs](project-docs.md).
 
 A thread from a linked machine, picked, pasted or dropped, stays a reference that the agent reads
 on that machine. A pasted link to a thread on any other machine stays a link. Dropping a thread

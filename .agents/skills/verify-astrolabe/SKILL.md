@@ -1,6 +1,6 @@
 ---
 name: verify-astrolabe
-description: Verify what Astrolabe adds on top of T3 Code (shared tabs and splits with linked tabs (chats, files, documents, a thread's right-panel surfaces), sidebar header and icon rail, the account menu, workspaces, Wikis, Projects, the code graph, Changes, Vim mode, the which-key keyboard menu, keyboard navigation, Mercurian theme, branding and visible names) by running the checks that cover it and driving the web app in T3's Browser panel (the phone app through test-t3-mobile, plus the iOS simulator for cloud features). Use to prove an Astrolabe change works, and after every upstream T3 Code sync to walk each mapped feature.
+description: Verify what Astrolabe adds on top of T3 Code (shared tabs and splits with linked tabs (chats, files, documents, a thread's right-panel surfaces), sidebar header and icon rail, the account menu, workspaces, Projects and its docs (notes, canvases, bases), the code graph, Changes, Vim mode, the which-key keyboard menu, keyboard navigation, Mercurian theme, branding and visible names) by running the checks that cover it and driving the web app in T3's Browser panel (the phone app through test-t3-mobile, plus the iOS simulator for cloud features). Use to prove an Astrolabe change works, and after every upstream T3 Code sync to walk each mapped feature.
 ---
 
 # Verify Astrolabe
@@ -59,8 +59,9 @@ AGENTS.md describes, and use the `--home-dir "$PWD/.t3"` path above). The script
 `~/.t3/userdata` by default; on a machine that runs Astrolabe itself, its real data is in
 `~/.astrolabe/userdata`, so add `--source ~/.astrolabe/userdata/statev2.sqlite`. The seed
 brings the source server's scratch folder (`~/.astrolabe/scratch`) in as an ordinary project
-named "No project"; that's a seeding artifact, not a product bug. Wikis are not
-seeded; add a scratch one (below).
+named "No project"; that's a seeding artifact, not a product bug. A seeded project's own
+notes, canvases and bases are its docs; for a scratch set, add a folder of them as a project
+(below).
 
 ## Checks before driving
 
@@ -179,7 +180,7 @@ when the feature needs a real thread. Then:
   forms read as `preview_evaluate` queries, not `preview_act` locators. Reach an element whose
   attribute has no value (`data-new-linked-tab`) by its role:
   `role=button[name='New linked tab']`. A few names are
-  rejected outright (any locator holding "Add a wiki"), and a regex name with an escaped
+  rejected outright, and a regex name with an escaped
   parenthesis (`name=/^Linked tabs \(/`) times out. A menu of plain buttons (the tab and row
   context menus) can time out on `role=menu >> role=button[…]`, and chains such as
   `[data-focused="true"] >> role=…` can be flaky the same way. For all of these, read the
@@ -194,7 +195,7 @@ when the feature needs a real thread. Then:
   tree's open shadow root.
 - Toasts are brief. To prove one, start a `MutationObserver` in `preview_evaluate` before the
   action and read what it caught; a read afterwards misses it.
-- **Add a project** / **Add a wiki** → **Local folder** opens a path field prefilled with
+- **Add a project** → **Local folder** opens a path field prefilled with
   `~/`: typed text lands after it, so `/private/tmp/x` becomes `~/private/tmp/x`, and Enter on
   a folder that doesn't exist is **Create & Add**, which makes it under your home. Select all
   and delete first (`press a` with `["Meta"]`, then `Backspace`), type the absolute path with a

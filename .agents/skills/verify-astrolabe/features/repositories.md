@@ -1,9 +1,9 @@
 # Projects
 
-Astrolabe's section for a project's files and changes, built as Wikis is: a rail
-item (`button "Projects"`, between Wikis and Changes) swaps the sidebar
+Astrolabe's section for a project's files, docs and changes: a rail
+item (`button "Projects"`, between Agents and Changes) swaps the sidebar
 for the Projects sidebar; files and diffs open as tabs in the one shared workspace
-([panes.md](panes.md)). Text files open in the editor wikis use;
+([panes.md](panes.md)). Text files open in Astrolabe's editor, and notes, canvases and bases open as documents;
 diffs and everything that is not text keep T3 Code's viewers. It is the home of a
 thread's Files and Diffs. User guide: `docs/user/projects.md`.
 
@@ -15,7 +15,7 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   come back). The server's scratch workspace (threads with no project) is never listed. With no
   projects the list reads "No projects yet" with its own **Add a project**.
 - **Filter** (`RepositoryFilterMenu.tsx`, `repositoryFilter.ts`, localStorage
-  `astrolabe:repository-filter:v1` `{repositories, hidden, changed}`), as Agents' and Wikis':
+  `astrolabe:repository-filter:v1` `{repositories, hidden, changed, docs}`), as Agents':
   `role=combobox[name=/^Filter projects/]` (` (filtered)` appended and a dot while on) opens a multi-select
   list with a `Search filters` field: **Status** (**Has changes**, with its count of worktrees
   with uncommitted files once it is on and has counted them all; meanwhile
@@ -68,9 +68,9 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   repository shows; opening a branch un-hides its worktree) lists local branches, each noting `main checkout` or `worktree <n>`
   when checked out; a pick puts the branch in its worktree, else a free one (no main
   checkout, thread, terminal or Keep), else a new `t3-<8 hex>` folder. Its `switch "Open in
-  a new worktree"` (`astrolabe:open-in-new-worktree:v1`, shared with Wikis' picker) skips
+  a new worktree"` (`astrolabe:open-in-new-worktree:v1`) skips
   free ones. A linked worktree gets a number (server-kept in `worktree-keep.json`'s `opened`,
-  lowest free across every project and wiki, held while the folder exists) the first time something opens in it: a branch
+  lowest free across every project, held while the folder exists) the first time something opens in it: a branch
   opened or made there, or any of its tabs shown (`worktrees.markOpened`); numbered ones come
   first. Others show a branch icon.
   A name that is no branch offers "New branch <name> from <main's branch>". A free
@@ -149,7 +149,7 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   (`.cm-lsp-hover-tooltip`) and signature help; F12 / Cmd-click definition (another file opens
   beside), Cmd+F12 type definition, Shift+F12 implementation, Alt+Shift+F12 references; F2
   rename (`input[aria-label="Rename <name>"]`, then a `repo-locations:` tab titled "Renamed X to
-  Y" with one **Undo rename**, which says after what it put back; a wiki's file keeps a toast);
+  Y" with one **Undo rename**, which says after what it put back);
   Cmd+. code actions (`.atlas-lightbulb`, `[aria-label="Code actions"]`); Cmd+Shift+I format.
   Inlay hints (`.atlas-inlay-hint`) and symbol marks (`.atlas-symbol-read`, `-write`) are on by
   default; inline diagnostics (`.atlas-inline-diagnostic`), semantic colours and code lens
@@ -247,7 +247,7 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   an app restart returns to All projects. Every project: its eight latest files under its
   name; a project with no recent files is left out. One: **Browse all files** (route
   `RepositoryFiles`, T3 Code's tree with no thread), **Changes** (selects that tab with its
-  project kind, which the Changes filter names "Projects" only while it lists wikis too),
+  project kind),
   **Uncommitted · N**, **Recently changed**. Rows are buttons named by path; a file opens
   read only on route `RepositoryFile`. Search (the tab's `Search files`) finds files by
   name in a picked project (`projects.searchEntries`); with every project it narrows
@@ -259,8 +259,7 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
 
 Setup: a throwaway git repository for edits (never this worktree's own files) with a
 commit, a folder holding a `.ts` file and one uncommitted change, added with **Add a
-project**. When a wiki exists on that server, the palette then asks to link it; pick **Not
-now**. With the **server** project that makes two projects.
+project**. With the **server** project that makes two projects.
 
 1. Click `button "Projects"`; with no project picked the list shows one header per
    project.

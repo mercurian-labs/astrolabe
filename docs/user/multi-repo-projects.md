@@ -65,6 +65,14 @@ repository at a time. Pick it from the repository picker next to the source pick
 lists every repository the thread reaches, including ones no turn has touched, so edits you made by
 hand show up too.
 
+## Docs across folders
+
+Notes, canvases and bases can live in any of the project's repositories, and link to each other
+across them. A bare `[[Plan]]` looks in its own repository first, then for the one match in
+another. When several match, the link is ambiguous until you name the folder, as in
+`[[api:Plan]]`. Each edit lands in the repository that holds the document. See
+[Project docs](project-docs.md).
+
 ## Commit, push, and open pull requests
 
 Git actions run in one repository at a time.

@@ -1,7 +1,7 @@
 # Projects
 
 **Projects** in the icon rail is where you read and edit your projects' code without leaving the
-app. A project can be linked to a [wiki](wikis.md) that holds its research and plans.
+app. Its notes, canvases and bases open here too: see [Project docs](project-docs.md).
 
 ## Find a file
 
@@ -91,13 +91,12 @@ each message below its line. It updates as you and agents edit.
 ## Edit
 
 Files open in the tabs every section shares (see [Tabs and splits](./thread-sidebar.md#tabs-and-splits)), beside chats and documents. Notes (`.md`), canvases (`.canvas`) and bases (`.base`) open as
-documents, with links to any of the project's folders: `[[` offers every folder's documents, and
-one in another folder is written `folder:Name`. A bare name that several folders have is marked
-ambiguous and opens nothing until you add its folder. Code opens with line numbers and its
-language's colours, with Vim if you turned it on in Settings. Your edits save on their own a moment
-after you stop typing: on disk, except a document in a repository's main checkout on its default
-branch when the repository has a pull request host. Those go to your draft, which reaches the host
-only when you choose **Open pull request** from the draft's menu in the document's header. Changes from agents, the
+documents, with links to any of the project's folders (see [Project docs](project-docs.md#links)).
+Code opens with line numbers and its language's colours, with Vim if you turned it on in Settings.
+Your edits save on their own a moment after you stop typing: on disk, except a document in a
+repository's main checkout on its default branch when the repository has a pull request host.
+Those go to your draft, which reaches the host only when you choose **Open pull request** (see
+[Where your edits go](project-docs.md#where-your-edits-go)). Changes from agents, the
 terminal, and other windows with the same file open show up as they happen, and an edit never
 overwrites newer changes saved there. A file shows when an agent is working in the same copy.
 Code files show the [problems](keybindings.md#problems-in-a-code-file) and
@@ -170,5 +169,5 @@ folder or clones a repository.
 ## On your phone
 
 The **Projects** tab lists the same files: pick a project in its filter for its uncommitted
-changes and recent files, or **Browse all files** for its tree. Files open read only; edit them on
-your computer.
+changes and recent files, or **Browse all files** for its tree. Notes, canvases and bases open as
+documents you can edit. Other files open read only; edit them on your computer.

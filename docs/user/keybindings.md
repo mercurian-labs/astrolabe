@@ -68,7 +68,7 @@ in Settings.
 ## Vim mode
 
 Turn on **Settings → Keybindings → This device → Vim keybindings** to edit the
-composer and wiki notes with Vim's modes and motions on web and desktop. Before it turns on, you
+composer and notes with Vim's modes and motions on web and desktop. Before it turns on, you
 type `:q` and press Enter in the small Vim editor that opens, to show you know
 the way out. Turning it off is one click.
 
@@ -151,9 +151,9 @@ The leader key opens the same menu while you are not typing or on a button, and
 in the composer and notes in Vim's normal and visual modes. It is Space unless
 you choose another key, or None, in **Settings → Keybindings → This device →
 Leader key**; `mod+k` works either way. The menu appears after a moment, so a
-quick sequence like Space `g` `w` runs without it showing.
+quick sequence like Space `g` `p` runs without it showing.
 
-In the composer and wiki notes, `mod+shift+k` inserts a link, and in a code file it
+In the composer and notes, `mod+shift+k` inserts a link, and in a code file it
 deletes the line. Elsewhere it copies an open pull request's number (below).
 
 ### Moving focus
@@ -265,7 +265,7 @@ composer as a thread chip.
 
 ## Find in a file or note
 
-In a repository file or a wiki note, `mod+f` opens a find bar above the text, starting from the
+In a repository file or a note, `mod+f` opens a find bar above the text, starting from the
 words you selected. Enter and `Shift+Enter` move between matches, as do `mod+g` and
 `mod+shift+g` from the text. `Alt+Enter` selects every match in a note, so typing changes them
 all. `mod+alt+c`, `mod+alt+w`, and `mod+alt+x` switch match case, whole words, and regular
@@ -279,7 +279,7 @@ in the thread instead.
 
 ## Go to a symbol
 
-In a repository file or a wiki note, `mod+shift+o` lists the file's outline: a note's headings,
+In a repository file or a note, `mod+shift+o` lists the file's outline: a note's headings,
 and the classes, functions, methods, and other declarations of TypeScript, JavaScript, Python,
 Rust, and CSS files. Type to filter by name; words before the last one match the items around it,
 so `store add` finds `add` inside `Store`. Enter puts the cursor on the symbol, in the middle of
@@ -363,8 +363,8 @@ Code files show the problems their language servers find: a wavy underline, a ma
 line number, and the message on hover, naming the server that found it. Astrolabe has language
 servers for TypeScript and JavaScript (TypeScript), Python (basedpyright), Rust (rust-analyzer),
 Go (gopls), C and C++ (clangd), Java (jdtls), JSON, CSS, SCSS and Less, HTML, YAML, Bash,
-Dockerfiles, TOML (Taplo), Lua (LuaLS) and Markdown (Marksman). Repository files get Marksman;
-notes in a wiki don't, since a wiki has its own links. Zig (zls), Swift (SourceKit-LSP), Ruby
+Dockerfiles, TOML (Taplo), Lua (LuaLS) and Markdown (Marksman). A project's notes don't get
+Marksman, since Astrolabe resolves their links across the project's folders itself. Zig (zls), Swift (SourceKit-LSP), Ruby
 (Ruby LSP), PHP (Phpactor), C# (csharp-ls or OmniSharp), Kotlin, Elixir (ElixirLS) and Dart work
 once installed, and you can [add your own](#add-your-own-language-server). Bash files find
 problems through ShellCheck, so install it for those. Others join them where they apply: Ruff on
@@ -698,9 +698,9 @@ In a thread, `rightPanelOpen` is true while its right panel is open; the default
 `composerEmpty` is true while the composer has no text, attachments, or context, and is not
 editing a queued message or answering a question.
 `editableFocus` is true while a text field, the composer, or another editor has
-the keyboard. `editorFocus` is true while the composer, a wiki note, or a repository file has
+the keyboard. `editorFocus` is true while the composer, a note, or a repository file has
 it, `codeEditorFocus` only while a repository file's text has it, and `outlineFocus` while a
-repository file or wiki note has it. `isWeb` is true in a browser tab. `isDesktop` is true in the
+repository file or note has it. `isWeb` is true in a browser tab. `isDesktop` is true in the
 desktop app. Unknown keys evaluate to `false`.
 
 `mod+1` through `mod+9` jump to the first nine threads, and to models while the
