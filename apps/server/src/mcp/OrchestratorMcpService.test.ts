@@ -30,7 +30,7 @@ import {
   type OrchestrationV2StoredEvent,
   type OrchestrationV2ThreadProjection,
   type ServerProvider,
-  WikiError,
+  RootKey,
 } from "@t3tools/contracts";
 import { checkpointWorkspace } from "@t3tools/provider-testing/replayWorkspace";
 import { formatThreadLink, hostedThreadLink } from "@t3tools/shared/threadLinks";
@@ -77,7 +77,7 @@ import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts
 import * as ServerSettings from "../serverSettings.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as RemoteDelegation from "../peer/RemoteDelegation.ts";
-import * as ThreadWikiCheckouts from "../wiki/ThreadWikiCheckouts.ts";
+import * as ProjectRoots from "../workspace/ProjectRoots.ts";
 import type { McpInvocationScope } from "./McpInvocationContext.ts";
 import { idleThreadProjection, liveThreadShell } from "./McpToolAccess.testkit.ts";
 import * as OrchestratorMcpService from "./OrchestratorMcpService.ts";
@@ -3280,10 +3280,20 @@ describe("OrchestratorMcpService provider resolution", () => {
     }),
   );
 
-  it.effect("starts a wiki task in the parent's checkout of that wiki", () =>
+  it.effect("starts a task in the parent's checkout of one of the project's folders", () =>
     Effect.gen(function* () {
       const dispatched = yield* Ref.make<ReadonlyArray<unknown>>([]);
-      const folder = "/state/wiki-checkouts/thread:mcp-providers-parent/wiki-plans";
+      const folder = "/work/api";
+      const root = (key: string, checkout: string | null) => ({
+        key: RootKey.make(key),
+        name: key,
+        path: `/work/${key}`,
+        kind: "tracked" as const,
+        state: "git" as const,
+        hostBacked: false,
+        checkout,
+        writable: checkout !== null,
+      });
       const task = {
         id: taskId,
         threadId: parentThreadId,
@@ -3333,16 +3343,8 @@ describe("OrchestratorMcpService provider resolution", () => {
               } as never),
             ),
         }),
-        Layer.mock(ThreadWikiCheckouts.ThreadWikiCheckouts)({
-          checkoutFor: (input) =>
-            input.wiki === "Plans" && input.threadId === parentThreadId
-              ? Effect.succeed(folder)
-              : Effect.fail(
-                  new WikiError({
-                    reason: "not-found",
-                    message: 'No wiki has this id or name. Its linked wikis: "Plans".',
-                  }),
-                ),
+        Layer.mock(ProjectRoots.ProjectRoots)({
+          forThread: () => Effect.succeed([root("api", folder), root("docs", null)]),
         }),
         providerRegistryLayer([
           providerSnapshot({
@@ -3361,23 +3363,33 @@ describe("OrchestratorMcpService provider resolution", () => {
 
       yield* Effect.gen(function* () {
         const service = yield* OrchestratorMcpService.OrchestratorMcpService;
-        const delegate = (input: { readonly wiki: string; readonly isolation?: "worktree" }) =>
+        const delegate = (input: {
+          readonly repository: string;
+          readonly isolation?: "worktree";
+        }) =>
           service.delegateTask(scope, {
             task: "Tidy the plans.",
             mode: "async",
-            clientRequestId: `delegate-wiki-${input.wiki}-${input.isolation ?? "shared"}`,
+            clientRequestId: `delegate-${input.repository}-${input.isolation ?? "shared"}`,
             ...input,
           });
-        const unknown = yield* delegate({ wiki: "Research" }).pipe(Effect.flip);
+        const unknown = yield* delegate({ repository: "research" }).pipe(Effect.flip);
         assert.equal(unknown.code, "invalid_request");
-        assert.equal(unknown.message, 'No wiki has this id or name. Its linked wikis: "Plans".');
-        const isolated = yield* delegate({ wiki: "Plans", isolation: "worktree" }).pipe(
+        assert.equal(
+          unknown.message,
+          "The project has no folder research. Its folders: api, docs.",
+        );
+        // A thread never writes into the live checkout of a folder its worktrees leave out.
+        const omitted = yield* delegate({ repository: "docs" }).pipe(Effect.flip);
+        assert.equal(omitted.code, "invalid_request");
+        assert.include(omitted.message, "no checkout of docs it can write");
+        const isolated = yield* delegate({ repository: "api", isolation: "worktree" }).pipe(
           Effect.flip,
         );
         assert.equal(isolated.code, "invalid_request");
         assert.deepEqual(yield* Ref.get(dispatched), []);
 
-        assert.equal((yield* delegate({ wiki: " Plans " })).status, "running");
+        assert.equal((yield* delegate({ repository: " api " })).status, "running");
         const [request] = (yield* Ref.get(dispatched)) as ReadonlyArray<{
           readonly worktreePath?: string;
           readonly workspaceStrategy?: unknown;

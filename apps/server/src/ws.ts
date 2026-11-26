@@ -1553,8 +1553,7 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
         wikis.changeRequestsOpen(input, WikiService.person),
       [WS_METHODS.wikiAmend]: (input) => wikis.amend(input, WikiService.person),
       [WS_METHODS.wikiTransform]: (input) => wikis.transformCheckout(input, WikiService.person),
-      [WS_METHODS.wikiKeepCanvas]: (input) =>
-        canvasKeep.keep(input, { actor: WikiService.person.actor, threadId: input.threadId }),
+      [WS_METHODS.wikiKeepCanvas]: (input) => canvasKeep.keep(input, WikiService.person),
       [WS_METHODS.wikiAutosave]: (input) => wikis.autosave(input, WikiService.person),
       [WS_METHODS.wikiDraftPromote]: (input) => wikis.draftPromote(input, WikiService.person),
       [WS_METHODS.wikiDraftMove]: (input) => wikis.draftMove(input, WikiService.person),

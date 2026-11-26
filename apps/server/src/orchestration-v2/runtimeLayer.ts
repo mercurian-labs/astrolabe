@@ -70,7 +70,7 @@ import * as ThreadForkService from "./ThreadForkService.ts";
 import * as TurnItemPositionStore from "./TurnItemPositionStore.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
 import * as CanvasKeep from "../wiki/CanvasKeep.ts";
-import * as ThreadWikiCheckouts from "../wiki/ThreadWikiCheckouts.ts";
+import * as TurnDocsCheck from "../wiki/TurnDocsCheck.ts";
 import * as WikiService from "../wiki/WikiService.ts";
 import * as WikiMigration from "../wiki/wikiMigration.ts";
 import * as CodeIndex from "../codeIndex/CodeIndex.ts";
@@ -332,8 +332,8 @@ const layerWikiServiceProvided = WikiService.layer.pipe(
   Layer.provide(layerProjectService),
   Layer.provide(layerProjectRootsProvided),
 );
-const layerThreadWikiCheckoutsProvided = ThreadWikiCheckouts.layer.pipe(
-  Layer.provide(layerWikiServiceProvided),
+const layerTurnDocsCheckProvided = TurnDocsCheck.layer.pipe(
+  Layer.provide(Layer.merge(layerWikiServiceProvided, layerProjectRootsProvided)),
 );
 const layerCodeIndexProvided = CodeIndex.layer.pipe(
   Layer.provide(Layer.mergeAll(layerProjectService, layerWikiServiceProvided)),
@@ -487,18 +487,19 @@ export const layerProduction = Layer.mergeAll(
   WorktreeBranchSync.layer.pipe(
     Layer.provide(Layer.merge(layerThreadManagementProvided, ProjectionStore.layer)),
   ),
-  // Astrolabe: turn start reads the wiki services when they are there, to tell agents their
-  // wikis and mount the thread's checkouts of them; run finalization saves those checkouts.
-  layer.pipe(
-    Layer.provide(Layer.mergeAll(layerWikiServiceProvided, layerThreadWikiCheckoutsProvided)),
-  ),
+  // Astrolabe: turn start names the folders a session can't edit; run finalization checks the
+  // documents a turn changed.
+  layer.pipe(Layer.provide(Layer.mergeAll(layerProjectRootsProvided, layerTurnDocsCheckProvided))),
   layerManagedProjectFoldersProvided,
   layerWikiServiceProvided,
-  // Astrolabe: `delegate_task` checks out a wiki for a child to work in.
-  layerThreadWikiCheckoutsProvided,
   CanvasKeep.layer.pipe(
     Layer.provide(
-      Layer.mergeAll(layerOrchestratorProvided, layerProjectService, layerWikiServiceProvided),
+      Layer.mergeAll(
+        layerOrchestratorProvided,
+        layerProjectService,
+        layerWikiServiceProvided,
+        layerProjectRootsProvided,
+      ),
     ),
     Layer.provide(GitVcsDriver.layer),
   ),
@@ -540,7 +541,7 @@ export const layerProduction = Layer.mergeAll(
   ThreadPurge.layerSweepWorker,
 ).pipe(
   Layer.provide(ResourceCleanupService.layer.pipe(Layer.provide(layerScheduledTaskProvided))),
-  Layer.provide(ThreadPurge.layer.pipe(Layer.provide(layerThreadWikiCheckoutsProvided))),
+  Layer.provide(ThreadPurge.layer),
   Layer.provide(
     EditedFileCheck.layer.pipe(
       Layer.provide(

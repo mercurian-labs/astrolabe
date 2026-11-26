@@ -201,7 +201,7 @@ export function useWikiCanvasHost({
     return found.map((file) => drafted.get(file.file) ?? file);
   });
   const readCodeStatus = useStableCallback(
-    async (references: ReadonlyArray<Required<Omit<CanvasCodeReference, "lines">>>) => {
+    async (references: ReadonlyArray<Required<Omit<CanvasCodeReference, "lines" | "root">>>) => {
       const result = await runCode({ environmentId, input: { references: [...references] } });
       return result._tag === "Success" ? result.value.statuses : [];
     },

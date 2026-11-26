@@ -95,54 +95,6 @@ export const WikiMapBackground = Schema.Struct({
 });
 export type WikiMapBackground = typeof WikiMapBackground.Type;
 
-/** What a linked project's agents are told, for one or several wikis. */
-export const wikiAgentGuidance = (names: ReadonlyArray<string>): string => {
-  const quoted = names.map((name) => `"${name}"`);
-  const list =
-    quoted.length < 2 ? quoted.join("") : `${quoted.slice(0, -1).join(", ")} and ${quoted.at(-1)}`;
-  return `This repository is linked to the ${names.length === 1 ? "wiki" : "wikis"} ${list}, where its research and plans live. When a task involves research, planning, or building a feature, first look at what ${names.length === 1 ? "it" : "they"} already say${names.length === 1 ? "s" : ""}. Write findings and plans there, not as files in this repository.`;
-};
-
-/** How a provider session's file tools reach the thread's wiki checkouts, outside its folder. */
-export type WikiCheckoutReach = "edit" | "shell" | "none";
-
-/**
- * Probed per provider: Cursor's sandbox refuses its edit tool in extra folders, and every MCP
- * call, but lets a shell command write there; Antigravity's file tools refuse any path outside
- * the working folder. `sandboxed` is whether the session's filesystem sandbox is on, as Cursor
- * decides it.
- */
-export const wikiCheckoutReach = (driver: string, sandboxed: boolean): WikiCheckoutReach =>
-  driver === "antigravity" ? "none" : driver === "cursor" && sandboxed ? "shell" : "edit";
-
-const reachClause: Record<WikiCheckoutReach, string> = {
-  edit: ". Read, search and edit its notes there with your file tools.",
-  shell:
-    ". Read and search it there with your file tools, but your sandbox refuses your edit tool outside this project: write notes there with a shell command that changes only the lines it needs, without rewriting the whole file or adding blank lines.",
-  none: ", but your file tools can't leave this project's folder: for any read or edit there, delegate the job with delegate_task's wiki field set to this wiki, and the child works in that folder.",
-};
-
-export interface WikiAgentCheckout {
-  readonly name: string;
-  /** Absolute path of the thread's checkout of the wiki. */
-  readonly folder: string;
-  readonly reach: WikiCheckoutReach;
-}
-
-/** What a thread's agent is told, after its message, about the wikis its repository is linked to. */
-export const linkedWikiAgentNote = (checkouts: ReadonlyArray<WikiAgentCheckout>): string | null =>
-  checkouts.length === 0
-    ? null
-    : `<astrolabe_wikis>
-${wikiAgentGuidance(checkouts.map((checkout) => checkout.name))}
-${checkouts.map((checkout) => `- "${checkout.name}" is checked out for this thread at ${checkout.folder}${reachClause[checkout.reach]}`).join("\n")}
-</astrolabe_wikis>`;
-
-/** What a child working in another thread's checkout of a wiki is told, after its message. */
-export const wikiCheckoutAgentNote = (name: string): string => `<astrolabe_wikis>
-Your working folder is a checkout of the wiki "${name}": its notes are the files here. Read, search and edit them with your file tools; your edits join the pull request of the thread that started you.
-</astrolabe_wikis>`;
-
 const WikiSummaryFields = {
   wikiId: WikiId,
   name: TrimmedNonEmptyString,
@@ -921,13 +873,15 @@ export const WikiDraftMoveInput = Schema.Struct({
 });
 export type WikiDraftMoveInput = typeof WikiDraftMoveInput.Type;
 
-/** A board drawn in a thread, saved into a wiki as a change request. */
+/** A board drawn in a thread, saved as a file in one of a project's folders. */
 export const WikiKeepCanvasInput = Schema.Struct({
-  wikiId: WikiId,
+  projectId: ProjectId,
+  /** The folder it goes in: a root key or a folder's path. Omit for `name`'s prefix or the only one. */
+  repository: Schema.optional(TrimmedNonEmptyString),
   threadId: ThreadId,
   /** The `astrolabe_canvas_show` call that drew it. */
   itemId: TurnItemId,
-  /** Its path from the wiki's root, with or without `.canvas`. */
+  /** Its path from the folder, with or without `.canvas`; `key:path` names the folder too. */
   name: TrimmedNonEmptyString,
   /** What the person said about it, which becomes the amendment's message. */
   comment: Schema.optional(TrimmedNonEmptyString),
@@ -935,8 +889,13 @@ export const WikiKeepCanvasInput = Schema.Struct({
 export type WikiKeepCanvasInput = typeof WikiKeepCanvasInput.Type;
 
 export const WikiKeepCanvasResult = Schema.Struct({
-  changeRequest: WikiChangeRequest,
+  rootKey: RootKey,
+  /** Its path from the folder. */
   file: Schema.String,
+  /** Where a person's keep in a repository's main checkout went for review; null when on disk. */
+  changeRequest: Schema.NullOr(WikiChangeRequest),
+  /** The checkout it was written in, uncommitted, when it didn't go to a change request. */
+  checkout: Schema.optional(Schema.String),
   /** What a person should know about how its code cards landed. */
   notes: Schema.Array(Schema.String),
 });

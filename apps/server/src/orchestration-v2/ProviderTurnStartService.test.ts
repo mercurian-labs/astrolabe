@@ -30,6 +30,8 @@ import {
   PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
   type OrchestrationV2ThreadProjection,
   OrchestrationV2DomainEvent,
+  type ProjectRootCheckout,
+  RootKey,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
@@ -87,7 +89,7 @@ import * as ProviderSessionManager from "./ProviderSessionManager.ts";
 import * as ProviderTurnStart from "./ProviderTurnStartService.ts";
 import * as RunExecutionService from "./RunExecutionService.ts";
 import * as ProviderUsageAnalytics from "../telemetry/ProviderUsageAnalytics.ts";
-import * as WikiService from "../wiki/WikiService.ts";
+import * as ProjectRoots from "../workspace/ProjectRoots.ts";
 import * as RuntimePolicy from "./RuntimePolicy.ts";
 import * as TurnItemPositionStore from "./TurnItemPositionStore.ts";
 
@@ -475,8 +477,8 @@ it.each([
 
 function makeLocalCommandHarness(input: {
   readonly text: string;
-  readonly wikiNote?: string;
-  readonly newlyLinkedWikiNote?: string;
+  readonly driver?: "antigravity";
+  readonly projectRoots?: ReadonlyArray<ProjectRootCheckout>;
   readonly manualContinuation?: boolean;
   readonly nativeResumeUnsupported?: boolean;
   readonly steeringRestart?: boolean;
@@ -568,7 +570,8 @@ function makeLocalCommandHarness(input: {
   const providerThread: OrchestrationV2ThreadProjection["providerThreads"][number] = {
     id: providerThreadId,
     driver: ProviderDriverKind.make(
-      input.nativeGoals === undefined ? "codex" : (input.goalDriver ?? "opencode"),
+      input.driver ??
+        (input.nativeGoals === undefined ? "codex" : (input.goalDriver ?? "opencode")),
     ),
     providerInstanceId: newInstanceId,
     providerSessionId: input.missingProviderSession === true ? null : providerSessionId,
@@ -1450,15 +1453,10 @@ function makeLocalCommandHarness(input: {
         Layer.mock(RuntimePolicy.RuntimePolicyV2)({
           resolve: resolveRuntimePolicy,
         }),
-        input.wikiNote === undefined
+        input.projectRoots === undefined
           ? Layer.empty
-          : Layer.mock(WikiService.WikiService)({
-              agentNote: ({ linkedSince }) =>
-                Effect.succeed(
-                  linkedSince === undefined
-                    ? (input.wikiNote ?? null)
-                    : (input.newlyLinkedWikiNote ?? null),
-                ),
+          : Layer.mock(ProjectRoots.ProjectRoots)({
+              forThread: () => Effect.succeed(input.projectRoots ?? []),
             }),
       ),
     ),
@@ -2837,88 +2835,81 @@ effectIt.effect.each([
   }),
 );
 
-const CONTINUING_WIKI_NOTE_SCENARIOS = [
-  { label: "a new native conversation", text: "Plan the importer", expected: "every link" },
-  {
-    label: "a native conversation with turns, with no new links",
-    text: "Plan the importer",
-    continues: true,
-    expected: "nothing",
-  },
-  {
-    label: "a native conversation with turns, after a wiki was linked",
-    text: "Plan the importer",
-    continues: true,
-    newLink: true,
-    expected: "the new link",
-  },
-  {
-    label: "a native conversation that has only had a slash command",
-    text: "Plan the importer",
-    continues: true,
-    previousMessage: "/review",
-    expected: "every link",
-  },
-  { label: "a slash command", text: "/review", expected: "nothing" },
-] as const satisfies ReadonlyArray<{
-  readonly label: string;
-  readonly text: string;
-  readonly continues?: boolean;
-  readonly newLink?: boolean;
-  readonly previousMessage?: string;
-  readonly expected: "every link" | "the new link" | "nothing";
-}>;
-
-effectIt.effect.each(CONTINUING_WIKI_NOTE_SCENARIOS)("tells $label about $expected", (scenario) =>
+effectIt.effect.each([
+  { label: "a slash command", text: "/review" },
+  { label: "a message", text: "Plan the importer" },
+] as const)("sends $label to the provider as written", ({ text }) =>
   Effect.gen(function* () {
-    const wikiNote = '<astrolabe_wikis>linked to the wiki "Plans"</astrolabe_wikis>';
-    const newlyLinkedWikiNote = '<astrolabe_wikis>linked to the wiki "New"</astrolabe_wikis>';
-    const continues = "continues" in scenario;
-    const previousMessage = "previousMessage" in scenario ? scenario.previousMessage : undefined;
-    const harness = makeLocalCommandHarness({
-      text: scenario.text,
-      wikiNote,
-      ...("newLink" in scenario ? { newlyLinkedWikiNote } : {}),
-      ...(previousMessage === undefined ? {} : { previousMessages: [previousMessage] }),
-      ...(continues
-        ? { previousTurn: { runStatus: "completed", turnStatus: "completed" } as const }
-        : { failReadsAfterRunning: true }),
-    });
-    // A provider's own slash command, not one the app handles.
+    const harness = makeLocalCommandHarness({ text, failReadsAfterRunning: true });
     harness.tryHandlePromptCommand.mockImplementation(() => Effect.succeed(false));
-    if (continues) {
-      const projection = harness.projection();
-      const previous = projection.runs[0]!;
-      harness.setProjection({
-        ...projection,
-        runs: [
-          {
-            ...previous,
-            ...(previousMessage === undefined ? {} : { userMessageId: projection.messages[0]!.id }),
-          },
-          ...projection.runs.slice(1),
-        ],
-        attempts: [
-          {
-            ...projection.attempts[0]!,
-            id: RunAttemptId.make("previous-failed-attempt"),
-            runId: previous.id,
-            status: "completed",
-            nativeThreadId: "existing-native-conversation",
-          },
-          ...projection.attempts,
-        ],
-      });
-    }
 
     yield* harness.start;
 
-    const told = {
-      "every link": `${scenario.text}\n\n${wikiNote}`,
-      "the new link": `${scenario.text}\n\n${newlyLinkedWikiNote}`,
-      nothing: scenario.text,
-    }[scenario.expected];
-    expect(harness.startRootRun.mock.calls[0]?.[0].message.text).toBe(told);
+    expect(harness.startRootRun.mock.calls[0]?.[0].message.text).toBe(text);
+  }),
+);
+
+const projectRoot = (key: string, path: string): ProjectRootCheckout => ({
+  key: RootKey.make(key),
+  name: key,
+  path,
+  kind: "tracked",
+  state: "git",
+  hostBacked: false,
+  checkout: path,
+  writable: true,
+});
+
+effectIt.effect.each([
+  { driver: undefined, outside: "edit" },
+  { driver: "antigravity", outside: "none" },
+] as const)("tells a $driver session how it reaches each folder", ({ driver, outside }) =>
+  Effect.gen(function* () {
+    const harness = makeLocalCommandHarness({
+      text: "Fix the handbook",
+      failReadsAfterRunning: true,
+      ...(driver === undefined ? {} : { driver }),
+      projectRoots: [
+        projectRoot("app", "/work/app"),
+        projectRoot("api", "/work/app/api"),
+        projectRoot("handbook", "/work/handbook"),
+      ],
+    });
+    harness.resolveRuntimePolicy.mockImplementation(({ thread }) =>
+      Effect.succeed({
+        cwd: "/work/app",
+        runtimeMode: thread.runtimeMode,
+        interactionMode: "default",
+        workspace: {
+          folders: [
+            { name: "api", path: "/work/app/api", isGitRepository: true },
+            { name: "Handbook", path: "/work/handbook", isGitRepository: true },
+          ],
+          extraRoots: ["/work/handbook"],
+        },
+      } as never),
+    );
+
+    yield* harness.start;
+
+    // Keys are looked up only for a folder the session can't edit, which names it by its key.
+    const keyed = outside !== "edit";
+    expect(harness.startRootRun.mock.calls[0]?.[0].runtimePolicy.workspace?.folders).toEqual([
+      {
+        name: "api",
+        path: "/work/app/api",
+        isGitRepository: true,
+        reach: "edit",
+        ...(keyed ? { key: "api" } : {}),
+      },
+      {
+        name: "Handbook",
+        path: "/work/handbook",
+        isGitRepository: true,
+        reach: outside,
+        ...(keyed ? { key: "handbook" } : {}),
+      },
+    ]);
   }),
 );
 

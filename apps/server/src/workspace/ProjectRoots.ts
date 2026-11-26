@@ -62,6 +62,16 @@ export class ProjectRoots extends Context.Service<
     readonly resolve: (
       input: ProjectRootsThread & { readonly address: string; readonly fromRoot?: RootKey },
     ) => Effect.Effect<ResolvedRootPath, ProjectRootsError>;
+    /** `resolve` for each of `addresses`, over one read of the thread's roots, which it returns. */
+    readonly resolveAll: (
+      input: ProjectRootsThread & { readonly addresses: ReadonlyArray<string> },
+    ) => Effect.Effect<
+      {
+        readonly roots: ReadonlyArray<ProjectRootCheckout>;
+        readonly paths: ReadonlyArray<ResolvedRootPath>;
+      },
+      ProjectRootsError
+    >;
     /**
      * Where a new note, base or canvas goes: `repository` or the address's root, then the root of
      * `selectedPath` or `currentFile`, then the only writable root. Fails rather than guess.
@@ -308,6 +318,16 @@ const make = Effect.gen(function* () {
     },
   );
 
+  const resolveAll: ProjectRoots["Service"]["resolveAll"] = Effect.fn("ProjectRoots.resolveAll")(
+    function* (input) {
+      const roots = yield* forThread(input);
+      const paths = yield* Effect.forEach(input.addresses, (address) =>
+        resolveIn(roots, address, undefined),
+      );
+      return { roots, paths };
+    },
+  );
+
   const writeTarget: ProjectRoots["Service"]["writeTarget"] = Effect.fn("ProjectRoots.writeTarget")(
     function* (input) {
       const roots = yield* forThread(input);
@@ -360,7 +380,7 @@ const make = Effect.gen(function* () {
     },
   );
 
-  return ProjectRoots.of({ list, forThread, locate, resolve, writeTarget, host });
+  return ProjectRoots.of({ list, forThread, locate, resolve, resolveAll, writeTarget, host });
 });
 
 export const layer = Layer.effect(ProjectRoots, make);

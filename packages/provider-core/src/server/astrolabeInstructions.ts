@@ -16,4 +16,4 @@ A project's notes, bases and canvases are files in its folders. Read, search and
 - \`astrolabe_project_transform\`: every move or rename of a note, canvas or folder, since it rewrites links across the project's folders (never \`mv\`); also skill-map edges and canvases.
 - \`astrolabe_project_links\`: what links to and from a note, across the project's folders.
 - \`astrolabe_project_orient\`: start from a skill map in an unfamiliar area.
-- If the message says your file tools can't reach a folder, \`delegate_task\` the job with \`wiki\` set to its name: the child works there.`;
+- If your folder list says your file tools can't reach a folder, \`delegate_task\` the job with \`repository\` set to that folder's key: the child works there.`;

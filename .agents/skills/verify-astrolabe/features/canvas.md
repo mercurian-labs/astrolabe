@@ -12,20 +12,25 @@ real model, and ask for a diagram of boxes and arrows that cites a file.
 - **Phone:** the feed shows the layout as a thumbnail. Tapping opens the board, which pans by
   touch. A swipe from the left edge goes back, and doesn't pan. A code card opens its file. A
   killed page (`onContentProcessDidTerminate`) comes back with the camera where it was.
-- **Keep:** on web, the timeline's bookmark (`button "Keep <title> in a wiki"`, in the turn's
-  "N canvas" list, `TurnCanvases.tsx`) and the board's **Canvas menu** → **Keep in a wiki…** (the
-  Canvas tab and the inline board) open the `Keep <title>` dialog straight on the wiki and name
-  form (`components/canvas/KeepCanvas.tsx`; no comment step on web). A folder prefix such as
-  `ops/Board` files it in that folder. **Place it** files it, then says it's in a pull request,
-  with **Done** and **Open it** (which opens the board inside the pull request, cards marked
-  Added). The phone's header **Keep** still opens a comment box first: Enter adds a board chip to
-  the composer, Cmd/Ctrl+Enter adds and sends, **Place in wiki** goes to the same form. Check the
-  file opens at the coordinates the thread showed, ids are 16 hex, and closing the pull request
-  leaves the thread's board. Code cards: a pushed commit gives a link pinned to it, with `astrolabe`
-  holding repository, commit, path and lines; an unpushed commit links to the nearest pushed one
-  and the dialog says so; a file only in unpushed commits, a repository with no remote, and a
-  self-hosted Bitbucket write a text card with the path and commit. A name already taken says so,
-  and no wiki on the server reads "A canvas is kept in a wiki, and this server has none yet…". A
+- **Keep:** on web, the timeline's bookmark (`button "Keep <title> in the project"`, in the
+  turn's "N canvas" list, `TurnCanvases.tsx`) and the board's **Canvas menu** → **Keep in the
+  project…** (the Canvas tab and the inline board) open the `Keep <title>` dialog
+  (`components/canvas/KeepCanvas.tsx`; no comment step on web). It picks the project's only folder
+  on disk by itself and shows a **Folder** picker when there are several; a prefix such as
+  `ops/Board` files it in that folder. Where **Place it** lands it (`CanvasKeep.ts`): a thread with
+  its own worktree of the folder gets the file there, uncommitted; a hosted repository's main
+  checkout on its default branch gets a change request ("…is in “Keep <title>” in <folder>",
+  **Open it** opens the board inside it, cards marked Added); a repository with no host, a plain
+  folder, or a main checkout on another branch gets the file on disk ("…is written in <folder>,
+  uncommitted", **Open it** only for the project folder, in the thread's files). The phone's header
+  **Keep** still opens a comment box first: Enter adds a board chip to the composer, Cmd/Ctrl+Enter
+  adds and sends, **Place in the project** goes to the same form. Check the file opens at the
+  coordinates the thread showed, ids are 16 hex, and closing a change request leaves the thread's
+  board. Code cards: each pins to its own folder's remote (`api:src/index.ts` and `src/index.ts`
+  link to two repositories); a pushed commit gives a link pinned to it, with `astrolabe` holding
+  repository, commit, path and lines; an unpushed commit links to the nearest pushed one and the
+  dialog says so; a file only in unpushed commits, a repository with no remote, and a self-hosted
+  Bitbucket write a text card with the folder, path and commit. A name already taken says so. A
   guest page has no Keep.
 - **Settings:** the canvas settings are under Settings → Wikis → **Canvases**.
 - **Hermes:** the phone runs the layout code on an engine without newer array methods. A broken

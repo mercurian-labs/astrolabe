@@ -110,10 +110,7 @@ import {
   type WikiTarget,
   type WikiTransform,
   type WikiTransformInput,
-  linkedWikiAgentNote,
   type SourceControlProviderKind,
-  type WikiCheckoutReach,
-  wikiCheckoutAgentNote,
 } from "@t3tools/contracts";
 import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
 import { hostPreviewMimeTypeFromExtension } from "@t3tools/shared/filePreview";
@@ -209,12 +206,6 @@ class WikiGitExitError extends Schema.TaggedError<WikiGitExitError>()("WikiGitEx
 export interface WikiAuthor {
   readonly actor: string;
   readonly threadId: ThreadId | null;
-}
-
-/** A thread's checkout of one wiki. */
-export interface WikiCheckout {
-  readonly wikiId: WikiId;
-  readonly folder: string;
 }
 
 /** The person at the keyboard, for changes made from the app. */
@@ -325,18 +316,6 @@ export class WikiService extends Context.Service<
     readonly setProjectLink: (
       input: WikiSetProjectLinkInput,
     ) => Effect.Effect<WikiSummary, WikiError>;
-    /**
-     * The note for a thread in this repository, or null when there is nothing to tell: every
-     * linked wiki it has a checkout of, or with `linkedSince` only those linked after it. A
-     * thread working in a checkout hears, on its first message, only which wiki it is in.
-     */
-    readonly agentNote: (input: {
-      readonly projectId: ProjectId;
-      readonly linkedSince?: DateTime.Utc | undefined;
-      readonly checkouts: ReadonlyArray<WikiCheckout>;
-      readonly reach: WikiCheckoutReach;
-      readonly workingIn?: WikiId | undefined;
-    }) => Effect.Effect<string | null, WikiError>;
     /** The folder holding a wiki's main line, the repository its worktrees belong to. */
     readonly root: (wikiId: WikiId) => Effect.Effect<string, WikiError>;
     /** Pushes main to the mirror now; a failed push is recorded on the summary, not raised. */
@@ -4940,35 +4919,6 @@ const make = Effect.gen(function* () {
     },
   );
 
-  const agentNote: WikiService["Service"]["agentNote"] = (input) =>
-    loadRegistry.pipe(
-      Effect.map((registry) => {
-        if (input.workingIn !== undefined) {
-          const wiki = registry.wikis.find((candidate) => candidate.wikiId === input.workingIn);
-          return wiki === undefined || input.linkedSince !== undefined
-            ? null
-            : wikiCheckoutAgentNote(wiki.name);
-        }
-        const linkedSince = input.linkedSince;
-        return linkedWikiAgentNote(
-          registry.wikis.flatMap((wiki) => {
-            if (!wiki.projectIds.includes(input.projectId)) return [];
-            const linkedAt = wiki.projectLinkedAt[input.projectId];
-            if (
-              linkedSince !== undefined &&
-              (linkedAt === undefined ||
-                Date.parse(linkedAt) <= DateTime.toEpochMillis(linkedSince))
-            )
-              return [];
-            const checkout = input.checkouts.find((candidate) => candidate.wikiId === wiki.wikiId);
-            return checkout === undefined
-              ? []
-              : [{ name: wiki.name, folder: checkout.folder, reach: input.reach }];
-          }),
-        );
-      }),
-    );
-
   const pushMirror: WikiService["Service"]["pushMirror"] = (input) =>
     withWiki(input.wikiId, (wiki) =>
       wiki.mirror === null
@@ -5494,7 +5444,6 @@ const make = Effect.gen(function* () {
     setMirror,
     setMapBackgrounds,
     setProjectLink,
-    agentNote,
     pushMirror,
     index,
     docPaths,

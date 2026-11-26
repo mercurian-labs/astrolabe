@@ -212,6 +212,18 @@ it.layer(NodeServices.layer)("ProjectRoots", (it) => {
         // `Note` is no root, so this is a bare path in the project folder.
         const note = yield* roots.resolve({ ...thread, address: "Note: subtitle" });
         assert.deepEqual([note.root.key, note.path], ["ctx", "Note: subtitle"]);
+        const all = yield* roots.resolveAll({
+          ...thread,
+          addresses: ["app-2:docs/Plan.md", "vendor/lib/README.md"],
+        });
+        assert.deepEqual(
+          all.paths.map((each) => [each.root.key, each.path]),
+          [
+            ["app-2", "docs/Plan.md"],
+            ["lib", "README.md"],
+          ],
+        );
+        assert.equal(all.roots[0]?.key, "ctx");
         for (const address of ["app:../ctx/secret", "nope", `${path.join(tmp, "elsewhere")}`]) {
           const exit = yield* roots
             .resolve({

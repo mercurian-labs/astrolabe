@@ -31,7 +31,7 @@ import * as RepositoryIdentityResolver from "../project/RepositoryIdentityResolv
 import * as PullRequestService from "../pullRequest/PullRequestService.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as VcsStatusBroadcaster from "../vcs/VcsStatusBroadcaster.ts";
-import * as ThreadWikiCheckouts from "../wiki/ThreadWikiCheckouts.ts";
+import * as TurnDocsCheck from "../wiki/TurnDocsCheck.ts";
 import * as WorkspaceEntries from "../workspace/WorkspaceEntries.ts";
 import * as CheckpointCapture from "./CheckpointCaptureService.ts";
 import * as CheckpointRollback from "./CheckpointRollbackService.ts";
@@ -249,19 +249,34 @@ it.effect.each(
   }).pipe(Effect.provide(layer));
 });
 
-const BROKEN: ThreadWikiCheckouts.BrokenBase = {
-  wiki: "Handbook",
+const BROKEN: TurnDocsCheck.BrokenBase = {
+  root: "handbook",
   file: "Projects.base",
-  path: "/state/wiki-checkouts/thread-base-check/wiki-handbook/Projects.base",
+  path: "/work/handbook/Projects.base",
   problems: ["views[0].properties is not a view key and is ignored; did you mean order?"],
 };
 
-// A turn's save that leaves a base broken asks this thread once to fix it; the fix's own turn never asks again.
+const AMBIGUOUS: TurnDocsCheck.AmbiguousLink = {
+  root: "app",
+  file: "docs/Deploys.md",
+  path: "/work/app/docs/Deploys.md",
+  target: "Release train",
+  matches: ["handbook:Release train.md", "ops:Release train.md"],
+};
+
+const CHANGED = [
+  { cwd: "/work/app", file: "docs/Deploys.md" },
+  { cwd: "/work/handbook", file: "Projects.base" },
+];
+
+// A turn that leaves a document broken asks this thread once to fix it; the fix's own turn never asks again.
 it.effect.each([
-  ["a turn that breaks a base gets one follow-up", [BROKEN], "message-user", 1],
-  ["a turn whose bases are clean gets none", [], "message-user", 0],
-  ["the follow-up's own turn, still broken, gets none", [BROKEN], "wiki-base-check:run-0", 0],
-] as const)("%s", ([, broken, userMessageId, followUps]) => {
+  ["a turn that breaks a base gets one follow-up", [BROKEN], [], "message-user", 1],
+  ["a turn that writes an ambiguous link gets one follow-up", [], [AMBIGUOUS], "message-user", 1],
+  ["a turn whose documents are clean gets none", [], [], "message-user", 0],
+  ["the follow-up's own turn, still broken, gets none", [BROKEN], [], "wiki-base-check:run-0", 0],
+] as const)("%s", ([, bases, links, userMessageId, followUps]) => {
+  const checked: Array<Parameters<TurnDocsCheck.TurnDocsCheck["Service"]["check"]>[0]> = [];
   const threadId = ThreadId.make("thread-base-check");
   const runId = RunId.make("run-base-check");
   const scopeId = CheckpointScopeId.make("scope-base-check");
@@ -292,9 +307,14 @@ it.effect.each([
             } as never),
           getCheckpointContext: () =>
             Effect.succeed({ runs: [], checkpointScopes: [], checkpoints: [] }),
+          getRunCheckpointFiles: (_threadId, run) => Effect.succeed(run === runId ? CHANGED : []),
         }),
-        Layer.mock(ThreadWikiCheckouts.ThreadWikiCheckouts)({
-          saveTurn: () => Effect.succeed(broken),
+        Layer.mock(TurnDocsCheck.TurnDocsCheck)({
+          check: (input) =>
+            Effect.sync(() => {
+              checked.push(input);
+              return { bases, links };
+            }),
         }),
         threads,
       ),
@@ -329,6 +349,9 @@ it.effect.each([
       },
     ]);
     assert.equal(yield* (yield* EffectWorker.OrchestrationEffectWorkerV2).drain(1), 1);
+    assert.deepEqual(checked, [
+      { projectId: ProjectId.make("project-base-check"), worktreePath: null, changed: CHANGED },
+    ]);
     assert.equal(dispatched.length, followUps);
     const [followUp] = dispatched;
     if (followUp?.type !== "message.dispatch") return;
@@ -336,8 +359,18 @@ it.effect.each([
     assert.equal(followUp.createdBy, "agent");
     assert.equal(followUp.creationSource, "server");
     assert.equal(followUp.notification?.source.kind, "system");
-    assert.include(followUp.text, `${BROKEN.file} in the Handbook wiki (${BROKEN.path}):`);
-    assert.include(followUp.text, `- ${BROKEN.problems[0]}`);
+    if (bases.length > 0) {
+      assert.equal(followUp.notification?.summary, "A base needs fixing");
+      assert.include(followUp.text, `${BROKEN.file} in handbook (${BROKEN.path}):`);
+      assert.include(followUp.text, `- ${BROKEN.problems[0]}`);
+    } else {
+      assert.equal(followUp.notification?.summary, "A link needs fixing");
+      assert.include(
+        followUp.text,
+        "- [[Release train]] could open handbook:Release train.md or ops:Release train.md",
+      );
+      assert.include(followUp.text, "as [[folder:Path]]");
+    }
   }).pipe(Effect.provide(Layer.fresh(worker)));
 });
 

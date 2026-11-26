@@ -3,6 +3,7 @@ import {
   type AgentFeedbackMode,
   ChatAttachment,
   CheckpointId,
+  FolderReach,
   MessageId,
   ModelSelection,
   NodeId,
@@ -55,6 +56,10 @@ export const ProviderAdapterV2RuntimeWorkspace = Schema.Struct({
       name: Schema.String,
       path: Schema.String,
       isGitRepository: Schema.Boolean,
+      /** What addresses and `delegate_task` name the folder by. */
+      key: Schema.optional(Schema.String),
+      /** How the session's file tools reach it; `edit` when absent. */
+      reach: Schema.optional(FolderReach),
     }),
   ),
   /** Folder paths outside `cwd`. Adapters grant them as writable roots where the provider can. */
@@ -68,7 +73,7 @@ export const ProviderAdapterV2RuntimePolicy = Schema.Struct({
   cwd: Schema.NullOr(Schema.String),
   approvalPolicy: Schema.optional(Schema.Unknown),
   sandboxPolicy: Schema.optional(Schema.Unknown),
-  /** Folders besides `cwd` the agent reads and writes, such as the thread's wiki checkouts. */
+  /** Folders besides `cwd` the agent reads and writes. */
   writableRoots: Schema.optional(Schema.Array(Schema.String)),
   /**
    * The administrator's ceiling, when a managed policy sets one. `runtimeMode` is already under

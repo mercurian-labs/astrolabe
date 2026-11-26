@@ -185,6 +185,35 @@ it.live("lays a plain wrapper out as links around its repositories' worktrees", 
 const byName = (left: { readonly name: string }, right: { readonly name: string }) =>
   left.name.localeCompare(right.name);
 
+it.live("refuses to remove one repository's checkout out of a task folder", () =>
+  withState((state) =>
+    Effect.gen(function* () {
+      const { fileSystem, path, tmp, repository } = yield* fixture;
+      const shop = path.join(tmp, "shop");
+      const api = yield* repository("shop/api");
+      state.workspaceRoot = shop;
+      state.trackedFolders = tracked(api);
+      const { taskFolder } = yield* create("feature", [{ path: api }]);
+      const checkout = taskFolder.repositories[0]!.worktreePath;
+      const taskFolders = yield* TaskFolders.TaskFolders;
+
+      const refused = yield* taskFolders
+        .removeIfTaskFolder({ path: checkout, force: true, projectCommands: "permitted" })
+        .pipe(Effect.flip);
+
+      assert.include(refused.detail, taskFolder.root);
+      assert.isTrue(yield* fileSystem.exists(checkout));
+      assert.isFalse(
+        yield* taskFolders.removeIfTaskFolder({
+          path: path.join(tmp, "elsewhere"),
+          force: true,
+          projectCommands: "permitted",
+        }),
+      );
+    }),
+  ),
+);
+
 it.live("keeps a Git project and its sibling repository side by side", () =>
   withState((state) =>
     Effect.gen(function* () {

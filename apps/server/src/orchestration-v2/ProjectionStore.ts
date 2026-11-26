@@ -816,6 +816,14 @@ export interface ProjectionStoreV2Shape {
   readonly getCheckpointContext: (
     threadId: ThreadId,
   ) => Effect.Effect<ProjectionCheckpointContext, ProjectionStoreV2Error>;
+  /** Astrolabe: each file a run's checkpoints changed, as a path from its checkpoint's cwd. */
+  readonly getRunCheckpointFiles: (
+    threadId: ThreadId,
+    runId: RunId,
+  ) => Effect.Effect<
+    ReadonlyArray<{ readonly cwd: string; readonly file: string }>,
+    ProjectionStoreV2Error
+  >;
   readonly getCheckpointCaptureContext: (
     threadId: ThreadId,
     target: { readonly runId: RunId; readonly scopeId: CheckpointScopeId },
@@ -6370,6 +6378,25 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         )
         .pipe(Effect.mapError(controlReadError(threadId)));
 
+    const getRunCheckpointFiles: ProjectionStoreV2Shape["getRunCheckpointFiles"] = (
+      threadId,
+      runId,
+    ) =>
+      sql<{ readonly cwd: string | null; readonly file: string | null }>`
+        SELECT DISTINCT json_extract(scope.payload_json, '$.cwd') AS cwd,
+          json_extract(changed.value, '$.path') AS file
+        FROM orchestration_v2_projection_checkpoints AS checkpoint
+        JOIN orchestration_v2_projection_checkpoint_scopes AS scope
+          ON scope.scope_id = checkpoint.scope_id
+        JOIN json_each(checkpoint.payload_json, '$.files') AS changed
+        WHERE checkpoint.thread_id = ${threadId} AND checkpoint.run_id = ${runId}
+      `.pipe(
+        Effect.map((rows) =>
+          rows.flatMap(({ cwd, file }) => (cwd === null || file === null ? [] : [{ cwd, file }])),
+        ),
+        Effect.mapError((cause) => new ProjectionStoreReadError({ threadId, cause })),
+      );
+
     const getCheckpointContext: ProjectionStoreV2Shape["getCheckpointContext"] = (threadId) =>
       sql
         .withTransaction(
@@ -9993,6 +10020,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       getThreadProviderContext: readOnReader(getThreadProviderContext),
       getRuntimeResponseContext: readOnReader(getRuntimeResponseContext),
       getCheckpointContext: readOnReader(getCheckpointContext),
+      getRunCheckpointFiles: readOnReader(getRunCheckpointFiles),
       getCheckpointCaptureContext: readOnReader(getCheckpointCaptureContext),
       getCheckpointRollbackContext: readOnReader(getCheckpointRollbackContext),
       getRunMessage: readOnReader(getRunMessage),

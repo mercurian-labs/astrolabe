@@ -114,6 +114,7 @@ import {
   delegatedTaskRuns,
   runOutcome,
 } from "../orchestration-v2/RestartBackgroundNote.ts";
+import * as ProjectRoots from "../workspace/ProjectRoots.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import { placeholderThreadTitle } from "../orchestration-v2/placeholderThreadTitle.ts";
 import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts";
@@ -144,7 +145,6 @@ import { WITHHELD, withoutWebhookUrlToken } from "../scheduledTasks/webhookUrlTo
 import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as PeerForwarding from "../peer/PeerForwarding.ts";
 import * as RemoteDelegation from "../peer/RemoteDelegation.ts";
-import * as ThreadWikiCheckouts from "../wiki/ThreadWikiCheckouts.ts";
 
 // Return recoverable handles before common MCP client timeouts expire.
 const DEFAULT_WAIT_TIMEOUT_MS = 30_000;
@@ -1394,8 +1394,8 @@ const make = Effect.gen(function* () {
   const gitDriver = yield* GitVcsDriver.GitVcsDriver;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
   const remoteDelegation = yield* RemoteDelegation.RemoteDelegation;
-  // Astrolabe: optional, so a runtime without wikis delegates unchanged.
-  const wikiCheckouts = yield* Effect.serviceOption(ThreadWikiCheckouts.ThreadWikiCheckouts);
+  // Astrolabe: optional, so a runtime without project roots delegates unchanged.
+  const projectRoots = yield* Effect.serviceOption(ProjectRoots.ProjectRoots);
 
   const requireProject = (projectId: ProjectId) =>
     projects.getById(projectId).pipe(
@@ -1675,6 +1675,40 @@ const make = Effect.gen(function* () {
           ),
           Effect.orElseSucceed(() => undefined),
         );
+
+  /**
+   * Astrolabe: the parent's checkout of one of its project's folders, for a child to work in;
+   * undefined when that is the parent's own folder, which a child shares anyway.
+   */
+  const childRepositoryCheckout = Effect.fn("OrchestratorMcpService.childRepositoryCheckout")(
+    function* (parent: Pick<OrchestrationV2ThreadProjection, "thread">, repository: string) {
+      if (Option.isNone(projectRoots)) {
+        return yield* failure("invalid_request", "This server has no project folders.");
+      }
+      const roots = yield* projectRoots.value
+        .forThread({
+          projectId: parent.thread.projectId,
+          worktreePath: parent.thread.worktreePath,
+        })
+        .pipe(Effect.mapError((error) => failure("orchestration_error", error.message)));
+      const root =
+        roots.find((candidate) => candidate.key === repository) ??
+        roots.find((candidate) => candidate.name.toLowerCase() === repository.toLowerCase());
+      if (root === undefined) {
+        return yield* failure(
+          "invalid_request",
+          `The project has no folder ${repository}. Its folders: ${roots.map((candidate) => candidate.key).join(", ")}.`,
+        );
+      }
+      if (root.checkout === null || !root.writable || root.state === "missing") {
+        return yield* failure(
+          "invalid_request",
+          `Your thread has no checkout of ${root.key} it can write, so a child can't work there.`,
+        );
+      }
+      return root.checkout === (yield* parentWorkspaceCwd(parent)) ? undefined : root.checkout;
+    },
+  );
 
   const scanWorkspace = (instanceId: ServerProvider["instanceId"], cwd: string) =>
     projects
@@ -3033,12 +3067,12 @@ const make = Effect.gen(function* () {
           ? undefined
           : PeerForwarding.remoteTarget(callerScope, input.target.environmentId);
       if (
-        input.wiki !== undefined &&
+        input.repository !== undefined &&
         (input.isolation === "worktree" || environmentId !== undefined)
       ) {
         return yield* failure(
           "invalid_request",
-          "A child given `wiki` works in your checkout of it here; omit isolation 'worktree' and target.environmentId.",
+          "A child given `repository` works in your checkout of that folder here; omit isolation 'worktree' and target.environmentId.",
         );
       }
       if (input.target !== undefined && environmentId !== undefined) {
@@ -3100,31 +3134,10 @@ const make = Effect.gen(function* () {
         parent.thread.interactionMode,
         input.interactionMode,
       );
-      const { wiki } = input;
-      const wikiCheckout =
-        wiki === undefined
+      const repositoryCheckout =
+        input.repository === undefined
           ? undefined
-          : yield* Option.match(wikiCheckouts, {
-              onNone: () => Effect.fail(failure("invalid_request", "This server has no wikis.")),
-              onSome: (checkouts) =>
-                checkouts
-                  .checkoutFor({
-                    threadId: parent.thread.id,
-                    projectId: parent.thread.projectId,
-                    worktreePath: parent.thread.worktreePath,
-                    wiki: wiki.trim(),
-                  })
-                  .pipe(
-                    Effect.mapError((error) =>
-                      failure(
-                        error.reason === "not-found" || error.reason === "invalid"
-                          ? "invalid_request"
-                          : "orchestration_error",
-                        error.message,
-                      ),
-                    ),
-                  ),
-            });
+          : yield* childRepositoryCheckout(parent, input.repository.trim());
       let workspaceStrategy: OrchestrationV2ThreadLaunchWorkspaceStrategy | undefined;
       if (
         input.isolation === "worktree" &&
@@ -3200,7 +3213,7 @@ const make = Effect.gen(function* () {
               runtimeMode,
               interactionMode,
               ...(workspaceStrategy === undefined ? {} : { workspaceStrategy }),
-              ...(wikiCheckout === undefined ? {} : { worktreePath: wikiCheckout }),
+              ...(repositoryCheckout === undefined ? {} : { worktreePath: repositoryCheckout }),
               // Async delegations wake the parent on every child terminal; wait
               // delegations deliver through the blocking tool call until `awaitTask`
               // gives up the wait (timeout, cancelled call) and upgrades the wake.

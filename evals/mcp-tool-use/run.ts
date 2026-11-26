@@ -44,8 +44,8 @@ import { advertisedJsonSchema } from "../../apps/server/src/mcp/advertisedJsonSc
 import * as Contracts from "@t3tools/contracts";
 import {
   EnvironmentId,
-  linkedWikiAgentNote,
   ORCHESTRATOR_MCP_RUNNING_TASK_NEXT,
+  projectRootKeys,
   PullRequestState,
   ThreadId,
 } from "@t3tools/contracts";
@@ -97,7 +97,7 @@ import {
 import { ThemeToolkit } from "../../apps/server/src/mcp/toolkits/theme/tools.ts";
 import { ThreadToolkit } from "../../apps/server/src/mcp/toolkits/thread/tools.ts";
 import { ProjectDocsToolkit } from "../../apps/server/src/mcp/toolkits/projectDocs/tools.ts";
-import { brokenBasesMessage } from "../../apps/server/src/wiki/ThreadWikiCheckouts.ts";
+import { turnDocsMessage } from "../../apps/server/src/wiki/TurnDocsCheck.ts";
 import { WorktreeToolkit } from "../../apps/server/src/mcp/toolkits/worktree/tools.ts";
 import {
   CLAUDE_PROVIDER,
@@ -400,8 +400,8 @@ export const McpToolUseCase = Schema.Struct({
     /**
      * The folders of the thread's project, its working folder first; Git repositories unless `git`
      * is false. With several, T3's list of them follows `prompt`. `reach` is how the session's file
-     * tools reach a folder, as `wikiCheckoutReach` decides per provider; default `edit`. A folder
-     * they can't edit is named in T3's wikis note, also after `prompt`.
+     * tools reach a folder, as `folderReach` decides per provider; default `edit`. The list says
+     * what to do in a folder they can't edit.
      */
     projectRoots: Schema.optional(
       Schema.Array(
@@ -414,16 +414,28 @@ export const McpToolUseCase = Schema.Struct({
       ),
     ),
     /**
-     * The turn is T3's follow-up to one that left these bases broken: T3's message is what the
-     * agent gets, and `prompt` only tells the shell simulator what happened.
+     * The turn is T3's follow-up to one that left these bases broken, or these links ambiguous:
+     * T3's message is what the agent gets, and `prompt` only tells the shell simulator what
+     * happened.
      */
     brokenBases: Schema.optional(
       Schema.Array(
         Schema.Struct({
-          wiki: Schema.String,
+          root: Schema.String,
           file: Schema.String,
           path: Schema.String,
           problems: Schema.Array(Schema.String),
+        }),
+      ),
+    ),
+    ambiguousLinks: Schema.optional(
+      Schema.Array(
+        Schema.Struct({
+          root: Schema.String,
+          file: Schema.String,
+          path: Schema.String,
+          target: Schema.String,
+          matches: Schema.Array(Schema.String),
         }),
       ),
     ),
@@ -1310,36 +1322,32 @@ export const buildMessages = (sample: Sample) => {
     }
     if (turn.text) push(turn.role, text(turn.text));
   }
-  const brokenBases = testCase.setup.brokenBases;
+  const { brokenBases, ambiguousLinks } = testCase.setup;
   const composed =
-    brokenBases !== undefined
-      ? brokenBasesMessage(brokenBases)
+    brokenBases !== undefined || ambiguousLinks !== undefined
+      ? turnDocsMessage({ bases: brokenBases ?? [], links: ambiguousLinks ?? [] })
       : testCase.promptContext === undefined
         ? testCase.prompt
         : projectComposerContextForProvider({ text: testCase.prompt, ...testCase.promptContext });
   const roots = testCase.setup.projectRoots ?? [];
+  const keys = roots.length === 0 ? [] : projectRootKeys(roots[0]!.folder, roots.slice(1));
   const folderNote =
     roots.length < 2
       ? ""
       : buildWorkspaceInstructions({
           cwd: roots[0]!.folder,
           workspace: {
-            folders: roots.map((root) => ({
+            folders: roots.map((root, index) => ({
               name: root.name,
               path: root.folder,
               isGitRepository: root.git ?? true,
+              key: keys[index]!,
+              ...(root.reach === undefined ? {} : { reach: root.reach }),
             })),
             extraRoots: [],
           },
         });
-  const reachNote = linkedWikiAgentNote(
-    roots.flatMap(({ name, folder, reach }) =>
-      reach === undefined || reach === "edit" ? [] : [{ name, folder, reach }],
-    ),
-  );
-  const folderNotes = [folderNote, reachNote ?? ""].filter((note) => note !== "");
-  const userText =
-    folderNotes.length === 0 ? composed : `${composed}\n\n${folderNotes.join("\n\n")}`;
+  const userText = folderNote === "" ? composed : `${composed}\n\n${folderNote}`;
   const prompt =
     sideChatContext === undefined ? userText : withInlineContext(sideChatContext, userText);
   const childPrompt = () => taskPrompt({ task: prompt, role: delegateRole });

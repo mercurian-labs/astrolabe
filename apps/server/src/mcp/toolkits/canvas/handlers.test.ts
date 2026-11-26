@@ -3,8 +3,11 @@ import { describe, expect, it } from "@effect/vitest";
 import {
   EnvironmentId,
   OrchestratorMcpFailure,
+  parseRootAddress,
   type Project,
   ProjectId,
+  type ProjectRootCheckout,
+  RootKey,
   ProviderInstanceId,
   ThreadId,
   TurnItemId,
@@ -20,6 +23,7 @@ import * as ProjectService from "../../../project/ProjectService.ts";
 import * as GitVcsDriver from "../../../vcs/GitVcsDriver.ts";
 import * as CanvasKeep from "../../../wiki/CanvasKeep.ts";
 import * as WikiService from "../../../wiki/WikiService.ts";
+import * as ProjectRoots from "../../../workspace/ProjectRoots.ts";
 import * as McpHttpServer from "../../McpHttpServer.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccessTestkit from "../../McpToolAccess.testkit.ts";
@@ -30,6 +34,31 @@ import { CanvasToolkit } from "./tools.ts";
 const projectId = ProjectId.make("project:mcp-test");
 const projectRoot = "/home/user/acme-app";
 const worktree = "/home/user/.t3/worktrees/acme-app/t3-1a2b3c4d";
+const apiRoot = "/home/user/acme-api";
+const apiWorktree = "/home/user/.t3/worktrees/acme-api/t3-1a2b3c4d";
+
+const roots: ReadonlyArray<ProjectRootCheckout> = [
+  {
+    key: RootKey.make("acme-app"),
+    name: "acme-app",
+    path: projectRoot,
+    kind: "workspace",
+    state: "git",
+    hostBacked: true,
+    checkout: worktree,
+    writable: true,
+  },
+  {
+    key: RootKey.make("api"),
+    name: "api",
+    path: apiRoot,
+    kind: "tracked",
+    state: "git",
+    hostBacked: true,
+    checkout: apiWorktree,
+    writable: true,
+  },
+];
 
 const scope: McpInvocationContext.McpInvocationScope = {
   environmentId: EnvironmentId.make("environment-canvas-tools"),
@@ -129,15 +158,48 @@ const harness = (options: {
         }),
         Layer.mock(ProjectService.ProjectService)({
           getById: () => Effect.succeedSome(project),
-          readRepositoryIdentity: ({ repositoryIdentity }) =>
-            Effect.succeed(repositoryIdentity ?? null),
+          readRepositoryIdentity: ({ repositoryIdentity, workspaceRoot }) =>
+            Effect.succeed(
+              repositoryIdentity ??
+                (workspaceRoot === apiRoot
+                  ? {
+                      canonicalKey: "github.com/acme/api",
+                      locator: {
+                        source: "git-remote",
+                        remoteName: "origin",
+                        remoteUrl: "git@github.com:acme/api",
+                      },
+                    }
+                  : null),
+            ),
+        }),
+        Layer.mock(ProjectRoots.ProjectRoots)({
+          resolveAll: ({ addresses }) =>
+            Effect.succeed({
+              roots,
+              paths: addresses.map((address) => {
+                const parsed = parseRootAddress(
+                  address,
+                  roots.map((root) => root.key),
+                );
+                const root = roots.find((each) => each.key === parsed.root) ?? roots[0]!;
+                return {
+                  root,
+                  path: parsed.path,
+                  anchor: null,
+                  absolutePath: `${root.checkout}/${parsed.path}`,
+                };
+              }),
+            }),
         }),
         Layer.mock(GitVcsDriver.GitVcsDriver)({
           execute: (input) => {
             asked.push(input.cwd);
             return options.noGit
               ? Effect.fail({ _tag: "GitCommandError" } as never)
-              : Effect.succeed({ stdout: "9f2c1ab\n" } as never);
+              : Effect.succeed({
+                  stdout: input.cwd === apiWorktree ? "77aa01c\n" : "9f2c1ab\n",
+                } as never);
           },
         }),
         FileSystem.layerNoop({
@@ -251,14 +313,51 @@ describe("canvas toolkit handlers", () => {
         title: "Code",
         cards: [{ id: "a", path: "src/a.ts", line: 3 }],
       });
-      expect(result.structuredContent).toMatchObject({
-        code: {
-          commit: "9f2c1ab",
-          repository: "github.com/acme/app",
-          webUrl: "https://github.com/acme/app",
-        },
-      });
+      const code = {
+        commit: "9f2c1ab",
+        repository: "github.com/acme/app",
+        webUrl: "https://github.com/acme/app",
+      };
+      expect(result.structuredContent).toMatchObject({ code, codes: { "acme-app": code } });
       expect(tools.asked).toEqual([worktree]);
+    }),
+  );
+
+  it.effect("reads folder:path cards in that folder's checkout, at its own commit", () =>
+    Effect.gen(function* () {
+      const tools = harness({
+        files: [`${worktree}/src/index.ts`, `${apiWorktree}/src/index.ts`],
+      });
+      const result = yield* tools.call({
+        title: "Code",
+        cards: [
+          { id: "web", path: "src/index.ts" },
+          { id: "server", path: "api:src/index.ts", line: 4 },
+          { id: "same", path: "acme-app:src/index.ts" },
+        ],
+      });
+      expect(result.isError).not.toBe(true);
+      const app = {
+        commit: "9f2c1ab",
+        repository: "github.com/acme/app",
+        webUrl: "https://github.com/acme/app",
+      };
+      // The project folder's entry stays in `code`, which older turn items and clients read.
+      expect(result.structuredContent).toMatchObject({
+        code: app,
+        codes: { "acme-app": app, api: { commit: "77aa01c", repository: "github.com/acme/api" } },
+      });
+      expect(tools.asked).toEqual([worktree, apiWorktree]);
+      const document = tools.recorded[0]?.document as {
+        readonly nodes: ReadonlyArray<{
+          readonly id: string;
+          readonly astrolabe?: { readonly code?: unknown };
+        }>;
+      };
+      const codeOf = (id: string) => document.nodes.find((node) => node.id === id)?.astrolabe?.code;
+      expect(codeOf("web")).toEqual({ path: "src/index.ts" });
+      expect(codeOf("server")).toEqual({ root: "api", path: "src/index.ts", lines: [4, 4] });
+      expect(codeOf("same")).toEqual({ path: "src/index.ts" });
     }),
   );
 
@@ -367,7 +466,7 @@ describe("canvas toolkit handlers", () => {
       const { call, kept } = harness({});
       yield* call(
         {
-          wiki: " Team ",
+          repository: " api ",
           name: "Flow.canvas",
           itemId: "item-1",
           comment: "For the review",
@@ -377,7 +476,8 @@ describe("canvas toolkit handlers", () => {
       );
       expect(kept).toHaveLength(1);
       expect(kept[0]?.input).toEqual({
-        wikiId: "Team",
+        projectId,
+        repository: "api",
         threadId: drawnIn,
         itemId: "item-1",
         name: "Flow.canvas",

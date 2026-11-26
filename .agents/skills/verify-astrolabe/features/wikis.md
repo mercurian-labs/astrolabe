@@ -158,18 +158,13 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   default Wiki root; New notes, default Beside the linking file) and **Canvases**
   (`WikiCanvasSettings.tsx`: New canvases, Mouse wheel, Card names, Snap to grid, Snap to
   objects and Hide card content below).
-- **Agent note**: the first prompt of every new native conversation in a linked project,
-  including after a provider restart or handoff, gets an `<astrolabe_wikis>` note naming each
-  wiki, the absolute path of the thread's checkout of it, and how this session reaches it
-  (edits there; Cursor with its sandbox on writes with a shell command, as its edit tool and every
-  MCP call are refused; Antigravity can't reach it and is told to use `astrolabe_wiki_read`, `_search` and
-  `_write` for a small read or edit, and `delegate_task`'s `wiki` for a larger job: moving, splitting or merging notes, or editing more than three) (`WikiService.agentNote`, `wikiCheckoutReach`,
-  `ProviderTurnStartService.ts`). A conversation with turns gets it on its next prompt for wikis
-  linked since its last one (links with no `projectLinkedAt` time never do); a prompt that
-  starts with `/` never does and doesn't count as its last. A child started with `wiki` is told
-  once that its working folder is that wiki. Only the provider sees it, not the user's bubble;
-  how to use a wiki is in the fixed **Astrolabe wikis** instructions section. Prove it with a real turn that never names the wiki. The
-  host T3 instance you drive from still has its own `t3_wiki_*` tools; don't mix them up.
+- **Folder reach**: agents edit docs with their own file tools in the folders the thread
+  already has. In a multi-folder project, `<workspace_folders>` adds a clause to each folder the
+  session's file tools can't edit (`folderReach` in `contracts/workspaceFolders.ts`, set in
+  `ProviderTurnStartService.ts`): Cursor with its sandbox on writes there with a shell command;
+  Antigravity can't reach it and is told to hand the job to `delegate_task` with `repository`
+  set to the folder's key, which starts the child in the thread's checkout of that folder. Prove
+  it with a real turn that never names the folder.
 - **`[[` in the composer** (web only; `composer-logic.ts` `detectWikiNoteTrigger`,
   `chat/composerWikiNoteItems.ts`): opens `listbox "Wiki notes"` with this server's notes,
   linked wikis first, at most 20; `[[ ` (space), no wikis, no match or a pending question
@@ -214,9 +209,9 @@ with Obsidian-style tabs and splits over documents (the one shared workspace, se
   `order`, a link method on a file) shows "Parts of this base don't work as written" above its
   view, each warning a line; the phone's `BaseBlock` lists them above the view, and a pull
   request lists its changed bases' warnings with its standing errors. A turn that saves a broken
-  base gets one system message in its thread, "A base needs fixing", naming each base and problem
-  (`brokenBasesMessage`, `RunFinalizationService.saveWikiEdits`); the turn it starts never gets
-  another. On the phone,
+  base, or a bare link several folders answer, gets one system message in its thread ("A base
+  needs fixing", "A link needs fixing") naming each problem (`TurnDocsCheck.ts`,
+  `RunFinalizationService.checkDocs`); the turn it starts never gets another. On the phone,
   the page asks the app for each block (`queryBase`/`baseResult` in `wiki-editor/protocol.ts`)
   and draws its first view. A `.base` file lists on the phone too (in the tree as
   `button "<name>.base"`) and opens in `WikiDocument` (the same
@@ -363,15 +358,14 @@ a screenshot of the section.
 
 Needs a real agent (its cheapest model); Replay doesn't edit files.
 
-1. In a project linked to a wiki, ask the agent, without naming any folder, to add a line to a
-   note. It edits under `<state>/wiki-checkouts/<thread>/<wiki>`, and `git -C <wiki> log` is
-   unchanged until the turn ends; then the thread's wiki pull request gains one amendment.
+1. In a project with a docs folder, ask the agent, without naming any folder, to add a line to a
+   note. It edits the note in the thread's own checkout of that folder, as it edits code.
 2. Ask it to add a base, and tell it to leave the base as written with a view's columns under
    `properties`. The base's tab shows "Parts of this base don't work as written", and so does the
    pull request.
 3. After that turn, one "A base needs fixing" message arrives in the thread, and the agent fixes
    the base in the turn it starts. That turn sends no second message, even if the base is still
-   broken. Without step 2's instruction, an agent usually runs `astrolabe_wiki_query` and fixes the
+   broken. Without step 2's instruction, an agent usually runs `astrolabe_project_query` and fixes the
    warnings in its own turn, so no message comes.
 
 ## Gotchas

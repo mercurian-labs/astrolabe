@@ -1,6 +1,5 @@
 /* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import type { EnvironmentId, WikiSummary } from "@t3tools/contracts";
-import { wikiAgentGuidance } from "@t3tools/contracts";
 import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";
 import { useAtomValue } from "@effect/atom-react";
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -30,7 +29,6 @@ import { closeWikiTabs } from "../wiki/wikiPanes";
 import { WikiPart } from "../wiki/WikiParts";
 import { wikiScopeKey } from "../wiki/wikiTabs";
 import { useRepositories } from "../repositories/useRepositories";
-import { FoldedSettingsSection } from "./FoldedSettingsSection";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { WikiCanvasSettings } from "./WikiCanvasSettings";
 import { WikiLocationSettings } from "./WikiLocationSettings";
@@ -341,20 +339,6 @@ function WikiPage({ overview }: { readonly overview: WikiOverview }) {
         <FactRow title={`Open ${wikiTerms(wiki).plural}`} value={wiki.openChangeRequests} />
       </SettingsSection>
       <WikiProjectLinks environmentId={environmentId} wiki={wiki} />
-      <FoldedSettingsSection id="wiki-agent-guidance" title="What agents are told">
-        <SettingsRow
-          title="Told to a linked project's agents"
-          description={wikiAgentGuidance([wiki.name])}
-        />
-        <SettingsRow
-          title="When they hear it"
-          description="A new thread hears it with its first message. A thread that already exists hears it with its next message, never during a turn."
-        />
-        <SettingsRow
-          title="Without a link"
-          description="Agents can reach any wiki through their tools. A link is what tells them to look here first. Unlinking stops new threads hearing about it; a thread that already heard keeps what it knows."
-        />
-      </FoldedSettingsSection>
       <WikiHostSection overview={overview} />
       {wiki.host == null ? (
         <>

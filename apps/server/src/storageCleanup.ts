@@ -554,9 +554,13 @@ const make = Effect.gen(function* () {
     return { projects, threads: [...snapshot.threads, ...snapshot.archivedThreads] };
   });
 
+  // A project's own folders count too: a delegated child can work in a tracked folder's checkout.
   const containsProjectRoot = Effect.fn("StorageCleanup.containsProjectRoot")(function* (
     worktreePaths: ReadonlyArray<string>,
-    projects: ReadonlyArray<{ readonly workspaceRoot: string }>,
+    projects: ReadonlyArray<{
+      readonly workspaceRoot: string;
+      readonly trackedFolders?: ReadonlyArray<{ readonly path: string }> | undefined;
+    }>,
   ) {
     const contains = (projectPath: string) =>
       worktreePaths.some(
@@ -564,12 +568,17 @@ const make = Effect.gen(function* () {
           pathKey(projectPath) === pathKey(worktreePath) || inside(worktreePath, projectPath),
       );
     for (const project of projects) {
-      const projectPath = path.resolve(project.workspaceRoot);
-      if (contains(projectPath)) return true;
-      const realPath = yield* fs
-        .realPath(projectPath)
-        .pipe(Effect.orElseSucceed(() => projectPath));
-      if (contains(realPath)) return true;
+      for (const folder of [
+        project.workspaceRoot,
+        ...(project.trackedFolders ?? []).map(({ path: tracked }) => tracked),
+      ]) {
+        const projectPath = path.resolve(folder);
+        if (contains(projectPath)) return true;
+        const realPath = yield* fs
+          .realPath(projectPath)
+          .pipe(Effect.orElseSucceed(() => projectPath));
+        if (contains(realPath)) return true;
+      }
     }
     return false;
   });
@@ -1457,6 +1466,14 @@ const make = Effect.gen(function* () {
       };
       yield* Effect.gen(function* () {
         const taskFolder = yield* taskFolders.find(worktreePath);
+        // A delegated child can work in one repository of a task folder; its thread owns it.
+        if (
+          taskFolder !== null &&
+          ![taskFolder.root, taskFolder.projectPath].some(
+            (owned) => pathKey(path.resolve(owned)) === pathKey(worktreePath),
+          )
+        )
+          return keep("works in one repository of another thread's task folder");
         // Terminals, sessions and project folders anywhere in a task folder protect all of it.
         const guardedPath = taskFolder?.root ?? worktreePath;
         const guardedPaths =

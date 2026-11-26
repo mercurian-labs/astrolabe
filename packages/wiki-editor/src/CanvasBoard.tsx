@@ -189,7 +189,7 @@ export interface CanvasBoardHost
   /** Reads a card's file. Without it, file cards show their names. */
   readonly readFiles?: (paths: ReadonlyArray<string>) => Promise<ReadonlyArray<CanvasFileRead>>;
   readonly readCodeStatus?: (
-    references: ReadonlyArray<Required<Omit<CanvasCodeReference, "lines">>>,
+    references: ReadonlyArray<Required<Omit<CanvasCodeReference, "lines" | "root">>>,
   ) => Promise<ReadonlyArray<CanvasCodeStatus>>;
   readonly renderAsset?: (asset: CanvasAsset) => ReactNode;
   /** A base's view; `view` is the one a card pins, by name. */
@@ -383,7 +383,7 @@ const useFile = (path: string) => {
 const codeKey = (code: CanvasCodeReference) =>
   JSON.stringify([code.repository, code.commit, code.path]);
 
-function codeOfKey(key: string): Required<Omit<CanvasCodeReference, "lines">> {
+function codeOfKey(key: string): Required<Omit<CanvasCodeReference, "lines" | "root">> {
   const [repository = "", commit = "", path = ""] = JSON.parse(key) as ReadonlyArray<string>;
   return { repository, commit, path };
 }
@@ -408,8 +408,10 @@ function CodeCard({
   const body = (
     <>
       <span className="cv-code-path">
-        {slash >= 0 ? (
-          <span className="cv-code-folder">{code.path.slice(0, slash + 1)}</span>
+        {slash >= 0 || code.root !== undefined ? (
+          <span className="cv-code-folder">
+            {`${code.root === undefined ? "" : `${code.root}:`}${code.path.slice(0, slash + 1)}`}
+          </span>
         ) : null}
         <span className="cv-code-file">
           {code.path.slice(slash + 1)}
