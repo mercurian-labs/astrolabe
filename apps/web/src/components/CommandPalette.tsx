@@ -66,6 +66,7 @@ import {
   CheckIcon,
   ChevronRightIcon,
   CornerLeftUpIcon,
+  FilePenLineIcon,
   FileSearchIcon,
   FolderGit2Icon,
   FolderIcon,
@@ -278,6 +279,12 @@ import { LocationPicker, locationPickerEditor } from "./outline/LocationPicker";
 import { OutlinePicker, outlinePickerEditor } from "./outline/OutlinePicker";
 import { ProjectSymbolPicker } from "./outline/ProjectSymbolPicker";
 import { InterpreterPicker } from "./repositories/InterpreterPicker";
+import {
+  movesWithLinks,
+  ProjectMoveDialog,
+  requestProjectMove,
+} from "./repositories/ProjectMoveDialog";
+import { parseRepositoryTabKey } from "./repositories/repositoryTabs";
 import { openLinkPullRequestDialog } from "./pullRequest/LinkPullRequestDialog";
 import { canShareWithGuestAtom } from "./chat/guestShareAvailability";
 import { openGuestShareDialog } from "./chat/guestShareDialogState";
@@ -383,6 +390,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
           openChildSearch={openChildSearch}
           initialContext={state.restoredSearch}
         />
+        <ProjectMoveDialog />
       </CommandDialog>
     </ComposerHandleContext>
   );
@@ -1400,6 +1408,21 @@ function OpenCommandPaletteDialog(props: {
   };
 
   const actionItems: Array<CommandPaletteActionItem | CommandPaletteSubmenuItem> = [];
+
+  // Astrolabe: the project document in front moves from here, as its tree row's menu moves it.
+  const focusedFile = parseRepositoryTabKey(focusedTabKey);
+  if (focusedFile?.kind === "file" && movesWithLinks(focusedFile.path, false)) {
+    actionItems.push({
+      kind: "action",
+      value: "action:project-move-document",
+      searchTerms: ["move document", "rename document", "rename note", "folder", "links"],
+      title: gt("Move or rename this document"),
+      icon: <FilePenLineIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        requestProjectMove({ tab: focusedFile, folder: false });
+      },
+    });
+  }
 
   // Astrolabe: a canvas's own command, while one is in front.
   const canvasBoard = wikiCanvasBoard(focusedTabKey);

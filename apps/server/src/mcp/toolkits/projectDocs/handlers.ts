@@ -322,12 +322,15 @@ export const layer = McpToolAccess.toLayer(ProjectDocsToolkit, {
       const placed = yield* place(context, base, repository);
       const { root, result } = yield* inOneRoot(context, placed.root, placed.path, (each) =>
         context.wikis
-          .query({
-            wikiId: each.read.wikiId,
-            checkout: each.read.checkout,
-            base: placed.path,
-            ...(view === undefined ? {} : { view: view.trim() }),
-          })
+          .query(
+            {
+              wikiId: each.read.wikiId,
+              checkout: each.read.checkout,
+              base: placed.path,
+              ...(view === undefined ? {} : { view: view.trim() }),
+            },
+            context.roots.map(({ read }) => read),
+          )
           .pipe(
             Effect.mapError((error) =>
               error.cause instanceof BaseError

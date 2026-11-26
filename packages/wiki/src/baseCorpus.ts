@@ -7,7 +7,14 @@ import { type BaseDoc, type CodeFile, type LinkValue } from "./baseValues.ts";
 import { isCanvasFile, parseCanvas } from "./canvas.ts";
 import { key, links as findLinks, typedLinks } from "./links.ts";
 import { noteProperties, noteTags } from "./properties.ts";
-import { isHidden, linkFiles, resolveLink } from "./resolveLink.ts";
+import {
+  isHidden,
+  linkFiles,
+  projectLinkFiles,
+  resolveLink,
+  resolveProjectLink,
+  rootPrefix,
+} from "./resolveLink.ts";
 
 export type { CodeFile } from "./baseValues.ts";
 
@@ -189,4 +196,83 @@ export function corpusWithChanges(
     if (content !== null) files.push({ file, source: content });
   }
   return baseCorpus(files, { modified, created });
+}
+
+/** One of a project's roots as a base over the project reads it. */
+export interface ProjectBaseRoot {
+  readonly corpus: BaseCorpus;
+  /** Folders in it that are other roots' own, whose files list there instead. */
+  readonly nested?: ReadonlyArray<string>;
+}
+
+const under = (file: string, folders: ReadonlyArray<string> | undefined) =>
+  folders !== undefined && folders.some((folder) => file.startsWith(`${folder}/`));
+
+/**
+ * Every root's files as one corpus for a base in `own`: its own files by their paths, another
+ * root's as `root:path`, each knowing its root. Links resolve as a project's do, its own root
+ * first, so backlinks and `file.hasLink` reach across the roots.
+ */
+export function projectBaseCorpus(
+  own: string,
+  roots: ReadonlyMap<string, ProjectBaseRoot>,
+): BaseCorpus {
+  const docs: BaseDoc[] = [];
+  const byRoot = new Map<string, Map<string, BaseDoc>>();
+  const byPathKey = new Map<string, BaseDoc>();
+  for (const [root, { corpus, nested }] of roots) {
+    const there = new Map<string, BaseDoc>();
+    const at = (file: string) => (root === own ? file : `${root}:${file}`);
+    for (const doc of corpus.docs) {
+      if (under(doc.file, nested)) continue;
+      const moved = (link: LinkValue): LinkValue =>
+        link.from === undefined ? link : { ...link, from: at(link.from) };
+      const placed: BaseDoc = {
+        ...doc,
+        file: at(doc.file),
+        root: { key: root, file: doc.file },
+        ...(root === own ? {} : { links: doc.links.map(moved), embeds: doc.embeds.map(moved) }),
+      };
+      there.set(key(doc.file), placed);
+      byPathKey.set(key(placed.file), placed);
+      docs.push(placed);
+    }
+    byRoot.set(root, there);
+  }
+  docs.sort((a, b) => collate(a.file, b.file));
+  const files = projectLinkFiles(
+    [...byRoot].map(([root, there]) => [root, [...there.values()].map((doc) => doc.root!.file)]),
+  );
+  const linker = (from: string | undefined) => {
+    if (from === undefined) return { root: own, file: null };
+    const named = rootPrefix(from, byRoot);
+    return named === null || named.root === own
+      ? { root: own, file: named?.rest ?? from }
+      : { root: named.root, file: named.rest };
+  };
+  const resolved = new Map<string, BaseDoc | undefined>();
+  const resolve = (raw: string, from?: string): BaseDoc | undefined => {
+    const cacheKey = `${from ?? ""}\0${raw}`;
+    if (resolved.has(cacheKey)) return resolved.get(cacheKey);
+    const { file } = resolveProjectLink(raw, linker(from), files);
+    const doc = file === null ? undefined : byRoot.get(file.root)?.get(key(file.file));
+    resolved.set(cacheKey, doc);
+    return doc;
+  };
+  const backlinkMap = new Map<BaseDoc, Set<BaseDoc>>();
+  for (const doc of docs) {
+    for (const link of doc.links) {
+      const target = resolve(link.path, doc.file);
+      if (target === undefined) continue;
+      const sources = backlinkMap.get(target) ?? new Set<BaseDoc>();
+      sources.add(doc);
+      backlinkMap.set(target, sources);
+    }
+  }
+  return {
+    docs,
+    byPath: (path) => byPathKey.get(key(path)),
+    resolve,
+    backlinks: (doc) => [...(backlinkMap.get(doc) ?? [])],
+  };
 }

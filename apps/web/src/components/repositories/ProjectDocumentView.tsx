@@ -378,7 +378,15 @@ function ProjectDocument({
         parent={location}
         registerUnsaved={registerUnsaved}
         onOpenNote={openLink}
-        onOpenFile={(path) => openDocument({ root: root.key, file: path })}
+        onOpenFile={(path) => {
+          // A base lists the project's other folders' files as `folder:path`.
+          const named = rootPrefix(path, new Set<string>(roots.map((each) => each.key)));
+          openDocument(
+            named === null
+              ? { root: root.key, file: path }
+              : { root: named.root, file: named.rest },
+          );
+        }}
         {...(route === "disk"
           ? { checkout, canWrite: canWriteFiles, diskRevision }
           : { renderDraftPill })}

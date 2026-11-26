@@ -1543,14 +1543,22 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
       [WS_METHODS.wikiReadFiles]: (input) => wikis.readFiles(input),
       [WS_METHODS.wikiListFiles]: (input) => wikis.listFiles(input),
       [WS_METHODS.wikiCodeStatus]: (input) => wikis.codeStatus(input),
+      // A pull request merged or closed on the host's site is followed when a client next looks.
       [WS_METHODS.wikiChangeRequestsList]: (input) =>
-        wikis.changeRequestsList(input, WikiService.person),
+        wikiHosts
+          .followHost(input.wikiId)
+          .pipe(
+            Effect.ignore,
+            Effect.forkDetach,
+            Effect.andThen(wikis.changeRequestsList(input, WikiService.person)),
+          ),
       [WS_METHODS.wikiChangeRequestsGet]: (input) => wikis.changeRequestsGet(input),
       [WS_METHODS.wikiTransform]: (input) => wikis.transformCheckout(input, WikiService.person),
       [WS_METHODS.wikiKeepCanvas]: (input) => canvasKeep.keep(input, WikiService.person),
       [WS_METHODS.wikiAutosave]: (input) => wikis.autosave(input, WikiService.person),
       [WS_METHODS.wikiDraftPromote]: (input) => wikis.draftPromote(input, WikiService.person),
       [WS_METHODS.wikiDraftMove]: (input) => wikis.draftMove(input, WikiService.person),
+      [WS_METHODS.wikiMove]: (input) => wikis.personMove(input),
       [WS_METHODS.wikiRevertAmendment]: (input) => wikis.revertAmendment(input, WikiService.person),
       [WS_METHODS.wikiSetChangeRequestStatus]: (input) => wikiHosts.setChangeRequestStatus(input),
       [WS_METHODS.wikiPublishChangeRequest]: (input) => wikiHosts.publish(input),

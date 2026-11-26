@@ -1810,13 +1810,16 @@ export function summarizeT3ToolCalls(
       const count = selected.length;
       label = done
         ? resolve(
-            msg("{count, plural, one {Read wikis {count} time} other {Read wikis {count} times}}", {
-              count,
-            }),
+            msg(
+              "{count, plural, one {Read project docs {count} time} other {Read project docs {count} times}}",
+              {
+                count,
+              },
+            ),
           )
         : resolve(
             msg(
-              "{count, plural, one {Tried to read wikis {count} time} other {Tried to read wikis {count} times}}",
+              "{count, plural, one {Tried to read project docs {count} time} other {Tried to read project docs {count} times}}",
               { count },
             ),
           );
@@ -1827,13 +1830,13 @@ export function summarizeT3ToolCalls(
       label = done
         ? resolve(
             msg(
-              "{count, plural, one {Amended wikis {count} time} other {Amended wikis {count} times}}",
+              "{count, plural, one {Changed project docs {count} time} other {Changed project docs {count} times}}",
               { count },
             ),
           )
         : resolve(
             msg(
-              "{count, plural, one {Tried to amend wikis {count} time} other {Tried to amend wikis {count} times}}",
+              "{count, plural, one {Tried to change project docs {count} time} other {Tried to change project docs {count} times}}",
               { count },
             ),
           );

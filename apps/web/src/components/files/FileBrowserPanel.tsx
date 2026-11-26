@@ -94,7 +94,9 @@ const SIDEBAR_TREE_STYLE: CSSProperties = {
 export interface FileMenuAction {
   readonly id: string;
   readonly label: string;
-  readonly run: (relativePath: string) => void;
+  readonly run: (relativePath: string, isDirectory: boolean) => void;
+  /** The rows it is offered on; files alone when absent. */
+  readonly appliesTo?: (relativePath: string, isDirectory: boolean) => boolean;
 }
 
 const NO_FILE_MENU_ACTIONS: ReadonlyArray<FileMenuAction> = [];
@@ -277,7 +279,10 @@ export default function FileBrowserPanel({
         return;
       }
       const relativePath = item.path.replace(/\/$/, "");
-      const extraActions = item.path.endsWith("/") ? [] : fileMenuActions;
+      const isDirectory = item.path.endsWith("/");
+      const extraActions = fileMenuActions.filter((action) =>
+        action.appliesTo === undefined ? !isDirectory : action.appliesTo(relativePath, isDirectory),
+      );
       const mention = serializeComposerFileLink(panelPath(relativePath));
       const pointer = contextMenuPointerRef.current;
       const pointerIsFresh = pointer !== null && performance.now() - pointer.at < 1000;
@@ -308,7 +313,7 @@ export default function FileBrowserPanel({
         if (clicked === null) return;
         const extra = extraActions.find((action) => action.id === clicked);
         if (extra !== undefined) {
-          extra.run(relativePath);
+          extra.run(relativePath, isDirectory);
           return;
         }
         // Open-with submenu ids are absent from the top-level item list.

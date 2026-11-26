@@ -804,6 +804,36 @@ export const WikiMoveInput = Schema.Struct({
 });
 export type WikiMoveInput = typeof WikiMoveInput.Type;
 
+/**
+ * A person's move of a document or folder in a project root's checkout, with the links to it
+ * followed in the project's other roots. In a hosted repository's own folder on its default
+ * branch it lands in their draft; anywhere else on disk.
+ */
+export const WikiProjectMoveInput = Schema.Struct({
+  wikiId: ProjectRootId,
+  /** The root's own folder or one of its Git worktrees. */
+  checkout: TrimmedNonEmptyString,
+  /** A document's path from the root, or a folder's when `folder`. */
+  from: TrimmedNonEmptyString,
+  to: TrimmedNonEmptyString,
+  folder: Schema.optional(Schema.Boolean),
+});
+export type WikiProjectMoveInput = typeof WikiProjectMoveInput.Type;
+
+const WikiProjectMoveFiles = Schema.Struct({
+  rootKey: RootKey,
+  files: Schema.Array(Schema.String),
+});
+
+export const WikiProjectMoveResult = Schema.Struct({
+  savedTo: Schema.Literals(["draft", "disk"]),
+  /** Each root written, the moving one first. */
+  changed: Schema.Array(WikiProjectMoveFiles),
+  /** Roots whose links led to what moved but couldn't be written here, with those files. */
+  unchanged: Schema.Array(WikiProjectMoveFiles),
+});
+export type WikiProjectMoveResult = typeof WikiProjectMoveResult.Type;
+
 export const WikiDraftPromoteInput = Schema.Struct({
   wikiId: ProjectRootId,
   changeRequestId: WikiChangeRequestId,

@@ -7,6 +7,7 @@
  */
 import {
   ProjectId,
+  type ProjectRootId,
   type PullRequestRef,
   type WikiChangeRequest,
   type WikiChangeRequestTarget,
@@ -15,6 +16,7 @@ import {
   type WikiSetChangeRequestStatusInput,
   type WikiSummary,
 } from "@t3tools/contracts";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -44,8 +46,16 @@ export class WikiHostService extends Context.Service<
     readonly setChangeRequestStatus: (
       input: WikiSetChangeRequestStatusInput,
     ) => Effect.Effect<WikiChangeRequest, WikiError>;
+    /**
+     * Marks a root's open change requests merged or closed where the host merged or closed their
+     * pull requests there. Asks the host at most once a minute per root; nothing polls it.
+     */
+    readonly followHost: (wikiId: ProjectRootId) => Effect.Effect<void, WikiError>;
   }
 >()("t3/wiki/WikiHostService") {}
+
+/** How long a root's pull requests' states are trusted before a read asks the host again. */
+const FOLLOW_EVERY_MS = 60_000;
 
 const isWikiError = Schema.is(WikiError);
 
@@ -244,7 +254,44 @@ const make = Effect.gen(function* () {
     return yield* wikis.setChangeRequestStatus(input);
   });
 
-  return WikiHostService.of({ publish, resolveConflicts, setChangeRequestStatus });
+  const followedAt = new Map<ProjectRootId, number>();
+
+  const followHost: WikiHostService["Service"]["followHost"] = Effect.fn(
+    "WikiHostService.followHost",
+  )(function* (wikiId) {
+    const now = yield* Clock.currentTimeMillis;
+    const last = followedAt.get(wikiId);
+    if (last !== undefined && now - last < FOLLOW_EVERY_MS) return;
+    followedAt.set(wikiId, now);
+    const wiki = yield* wikis.get(wikiId);
+    const host = wiki.host;
+    if (host == null) return;
+    const { changeRequests } = yield* wikis.changeRequestsList({ wikiId }, WikiService.person);
+    yield* Effect.forEach(
+      changeRequests.filter((entry) => entry.status === "open" && entry.pullRequest != null),
+      (entry) =>
+        pullRequests
+          .summary({ ...refOf(wiki, host.projectId, entry.pullRequest!), allowStale: false })
+          .pipe(
+            Effect.flatMap(({ state }) => {
+              const target = { wikiId, changeRequestId: entry.changeRequestId };
+              if (state === "merged") return wikis.recordHostMerge(target);
+              if (state === "closed") {
+                return wikis.setChangeRequestStatus({ ...target, status: "closed" });
+              }
+              return Effect.void;
+            }),
+            Effect.catch((cause) =>
+              Effect.logWarning("A wiki pull request's state could not be read").pipe(
+                Effect.annotateLogs({ wikiId, cause }),
+              ),
+            ),
+          ),
+      { concurrency: 2, discard: true },
+    );
+  });
+
+  return WikiHostService.of({ publish, resolveConflicts, setChangeRequestStatus, followHost });
 });
 
 export const layer = Layer.effect(WikiHostService, make);

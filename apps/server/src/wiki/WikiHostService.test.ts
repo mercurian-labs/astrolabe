@@ -87,7 +87,6 @@ interface FakePull {
   readonly head: string;
   state: PullRequestState;
   isDraft: boolean;
-  mergedThroughService: boolean;
 }
 
 /** A git host: a bare repository, its pull requests, and a clone that merges them for real. */
@@ -125,12 +124,8 @@ const makeLayers = (baseDir: string, bare: string, clone: string, host: FakeHost
     refreshAfterTurn: () => Effect.void,
     subscribeMerges: Effect.succeed(Stream.fromQueue(host.merges)),
     subscribeStateChanges: Effect.succeed(Stream.never),
-    // Like the real service, this answers from its cache unless a mutation went through it.
     summary: (input) =>
-      Effect.sync(() => {
-        const pull = pullFor(input.number);
-        return { state: pull.mergedThroughService ? "merged" : "open" } as PullRequestSummary;
-      }),
+      Effect.sync(() => ({ state: pullFor(input.number).state }) as PullRequestSummary),
     detail: (input) =>
       Effect.gen(function* () {
         const pull = pullFor(input.number);
@@ -148,10 +143,7 @@ const makeLayers = (baseDir: string, bare: string, clone: string, host: FakeHost
           action: input.action,
           ...(input.mergeMethod === undefined ? {} : { method: input.mergeMethod }),
         });
-        if (input.action === "merge") {
-          yield* mergePull(pull);
-          pull.mergedThroughService = true;
-        }
+        if (input.action === "merge") yield* mergePull(pull);
         if (input.action === "draft") pull.isDraft = true;
         if (input.action === "close") pull.state = "closed";
         if (input.action === "reopen") pull.state = "open";
@@ -175,7 +167,6 @@ const makeLayers = (baseDir: string, bare: string, clone: string, host: FakeHost
           head: input.headSelector,
           state: "open",
           isDraft: false,
-          mergedThroughService: false,
         };
         host.pulls.push(pull);
         yield* Queue.offer(host.opened, pull);
@@ -624,5 +615,46 @@ it.effect("a folder a project tracks publishes through that project, leaving its
         assert.isTrue(host.pulls[1]?.isDraft);
       }),
     { project: false },
+  ),
+);
+
+it.effect("pull requests merged or closed on the host's site are followed when next read", () =>
+  withFixture(({ clone, host, hosts, wikiId, wikis }) =>
+    Effect.gen(function* () {
+      const opened = Effect.fn("opened")(function* (file: string) {
+        const saved = yield* wikis.autosave(
+          { wikiId, document: file, write: { kind: "text", file, text: `# ${file}\n` } },
+          WikiService.person,
+        );
+        const target = { wikiId, changeRequestId: saved.changeRequest!.changeRequestId };
+        yield* wikis.draftPromote({ ...target, title: `Add ${file}` }, WikiService.person);
+        yield* hosts.publish(target);
+        return target;
+      });
+      const merged = yield* opened("One.md");
+      const closed = yield* opened("Two.md");
+      assert.equal((yield* wikis.get(wikiId)).openChangeRequests, 2);
+
+      // Someone merges one and closes the other on the host's own site: nothing here hears of it.
+      yield* git(clone, ["fetch", "--quiet", "origin"]);
+      yield* git(clone, [
+        "merge",
+        "--quiet",
+        "--no-ff",
+        "-m",
+        "Merge",
+        `origin/${host.pulls[0]!.head}`,
+      ]);
+      yield* git(clone, ["push", "--quiet", "origin", "HEAD:main"]);
+      host.pulls[0]!.state = "merged";
+      host.pulls[1]!.state = "closed";
+
+      yield* hosts.followHost(wikiId);
+      const landed = yield* wikis.changeRequest(merged);
+      assert.equal(landed.status, "merged");
+      assert.isNotNull(landed.mergedCommit);
+      assert.equal((yield* wikis.changeRequest(closed)).status, "closed");
+      assert.equal((yield* wikis.get(wikiId)).openChangeRequests, 0);
+    }),
   ),
 );

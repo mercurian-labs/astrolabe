@@ -1,4 +1,5 @@
 /* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
+import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import type {
   ProjectId,
@@ -34,6 +35,7 @@ import { projectRootsEnvironment } from "~/state/projectRoots";
 import { useEnvironmentQuery } from "~/state/query";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { vcsEnvironment } from "~/state/vcs";
+import { wikiEnvironment } from "~/state/wiki";
 import {
   projectWorktrees,
   refreshProjectWorktrees,
@@ -66,6 +68,8 @@ import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { SidebarInput } from "../ui/sidebar";
 import { Switch } from "../ui/switch";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { movesWithLinks, requestProjectMove } from "./ProjectMoveDialog";
+import { checkoutOf } from "./repositoryTabs";
 import { openInNewWorktree } from "./repositoryScope";
 import { useCreateWorktree, useOpenBranch } from "./worktreeActions";
 import { OutsideFilterMark } from "../projects/ThreadsFilterParts";
@@ -365,6 +369,24 @@ export function WorktreeFiles({
 }) {
   const watch = useWorktreeWatch(owner, worktree.path);
   const changedFiles = useWorktreeChangedFiles(owner, worktree.path);
+  const canMove = useAtomValue(wikiEnvironment.move.permissionAtom(owner.environmentId));
+  const menuActions = [
+    ...(fileMenuActions ?? []),
+    ...(canMove
+      ? [
+          {
+            id: "move-with-links",
+            label: "Move or rename…",
+            appliesTo: movesWithLinks,
+            run: (path: string, isDirectory: boolean) =>
+              requestProjectMove({
+                tab: { kind: "file", ...owner, checkout: checkoutOf(worktree), path },
+                folder: isDirectory,
+              }),
+          },
+        ]
+      : []),
+  ];
   const docs = useEnvironmentQuery(
     docsOf === null
       ? null
@@ -394,7 +416,7 @@ export function WorktreeFiles({
         selectedPath={selectedPath}
         selectedPathRevealId={0}
         onOpenFile={onOpenFile}
-        {...(fileMenuActions ? { fileMenuActions } : {})}
+        fileMenuActions={menuActions}
         {...(hideDotFiles === undefined ? {} : { hideDotFiles })}
         {...(docsOf === null
           ? {}

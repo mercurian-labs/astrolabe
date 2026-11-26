@@ -3247,3 +3247,176 @@ it.effect("lists a root's documents and the files they link, with roots inside i
     }),
   ),
 );
+
+/** A repository whose origin is on GitHub, its default branch `main` checked out. */
+const hostedNotes = (root: string, files: Readonly<Record<string, string>>) =>
+  Effect.gen(function* () {
+    yield* commitNotes(root, files);
+    yield* git(root, ["remote", "add", "origin", "https://github.com/acme/handbook.git"]);
+    yield* git(root, ["update-ref", "refs/remotes/origin/main", "HEAD"]);
+    yield* git(root, ["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"]);
+    return root;
+  });
+
+it.effect("moves a person's note with its links in the project's other folders", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const wikis = yield* WikiService.WikiService;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const docs = yield* commitNotes(yield* harness.folder("docs"), {
+        "Plan.md": "# Plan\n",
+        "Home.md": "# Home\n\nSee [[Plan]].\n",
+      });
+      const plain = yield* harness.folder("plain");
+      yield* write(plain, { "Notes.md": "# Notes\n\nSee [[docs:Plan]].\n" });
+      const project = yield* projectOver({
+        id: "project-person-move",
+        workspaceRoot: docs,
+        trackedFolders: [{ name: "plain", path: plain }],
+      });
+
+      const moved = yield* wikis.personMove({
+        wikiId: rootIdOf(project.id, "docs"),
+        checkout: docs,
+        from: "Plan.md",
+        to: "area/Roadmap.md",
+      });
+      assert.deepEqual(moved, {
+        savedTo: "disk",
+        changed: [
+          { rootKey: RootKey.make("docs"), files: ["Home.md", "Plan.md", "area/Roadmap.md"] },
+          { rootKey: RootKey.make("plain"), files: ["Notes.md"] },
+        ],
+        unchanged: [],
+      });
+      assert.include(yield* read(docs, "Home.md"), "[[Roadmap]]");
+      assert.include(yield* read(plain, "Notes.md"), "[[docs:Roadmap]]");
+      assert.isFalse(yield* fileSystem.exists(path.join(docs, "Plan.md")).pipe(Effect.orDie));
+
+      // In a worktree, the move stays there: the other folders' live files keep their links.
+      const worktree = path.join(path.dirname(docs), "docs-branch");
+      yield* git(docs, ["add", "-A"]);
+      yield* git(docs, ["commit", "--quiet", "-m", "Moved"]);
+      yield* git(docs, ["worktree", "add", "--quiet", "-b", "branch", worktree]);
+      const branched = yield* wikis.personMove({
+        wikiId: rootIdOf(project.id, "docs"),
+        checkout: worktree,
+        from: "area/Roadmap.md",
+        to: "area/Later.md",
+      });
+      assert.deepEqual(branched.changed, [
+        { rootKey: RootKey.make("docs"), files: ["Home.md", "area/Later.md", "area/Roadmap.md"] },
+      ]);
+      assert.deepEqual(branched.unchanged, [
+        { rootKey: RootKey.make("plain"), files: ["Notes.md"] },
+      ]);
+      assert.include(yield* read(plain, "Notes.md"), "[[docs:Roadmap]]");
+    }),
+  ),
+);
+
+it.effect("moves a note in a hosted repository's main checkout into the person's draft", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const wikis = yield* WikiService.WikiService;
+      const handbook = yield* hostedNotes(yield* harness.folder("handbook"), {
+        "Plan.md": "# Plan\n",
+      });
+      const plain = yield* harness.folder("plain");
+      yield* write(plain, { "Notes.md": "# Notes\n\nSee [[handbook:Plan]].\n" });
+      const site = yield* hostedNotes(yield* harness.folder("site"), {
+        "Index.md": "# Index\n\nSee [[handbook:Plan]].\n",
+      });
+      const project = yield* projectOver({
+        id: "project-draft-move",
+        workspaceRoot: handbook,
+        trackedFolders: [
+          { name: "plain", path: plain },
+          { name: "site", path: site },
+        ],
+      });
+      const wikiId = rootIdOf(project.id, "handbook");
+      const main = yield* mainAt(handbook);
+
+      const moved = yield* wikis.personMove({
+        wikiId,
+        checkout: handbook,
+        from: "Plan.md",
+        to: "Roadmap.md",
+      });
+      assert.equal(moved.savedTo, "draft");
+      assert.deepEqual(moved.changed, [
+        { rootKey: RootKey.make("handbook"), files: ["Plan.md", "Roadmap.md"] },
+        { rootKey: RootKey.make("plain"), files: ["Notes.md"] },
+      ]);
+      // The site drafts too, so its link waits for the person rather than landing on disk.
+      assert.deepEqual(moved.unchanged, [{ rootKey: RootKey.make("site"), files: ["Index.md"] }]);
+      assert.equal(yield* mainAt(handbook), main);
+      assert.equal(yield* read(handbook, "Plan.md"), "# Plan\n");
+      assert.include(yield* read(plain, "Notes.md"), "[[handbook:Roadmap]]");
+      const { changeRequests } = yield* wikis.changeRequestsList({ wikiId }, WikiService.person);
+      assert.equal(changeRequests.length, 1);
+      assert.isTrue(changeRequests[0]?.draft);
+      assert.deepEqual(changeRequests[0]?.amendments.at(-1)?.subject, "Rename Plan to Roadmap");
+    }),
+  ),
+);
+
+it.effect("runs a base over every folder of its project, filtered by folder with file.root", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const wikis = yield* WikiService.WikiService;
+      const path = yield* Path.Path;
+      const app = yield* commitNotes(yield* harness.folder("app"), {
+        "Open.base":
+          "filters: 'status == \"open\"'\nviews:\n  - type: table\n    order: [file.path, file.folder, file.root]\n",
+        "Plan.md": "---\nstatus: open\n---\n# Plan\n",
+        "inner/Kept.md": "---\nstatus: open\n---\n# Kept\n",
+      });
+      const plain = yield* harness.folder("plain");
+      yield* write(plain, {
+        "area/Todo.md": "---\nstatus: open\n---\n# Todo\n\nFor [[app:Plan]].\n",
+        "Done.md": "---\nstatus: done\n---\n# Done\n",
+      });
+      const project = yield* projectOver({
+        id: "project-bases",
+        workspaceRoot: app,
+        trackedFolders: [
+          { name: "plain", path: plain },
+          // Its files list once, as its own, never also as the project folder's.
+          { name: "inner", path: path.join(app, "inner") },
+        ],
+      });
+      const wikiId = rootIdOf(project.id, "app");
+
+      const open = yield* wikis.query({ wikiId, base: "Open" });
+      assert.deepEqual(
+        open.rows.map((row) => row.values),
+        [
+          { "file.path": "inner:Kept.md", "file.folder": "/", "file.root": "inner" },
+          { "file.path": "Plan.md", "file.folder": "/", "file.root": "app" },
+          { "file.path": "plain:area/Todo.md", "file.folder": "area", "file.root": "plain" },
+        ],
+      );
+      const inPlain = yield* wikis.query({
+        wikiId,
+        source: 'filters: file.root == "plain" && file.inFolder("area")\n',
+      });
+      assert.deepEqual(
+        inPlain.rows.map((row) => row.file),
+        ["plain:area/Todo.md"],
+      );
+      // Backlinks reach across the folders.
+      const linked = yield* wikis.query({
+        wikiId,
+        source: "filters: file.hasLink(this)\n",
+        note: "Plan",
+      });
+      assert.deepEqual(
+        linked.rows.map((row) => row.file),
+        ["plain:area/Todo.md"],
+      );
+    }),
+  ),
+);

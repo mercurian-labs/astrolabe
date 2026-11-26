@@ -65,6 +65,8 @@ export const FILE_FIELDS: ReadonlyMap<string, string> = new Map([
   ["file", "file"],
   // Astrolabe: a code file's facts, for reading them through a link: `value.asFile().code`.
   ["code", "code"],
+  // Astrolabe: the key of the project folder it is in, such as a repository's.
+  ["root", "project folder"],
 ]);
 
 export const GLOBALS: ReadonlySet<string> = new Set([
@@ -148,12 +150,15 @@ const folderOf = (file: string): string => {
   return slash < 0 ? "/" : file.slice(0, slash);
 };
 
+/** Its path in its own root: `file.folder` and the names read from there. */
+const inRoot = (doc: BaseDoc): string => doc.root?.file ?? doc.file;
+
 /** A file's name as Obsidian shows it: a note without `.md`, anything else with its extension. */
 export const docName = (doc: BaseDoc): string => {
-  const name = fileName(doc.file);
+  const name = fileName(inRoot(doc));
   return /\.md$/i.test(name) ? name.slice(0, -3) : name;
 };
-const baseName = (doc: BaseDoc): string => fileName(doc.file).replace(/\.[^.]*$/, "");
+const baseName = (doc: BaseDoc): string => fileName(inRoot(doc)).replace(/\.[^.]*$/, "");
 
 const dateOf = (time: number | undefined): BaseValue =>
   time === undefined ? null : { kind: "date", time };
@@ -167,9 +172,11 @@ export function fileField(doc: BaseDoc, field: string, scope: BaseScope): BaseVa
     case "path":
       return doc.file;
     case "folder":
-      return folderOf(doc.file);
+      return folderOf(inRoot(doc));
+    case "root":
+      return doc.root?.key ?? null;
     case "ext": {
-      const name = fileName(doc.file);
+      const name = fileName(inRoot(doc));
       const dot = name.lastIndexOf(".");
       return dot < 0 ? "" : name.slice(dot + 1);
     }
@@ -444,7 +451,7 @@ function fileMethod(
     case "inFolder": {
       const folder = typeof args[0] === "string" ? args[0].replace(/^\/+|\/+$/g, "") : null;
       if (folder === null) return false;
-      const own = folderOf(doc.file).toLowerCase();
+      const own = folderOf(inRoot(doc)).toLowerCase();
       const wanted = folder.toLowerCase();
       return wanted === "" || own === wanted || own.startsWith(`${wanted}/`);
     }

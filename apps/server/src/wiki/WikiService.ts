@@ -44,6 +44,8 @@ import {
   applyBaseEdits,
   applyChanges,
   corpusWithChanges,
+  projectBaseCorpus,
+  type ProjectBaseRoot,
   isCanvasFile,
   isHidden,
   isWikiPath,
@@ -57,6 +59,7 @@ import {
   type CodeIndexError,
   type IsoDateTime,
   parseProjectRootId,
+  RootKey,
   type ProjectId,
   type ProjectRoot,
   projectRootId,
@@ -78,6 +81,8 @@ import {
   type WikiCodeStatusResult,
   type WikiDraftMoveInput,
   type WikiMoveInput,
+  type WikiProjectMoveInput,
+  type WikiProjectMoveResult,
   type WikiDraftPromoteInput,
   WikiError,
   type WikiEvent,
@@ -212,6 +217,8 @@ export interface ProjectRootRead {
   /** The root's own folder or one of its worktrees. */
   readonly checkout: string;
   readonly writable: boolean;
+  /** The moving root's change lands in the person's draft, read from it, not on disk. */
+  readonly draft?: true;
 }
 
 /** A rename across a project's roots: each root it wrote, the moving one first, and each it may not. */
@@ -270,8 +277,13 @@ export class WikiService extends Context.Service<
       input: WikiReadTarget & { readonly name: string },
     ) => Effect.Effect<WikiLinksResult & { readonly commit: string }, WikiError>;
     /** Runs one view of a base over the notes read, with at most `QUERY_ROWS` rows. */
+    /**
+     * A base's rows over every root of its project: each other root read in `roots`' checkout of
+     * it, else in its own folder.
+     */
     readonly query: (
       input: WikiReadTarget & Omit<WikiQueryInput, "wikiId" | "changeRequestId">,
+      roots?: ReadonlyArray<Pick<ProjectRootRead, "key" | "checkout">>,
     ) => Effect.Effect<WikiQueryResult, WikiError>;
     /** Files by path, any depth, read at a commit. Too many at once is a caller's mistake. */
     readonly readFiles: (
@@ -340,6 +352,13 @@ export class WikiService extends Context.Service<
       readonly transform: Extract<WikiTransform, { readonly kind: "rename" }>;
     }) => Effect.Effect<ProjectRenameResult, WikiError>;
     /**
+     * A person's `projectRename` from a root's checkout: in the root's own folder, every other root
+     * in its own folder is written unless it drafts there; in a worktree, only that worktree.
+     */
+    readonly personMove: (
+      input: WikiProjectMoveInput,
+    ) => Effect.Effect<WikiProjectMoveResult, WikiError>;
+    /**
      * A person's edit landing by itself: in the change request named, else the author's draft,
      * starting one on the first edit. Saves of one document in a run replace each other.
      */
@@ -402,6 +421,10 @@ export class WikiService extends Context.Service<
     ) => Effect.Effect<WikiChangeRequest, WikiError>;
     readonly recordPullRequest: (
       input: WikiChangeRequestTarget & { readonly pullRequest: WikiPullRequestLink },
+    ) => Effect.Effect<WikiChangeRequest, WikiError>;
+    /** A change request whose pull request the host merged: merged here too, at the host's main. */
+    readonly recordHostMerge: (
+      input: WikiChangeRequestTarget,
     ) => Effect.Effect<WikiChangeRequest, WikiError>;
   }
 >()("t3/wiki/WikiService") {}
@@ -647,12 +670,18 @@ const make = Effect.gen(function* () {
   const changedFiles = lru<ChangedFiles>(128);
   const metadataRecords = lru<ChangeRequestRecord>(512);
   const editTimes = lru<WikiFileTimes>(24);
+  // A base over a project reads every root's, so this holds a few projects' worth.
   const corpora = lru<{
     readonly corpus: BaseCorpus;
     readonly code: ReadonlyMap<string, CodeFile> | undefined;
-  }>(8);
+  }>(24);
   const codeFacts = yield* Ref.make<CodeFactsSource | null>(null);
   const corpusLocks = new Map<string, Semaphore.Semaphore>();
+  // By project and root: the roots' corpora it was composed from, reused while each is the same.
+  const projectCorpora = lru<{
+    readonly parts: ReadonlyArray<readonly [string, ProjectBaseRoot]>;
+    readonly corpus: BaseCorpus;
+  }>(8);
   const fileListings = lru<FileListing>(8);
   // By folder: a disk read is reused while what decides it (git's status, the files' times) holds.
   const checkoutReads = lru<{ readonly key: string; readonly read: DiskRead }>(8);
@@ -2997,12 +3026,32 @@ const make = Effect.gen(function* () {
     }
     const ordered = [moving, ...opened.filter((each) => each !== moving)];
     const writers = ordered.filter(({ root }) => root.writable);
+    const { from, to, folder } = input.transform;
+    const subject = moveSubject(from.trim().replace(/^\/+/, ""), to.trim().replace(/^\/+/, ""));
     return yield* lockedAll(
       writers.map(({ wiki }) => wiki),
       Effect.gen(function* () {
+        // A draft's move plans on the draft, caught up with main, as its other edits do.
+        const draft =
+          moving.root.draft === true
+            ? yield* draftTarget(
+                moving.wiki,
+                {
+                  wikiId: moving.root.wikiId,
+                  document: from.trim().replace(/^\/+/, ""),
+                  write: { kind: "transform", transform: input.transform },
+                },
+                person,
+              )
+            : undefined;
         const snapshots = yield* Effect.forEach(
           ordered,
-          ({ wiki, folder }) => checkoutFiles(wiki, folder),
+          ({ root, wiki, folder: at }) =>
+            root === moving.root && draft !== undefined
+              ? snapshotAt(wiki, draft.kind === "existing" ? draft.stored.head : draft.base).pipe(
+                  Effect.map((snapshot) => ({ snapshot })),
+                )
+              : checkoutFiles(wiki, at),
           { concurrency: 4 },
         );
         const roots = new Map(
@@ -3011,7 +3060,6 @@ const make = Effect.gen(function* () {
             return [root.key, { files, others }] as const;
           }),
         );
-        const { from, to, folder } = input.transform;
         const plans = yield* Effect.try({
           try: () =>
             (folder === true ? planProjectFolderRename : planProjectRename)(
@@ -3032,6 +3080,19 @@ const make = Effect.gen(function* () {
             unchanged.push({ root: root.key, files: files.toSorted() });
             continue;
           }
+          if (root === moving.root && draft !== undefined) {
+            const landed = yield* land(wiki, draft, person, subject, (files, stamp) =>
+              planMoved(files, stamp, plan),
+            );
+            const all = Object.entries({ ...plan.changes, ...plan.blobs });
+            changed.push({
+              root: root.key,
+              written: all.flatMap(([file, now]) => (now === null ? [] : [file])).toSorted(),
+              removed: all.flatMap(([file, now]) => (now === null ? [file] : [])).toSorted(),
+              errors: landed.errors,
+            });
+            continue;
+          }
           const written = yield* withWorkspaceLease(
             at,
             inCheckout(wiki, at, (snapshot, stamp) => planMoved(snapshot.files, stamp, plan)),
@@ -3042,6 +3103,81 @@ const make = Effect.gen(function* () {
       }),
     );
   });
+
+  /** Whether a person's document edits in `folder` go to their draft (D2). */
+  const draftsIn = Effect.fn("WikiService.draftsIn")(function* (wiki: WikiRecord, folder: string) {
+    if (wiki.plain || wiki.host === null || folder !== wiki.root) return false;
+    const head = yield* gitOut("headBranch", folder, ["symbolic-ref", "-q", "--short", "HEAD"], {
+      allowExitCodes: [1, 128],
+    }).pipe(Effect.orElseSucceed(() => ""));
+    return head.trim() === wiki.mainBranch;
+  });
+
+  const personMove: WikiService["Service"]["personMove"] = Effect.fn("WikiService.personMove")(
+    function* (input) {
+      const parsed = parseProjectRootId(input.wikiId);
+      const moving = yield* lookup(input.wikiId);
+      if (parsed === null) {
+        return yield* new WikiError({
+          reason: "invalid",
+          message: "Only a project's folder moves its documents this way.",
+        });
+      }
+      const at = yield* checkoutFolder(moving, input.checkout);
+      const draft = yield* draftsIn(moving, at);
+      const live = at === moving.root;
+      const listed = yield* projectRootFolders
+        .list(parsed.projectId)
+        .pipe(Effect.orElseSucceed((): ReadonlyArray<ProjectRoot> => []));
+      const others = yield* Effect.forEach(
+        listed.filter((root) => root.key !== parsed.rootKey && root.state !== "missing"),
+        (root) =>
+          lookup(projectRootId(parsed.projectId, root.key)).pipe(
+            Effect.flatMap((wiki) =>
+              (live ? draftsIn(wiki, wiki.root) : Effect.succeed(true)).pipe(
+                Effect.map((drafts): ReadonlyArray<ProjectRootRead> => [
+                  { key: root.key, wikiId: wiki.wikiId, checkout: wiki.root, writable: !drafts },
+                ]),
+              ),
+            ),
+            // A folder that can't be read keeps its links.
+            Effect.orElseSucceed((): ReadonlyArray<ProjectRootRead> => []),
+          ),
+        { concurrency: 4 },
+      );
+      const exact = (file: string) => (input.folder === true ? file : `/${file}`);
+      const moved = yield* projectRename({
+        roots: [
+          {
+            key: parsed.rootKey,
+            wikiId: moving.wikiId,
+            checkout: at,
+            writable: true,
+            ...(draft ? { draft: true as const } : {}),
+          },
+          ...others.flat(),
+        ],
+        root: parsed.rootKey,
+        transform: {
+          kind: "rename",
+          from: exact(input.from),
+          to: exact(input.to),
+          ...(input.folder === true ? { folder: true } : {}),
+        },
+      });
+      return {
+        savedTo: draft ? "draft" : "disk",
+        changed: moved.changed.map((each) => ({
+          rootKey: RootKey.make(each.root),
+          files: [...each.written, ...each.removed].toSorted(),
+        })),
+        unchanged: moved.unchanged.map((each) => ({
+          rootKey: RootKey.make(each.root),
+          files: each.files,
+        })),
+      } satisfies WikiProjectMoveResult;
+    },
+  );
 
   const summary = (wiki: WikiRecord) =>
     (wiki.plain ? Effect.succeed([]) : readChangeRequests(wiki)).pipe(
@@ -3340,7 +3476,97 @@ const make = Effect.gen(function* () {
       ...linksResult(snapshot.index, input.name),
     }));
 
-  const query: WikiService["Service"]["query"] = (input) =>
+  /** A root's files as a base over its project reads them: as they stand in `checkout`. */
+  const rootCorpus = Effect.fn("WikiService.rootCorpus")(function* (
+    wiki: WikiRecord,
+    checkout: string,
+    withCode: boolean,
+  ) {
+    const disk = yield* diskRead(wiki, yield* checkoutFolder(wiki, checkout));
+    if (disk.plain != null) return plainCorpus(disk.commit, disk.plain);
+    const code: CodeFacts = withCode ? yield* codeAt(wiki, disk.commit) : { state: "off" };
+    const committed = yield* corpusAt(
+      wiki,
+      disk.commit,
+      code.state === "ready" ? code.files : undefined,
+    );
+    return Object.keys(disk.changes).length > 0
+      ? corpusWithChanges(committed, disk.changes)
+      : committed;
+  });
+
+  /**
+   * The base's own corpus with every other root of its project beside it. Only the project's own
+   * folder carries code facts: the code index reads it alone. Composed again only when a root's
+   * corpus is another.
+   */
+  const projectCorpus = Effect.fn("WikiService.projectCorpus")(function* (
+    wiki: WikiRecord,
+    own: BaseCorpus,
+    checkouts: ReadonlyArray<Pick<ProjectRootRead, "key" | "checkout">> | undefined,
+  ) {
+    const parsed = parseProjectRootId(wiki.wikiId);
+    if (parsed === null) return own;
+    const listed = (yield* projectRootFolders
+      .list(parsed.projectId)
+      .pipe(Effect.orElseSucceed((): ReadonlyArray<ProjectRoot> => []))).filter(
+      (root) => root.state !== "missing",
+    );
+    const folders = yield* Effect.forEach(listed, (root) =>
+      fileSystem.realPath(root.path).pipe(Effect.orElseSucceed(() => root.path)),
+    );
+    const nestedIn = (position: number) =>
+      folders.flatMap((folder, other) =>
+        other !== position &&
+        folder !== folders[position] &&
+        isWithinRoot(path, folder, folders[position]!)
+          ? [path.relative(folders[position]!, folder).split(path.sep).join("/")]
+          : [],
+      );
+    const roots = yield* Effect.forEach(
+      listed,
+      (root, position) =>
+        (root.key === parsed.rootKey
+          ? Effect.succeed(own)
+          : lookup(projectRootId(parsed.projectId, root.key)).pipe(
+              Effect.flatMap((other) =>
+                rootCorpus(
+                  other,
+                  checkouts?.find((each) => each.key === root.key)?.checkout ?? other.root,
+                  root.kind === "workspace",
+                ),
+              ),
+            )
+        ).pipe(
+          Effect.map((corpus): ReadonlyArray<readonly [string, ProjectBaseRoot]> => [
+            [root.key, { corpus, nested: nestedIn(position) }],
+          ]),
+          // A root that can't be read leaves its rows out, not the base's.
+          Effect.orElseSucceed((): ReadonlyArray<readonly [string, ProjectBaseRoot]> => []),
+        ),
+      { concurrency: 4 },
+    );
+    const parts = roots.flat();
+    const cacheKey = `${parsed.projectId}\0${parsed.rootKey}`;
+    const cached = projectCorpora.get(cacheKey);
+    if (
+      cached !== undefined &&
+      cached.parts.length === parts.length &&
+      cached.parts.every(
+        ([root, part], at) =>
+          parts[at]![0] === root &&
+          parts[at]![1].corpus === part.corpus &&
+          parts[at]![1].nested?.join("\0") === part.nested?.join("\0"),
+      )
+    ) {
+      return cached.corpus;
+    }
+    const corpus = projectBaseCorpus(parsed.rootKey, new Map(parts));
+    projectCorpora.set(cacheKey, { parts, corpus });
+    return corpus;
+  });
+
+  const query: WikiService["Service"]["query"] = (input, checkouts) =>
     withAnyWiki(
       input.wikiId,
       (wiki) =>
@@ -3376,8 +3602,11 @@ const make = Effect.gen(function* () {
             disk?.plain == null
               ? yield* corpusAt(wiki, commit, code.state === "ready" ? code.files : undefined)
               : plainCorpus(disk.commit, disk.plain);
-          const corpus =
-            Object.keys(changes).length > 0 ? corpusWithChanges(committed, changes) : committed;
+          const corpus = yield* projectCorpus(
+            wiki,
+            Object.keys(changes).length > 0 ? corpusWithChanges(committed, changes) : committed,
+            checkouts,
+          );
           const now = yield* Clock.currentTimeMillis;
           const result = yield* Effect.try({
             try: () =>
@@ -4108,7 +4337,37 @@ const make = Effect.gen(function* () {
       input.changeRequestId,
     );
 
+  const recordHostMerge: WikiService["Service"]["recordHostMerge"] = (input) =>
+    withWiki(
+      input.wikiId,
+      (wiki) =>
+        locked(
+          wiki,
+          Effect.gen(function* () {
+            const stored = yield* loadChangeRequest(wiki, input.changeRequestId);
+            if (stored.record.status === "merged") return yield* view(wiki, stored);
+            const now = yield* DateTime.now;
+            const next = yield* recordChangeRequest(
+              wiki,
+              stored,
+              {
+                ...stored.record,
+                status: "merged",
+                mergedCommit: yield* mainTip(wiki),
+                updatedAt: DateTime.formatIso(now),
+              },
+              "Merge change request",
+              identity(person.actor, now),
+            );
+            yield* publish("merged", wiki.wikiId, input.changeRequestId);
+            return yield* view(wiki, next);
+          }),
+        ),
+      input.changeRequestId,
+    );
+
   return WikiService.of({
+    recordHostMerge,
     list,
     root,
     get,
@@ -4139,6 +4398,7 @@ const make = Effect.gen(function* () {
     transformCheckout,
     projectIndex,
     projectRename,
+    personMove,
     autosave,
     listFiles,
     draftPromote,
