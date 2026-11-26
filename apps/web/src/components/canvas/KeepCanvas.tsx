@@ -10,7 +10,6 @@ import {
   type ThreadId,
   type TurnItemId,
   type WikiKeepCanvasResult,
-  WikiId,
 } from "@t3tools/contracts";
 import { TriangleAlertIcon } from "lucide-react";
 import { useId, useState } from "react";
@@ -173,7 +172,7 @@ function Kept({
           openTab({
             kind: "note",
             environmentId: board.environmentId,
-            wikiId: WikiId.make(projectRootId(projectId, result.rootKey)),
+            wikiId: projectRootId(projectId, result.rootKey),
             file,
             changeRequestId: changeRequest.changeRequestId,
           })

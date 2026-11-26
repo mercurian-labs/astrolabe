@@ -3,7 +3,6 @@ import { isDocumentFile, resolveProjectWikiLink } from "@t3tools/client-runtime/
 import {
   parseProjectRootId,
   projectRootId,
-  WikiId,
   type EnvironmentId,
   type ProjectId,
   type ProjectRootCheckout,
@@ -118,7 +117,7 @@ export function projectDocumentTab(input: {
   return {
     kind: "file",
     environmentId,
-    wikiId: WikiId.make(projectRootId(projectId, root.key)),
+    wikiId: projectRootId(projectId, root.key),
     checkout: { cwd: root.path },
     path: target.file,
   };

@@ -493,7 +493,6 @@ import {
 import { SecretRequestAnswerInput, SecretRequestError } from "./secretRequest.ts";
 import { AgentFeedbackAnswerInput, AgentFeedbackRequestError } from "./agentFeedback.ts";
 import {
-  WikiAmendInput,
   WikiAmendResult,
   WikiCheckoutTransformResult,
   WikiAutosaveInput,
@@ -502,14 +501,11 @@ import {
   WikiChangeRequestDetail,
   WikiChangeRequestListInput,
   WikiChangeRequestListResult,
-  WikiChangeRequestOpenInput,
   WikiChangeRequestTarget,
-  WikiCreateInput,
   WikiError,
   WikiEvent,
   WikiIndexResult,
   WikiListResult,
-  WikiMergeResult,
   WikiNoteInput,
   WikiNoteResult,
   WikiCodeStatusInput,
@@ -521,17 +517,9 @@ import {
   WikiReadFilesInput,
   WikiReadFilesResult,
   WikiReadScope,
-  WikiRegisterInput,
   WikiRevertInput,
-  WikiSaveWorktreeInput,
   WikiSetChangeRequestStatusInput,
-  WikiSetMapBackgroundsInput,
-  WikiSetMirrorInput,
-  WikiSetProjectLinkInput,
-  WikiSummary,
-  WikiTarget,
   WikiDraftMoveInput,
-  WikiMoveInput,
   WikiDraftPromoteInput,
   WikiTransformInput,
   WikiKeepCanvasInput,
@@ -807,9 +795,6 @@ export const WS_METHODS = {
   // Astrolabe: local wikis.
   wikiList: "wiki.list",
   wikiSubscribe: "wiki.subscribe",
-  wikiRegister: "wiki.register",
-  wikiCreate: "wiki.create",
-  wikiRemove: "wiki.remove",
   wikiIndex: "wiki.index",
   wikiReadNote: "wiki.readNote",
   wikiQuery: "wiki.query",
@@ -818,25 +803,13 @@ export const WS_METHODS = {
   wikiCodeStatus: "wiki.codeStatus",
   wikiChangeRequestsList: "wiki.changeRequests.list",
   wikiChangeRequestsGet: "wiki.changeRequests.get",
-  wikiChangeRequestsOpen: "wiki.changeRequests.open",
-  wikiAmend: "wiki.amend",
   wikiTransform: "wiki.transform",
   wikiKeepCanvas: "wiki.keepCanvas",
   wikiAutosave: "wiki.autosave",
   wikiDraftPromote: "wiki.draftPromote",
   wikiDraftMove: "wiki.draftMove",
-  wikiMove: "wiki.move",
   wikiRevertAmendment: "wiki.revertAmendment",
-  wikiSaveWorktree: "wiki.saveWorktree",
-  wikiMerge: "wiki.merge",
   wikiSetChangeRequestStatus: "wiki.setChangeRequestStatus",
-  wikiSetMirror: "wiki.setMirror",
-  wikiSetMapBackgrounds: "wiki.setMapBackgrounds",
-  wikiSetProjectLink: "wiki.setProjectLink",
-  wikiPushMirror: "wiki.pushMirror",
-  wikiConnectHost: "wiki.connectHost",
-  wikiDisconnectHost: "wiki.disconnectHost",
-  wikiSyncHost: "wiki.syncHost",
   wikiPublishChangeRequest: "wiki.publishChangeRequest",
   wikiResolveConflicts: "wiki.resolveConflicts",
 
@@ -2703,24 +2676,6 @@ const WsWikiSubscribeRpc = Rpc.make(WS_METHODS.wikiSubscribe, {
   stream: true,
 });
 
-const WsWikiRegisterRpc = Rpc.make(WS_METHODS.wikiRegister, {
-  payload: WikiRegisterInput,
-  success: WikiSummary,
-  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
-});
-
-const WsWikiCreateRpc = Rpc.make(WS_METHODS.wikiCreate, {
-  payload: WikiCreateInput,
-  success: WikiSummary,
-  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
-});
-
-const WsWikiRemoveRpc = Rpc.make(WS_METHODS.wikiRemove, {
-  payload: WikiTarget,
-  success: Schema.Struct({}),
-  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
-});
-
 const WsWikiIndexRpc = Rpc.make(WS_METHODS.wikiIndex, {
   payload: WikiReadScope,
   success: WikiIndexResult,
@@ -2769,18 +2724,6 @@ const WsWikiChangeRequestsGetRpc = Rpc.make(WS_METHODS.wikiChangeRequestsGet, {
   error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
 });
 
-const WsWikiChangeRequestsOpenRpc = Rpc.make(WS_METHODS.wikiChangeRequestsOpen, {
-  payload: WikiChangeRequestOpenInput,
-  success: WikiChangeRequest,
-  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
-});
-
-const WsWikiAmendRpc = Rpc.make(WS_METHODS.wikiAmend, {
-  payload: WikiAmendInput,
-  success: WikiAmendResult,
-  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
-});
-
 const WsWikiTransformRpc = Rpc.make(WS_METHODS.wikiTransform, {
   payload: WikiTransformInput,
   success: Schema.Union([WikiAmendResult, WikiCheckoutTransformResult]),
@@ -2805,12 +2748,6 @@ const WsWikiDraftMoveRpc = Rpc.make(WS_METHODS.wikiDraftMove, {
   error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
 });
 
-const WsWikiMoveRpc = Rpc.make(WS_METHODS.wikiMove, {
-  payload: WikiMoveInput,
-  success: WikiAutosaveResult,
-  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
-});
-
 const WsWikiKeepCanvasRpc = Rpc.make(WS_METHODS.wikiKeepCanvas, {
   payload: WikiKeepCanvasInput,
   success: WikiKeepCanvasResult,
@@ -2823,63 +2760,9 @@ const WsWikiRevertAmendmentRpc = Rpc.make(WS_METHODS.wikiRevertAmendment, {
   error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
 });
 
-const WsWikiSaveWorktreeRpc = Rpc.make(WS_METHODS.wikiSaveWorktree, {
-  payload: WikiSaveWorktreeInput,
-  success: WikiAmendResult,
-  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
-});
-
-const WsWikiMergeRpc = Rpc.make(WS_METHODS.wikiMerge, {
-  payload: WikiChangeRequestTarget,
-  success: WikiMergeResult,
-  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
-});
-
 const WsWikiSetChangeRequestStatusRpc = Rpc.make(WS_METHODS.wikiSetChangeRequestStatus, {
   payload: WikiSetChangeRequestStatusInput,
   success: WikiChangeRequest,
-  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
-});
-
-const WsWikiSetMirrorRpc = Rpc.make(WS_METHODS.wikiSetMirror, {
-  payload: WikiSetMirrorInput,
-  success: WikiSummary,
-  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
-});
-
-const WsWikiSetMapBackgroundsRpc = Rpc.make(WS_METHODS.wikiSetMapBackgrounds, {
-  payload: WikiSetMapBackgroundsInput,
-  success: WikiSummary,
-  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
-});
-
-const WsWikiSetProjectLinkRpc = Rpc.make(WS_METHODS.wikiSetProjectLink, {
-  payload: WikiSetProjectLinkInput,
-  success: WikiSummary,
-  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
-});
-
-const WsWikiPushMirrorRpc = Rpc.make(WS_METHODS.wikiPushMirror, {
-  payload: WikiTarget,
-  success: WikiSummary,
-  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
-});
-
-const WsWikiConnectHostRpc = Rpc.make(WS_METHODS.wikiConnectHost, {
-  payload: WikiTarget,
-  success: WikiSummary,
-  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
-});
-
-const WsWikiDisconnectHostRpc = Rpc.make(WS_METHODS.wikiDisconnectHost, {
-  payload: WikiTarget,
-  success: WikiSummary,
-  error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
-});
-
-const WsWikiSyncHostRpc = Rpc.make(WS_METHODS.wikiSyncHost, {
-  payload: WikiTarget,
-  success: WikiSummary,
   error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
 });
 
@@ -3540,9 +3423,6 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsProjectRootsDocPathsRpc,
   WsWikiListRpc,
   WsWikiSubscribeRpc,
-  WsWikiRegisterRpc,
-  WsWikiCreateRpc,
-  WsWikiRemoveRpc,
   WsWikiIndexRpc,
   WsWikiReadNoteRpc,
   WsWikiQueryRpc,
@@ -3551,25 +3431,13 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsWikiCodeStatusRpc,
   WsWikiChangeRequestsListRpc,
   WsWikiChangeRequestsGetRpc,
-  WsWikiChangeRequestsOpenRpc,
-  WsWikiAmendRpc,
   WsWikiTransformRpc,
   WsWikiAutosaveRpc,
   WsWikiDraftPromoteRpc,
   WsWikiDraftMoveRpc,
-  WsWikiMoveRpc,
   WsWikiKeepCanvasRpc,
   WsWikiRevertAmendmentRpc,
-  WsWikiSaveWorktreeRpc,
-  WsWikiMergeRpc,
   WsWikiSetChangeRequestStatusRpc,
-  WsWikiSetMirrorRpc,
-  WsWikiSetMapBackgroundsRpc,
-  WsWikiSetProjectLinkRpc,
-  WsWikiPushMirrorRpc,
-  WsWikiConnectHostRpc,
-  WsWikiDisconnectHostRpc,
-  WsWikiSyncHostRpc,
   WsWikiPublishChangeRequestRpc,
   WsWikiResolveConflictsRpc,
   WsDocumentsSubscribeRpc,

@@ -31,8 +31,6 @@ const changeGroupsAtom = Atom.family((key: string) =>
       return environmentChangeGroups({
         environmentId,
         threads,
-        // Changes are host pull requests and change groups; a docs draft is no member.
-        overviews: [],
         decisions: decisions?.decisions ?? [],
         settings: settings?.changeGroupGrouping ?? null,
         threadBranches: decisions?.threadBranches ?? {},

@@ -3,15 +3,16 @@
  * partway runs again whole at the next start; every step before it is safe to repeat.
  */
 import {
-  changeGroupMemberKey,
   CommandId,
+  IsoDateTime,
   PROJECT_TRACKED_FOLDERS_MAX,
   ProjectId,
   projectRootId,
   type RootKey,
-  type WikiId,
-  type WikiMapBackground,
+  TrimmedNonEmptyString,
+  WikiMapBackground,
 } from "@t3tools/contracts";
+import { fromJsonStringPretty } from "@t3tools/shared/schemaJson";
 import * as Cause from "effect/Cause";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
@@ -29,12 +30,32 @@ import * as ServerSettings from "../serverSettings.ts";
 import { isWithinRoot } from "../workspace/KnownWorkspaces.ts";
 import * as ProjectRoots from "../workspace/ProjectRoots.ts";
 import * as WikiService from "./WikiService.ts";
-import {
-  WIKI_REGISTRY_FILE,
-  type WikiMigration,
-  type WikiRecord,
-  WikiRegistryJson,
-} from "./wikiStorage.ts";
+import type { WikiMigration } from "./wikiStorage.ts";
+
+/** Where registered wikis were kept, and where the file goes once they are project roots. */
+const WIKI_REGISTRY_FILE = "wikis.json";
+const RETIRED_WIKI_REGISTRY_FILE = "wikis.json.pre-projects";
+
+/** A registered wiki, as much of it as the move into projects reads. */
+const RegisteredWiki = Schema.Struct({
+  wikiId: TrimmedNonEmptyString,
+  name: TrimmedNonEmptyString,
+  root: TrimmedNonEmptyString,
+  projectIds: Schema.Array(ProjectId).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+  mirror: Schema.NullOr(Schema.Struct({ url: TrimmedNonEmptyString })),
+  host: Schema.NullOr(Schema.Struct({ projectId: ProjectId })).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
+  mapBackgrounds: Schema.Array(WikiMapBackground).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
+  createdAt: IsoDateTime,
+});
+type RegisteredWiki = typeof RegisteredWiki.Type;
+
+const WikiRegistryJson = fromJsonStringPretty(
+  Schema.Struct({ version: Schema.Literal(1), wikis: Schema.Array(RegisteredWiki) }),
+);
 
 const decodeRegistry = Schema.decodeEffect(WikiRegistryJson);
 
@@ -96,7 +117,7 @@ export const migrateWikis = Effect.fn("WikiMigration.run")(function* () {
 
   /** Adds the wiki's folder to the project, unless the project already covers it. */
   const track = Effect.fnUntraced(function* (
-    wiki: WikiRecord,
+    wiki: RegisteredWiki,
     folder: string,
     projectId: ProjectId,
   ) {
@@ -141,7 +162,7 @@ export const migrateWikis = Effect.fn("WikiMigration.run")(function* () {
   });
 
   /** The project root the wiki becomes: a linked project's, its host's project's, or its own. */
-  const place = Effect.fnUntraced(function* (wiki: WikiRecord) {
+  const place = Effect.fnUntraced(function* (wiki: RegisteredWiki) {
     const folder = yield* real(wiki.root);
     for (const projectId of wiki.projectIds) yield* track(wiki, folder, projectId);
     const candidates = [...wiki.projectIds, ...(wiki.host === null ? [] : [wiki.host.projectId])];
@@ -172,7 +193,7 @@ export const migrateWikis = Effect.fn("WikiMigration.run")(function* () {
     return rootKey === undefined ? undefined : { projectId: bootstrapped, rootKey };
   });
 
-  const placed: Record<WikiId, { readonly projectId: ProjectId; readonly rootKey: RootKey }> = {};
+  const placed: Record<string, { readonly projectId: ProjectId; readonly rootKey: RootKey }> = {};
   const droppedMirrors: Array<WikiMigration["droppedMirrors"][number]> = [];
   for (const wiki of registry.wikis) {
     const at = yield* place(wiki);
@@ -202,40 +223,29 @@ export const migrateWikis = Effect.fn("WikiMigration.run")(function* () {
     yield* serverSettings.updateSettings({ wikiMapBackgrounds: backgrounds });
   }
 
-  // Read while the registry still names each wiki by its old id.
+  // A wiki's change requests live in its repository, which its project root reads.
   const pullRequests = new Map<
     string,
     { kind: "pull-request"; host: string; repository: string; number: number }
   >();
-  for (const wiki of registry.wikis) {
+  for (const [wikiId, at] of Object.entries(placed)) {
     const { changeRequests } = yield* wikis
-      .changeRequestsList({ wikiId: wiki.wikiId })
+      .changeRequestsList({ wikiId: projectRootId(at.projectId, at.rootKey) })
       .pipe(Effect.orElseSucceed(() => ({ changeRequests: [] })));
     for (const changeRequest of changeRequests) {
       const link = changeRequest.pullRequest;
       const host = link == null ? null : hostOf(link.url);
       if (link == null || host === null) continue;
       pullRequests.set(
-        changeGroupMemberKey({
-          kind: "wiki-change-request",
-          wikiId: wiki.wikiId,
-          changeRequestId: changeRequest.changeRequestId,
-        }),
+        ChangeGroupService.legacyWikiMemberKey(wikiId, changeRequest.changeRequestId),
         { kind: "pull-request", host, repository: link.repository, number: link.number },
       );
     }
   }
-  yield* changeGroups.adoptWikiMigration({
-    pullRequests,
-    wikiIds: new Map(
-      Object.entries(placed).map(([wikiId, at]) => [
-        wikiId,
-        projectRootId(at.projectId, at.rootKey),
-      ]),
-    ),
-  });
+  yield* changeGroups.adoptWikiMigration(pullRequests);
 
-  yield* wikis.retireRegistry({ version: 1, wikis: placed, droppedMirrors });
+  yield* wikis.recordMigration({ version: 1, wikis: placed, droppedMirrors });
+  yield* fileSystem.rename(registryPath, path.join(config.stateDir, RETIRED_WIKI_REGISTRY_FILE));
   yield* Effect.logInfo("Moved registered wikis into projects", {
     wikis: registry.wikis.length,
     placed: Object.keys(placed).length,

@@ -1,6 +1,6 @@
 import { wikiEmbeds } from "@mercurian/wiki-editor/incoming";
 import { assetUrlStateFromResult } from "@t3tools/client-runtime/state/assets";
-import type { AssetResource, EnvironmentId, WikiId } from "@t3tools/contracts";
+import type { AssetResource, EnvironmentId, ProjectRootId } from "@t3tools/contracts";
 import { useRef, useState } from "react";
 
 import { useStableCallback } from "~/hooks/useStableCallback";
@@ -16,7 +16,7 @@ const QUIET_MINT = { ...QUIET_READ, refresh: true };
  * A root's file as it stands in `checkout` on disk: the path a link names found from `from`
  * there, or the link's own path for a file nothing resolves to yet.
  */
-function useCheckoutFile(environmentId: EnvironmentId, wikiId: WikiId) {
+function useCheckoutFile(environmentId: EnvironmentId, wikiId: ProjectRootId) {
   const runFiles = useAtomQueryRunner(wikiEnvironment.files, QUIET_READ);
   return useStableCallback(
     async (
@@ -45,7 +45,7 @@ function useCheckoutFile(environmentId: EnvironmentId, wikiId: WikiId) {
  */
 export function useWikiEmbeds(input: {
   readonly environmentId: EnvironmentId;
-  readonly wikiId: WikiId;
+  readonly wikiId: ProjectRootId;
   readonly commit: string;
   readonly from: string;
   readonly checkout?: string | undefined;

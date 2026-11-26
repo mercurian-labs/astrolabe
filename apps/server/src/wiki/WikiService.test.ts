@@ -12,15 +12,13 @@ import {
   ThreadId,
   type WikiChangeRequestId,
   type WikiError,
-  WikiId,
+  ProjectRootId,
 } from "@t3tools/contracts";
 import type * as SourceControlProvider from "@t3tools/source-control-core/server/SourceControlProvider";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as Path from "effect/Path";
-import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
 import * as TestClock from "effect/testing/TestClock";
 
@@ -41,7 +39,6 @@ import * as ProjectRoots from "../workspace/ProjectRoots.ts";
 import * as TaskFolderStore from "../workspace/TaskFolderStore.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import * as WikiService from "./WikiService.ts";
-import { WikiRegistryJson } from "./wikiStorage.ts";
 import { withCanvasOutlines } from "./wikiViews.ts";
 
 const CODE_REPOSITORY = {
@@ -211,7 +208,7 @@ const FIXTURE = {
   "Product.skillmap.md": MAP,
 };
 
-/** A repository with the fixture notes committed on main, registered as a wiki. */
+/** A repository with the fixture notes committed on main, a project's only folder. */
 const registeredWiki = (harness: Harness, name = "vault") =>
   Effect.gen(function* () {
     const root = yield* harness.folder(name);
@@ -219,9 +216,24 @@ const registeredWiki = (harness: Harness, name = "vault") =>
     yield* write(root, FIXTURE);
     yield* git(root, ["add", "."]);
     yield* git(root, ["commit", "--quiet", "-m", "Notes"]);
+    const project = yield* projectOver({ id: `project-${name}`, workspaceRoot: root });
     const wikis = yield* WikiService.WikiService;
-    const summary = yield* wikis.register({ root });
-    return { root, wikiId: summary.wikiId, summary, wikis };
+    const wikiId = rootIdOf(project.id, name.toLowerCase());
+    const summary = yield* wikis.get(wikiId);
+    return { root, wikiId, summary, wikis };
+  });
+
+/** Lands a change request on main as a person would, with git in the folder. */
+const mergeWithGit = (root: string, changeRequestId: WikiChangeRequestId) =>
+  git(root, ["merge", "--quiet", "--no-ff", "--no-edit", `cr/${changeRequestId}`]);
+
+/** Commits what is written in a worktree, as a person would there; returns the commit. */
+const commitIn = (folder: string, files: Readonly<Record<string, string>>, message: string) =>
+  Effect.gen(function* () {
+    yield* write(folder, files);
+    yield* git(folder, ["add", "-A"]);
+    yield* git(folder, ["commit", "--quiet", "-m", message]);
+    return { commit: yield* git(folder, ["rev-parse", "HEAD"]) };
   });
 
 const agent = (thread: string): WikiService.WikiAuthor => ({
@@ -230,72 +242,6 @@ const agent = (thread: string): WikiService.WikiAuthor => ({
 });
 
 const failure = <A, R>(effect: Effect.Effect<A, WikiError, R>) => Effect.flip(effect);
-
-it.effect("registers only a repository's top-level folder, and makes no project of it", () =>
-  withWikis((harness) =>
-    Effect.gen(function* () {
-      const wikis = yield* WikiService.WikiService;
-      const plain = yield* harness.folder("plain");
-      assert.equal((yield* failure(wikis.register({ root: plain }))).reason, "invalid");
-
-      const { root, summary } = yield* registeredWiki(harness);
-      assert.equal(summary.root, root);
-      assert.equal(summary.mainBranch, "main");
-      assert.deepEqual(summary.projectIds, []);
-      const projects = yield* ProjectService.ProjectService;
-      assert.isTrue(Option.isNone(yield* projects.getByWorkspaceRoot(root)));
-      assert.equal(summary.openChangeRequests, 0);
-
-      const path = yield* Path.Path;
-      const nested = path.join(root, "nested");
-      yield* (yield* FileSystem.FileSystem).makeDirectory(nested).pipe(Effect.orDie);
-      assert.equal((yield* failure(wikis.register({ root: nested }))).reason, "invalid");
-      assert.equal((yield* failure(wikis.register({ root }))).reason, "invalid");
-      assert.deepEqual(
-        (yield* wikis.list).wikis.map((wiki) => wiki.wikiId),
-        [summary.wikiId],
-      );
-    }),
-  ),
-);
-
-it.effect("links repositories to a wiki and unlinks them", () =>
-  withWikis((harness) =>
-    Effect.gen(function* () {
-      const { wikiId, wikis } = yield* registeredWiki(harness);
-      const repository = ProjectId.make("project-app");
-      const linked = yield* wikis.setProjectLink({ wikiId, projectId: repository, linked: true });
-      assert.deepEqual(linked.projectIds, [repository]);
-      yield* wikis.setProjectLink({ wikiId, projectId: repository, linked: true });
-      assert.deepEqual((yield* wikis.list).wikis[0]?.projectIds, [repository]);
-
-      yield* wikis.setProjectLink({ wikiId, projectId: repository, linked: false });
-      assert.deepEqual((yield* wikis.list).wikis[0]?.projectIds, []);
-    }),
-  ),
-);
-
-it.effect("creates a wiki as a new repository under the data dir", () =>
-  withWikis((harness) =>
-    Effect.gen(function* () {
-      const wikis = yield* WikiService.WikiService;
-      const created = yield* wikis.create({ name: "Team Notes" });
-      const path = yield* Path.Path;
-      const fileSystem = yield* FileSystem.FileSystem;
-      assert.equal(
-        created.root,
-        yield* fileSystem
-          .realPath(path.join(harness.baseDir, "wikis", "team-notes"))
-          .pipe(Effect.orDie),
-      );
-      assert.equal(yield* read(created.root, "README.md"), "# Team Notes\n");
-      assert.equal(yield* git(created.root, ["rev-list", "--count", "main"]), "1");
-      assert.equal(yield* git(created.root, ["status", "--porcelain"]), "");
-      const second = yield* wikis.create({ name: "Team Notes" });
-      assert.isTrue(second.root.endsWith("team-notes-2"));
-    }),
-  ),
-);
 
 it.effect("dates each note by the last commit that changed it, on the line read", () =>
   withWikis((harness) =>
@@ -692,7 +638,7 @@ it.effect("reverts an amendment, unless later work overlaps it", () =>
   ),
 );
 
-it.effect("merges a change request into main and moves the checkout", () =>
+it.effect("previews a change request's merge, and follows main once it lands", () =>
   withWikis((harness) =>
     Effect.gen(function* () {
       const { root, wikiId, wikis } = yield* registeredWiki(harness);
@@ -708,69 +654,55 @@ it.effect("merges a change request into main and moves the checkout", () =>
         { file: "Beta.md", before: FIXTURE["Beta.md"], after: "# Beta\n\nv2 [[Alpha]]\n" },
       ]);
 
-      const merged = yield* wikis.merge({ wikiId, changeRequestId: id });
-      assert.equal(merged.changeRequest.status, "merged");
-      assert.equal(merged.changeRequest.mergedCommit, merged.commit);
-      assert.equal(yield* git(root, ["rev-parse", "main"]), merged.commit);
-      assert.equal(yield* read(root, "Beta.md"), "# Beta\n\nv2 [[Alpha]]\n");
-      assert.equal(yield* git(root, ["status", "--porcelain"]), "");
-      assert.include(
-        yield* git(root, ["log", "-1", "--format=%B", "main"]),
-        `Wiki-Change-Request: ${id}`,
-      );
+      yield* mergeWithGit(root, id);
+      const merged = yield* git(root, ["rev-parse", "main"]);
 
       // The index follows main to the new commit; the old one is still what it was.
       const after = yield* wikis.index({ wikiId });
-      assert.equal(after.commit, merged.commit);
+      assert.equal(after.commit, merged);
       assert.notEqual(after.commit, mainIndex.commit);
       assert.isTrue(after.links.some((link) => link.from === "Beta" && link.to === "Alpha"));
       assert.isFalse(mainIndex.links.some((link) => link.from === "Beta"));
-
       assert.equal(
-        (yield* failure(wikis.merge({ wikiId, changeRequestId: id }))).reason,
-        "invalid",
-      );
-      assert.equal(
-        (yield* failure(
-          wikis.setChangeRequestStatus({ wikiId, changeRequestId: id, status: "open" }),
-        )).reason,
-        "invalid",
+        (yield* wikis.changeRequestsGet({ wikiId, changeRequestId: id })).mergePreview.status,
+        "up-to-date",
       );
     }),
   ),
 );
 
-it.effect("merges edits to different sentences of one paragraph that git calls a conflict", () =>
-  withWikis((harness) =>
-    Effect.gen(function* () {
-      const { root, wikiId, wikis } = yield* registeredWiki(harness);
-      const paragraph = "# Beta\n\nBeta stands alone. It is small. It is old.\n";
-      yield* write(root, { "Beta.md": paragraph });
-      yield* git(root, ["commit", "--quiet", "-am", "Longer Beta"]);
-      const amended = yield* wikis.amend(
-        {
-          wikiId,
-          message: "Beta is new",
-          changes: { "Beta.md": "# Beta\n\nBeta stands alone. It is small. It is new.\n" },
-        },
-        agent("thread-a"),
-      );
-      yield* write(root, { "Beta.md": "# Beta\n\nBeta stands apart. It is small. It is old.\n" });
-      yield* git(root, ["commit", "--quiet", "-am", "Edit on main"]);
-      const id = amended.changeRequest.changeRequestId;
-      const detail = yield* wikis.changeRequestsGet({ wikiId, changeRequestId: id });
-      assert.equal(detail.mergePreview.status, "clean");
-      yield* wikis.merge({ wikiId, changeRequestId: id });
-      assert.equal(
-        yield* read(root, "Beta.md"),
-        "# Beta\n\nBeta stands apart. It is small. It is new.\n",
-      );
-      assert.equal(yield* git(root, ["status", "--porcelain"]), "");
-    }),
-  ),
+it.effect(
+  "reconciles edits to different sentences of one paragraph that git calls a conflict",
+  () =>
+    withWikis((harness) =>
+      Effect.gen(function* () {
+        const { root, wikiId, wikis } = yield* registeredWiki(harness);
+        const paragraph = "# Beta\n\nBeta stands alone. It is small. It is old.\n";
+        yield* write(root, { "Beta.md": paragraph });
+        yield* git(root, ["commit", "--quiet", "-am", "Longer Beta"]);
+        const amended = yield* wikis.amend(
+          {
+            wikiId,
+            message: "Beta is new",
+            changes: { "Beta.md": "# Beta\n\nBeta stands alone. It is small. It is new.\n" },
+          },
+          agent("thread-a"),
+        );
+        yield* write(root, { "Beta.md": "# Beta\n\nBeta stands apart. It is small. It is old.\n" });
+        yield* git(root, ["commit", "--quiet", "-am", "Edit on main"]);
+        const id = amended.changeRequest.changeRequestId;
+        const detail = yield* wikis.changeRequestsGet({ wikiId, changeRequestId: id });
+        assert.equal(detail.mergePreview.status, "clean");
+        yield* wikis.reconcileChangeRequest({ wikiId, changeRequestId: id });
+        assert.equal(
+          yield* git(root, ["show", `cr/${id}:Beta.md`]),
+          "# Beta\n\nBeta stands apart. It is small. It is new.",
+        );
+      }),
+    ),
 );
 
-it.effect("refuses a merge that conflicts with main", () =>
+it.effect("refuses to reconcile a change request that conflicts with main", () =>
   withWikis((harness) =>
     Effect.gen(function* () {
       const { root, wikiId, wikis } = yield* registeredWiki(harness);
@@ -788,7 +720,7 @@ it.effect("refuses a merge that conflicts with main", () =>
         errors: [],
         canvases: [],
       });
-      const refused = yield* failure(wikis.merge({ wikiId, changeRequestId: id }));
+      const refused = yield* failure(wikis.reconcileChangeRequest({ wikiId, changeRequestId: id }));
       assert.equal(refused.reason, "conflict");
       assert.include(refused.message, "Beta.md");
     }),
@@ -820,30 +752,25 @@ const boardChangeRequest = (harness: Harness, board: string) =>
         return saved;
       });
     const saveBoard = (board: string) =>
-      Effect.gen(function* () {
-        yield* write(opened.worktree, { "Board.canvas": board });
-        return yield* opened.wikis.saveWorktree(
-          { wikiId: opened.wikiId, changeRequestId: opened.changeRequestId, message: "Board" },
-          WikiService.person,
-        );
-      });
+      commitIn(opened.worktree, { "Board.canvas": board }, "Board");
     const preview = opened.wikis
       .changeRequestsGet({ wikiId: opened.wikiId, changeRequestId: opened.changeRequestId })
       .pipe(Effect.map((detail) => detail.mergePreview));
     return { ...opened, editBoth, saveBoard, preview };
   });
 
+/** The board once main is merged into the change request with the canvas-aware merge. */
 const mergedBoard = (
   {
     wikis,
     wikiId,
     root,
-  }: { wikis: WikiService.WikiService["Service"]; wikiId: WikiId; root: string },
+  }: { wikis: WikiService.WikiService["Service"]; wikiId: ProjectRootId; root: string },
   changeRequestId: WikiChangeRequestId,
 ) =>
   Effect.gen(function* () {
-    yield* wikis.merge({ wikiId, changeRequestId });
-    return JSON.parse(yield* read(root, "Board.canvas")) as {
+    yield* wikis.reconcileChangeRequest({ wikiId, changeRequestId });
+    return JSON.parse(yield* git(root, ["show", `cr/${changeRequestId}:Board.canvas`])) as {
       readonly nodes: ReadonlyArray<{ readonly id: string; readonly text?: string }>;
       readonly edges: ReadonlyArray<{ readonly id: string }>;
     };
@@ -863,11 +790,10 @@ it.effect("sends the same sentence of a card changed on both sides to a conflict
       assert.include(preview.canvases[0]?.notes[0], "both sides changed the same sentence");
 
       const refused = yield* failure(
-        cr.wikis.merge({ wikiId: cr.wikiId, changeRequestId: cr.changeRequestId }),
+        cr.wikis.reconcileChangeRequest({ wikiId: cr.wikiId, changeRequestId: cr.changeRequestId }),
       );
       assert.equal(refused.reason, "conflict");
-      assert.include(refused.message, "worktree");
-      assert.notInclude(refused.message, "Amend");
+      assert.include(refused.message, "Board.canvas");
 
       // The way out: the change request's worktree comes to agree with main.
       yield* cr.saveBoard(boardFile([boardCard("a", "from main")]));
@@ -1007,7 +933,7 @@ it.effect("refuses a revert that overlaps a later card, sending it to the worktr
   ),
 );
 
-it.effect("refuses a canvas in an amendment, while a worktree and a revert still land one", () =>
+it.effect("refuses a canvas in an amendment, while a worktree's commit and a revert land one", () =>
   withWikis((harness) =>
     Effect.gen(function* () {
       const { wikiId, wikis, changeRequestId, worktree } = yield* changeRequestWorktree(harness);
@@ -1021,10 +947,10 @@ it.effect("refuses a canvas in an amendment, while a worktree and a revert still
       assert.include(refused.message, "Board.canvas is a canvas");
       assert.include(refused.message, '"canvas" transform');
 
-      yield* write(worktree, { "Board.canvas": '{"nodes":[],"edges":[]}' });
-      const saved = yield* wikis.saveWorktree(
-        { wikiId, changeRequestId, message: "Hand edit" },
-        WikiService.person,
+      const saved = yield* commitIn(
+        worktree,
+        { "Board.canvas": '{"nodes":[],"edges":[]}' },
+        "Hand edit",
       );
       const reverted = yield* wikis.revertAmendment(
         { wikiId, changeRequestId, commit: saved.commit },
@@ -1344,43 +1270,19 @@ it.effect("compares a code card's file at its commit with the project's head", (
   ),
 );
 
-it.effect("refuses a merge over local edits and leaves everything as it was", () =>
-  withWikis((harness) =>
-    Effect.gen(function* () {
-      const { root, wikiId, wikis } = yield* registeredWiki(harness);
-      const amended = yield* wikis.amend(
-        { wikiId, message: "Beta in CR", changes: { "Beta.md": "# Beta\n\nfrom the CR\n" } },
-        agent("thread-a"),
-      );
-      const main = yield* git(root, ["rev-parse", "main"]);
-      yield* write(root, { "Beta.md": "# Beta\n\nunsaved local edit\n" });
-      const refused = yield* failure(
-        wikis.merge({ wikiId, changeRequestId: amended.changeRequest.changeRequestId }),
-      );
-      assert.equal(refused.reason, "checkout-busy");
-      assert.include(refused.message, "Beta.md");
-      assert.equal(yield* git(root, ["rev-parse", "main"]), main);
-      assert.equal(yield* read(root, "Beta.md"), "# Beta\n\nunsaved local edit\n");
-      const detail = yield* wikis.changeRequestsGet({
-        wikiId,
-        changeRequestId: amended.changeRequest.changeRequestId,
-      });
-      assert.equal(detail.changeRequest.status, "open");
-    }),
-  ),
-);
-
 it.effect("closes and reopens a change request, keeping its history", () =>
   withWikis((harness) =>
     Effect.gen(function* () {
       const { root, wikiId, wikis } = yield* registeredWiki(harness);
-      const opened = yield* wikis.changeRequestsOpen(
-        { wikiId, title: "Ideas" },
+      const opened = (yield* wikis.amend(
+        { wikiId, title: "Ideas", message: "Ideas", changes: { "Ideas.md": "# Ideas\n" } },
         WikiService.person,
-      );
+      )).changeRequest;
       assert.equal(opened.createdBy, "You");
-      assert.deepEqual(opened.amendments, []);
       const id = opened.changeRequestId;
+      const history = Number(
+        yield* git(root, ["rev-list", "--count", `refs/wiki/change-requests/${id}`]),
+      );
       const closed = yield* wikis.setChangeRequestStatus({
         wikiId,
         changeRequestId: id,
@@ -1408,7 +1310,7 @@ it.effect("closes and reopens a change request, keeping its history", () =>
       assert.equal(reopened.status, "open");
       assert.equal(
         yield* git(root, ["rev-list", "--count", `refs/wiki/change-requests/${id}`]),
-        "3",
+        String(history + 2),
       );
     }),
   ),
@@ -1500,118 +1402,10 @@ it.effect("renames a note through a transform, rewriting its links and map edges
   ),
 );
 
-const decodeRegistry = Schema.decodeSync(WikiRegistryJson);
-
-it("reads a registry saved before wikis had map backgrounds", () => {
-  const registry = decodeRegistry(
-    JSON.stringify({
-      version: 1,
-      wikis: [
-        {
-          wikiId: "plans",
-          name: "Plans",
-          root: "/wikis/plans",
-          mainBranch: "main",
-          mirror: null,
-          createdAt: "2026-11-04T00:00:00.000Z",
-        },
-      ],
-    }),
-  );
-  assert.deepEqual(registry.wikis[0]?.mapBackgrounds, []);
-});
-
-it.effect("keeps map backgrounds on the server, in order, and out of the wiki's repository", () =>
+it.effect("reads a folder's links from its index", () =>
   withWikis((harness) =>
     Effect.gen(function* () {
-      const { root, wikiId, wikis } = yield* registeredWiki(harness);
-      const backgrounds = [
-        {
-          name: "Paid",
-          lightTiles: "https://tiles.test/{z}/{x}/{y}.png?key=secret",
-          darkTiles: null,
-        },
-        { name: "Free", lightTiles: "https://free.test/style", darkTiles: "http://free.test/dark" },
-      ];
-      yield* wikis.setMapBackgrounds({ wikiId, backgrounds });
-      assert.deepEqual((yield* wikis.list).wikis[0]?.mapBackgrounds, backgrounds);
-      assert.equal(yield* git(root, ["status", "--porcelain"]), "");
-
-      const twice = yield* wikis
-        .setMapBackgrounds({
-          wikiId,
-          backgrounds: [...backgrounds, { ...backgrounds[1]!, name: "paid" }],
-        })
-        .pipe(Effect.flip);
-      assert.equal(twice.message, "Two map backgrounds can't share a name.");
-      const script = yield* wikis
-        .setMapBackgrounds({
-          wikiId,
-          backgrounds: [{ name: "Bad", lightTiles: "javascript:alert(1)", darkTiles: null }],
-        })
-        .pipe(Effect.flip);
-      assert.equal(script.message, "A map background's address starts with http:// or https://.");
-      assert.deepEqual((yield* wikis.list).wikis[0]?.mapBackgrounds, backgrounds);
-    }),
-  ),
-);
-
-it.effect("pushes main to a mirror after a merge and notices overwritten remote work", () =>
-  withWikis((harness) =>
-    Effect.gen(function* () {
-      const { root, wikiId, wikis } = yield* registeredWiki(harness);
-      const bare = yield* harness.folder("mirror.git");
-      yield* git(bare, ["init", "--quiet", "--bare", "--initial-branch=main"]);
-      yield* wikis.setMirror({ wikiId, url: bare });
-
-      const first = yield* wikis.amend(
-        { wikiId, message: "One", changes: { "One.md": "# One\n" } },
-        agent("thread-a"),
-      );
-      const merged = yield* wikis.merge({
-        wikiId,
-        changeRequestId: first.changeRequest.changeRequestId,
-      });
-      assert.equal(yield* git(bare, ["rev-parse", "main"]), merged.commit);
-      let mirror = (yield* wikis.list).wikis[0]?.mirror;
-      assert.equal(mirror?.lastPushedCommit, merged.commit);
-      assert.isNull(mirror?.lastError ?? null);
-      assert.isNull(mirror?.overwroteRemoteAt ?? null);
-
-      // Someone commits on the mirror directly; the next merge replaces it and says so.
-      const clone = yield* harness.folder("clone");
-      yield* git(clone, ["clone", "--quiet", bare, "."]);
-      yield* write(clone, { "Remote.md": "# Remote\n" });
-      yield* git(clone, ["add", "."]);
-      yield* git(clone, ["commit", "--quiet", "-m", "Remote edit"]);
-      yield* git(clone, ["push", "--quiet", "origin", "main"]);
-
-      const second = yield* wikis.amend(
-        { wikiId, message: "Two", changes: { "Two.md": "# Two\n" } },
-        agent("thread-a"),
-      );
-      const again = yield* wikis.merge({
-        wikiId,
-        changeRequestId: second.changeRequest.changeRequestId,
-      });
-      assert.equal(yield* git(bare, ["rev-parse", "main"]), again.commit);
-      mirror = (yield* wikis.list).wikis[0]?.mirror;
-      assert.isNotNull(mirror?.overwroteRemoteAt ?? null);
-      assert.equal(yield* git(root, ["rev-parse", "main"]), again.commit);
-
-      // A push that fails is recorded, never raised.
-      yield* wikis.setMirror({ wikiId, url: `${bare}-missing` });
-      const failed = yield* wikis.pushMirror({ wikiId });
-      assert.isNotNull(failed.mirror?.lastError ?? null);
-    }),
-  ),
-);
-
-it.effect("reads a wiki by name, and links from its index", () =>
-  withWikis((harness) =>
-    Effect.gen(function* () {
-      const { wikis } = yield* registeredWiki(harness, "Atlas");
-      const byName = WikiId.make("atlas");
+      const { wikis, wikiId: byName } = yield* registeredWiki(harness, "Atlas");
       const links = yield* wikis.links({ wikiId: byName, name: "Beta" });
       assert.deepEqual(links.backlinks, ["Alpha"]);
       assert.deepEqual(links.outgoing, []);
@@ -1627,7 +1421,7 @@ it.effect("reads a wiki by name, and links from its index", () =>
       // The same commit reads the same, served from the cache.
       assert.deepEqual(yield* wikis.index({ wikiId: byName }), index);
       assert.equal(
-        (yield* failure(wikis.index({ wikiId: WikiId.make("nope") }))).reason,
+        (yield* failure(wikis.index({ wikiId: ProjectRootId.make("nope") }))).reason,
         "not-found",
       );
     }),
@@ -1744,352 +1538,7 @@ it.effect("refuses an amendment that would overwrite unsaved edits in the worktr
   ),
 );
 
-it.effect("saves a worktree's unsaved document edits as one amendment and leaves it clean", () =>
-  withWikis((harness) =>
-    Effect.gen(function* () {
-      const { root, wikiId, wikis, changeRequestId, worktree } =
-        yield* changeRequestWorktree(harness);
-      yield* write(worktree, {
-        "Beta.md": "# Beta\n\nEdited by hand.\n",
-        "Gamma.md": "# Gamma\n\nSee [[Beta]].\n",
-        "notes.txt": "not a document\n",
-      });
-      const saved = yield* wikis.saveWorktree(
-        { wikiId, changeRequestId, message: "Hand edits" },
-        WikiService.person,
-      );
-      assert.equal(yield* git(root, ["rev-parse", `cr/${changeRequestId}`]), saved.commit);
-      assert.equal(
-        yield* git(root, ["show", `${saved.commit}:Beta.md`]),
-        "# Beta\n\nEdited by hand.",
-      );
-      assert.equal(
-        yield* git(root, ["show", `${saved.commit}:Gamma.md`]),
-        "# Gamma\n\nSee [[Beta]].",
-      );
-      assert.equal(yield* git(worktree, ["status", "--porcelain"]), "?? notes.txt");
-      assert.equal(
-        (yield* failure(
-          wikis.saveWorktree({ wikiId, changeRequestId, message: "Again" }, WikiService.person),
-        )).message,
-        "No document in this worktree has unsaved changes.",
-      );
-    }),
-  ),
-);
-
-it.effect("saves a worktree's documents in folders, and nothing git ignores", () =>
-  withWikis((harness) =>
-    Effect.gen(function* () {
-      const { root, wikiId, wikis, changeRequestId, worktree } =
-        yield* changeRequestWorktree(harness);
-      yield* write(worktree, {
-        ".gitignore": "build/\nsecret.md\n",
-        "notes/deep/Gamma.md": "In a folder.\n",
-        "build/Generated.md": "Ignored by its folder.\n",
-        "notes/secret.md": "Ignored by its name.\n",
-      });
-      const saved = yield* wikis.saveWorktree(
-        { wikiId, changeRequestId, message: "Hand edits" },
-        WikiService.person,
-      );
-      assert.equal(
-        yield* git(root, ["show", `${saved.commit}:notes/deep/Gamma.md`]),
-        "In a folder.",
-      );
-      const tree = yield* git(root, ["ls-tree", "-r", "--name-only", saved.commit]);
-      assert.notInclude(tree, "Generated.md");
-      assert.notInclude(tree, "secret.md");
-    }),
-  ),
-);
-
-it.effect("checks a thread out at main until its first save opens its change request", () =>
-  withWikis((harness) =>
-    Effect.gen(function* () {
-      const path = yield* Path.Path;
-      const { root, wikiId, wikis } = yield* registeredWiki(harness);
-      const threadId = ThreadId.make("thread-checkout");
-      const folder = path.join(harness.baseDir, "wiki-checkouts", threadId, wikiId);
-      const main = yield* git(root, ["rev-parse", "main"]);
-      const target = { wikiId, threadId, folder };
-      const save = { ...target, title: "Tidy Beta", message: "Tidy Beta" };
-
-      assert.equal(yield* wikis.checkoutForThread(target), folder);
-      assert.equal(yield* wikis.checkoutForThread(target), folder);
-      assert.equal(yield* git(folder, ["rev-parse", "HEAD"]), main);
-      assert.isNull(yield* wikis.saveThreadCheckout(save, agent(threadId)));
-      assert.equal(yield* git(root, ["for-each-ref", "refs/heads/cr/"]), "");
-
-      yield* write(folder, { "Beta.md": "# Beta\n\nTidied.\n" });
-      const saved = yield* wikis.saveThreadCheckout(save, agent(threadId));
-      assert.isNotNull(saved);
-      const { changeRequestId } = saved!.changeRequest;
-      assert.equal(saved!.changeRequest.title, "Tidy Beta");
-      assert.equal(saved!.changeRequest.threadId, threadId);
-      assert.equal(saved!.changeRequest.amendments.length, 1);
-      assert.equal(
-        yield* git(folder, ["symbolic-ref", "HEAD"]),
-        `refs/heads/cr/${changeRequestId}`,
-      );
-      assert.equal(yield* git(folder, ["status", "--porcelain"]), "");
-      assert.isNull(yield* wikis.saveThreadCheckout(save, agent(threadId)));
-
-      // The next turn's edits join the same change request, which a new checkout lands on.
-      yield* write(folder, { "Alpha.md": "# Alpha\n\nAlpha builds on [[Beta]], tidily.\n" });
-      const again = yield* wikis.saveThreadCheckout(save, agent(threadId));
-      assert.equal(again!.changeRequest.changeRequestId, changeRequestId);
-      assert.equal(again!.changeRequest.amendments.length, 2);
-      assert.equal(yield* wikis.checkoutForThread(target), folder);
-      assert.equal(yield* git(folder, ["rev-parse", "HEAD"]), again!.commit);
-
-      // Closed, it leaves the thread with none, so the checkout goes back to main.
-      yield* wikis.setChangeRequestStatus({ wikiId, changeRequestId, status: "closed" });
-      assert.equal(yield* wikis.checkoutForThread(target), folder);
-      assert.equal(yield* git(folder, ["rev-parse", "HEAD"]), main);
-
-      yield* wikis.removeCheckout({ wikiId, folder });
-      assert.notInclude(yield* git(root, ["worktree", "list"]), folder);
-    }),
-  ),
-);
-
-it.effect("saves a checkout onto the change request a tool opened during the turn", () =>
-  withWikis((harness) =>
-    Effect.gen(function* () {
-      const path = yield* Path.Path;
-      const { wikiId, wikis } = yield* registeredWiki(harness);
-      const threadId = ThreadId.make("thread-tool-opened");
-      const folder = path.join(harness.baseDir, "wiki-checkouts", threadId, wikiId);
-      yield* wikis.checkoutForThread({ wikiId, threadId, folder });
-      yield* write(folder, { "Beta.md": "# Beta\n\nFrom the checkout.\n" });
-      const opened = yield* wikis.amend(
-        {
-          wikiId,
-          message: "Alpha by tool",
-          changes: { "Alpha.md": "# Alpha\n\nAlpha builds on [[Beta]], by tool.\n" },
-        },
-        agent(threadId),
-      );
-      const saved = yield* wikis.saveThreadCheckout(
-        { wikiId, threadId, folder, title: "Turn", message: "Turn" },
-        agent(threadId),
-      );
-      assert.equal(saved!.changeRequest.changeRequestId, opened.changeRequest.changeRequestId);
-      assert.equal(
-        yield* read(folder, "Alpha.md"),
-        "# Alpha\n\nAlpha builds on [[Beta]], by tool.\n",
-      );
-      assert.equal(yield* read(folder, "Beta.md"), "# Beta\n\nFrom the checkout.\n");
-      assert.equal(yield* git(folder, ["rev-parse", "HEAD"]), saved!.commit);
-      assert.equal(yield* git(folder, ["status", "--porcelain"]), "");
-    }),
-  ),
-);
-
-/** A thread with a checkout of the fixture wiki, where the server keeps it. */
-const threadWithCheckout = (harness: Harness, thread: string) =>
-  Effect.gen(function* () {
-    const path = yield* Path.Path;
-    const { stateDir } = yield* ServerConfig.ServerConfig;
-    const registered = yield* registeredWiki(harness);
-    const threadId = ThreadId.make(thread);
-    const folder = path.join(stateDir, "wiki-checkouts", threadId, registered.wikiId);
-    yield* registered.wikis.checkoutForThread({ wikiId: registered.wikiId, threadId, folder });
-    const save = () =>
-      registered.wikis.saveThreadCheckout(
-        { wikiId: registered.wikiId, threadId, folder, title: "Turn", message: "Turn" },
-        agent(threadId),
-      );
-    return { ...registered, threadId, folder, save };
-  });
-
-it.effect("lands commits an agent makes in its checkout with the turn's save", () =>
-  withWikis((harness) =>
-    Effect.gen(function* () {
-      const { root, wikiId, wikis, threadId, folder, save } = yield* threadWithCheckout(
-        harness,
-        "thread-git",
-      );
-      const main = yield* git(root, ["rev-parse", "main"]);
-      // Before the first save the checkout sits detached at main.
-      yield* write(folder, { "Beta.md": "# Beta\n\nCommitted by hand.\n" });
-      yield* git(folder, ["commit", "--quiet", "-am", "By hand"]);
-      const first = yield* save();
-      assert.equal(first!.changeRequest.base, main);
-      assert.deepEqual(first!.changeRequest.files, ["Beta.md"]);
-      assert.equal(first!.changeRequest.amendments.length, 1);
-      assert.equal(yield* read(folder, "Beta.md"), "# Beta\n\nCommitted by hand.\n");
-      assert.equal(yield* git(folder, ["status", "--porcelain"]), "");
-
-      // On the change request's branch a commit is its own amendment, under its git author.
-      yield* write(folder, { "Alpha.md": "# Alpha\n\nAlpha builds on [[Beta]], by hand.\n" });
-      yield* git(folder, ["commit", "--quiet", "-am", "Alpha by hand"]);
-      assert.isNull(yield* save());
-      yield* write(folder, { "Beta.md": "# Beta\n\nThen saved.\n" });
-      const second = yield* save();
-      const { amendments } = (yield* wikis.changeRequestsGet({
-        wikiId,
-        changeRequestId: second!.changeRequest.changeRequestId,
-      })).changeRequest;
-      assert.deepEqual(
-        amendments.map((amendment) => amendment.actor),
-        ["test-model", "Fixture", "test-model"],
-      );
-      assert.equal(yield* git(folder, ["rev-parse", "HEAD"]), second!.commit);
-      assert.equal(second!.changeRequest.threadId, threadId);
-    }),
-  ),
-);
-
-it.effect("reads a thread's checkout as it stands, unsaved edits included", () =>
-  withWikis((harness) =>
-    Effect.gen(function* () {
-      const { wikiId, wikis, threadId, folder, save } = yield* threadWithCheckout(
-        harness,
-        "thread-r",
-      );
-      yield* write(folder, {
-        "Beta.md": "---\nstatus: open\n---\n# Beta\n\nBeta now needs [[Delta]].\n",
-        "Open.base":
-          "filters: 'status == \"open\"'\nviews:\n  - type: table\n    name: Open\n    columns: [x]\n",
-        "Product.skillmap.md": MAP.replace("How the product fits together", "Edited on disk"),
-      });
-      const warning = "views[0].columns is not a view key and is ignored; did you mean order?";
-      const inCheckout = { wikiId, threadId, threadCheckout: true };
-      const links = yield* wikis.links({ ...inCheckout, name: "Beta" });
-      assert.deepEqual(links.outgoing, [{ target: "Delta", unresolved: true, types: [] }]);
-      assert.equal(
-        (yield* wikis.orient({ ...inCheckout, map: "Product" })).purpose,
-        "Edited on disk",
-      );
-      const rows = yield* wikis.query({ ...inCheckout, base: "Open" });
-      assert.deepEqual(
-        rows.rows.map((row) => row.file),
-        ["Beta.md"],
-      );
-      assert.deepEqual(rows.warnings, [warning]);
-      const unopened = yield* failure(wikis.changeRequestsGet(inCheckout));
-      assert.include(unopened.message, "Beta.md, Open.base, Product.skillmap.md");
-
-      // Without a checkout, or naming none, a read sees the commit.
-      const committed = {
-        wikiId,
-        threadId: ThreadId.make("thread-elsewhere"),
-        threadCheckout: true,
-      };
-      assert.deepEqual((yield* wikis.links({ ...committed, name: "Beta" })).outgoing, []);
-      assert.deepEqual((yield* wikis.links({ wikiId, threadId, name: "Beta" })).outgoing, []);
-
-      const saved = yield* save();
-      const detail = yield* wikis.changeRequestsGet(inCheckout);
-      assert.equal(detail.changeRequest.changeRequestId, saved!.changeRequest.changeRequestId);
-      assert.deepEqual(detail.unsaved, []);
-      assert.deepEqual(detail.warnings, [{ file: "Open.base", warning }]);
-    }),
-  ),
-);
-
-it.effect(
-  "transforms a checkout's files in place, for the turn's save to land as one amendment",
-  () =>
-    withWikis((harness) =>
-      Effect.gen(function* () {
-        const { root, wikiId, wikis, threadId, folder, save } = yield* threadWithCheckout(
-          harness,
-          "thread-t",
-        );
-        const author = agent(threadId);
-        yield* write(folder, {
-          "Beta.md": "# Beta\n\nBeta, edited natively.\n",
-          "area/pic.png": "png",
-        });
-        const renamed = yield* wikis.transformCheckout(
-          {
-            wikiId,
-            message: "Move",
-            transform: { kind: "rename", from: "Beta", to: "area/Gamma" },
-          },
-          author,
-        );
-        assert.notProperty(renamed, "changeRequest");
-        assert.deepEqual(renamed, {
-          written: ["Alpha.md", "Product.skillmap.md", "area/Gamma.md"],
-          removed: ["Beta.md"],
-          errors: [],
-        });
-        assert.equal(yield* read(folder, "area/Gamma.md"), "# Beta\n\nBeta, edited natively.\n");
-        assert.include(yield* read(folder, "Alpha.md"), "[[Gamma]]");
-        assert.equal(yield* git(root, ["for-each-ref", "refs/heads/cr/"]), "");
-        const backlinks = yield* wikis.links({
-          wikiId,
-          threadId,
-          threadCheckout: true,
-          name: "Gamma",
-        });
-        assert.deepEqual(backlinks.backlinks, ["Alpha"]);
-
-        const moved = yield* wikis.transformCheckout(
-          {
-            wikiId,
-            message: "Move",
-            transform: { kind: "rename", from: "area", to: "zone", folder: true },
-          },
-          author,
-        );
-        assert.includeMembers([...("removed" in moved ? moved.removed : [])], ["area/pic.png"]);
-        const fileSystem = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
-        assert.isFalse(yield* fileSystem.exists(path.join(folder, "area")).pipe(Effect.orDie));
-
-        const saved = yield* save();
-        assert.equal(saved!.changeRequest.amendments.length, 1);
-        assert.sameMembers(
-          (yield* git(root, ["ls-tree", "-r", "--name-only", saved!.commit])).split("\n"),
-          ["Alpha.md", "Product.skillmap.md", "zone/Gamma.md", "zone/pic.png"],
-        );
-        assert.equal(
-          yield* git(root, ["show", `${saved!.commit}:zone/Gamma.md`]),
-          "# Beta\n\nBeta, edited natively.",
-        );
-        assert.deepEqual(saved!.changeRequest.moves, [{ from: "Beta.md", to: "zone/Gamma.md" }]);
-        assert.equal(yield* git(folder, ["status", "--porcelain"]), "");
-      }),
-    ),
-);
-
-it.effect("stamps a checkout's warnings with the amendment the turn's save lands", () =>
-  withWikis((harness) =>
-    Effect.gen(function* () {
-      const { wikiId, wikis, threadId, folder, save } = yield* threadWithCheckout(
-        harness,
-        "thread-w",
-      );
-      yield* write(folder, { "Alpha.md": "# Alpha\n\nAlpha alone, see [[Delta]].\n" });
-      yield* wikis.transformCheckout(
-        {
-          wikiId,
-          message: "Fill Delta",
-          transform: {
-            kind: "fill",
-            map: "Product",
-            name: "Delta",
-            content: "# Delta\n",
-            edge: { from: "Alpha", type: "needs", to: "Delta", rationale: "Alpha points at Delta" },
-          },
-        },
-        agent(threadId),
-      );
-      const saved = yield* save();
-      const map = yield* read(folder, "Product.skillmap.md");
-      assert.equal(map.match(/amendment: /g)?.length, 1);
-      assert.include(map, `amendment: ${saved!.amendment}`);
-      assert.include(map, `id: ${saved!.amendment}-1`);
-    }),
-  ),
-);
-
-it.effect("lands a transform at once for a thread with no checkout of the wiki", () =>
+it.effect("lands an agent's transform at once, as an amendment", () =>
   withWikis((harness) =>
     Effect.gen(function* () {
       const { wikiId, wikis } = yield* registeredWiki(harness);
@@ -2098,113 +1547,6 @@ it.effect("lands a transform at once for a thread with no checkout of the wiki",
         agent("thread-none"),
       );
       assert.property(landed, "commit");
-    }),
-  ),
-);
-
-it.effect("reads, searches and writes a checkout's files for the turn's one amendment", () =>
-  withWikis((harness) =>
-    Effect.gen(function* () {
-      const { root, wikiId, wikis, threadId, folder, save } = yield* threadWithCheckout(
-        harness,
-        "thread-files",
-      );
-      const author = agent(threadId);
-      const edit = (input: Omit<WikiService.WikiCheckoutWriteInput, "wikiId">) =>
-        wikis.checkoutWrite({ wikiId, ...input }, author);
-
-      assert.deepEqual(yield* wikis.checkoutRead({ wikiId, threadId, path: "Alpha.md" }), {
-        path: "Alpha.md",
-        text: FIXTURE["Alpha.md"],
-        startLine: 1,
-        endLine: 3,
-        totalLines: 3,
-      });
-      assert.equal(
-        (yield* wikis.checkoutRead({ wikiId, threadId, path: "Alpha.md", startLine: 3 })).text,
-        "Alpha builds on [[Beta]].",
-      );
-
-      assert.deepEqual(
-        yield* edit({ path: "Beta.md", oldText: "stands alone", newText: "waits" }),
-        {
-          path: "Beta.md",
-          change: "updated",
-        },
-      );
-      assert.equal(yield* read(folder, "Beta.md"), "# Beta\n\nBeta waits.\n");
-      assert.equal(
-        (yield* edit({ path: "area/Gamma.md", content: "Gamma, Gamma.\n" })).change,
-        "created",
-      );
-      assert.include(
-        (yield* failure(edit({ path: "area/Gamma.md", oldText: "Gamma", newText: "G" }))).message,
-        "more than once",
-      );
-      assert.include(
-        (yield* failure(edit({ path: "Beta.md", oldText: "stands alone", newText: "x" }))).message,
-        "is not in Beta.md",
-      );
-      assert.equal((yield* edit({ path: "Draft.md", content: "Gone soon.\n" })).change, "created");
-      assert.equal((yield* edit({ path: "Draft.md", delete: true })).change, "deleted");
-      // A broken base is written all the same, with what is wrong in it.
-      const based = yield* edit({
-        path: "Draft.md",
-        content: "```base\nviews:\n  - type: table\n    columns: [x]\n```\n",
-      });
-      assert.deepEqual(based.warnings, [
-        "views[0].columns is not a view key and is ignored; did you mean order?",
-      ]);
-      yield* edit({ path: "Draft.md", delete: true });
-
-      const found = yield* wikis.checkoutSearch({ wikiId, threadId, query: "WAITS" });
-      assert.deepEqual(found, {
-        matches: [{ path: "Beta.md", lines: [{ line: 3, text: "Beta waits." }] }],
-        truncated: false,
-      });
-
-      // Nothing lands until the turn's save, which carries every write as one amendment.
-      assert.equal(yield* git(root, ["for-each-ref", "refs/heads/cr/"]), "");
-      const saved = yield* save();
-      assert.equal(saved!.changeRequest.amendments.length, 1);
-      assert.sameMembers([...saved!.changeRequest.files], ["Beta.md", "area/Gamma.md"]);
-      assert.equal(yield* git(folder, ["status", "--porcelain"]), "");
-    }),
-  ),
-);
-
-it.effect("keeps the checkout file tools inside the checkout, and bounds a search", () =>
-  withWikis((harness) =>
-    Effect.gen(function* () {
-      const fileSystem = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const { wikiId, wikis, threadId, folder } = yield* threadWithCheckout(harness, "thread-out");
-      const outside = yield* harness.folder("outside");
-      yield* fileSystem.symlink(outside, path.join(folder, "link")).pipe(Effect.orDie);
-      for (const file of ["../Escape.md", "/tmp/Escape.md", ".git/Escape.md", "link/Escape.md"]) {
-        const refused = yield* failure(
-          wikis.checkoutWrite({ wikiId, path: file, content: "Out." }, agent(threadId)),
-        );
-        assert.include(refused.message, "is not a path inside the wiki", file);
-      }
-      assert.deepEqual(yield* fileSystem.readDirectory(outside).pipe(Effect.orDie), []);
-      yield* fileSystem.remove(path.join(folder, "link")).pipe(Effect.orDie);
-      assert.equal(
-        (yield* failure(
-          wikis.checkoutRead({ wikiId, threadId: ThreadId.make("thread-none"), path: "Alpha.md" }),
-        )).reason,
-        "not-found",
-      );
-
-      yield* write(
-        folder,
-        Object.fromEntries(
-          Array.from({ length: 41 }, (_, at) => [`many/Note ${at}.md`, `A needle, ${at}.\n`]),
-        ),
-      );
-      const found = yield* wikis.checkoutSearch({ wikiId, threadId, query: "needle" });
-      assert.equal(found.matches.length, 40);
-      assert.isTrue(found.truncated);
     }),
   ),
 );
@@ -2243,7 +1585,8 @@ it.effect("starts one draft on the first edit, and collects every document in it
       );
       assert.equal(first.changeRequest?.changeRequestId, second.changeRequest?.changeRequestId);
       assert.isTrue(second.changeRequest?.draft);
-      assert.equal(first.changeRequest?.title, "Edit Alpha");
+      // Named for whichever edit took the lock first.
+      assert.include(["Edit Alpha", "Edit Beta"], first.changeRequest?.title);
       assert.equal(yield* mainAt(root), main);
       assert.equal(yield* read(root, "Alpha.md"), FIXTURE["Alpha.md"]);
 
@@ -2423,13 +1766,7 @@ it.effect("refuses text that hasn't seen another device's save, unless nothing w
       assert.equal(caughtUp.changeRequest?.amendments.length, 1);
 
       // Beta is untouched by the draft, so text read from a newer main has nothing to overwrite.
-      yield* wikis.merge({
-        wikiId,
-        changeRequestId: (yield* wikis.amend(
-          { wikiId, title: "Other", message: "Other", changes: { "Beta.md": "Beta on main.\n" } },
-          WikiService.person,
-        )).changeRequest.changeRequestId,
-      });
+      yield* commitIn(root, { "Beta.md": "Beta on main.\n" }, "Other");
       const landed = yield* wikis.autosave(
         {
           wikiId,
@@ -2724,13 +2061,14 @@ it.effect(
           [attach("a/Pasted.png", "one"), attach("a/Pasted.png", "two")],
           { concurrency: "unbounded" },
         );
-        assert.deepEqual(
+        // Whichever took the lock first keeps the name.
+        assert.sameMembers(
           [first?.attachment, second?.attachment],
           ["a/Pasted.png", "a/Pasted 1.png"],
         );
-        const head = second!.commit!;
-        assert.equal(yield* git(root, ["show", `${head}:a/Pasted.png`]), "one");
-        assert.equal(yield* git(root, ["show", `${head}:a/Pasted 1.png`]), "two");
+        const head = yield* git(root, ["rev-parse", `cr/${first!.changeRequest!.changeRequestId}`]);
+        assert.equal(yield* git(root, ["show", `${head}:${first!.attachment}`]), "one");
+        assert.equal(yield* git(root, ["show", `${head}:${second!.attachment}`]), "two");
 
         const cased = yield* attach("A/PASTED.PNG", "three");
         assert.equal(cased.attachment, "A/PASTED 2.PNG");
@@ -2766,14 +2104,12 @@ it.effect("reads and saves a new note named with a # as itself, not the note bef
   ),
 );
 
-it.effect("makes a draft a change request, which merges; a draft itself doesn't", () =>
+it.effect("makes a draft a change request, which lands on main", () =>
   withWikis((harness) =>
     Effect.gen(function* () {
       const { root, wikiId, wikis } = yield* registeredWiki(harness);
       const saved = yield* wikis.autosave({ wikiId, ...noteEdit("Done.\n") }, WikiService.person);
       const { changeRequestId } = saved.changeRequest!;
-
-      assert.equal((yield* failure(wikis.merge({ wikiId, changeRequestId }))).reason, "invalid");
 
       const promoted = yield* wikis.draftPromote(
         { wikiId, changeRequestId, title: "A real title" },
@@ -2801,7 +2137,7 @@ it.effect("makes a draft a change request, which merges; a draft itself doesn't"
       assert.isTrue(next.changeRequest?.draft);
       assert.notEqual(next.changeRequest?.changeRequestId, changeRequestId);
 
-      yield* wikis.merge({ wikiId, changeRequestId });
+      yield* mergeWithGit(root, changeRequestId);
       assert.equal(yield* read(root, "Alpha.md"), "Done.\n");
     }),
   ),
@@ -2854,7 +2190,7 @@ it.effect("moves a draft into a change request, whole or a document at a time", 
 
 const PIXEL = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff, 0xfe, 0x80]);
 
-const attachPixel = (wikiId: WikiId, file: string, changeRequestId?: WikiChangeRequestId) =>
+const attachPixel = (wikiId: ProjectRootId, file: string, changeRequestId?: WikiChangeRequestId) =>
   WikiService.WikiService.pipe(
     Effect.flatMap((wikis) =>
       wikis.autosave(
@@ -3065,7 +2401,7 @@ it.effect("keeps a move in a draft that follows main, and merges it", () =>
       assert.include(yield* git(root, ["show", `${saved.commit}:shelf/Long.md`]), "Added on main.");
 
       yield* wikis.draftPromote({ wikiId, changeRequestId, title: "Moved" }, WikiService.person);
-      yield* wikis.merge({ wikiId, changeRequestId });
+      yield* mergeWithGit(root, changeRequestId);
       const landed = yield* git(root, ["ls-tree", "-r", "--name-only", "HEAD"]);
       assert.include(landed.split("\n"), "shelf/Long.md");
       assert.notInclude(landed.split("\n"), "Long.md");
@@ -3287,10 +2623,9 @@ const projectOver = (input: {
     Effect.orDie,
   );
 
-const rootIdOf = (projectId: ProjectId, key: string) =>
-  WikiId.make(projectRootId(projectId, RootKey.make(key)));
+const rootIdOf = (projectId: ProjectId, key: string) => projectRootId(projectId, RootKey.make(key));
 
-it.effect("lists each project's folders, then the registered wikis in none of them", () =>
+it.effect("lists each project's folders", () =>
   withWikis((harness) =>
     Effect.gen(function* () {
       const wikis = yield* WikiService.WikiService;
@@ -3299,7 +2634,6 @@ it.effect("lists each project's folders, then the registered wikis in none of th
       const lib = yield* commitNotes(path.join(app, "vendor", "lib"), { "Lib.md": "# Lib\n" });
       const docs = yield* commitNotes(yield* harness.folder("docs"), { "Guide.md": "# Guide\n" });
       const plain = yield* harness.folder("plain");
-      const registered = yield* registeredWiki(harness);
       const project = yield* projectOver({
         id: "project-app",
         workspaceRoot: app,
@@ -3317,19 +2651,17 @@ it.effect("lists each project's folders, then the registered wikis in none of th
           [rootIdOf(project.id, "lib"), lib, project.id, "lib"],
           [rootIdOf(project.id, "docs"), docs, project.id, "docs"],
           [rootIdOf(project.id, "plain"), plain, project.id, "plain"],
-          [registered.wikiId, registered.root, undefined, undefined],
         ],
       );
       assert.deepEqual(
         listed.map((wiki) => wiki.name),
-        [project.title, "lib", "docs", "plain", registered.summary.name],
+        [project.title, "lib", "docs", "plain"],
       );
-      assert.deepEqual(listed[2]?.projectIds, [project.id]);
     }),
   ),
 );
 
-it.effect("reads a project folder's notes by its root id, and keeps no wiki settings for it", () =>
+it.effect("reads a project folder's notes by its root id", () =>
   withWikis((harness) =>
     Effect.gen(function* () {
       const wikis = yield* WikiService.WikiService;
@@ -3355,10 +2687,6 @@ it.effect("reads a project folder's notes by its root id, and keeps no wiki sett
       assert.equal(summary.mainBranch, "main");
       assert.isNull(summary.host ?? null);
       assert.equal(yield* wikis.root(wikiId), docs);
-
-      const refused = yield* failure(wikis.setMirror({ wikiId, url: "https://example.com/x.git" }));
-      assert.equal(refused.reason, "invalid");
-      assert.equal((yield* failure(wikis.remove({ wikiId }))).reason, "invalid");
       assert.equal((yield* wikis.get(rootIdOf(project.id, "plain"))).root, plain);
       assert.equal((yield* failure(wikis.get(rootIdOf(project.id, "gone")))).reason, "not-found");
     }),
@@ -3380,12 +2708,10 @@ it.effect("draws every project folder's maps on the server's backgrounds", () =>
         { name: "Streets", lightTiles: "https://tiles.test/{z}/{x}/{y}.png", darkTiles: null },
       ];
 
-      yield* wikis.setMapBackgrounds({ wikiId: rootIdOf(project.id, "app"), backgrounds });
+      yield* (yield* ServerSettings.ServerSettingsService).updateSettings({
+        wikiMapBackgrounds: backgrounds,
+      });
 
-      assert.deepEqual(
-        (yield* (yield* ServerSettings.ServerSettingsService).getSettings).wikiMapBackgrounds,
-        backgrounds,
-      );
       assert.deepEqual(
         (yield* wikis.get(rootIdOf(project.id, "plain"))).mapBackgrounds,
         backgrounds,
@@ -3396,18 +2722,24 @@ it.effect("draws every project folder's maps on the server's backgrounds", () =>
 );
 
 it.effect(
-  "lists a registered wiki in a project's folder once, and both its ids share a writer",
+  "reads a registered wiki's old id as the folder it became, with one writer for both",
   () =>
     withWikis((harness) =>
       Effect.gen(function* () {
-        const { root, wikiId: registered, wikis } = yield* registeredWiki(harness);
-        const project = yield* projectOver({ id: "project-vault", workspaceRoot: root });
-        const folder = rootIdOf(project.id, "vault");
-        assert.deepEqual(
-          (yield* wikis.list).wikis.map((wiki) => wiki.wikiId),
-          [folder],
-        );
-        assert.equal((yield* wikis.get(registered)).wikiId, registered);
+        const { root, wikiId: folder, wikis } = yield* registeredWiki(harness);
+        const registered = ProjectRootId.make("6ad86f0445ac");
+        assert.equal((yield* failure(wikis.get(registered))).reason, "not-found");
+        yield* wikis.recordMigration({
+          version: 1,
+          wikis: {
+            [registered]: {
+              projectId: ProjectId.make("project-vault"),
+              rootKey: RootKey.make("vault"),
+            },
+          },
+          droppedMirrors: [],
+        });
+        assert.equal((yield* wikis.get(registered)).wikiId, folder);
         const main = yield* mainAt(root);
 
         // Each finds the other's draft only if the two wait on one lock.
@@ -3470,8 +2802,6 @@ it.effect("takes a project folder's host and main line from its remote", () =>
         lastError: null,
       });
       assert.equal((yield* wikis.readNote({ wikiId, name: "Alpha" })).source, FIXTURE["Alpha.md"]);
-      // Background syncs follow registered host wikis only, so nothing touches this folder unasked.
-      assert.isFalse((yield* wikis.hosted).includes(wikiId));
     }),
   ),
 );
@@ -3517,7 +2847,6 @@ it.effect("reads a folder without Git on disk: its notes, links, bases and files
       const summary = yield* wikis.get(wikiId);
       assert.equal(summary.root, plain);
       assert.isNull(summary.host ?? null);
-      assert.isNull(summary.mirror);
       assert.include(
         (yield* wikis.list).wikis.map((wiki) => wiki.wikiId),
         wikiId,

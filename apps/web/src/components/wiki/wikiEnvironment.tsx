@@ -4,7 +4,7 @@ import {
   EnvironmentId,
   type PullRequestRef,
   type UnifiedSettings,
-  type WikiId,
+  type ProjectRootId,
 } from "@t3tools/contracts";
 import {
   type AtomCommand,
@@ -63,7 +63,10 @@ export function useWikiOfPullRequest(
 }
 
 /** What a wiki calls its reviews, by its host. */
-export function useWikiTerms(environmentId: EnvironmentId | undefined, wikiId: WikiId | undefined) {
+export function useWikiTerms(
+  environmentId: EnvironmentId | undefined,
+  wikiId: ProjectRootId | undefined,
+) {
   const { data } = useEnvironmentQuery(
     environmentId === undefined ? null : wikiEnvironment.list({ environmentId, input: {} }),
   );

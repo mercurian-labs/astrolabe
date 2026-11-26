@@ -29,7 +29,6 @@ import * as PullRequestWatchService from "../../../pullRequest/PullRequestWatchS
 import { resolveTarget, type ResolvedTarget } from "../../../pullRequest/pullRequestTarget.ts";
 import * as PullRequestReviewGuideService from "../../../pullRequest/PullRequestReviewGuideService.ts";
 import * as PullRequestService from "../../../pullRequest/PullRequestService.ts";
-import * as WikiService from "../../../wiki/WikiService.ts";
 import { reviewPositionInPatch } from "../../../pullRequest/pullRequestReviewPosition.ts";
 import {
   ownPullRequestRepositories,
@@ -560,39 +559,6 @@ const make = Effect.gen(function* () {
     }
     return { thread, project, target, ref };
   });
-
-  // Astrolabe: a host wiki's change request merges through the wiki, which keeps its index in step.
-  // `numbers` widens the check to a stack's other layers, which a stacked merge lands too.
-  const refuseWikiChangeRequest = Effect.fn("PullRequestsToolkit.refuseWikiChangeRequest")(
-    function* (ref: PullRequestRef, numbers: ReadonlyArray<number> = [ref.number]) {
-      const wikis = yield* Effect.serviceOption(WikiService.WikiService);
-      if (Option.isNone(wikis)) return;
-      const hosted = yield* wikis.value.hosted.pipe(Effect.orElseSucceed(() => []));
-      for (const wikiId of hosted) {
-        const wiki = yield* wikis.value.get(wikiId).pipe(Effect.option);
-        if (Option.isNone(wiki) || wiki.value.host?.projectId !== ref.projectId) continue;
-        // This repository hosts the wiki, so an unreadable list could hide one of its changes.
-        const listed = yield* wikis.value.changeRequestsList({ wikiId }).pipe(Effect.option);
-        if (Option.isNone(listed)) {
-          return yield* new PullRequestForgeError({
-            detail: `Could not read the change requests of the wiki "${wiki.value.name}", which this repository hosts, so #${ref.number} was not merged in case it is one of them. Try again.`,
-          });
-        }
-        const owned = numbers.find((number) =>
-          listed.value.changeRequests.some(
-            (entry) =>
-              entry.pullRequest?.number === number &&
-              entry.pullRequest.repository.toLowerCase() === ref.repository.toLowerCase(),
-          ),
-        );
-        if (owned !== undefined) {
-          return yield* new PullRequestForgeError({
-            detail: `#${owned} is a change request of the wiki "${wiki.value.name}". Merge, close or edit it from the wiki's Changes in Astrolabe, which keeps the wiki in step.`,
-          });
-        }
-      }
-    },
-  );
 
   const identityOf = (target: ResolvedTarget) => ({
     host: target.host,
@@ -1135,7 +1101,6 @@ const make = Effect.gen(function* () {
           });
         }
         const { target, ref } = yield* locate(input);
-        yield* refuseWikiChangeRequest(ref);
         if (input.title !== undefined || input.body !== undefined) {
           yield* pullRequests
             .update({
@@ -1249,14 +1214,7 @@ const make = Effect.gen(function* () {
     pull_request_merge: McpToolAccess.writesWithCapability((input) =>
       Effect.gen(function* () {
         const { target, ref } = yield* locate(input);
-        yield* refuseWikiChangeRequest(ref);
         const stack = input.stack === true ? yield* stackMergeScope(ref, input) : undefined;
-        if (stack !== undefined) {
-          yield* refuseWikiChangeRequest(
-            ref,
-            stack.expectedStackHeads.map((layer) => layer.number),
-          );
-        }
         yield* pullRequests
           .runAction({
             ...ref,

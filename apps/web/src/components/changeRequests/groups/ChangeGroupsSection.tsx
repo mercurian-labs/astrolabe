@@ -84,7 +84,6 @@ function inScope(
   scope: ChangeGroupScope,
 ): boolean {
   const { ref } = member;
-  if (ref.kind === "wiki-change-request") return false;
   if (scope.projectId !== undefined) {
     if (ref.kind !== "pull-request") return false;
     if (environmentId !== scope.projectEnvironmentId || member.threadId === null) return false;
@@ -127,8 +126,6 @@ function GroupCard({
         </button>
         <ul className="flex flex-col pl-5.5">
           {group.members.flatMap((member) => {
-            // A wiki's change request from before Projects has no place in Changes any more.
-            if (member.ref.kind === "wiki-change-request") return [];
             const Icon = member.side === "code" ? PullRequestGlyph.pullRequest : BookOpenIcon;
             const memberKey = changeGroupMemberTabKey(group.environmentId, member);
             return (

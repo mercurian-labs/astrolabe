@@ -1,6 +1,6 @@
 import type { CanvasCardEditor } from "@mercurian/wiki-editor/canvas-board";
 import { focusCardEditor, useCanvasCardSession } from "@mercurian/wiki-editor/canvas-card-session";
-import type { EnvironmentId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
+import type { EnvironmentId, WikiChangeRequestId, ProjectRootId } from "@t3tools/contracts";
 import { useEffect, useRef } from "react";
 
 import { useEnvironmentQuery } from "~/state/query";
@@ -27,7 +27,7 @@ export default function WikiCanvasCardEditor({
 }: {
   readonly editor: CanvasCardEditor;
   readonly environmentId: EnvironmentId;
-  readonly wikiId: WikiId;
+  readonly wikiId: ProjectRootId;
   readonly changeRequestId: WikiChangeRequestId | undefined;
   readonly commit: string;
   /** Astrolabe: the folder the board is read in on disk. */

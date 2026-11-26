@@ -2,18 +2,16 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
 import { IsoDateTime, PositiveInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
-import { WikiChangeRequestId, WikiId } from "./wiki.ts";
 
 /**
- * Astrolabe: change groups. One effort's change requests across projects (a PR and the wiki change
- * documenting it) plus the threads working on it. Rules add members and threads (a thread's, its
+ * Astrolabe: change groups. One effort's pull requests across projects plus the threads working
+ * on it. Rules add members and threads (a thread's, its
  * coordinator's children's, its forks'); people's decisions on top are kept by the environment under
  * the group's id, which is the thread the group started from.
  */
 
 /**
- * What a group holds: a pull request on its git host, a wiki's change request, or a thread
- * working on the effort. A change request is in one group at a time; a thread can be in several.
+ * What a group holds: a pull request on its git host, or a thread working on the effort. A change request is in one group at a time; a thread can be in several.
  */
 export const ChangeGroupMemberRef = Schema.Union([
   Schema.Struct({
@@ -21,11 +19,6 @@ export const ChangeGroupMemberRef = Schema.Union([
     host: TrimmedNonEmptyString,
     repository: TrimmedNonEmptyString,
     number: PositiveInt,
-  }),
-  Schema.Struct({
-    kind: Schema.Literal("wiki-change-request"),
-    wikiId: WikiId,
-    changeRequestId: WikiChangeRequestId,
   }),
   Schema.Struct({ kind: Schema.Literal("thread"), threadId: TrimmedNonEmptyString }),
 ]);
@@ -36,8 +29,6 @@ export function changeGroupMemberKey(ref: ChangeGroupMemberRef): string {
   switch (ref.kind) {
     case "pull-request":
       return `pr:${ref.host}/${ref.repository}#${ref.number}`;
-    case "wiki-change-request":
-      return `wiki:${ref.wikiId}/${ref.changeRequestId}`;
     case "thread":
       return `thread:${ref.threadId}`;
   }
@@ -52,15 +43,6 @@ export function changeGroupMemberRefOfKey(key: string): ChangeGroupMemberRef | n
   }
   const thread = /^thread:(.+)$/.exec(key);
   if (thread) return { kind: "thread", threadId: thread[1]! };
-  const wiki = /^wiki:([^/]+)\/(.+)$/.exec(key);
-  if (wiki) {
-    const [, wikiId, changeRequestId] = wiki as unknown as [string, string, string];
-    return {
-      kind: "wiki-change-request",
-      wikiId: WikiId.make(wikiId),
-      changeRequestId: WikiChangeRequestId.make(changeRequestId),
-    };
-  }
   return null;
 }
 

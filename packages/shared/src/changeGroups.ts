@@ -5,7 +5,6 @@ import {
   type ChangeGroupMemberRef,
   type ChangeGroupReason,
   type ThreadPullRequestLink,
-  type WikiChangeRequest,
 } from "@t3tools/contracts";
 
 /**
@@ -33,26 +32,18 @@ export interface ChangeGroupThread {
 const branchesOf = (thread: ChangeGroupThread) =>
   new Set([...(thread.branches ?? []), ...(thread.branch === null ? [] : [thread.branch])]);
 
-export interface ChangeGroupWikiChange {
-  readonly wikiName: string;
-  readonly changeRequest: Pick<
-    WikiChangeRequest,
-    "changeRequestId" | "wikiId" | "title" | "status" | "threadId" | "updatedAt"
-  >;
-}
-
 export type ChangeGroupMemberState = "open" | "draft" | "merged" | "closed";
 
 export interface ChangeGroupMember {
   readonly key: string;
   readonly ref: ChangeGroupMemberRef;
-  /** Code (a pull request) or documentation (a wiki's change request). */
+  /** Code or documentation; every pull request is code. */
   readonly side: "code" | "docs";
   readonly reason: ChangeGroupReason;
   /** What an agent said, for a suggested member. */
   readonly note: string;
   readonly title: string;
-  /** Where it lives: the repository, or the wiki's name. */
+  /** Where it lives: the repository. */
   readonly place: string;
   readonly state: ChangeGroupMemberState;
   readonly url: string | null;
@@ -154,7 +145,8 @@ function pullRequestMember(
   return {
     key: changeGroupMemberKey(ref),
     ref,
-    side: "code",
+    // A person's draft of a repository's documents opens its pull request from a `cr/` branch.
+    side: snapshot?.headBranch?.startsWith("cr/") ? "docs" : "code",
     reason,
     note,
     title: snapshot?.title ?? `#${link.number}`,
@@ -170,34 +162,6 @@ function pullRequestMember(
     updatedAt: snapshot?.updatedAt ?? null,
     branch: snapshot?.headBranch ?? null,
     baseBranch: snapshot?.baseBranch ?? null,
-  };
-}
-
-function wikiMember(
-  change: ChangeGroupWikiChange,
-  reason: ChangeGroupReason,
-  note = "",
-): ChangeGroupMember {
-  const { changeRequest } = change;
-  const ref: ChangeGroupMemberRef = {
-    kind: "wiki-change-request",
-    wikiId: changeRequest.wikiId,
-    changeRequestId: changeRequest.changeRequestId,
-  };
-  return {
-    key: changeGroupMemberKey(ref),
-    ref,
-    side: "docs",
-    reason,
-    note,
-    title: changeRequest.title,
-    place: change.wikiName,
-    state: changeRequest.status,
-    url: null,
-    threadId: changeRequest.threadId,
-    updatedAt: changeRequest.updatedAt,
-    branch: null,
-    baseBranch: null,
   };
 }
 
@@ -264,7 +228,6 @@ function changeGroupState(
  */
 export function deriveChangeGroups(input: {
   readonly threads: ReadonlyArray<ChangeGroupThread>;
-  readonly wikiChanges: ReadonlyArray<ChangeGroupWikiChange>;
   readonly decisions: ReadonlyArray<ChangeGroupDecisions>;
   readonly settings: ChangeGroupGroupingSettings;
 }): ReadonlyArray<ChangeGroup> {
@@ -344,32 +307,16 @@ export function deriveChangeGroups(input: {
       noteThread(rootId, thread.id);
       place(rootId, pullRequestMember(link, reason, thread.id));
     }
-    for (const change of input.wikiChanges) {
-      const threadId = change.changeRequest.threadId;
-      if (threadId === null || !threads.has(threadId)) {
-        ungrouped.push(wikiMember(change, "reference"));
-        continue;
-      }
-      const { rootId, reason } = changeGroupRootOf(threadId, threads, settings);
-      noteThread(rootId, rootId);
-      noteThread(rootId, threadId);
-      place(rootId, wikiMember(change, reason));
-    }
   } else {
     for (const { thread, link } of pullRequests) {
       ungrouped.push(pullRequestMember(link, "reference", thread.id));
     }
-    for (const change of input.wikiChanges) ungrouped.push(wikiMember(change, "reference"));
   }
 
   // Members someone added: wherever the rules would have put them, they are here.
   const everything = new Map<string, ChangeGroupMember>();
   for (const { thread, link } of pullRequests) {
     const member = pullRequestMember(link, "manual", thread.id);
-    everything.set(member.key, member);
-  }
-  for (const change of input.wikiChanges) {
-    const member = wikiMember(change, "manual");
     everything.set(member.key, member);
   }
   for (const [key, entry] of added) {
@@ -569,14 +516,10 @@ export function changeGroupColorIndex(groupKey: string): number {
 /** Every change request on an environment, as a group would show it: a candidate to add. */
 export function changeGroupCandidates(input: {
   readonly threads: ReadonlyArray<ChangeGroupThread>;
-  readonly wikiChanges: ReadonlyArray<ChangeGroupWikiChange>;
 }): ReadonlyArray<ChangeGroupMember> {
-  return [
-    ...input.threads.flatMap((thread) =>
-      thread.pullRequests
-        .filter((link) => link.source !== "stack-dismissed")
-        .map((link) => pullRequestMember(link, "manual", thread.id)),
-    ),
-    ...input.wikiChanges.map((change) => wikiMember(change, "manual")),
-  ];
+  return input.threads.flatMap((thread) =>
+    thread.pullRequests
+      .filter((link) => link.source !== "stack-dismissed")
+      .map((link) => pullRequestMember(link, "manual", thread.id)),
+  );
 }

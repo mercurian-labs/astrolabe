@@ -11,7 +11,7 @@ import {
   key,
   projectLinkDestination,
 } from "@mercurian/wiki";
-import { type ProjectId, projectRootId, WikiId } from "@t3tools/contracts";
+import { type ProjectId, projectRootId } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -150,7 +150,7 @@ const make = Effect.gen(function* () {
       const index = yield* wikis.projectIndex(
         roots.map((root) => ({
           key: root.key,
-          wikiId: WikiId.make(projectRootId(input.projectId, root.key)),
+          wikiId: projectRootId(input.projectId, root.key),
           checkout: folderOf(root),
           writable: root.writable,
         })),

@@ -1,7 +1,6 @@
 import type { CanvasCodeReference } from "@mercurian/wiki/canvas";
 import {
   projectRootId,
-  WikiId,
   type EnvironmentId,
   type ProjectId,
   type ProjectRootCheckout,
@@ -43,7 +42,7 @@ export function codeCardTarget(input: {
       environmentId,
       ...(root.kind === "workspace"
         ? { projectId }
-        : { wikiId: WikiId.make(projectRootId(projectId, root.key)) }),
+        : { wikiId: projectRootId(projectId, root.key) }),
       checkout: { cwd: checkout },
       path: code.path,
     },

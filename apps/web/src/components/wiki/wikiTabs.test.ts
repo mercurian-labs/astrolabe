@@ -4,7 +4,7 @@ import type {
   ProjectRootCheckout,
   RootKey,
   WikiChangeRequestId,
-  WikiId,
+  ProjectRootId,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -12,7 +12,7 @@ import { legacyWikiRoot, projectRootFileTab } from "./projectRootFileTab";
 import { parseWikiTabKey, wikiTabKey, type WikiTab } from "./wikiTabs";
 
 const environmentId = "env-1" as EnvironmentId;
-const wikiId = "wiki-1" as WikiId;
+const wikiId = "wiki-1" as ProjectRootId;
 
 const note = (name: string, changeRequestId?: string): WikiTab => ({
   kind: "note",

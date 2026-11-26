@@ -17,7 +17,6 @@ import {
 } from "@t3tools/shared/changeGroups";
 
 import type { EnvironmentThreadShell } from "./state/models.ts";
-import type { WikiOverview } from "./state/wiki.ts";
 import { resolveThreadCurrentPullRequestLink } from "./threadPullRequests.ts";
 
 /** Astrolabe: a change group, with the environment it lives on. */
@@ -25,16 +24,10 @@ export interface EnvironmentChangeGroup extends ChangeGroup {
   readonly environmentId: EnvironmentId;
 }
 
-/**
- * One environment's change groups, from what a client already holds: its threads' shells (their
- * lineage and pull requests), its wikis' change requests, and the environment's decisions and
- * Grouping settings, as the server derives them.
- */
 /** One environment's change requests, as a group would show each: candidates to add. */
 export function environmentChangeRequests(input: {
   readonly environmentId: EnvironmentId;
   readonly threads: ReadonlyArray<EnvironmentThreadShell>;
-  readonly overviews: ReadonlyArray<WikiOverview>;
 }): ReadonlyArray<ChangeGroupMember> {
   return changeGroupCandidates(groupInputs(input));
 }
@@ -42,7 +35,6 @@ export function environmentChangeRequests(input: {
 function groupInputs(input: {
   readonly environmentId: EnvironmentId;
   readonly threads: ReadonlyArray<EnvironmentThreadShell>;
-  readonly overviews: ReadonlyArray<WikiOverview>;
   readonly threadBranches?: Readonly<Record<string, ReadonlyArray<string>>>;
 }) {
   const { environmentId } = input;
@@ -59,21 +51,17 @@ function groupInputs(input: {
           ? {}
           : { branches: input.threadBranches[thread.id] }),
       })),
-    wikiChanges: input.overviews
-      .filter((overview) => overview.environmentId === environmentId)
-      .flatMap((overview) =>
-        (overview.changeRequests ?? []).map((changeRequest) => ({
-          wikiName: overview.wiki.name,
-          changeRequest,
-        })),
-      ),
   };
 }
 
+/**
+ * One environment's change groups, from what a client already holds: its threads' shells (their
+ * lineage and pull requests) and the environment's decisions and Grouping settings, as the server
+ * derives them.
+ */
 export function environmentChangeGroups(input: {
   readonly environmentId: EnvironmentId;
   readonly threads: ReadonlyArray<EnvironmentThreadShell>;
-  readonly overviews: ReadonlyArray<WikiOverview>;
   readonly decisions: ReadonlyArray<ChangeGroupDecisions>;
   readonly settings: ChangeGroupGroupingSettings | null;
   /** Every branch each thread has worked on, as the environment's change groups list says. */

@@ -14,8 +14,6 @@ import {
   mergeBlockedReason,
   mergeConflictAdvice,
   parseWikiSearch,
-  summarizeHost,
-  summarizeMirror,
   wikiPullRequestHost,
 } from "./wiki.logic";
 
@@ -101,35 +99,6 @@ describe("describeWikiFailure", () => {
   });
 });
 
-describe("summarizeHost", () => {
-  const ago = () => "now";
-  const host = {
-    projectId: "project-1" as never,
-    remote: "origin",
-    lastSyncedAt: "2026-10-02T00:00:00.000Z",
-    lastSyncedCommit: "abc",
-    relation: "up-to-date" as const,
-    lastError: null,
-  };
-  it("puts what needs a person first", () => {
-    expect(summarizeHost(null, ago).tone).toBe("none");
-    expect(summarizeHost(undefined, ago).tone).toBe("none");
-    expect(summarizeHost({ ...host, lastSyncedAt: null, relation: null }, ago).tone).toBe(
-      "pending",
-    );
-    expect(summarizeHost(host, ago)).toEqual({ tone: "ok", label: "Synced now" });
-    expect(summarizeHost({ ...host, relation: "ahead" }, ago).tone).toBe("warning");
-    expect(summarizeHost({ ...host, relation: "behind", lastError: "edits" }, ago)).toEqual({
-      tone: "warning",
-      label: "Main is behind the host",
-    });
-    expect(summarizeHost({ ...host, relation: "diverged" }, ago).tone).toBe("error");
-    expect(summarizeHost({ ...host, lastError: "boom", relation: "ahead" }, ago).label).toBe(
-      "Sync failed",
-    );
-  });
-});
-
 describe("wikiTerms", () => {
   it("says what the wiki's host says, and pull request with no host", () => {
     expect(wikiTerms({ host: { kind: SourceControlProviderKind.make("gitlab") } }).Plural).toBe(
@@ -169,31 +138,6 @@ describe("host wiki change requests", () => {
   it("reads the host from a pull request's link", () => {
     expect(wikiPullRequestHost("https://GitHub.com/acme/handbook/pull/4")).toBe("github.com");
     expect(wikiPullRequestHost("not a link")).toBeNull();
-  });
-});
-
-describe("summarizeMirror", () => {
-  const ago = () => "now";
-  const mirror = {
-    url: "git@example.com:wiki.git",
-    lastPushedAt: "2026-10-02T00:00:00.000Z",
-    lastPushedCommit: "abc",
-    lastError: null,
-    overwroteRemoteAt: null,
-  };
-  it("reports the mirror's state", () => {
-    expect(summarizeMirror(null, ago).tone).toBe("none");
-    expect(summarizeMirror(mirror, ago)).toEqual({ tone: "ok", label: "Mirrored now" });
-    expect(summarizeMirror({ ...mirror, lastError: "denied" }, ago).tone).toBe("error");
-    expect(summarizeMirror({ ...mirror, lastPushedAt: null }, ago).tone).toBe("pending");
-  });
-  it("warns while the latest push is the one that overwrote the mirror", () => {
-    expect(summarizeMirror({ ...mirror, overwroteRemoteAt: mirror.lastPushedAt }, ago).tone).toBe(
-      "warning",
-    );
-    expect(
-      summarizeMirror({ ...mirror, overwroteRemoteAt: "2026-10-01T00:00:00.000Z" }, ago).tone,
-    ).toBe("ok");
   });
 });
 

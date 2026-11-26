@@ -23,7 +23,7 @@ import {
   type ServerSettings as ServerSettingsShape,
   isIdleRunTerminal,
   type TerminalSummary,
-  type WikiId,
+  type ProjectRootId,
 } from "@t3tools/contracts";
 import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
 import * as HostProcess from "@t3tools/shared/HostProcess";
@@ -347,7 +347,7 @@ const make = Effect.gen(function* () {
   /** The folder of the repository the worktrees are in: the project's, or the wiki's. */
   const repositoryRoot = Effect.fn("ProjectWorktreeService.repositoryRoot")(function* (owner: {
     readonly projectId?: ProjectId;
-    readonly wikiId?: WikiId;
+    readonly wikiId?: ProjectRootId;
   }) {
     if (owner.wikiId !== undefined) {
       if (owner.projectId !== undefined) return yield* fail("Name a project or a wiki, not both.");

@@ -1,7 +1,7 @@
 /**
- * Wikis: git repositories of linked markdown notes whose folder is main's hand-editable checkout.
- * Changes reach main via change requests; merges use git's two-tree checkout, which refuses to
- * overwrite local edits. One writer per wiki here; `WikiHostService` owns the git host's side.
+ * A project root's documents: read from a commit or on disk, and drafts and change requests kept
+ * as refs in its repository. Nothing here moves the folder's own branches; change requests land
+ * on the host. One writer per repository; `WikiHostService` owns the host's side.
  *
  * @module WikiService
  */
@@ -71,50 +71,37 @@ import {
   WikiChangeRequestId,
   type WikiChangeRequestListInput,
   type WikiChangeRequestListResult,
-  type WikiChangeRequestOpenInput,
   type WikiChangeRequestTarget,
   type WikiCheckoutTransformResult,
   type WikiCodeStatus,
   type WikiCodeStatusInput,
   type WikiCodeStatusResult,
-  type WikiCreateInput,
   type WikiDraftMoveInput,
   type WikiMoveInput,
   type WikiDraftPromoteInput,
   WikiError,
   type WikiEvent,
-  type WikiHostRelation,
-  type WikiHostStatus,
-  WikiId,
+  ProjectRootId,
   type WikiMapBackground,
   type WikiIndexResult,
   type WikiListFilesInput,
   type WikiListFilesResult,
   type WikiListResult,
   type WikiMergePreview,
-  type WikiMergeResult,
   type WikiNoteResult,
   type WikiPullRequestLink,
   type WikiQueryInput,
   type WikiQueryResult,
   type WikiReadFilesInput,
   type WikiReadFilesResult,
-  type WikiRegisterInput,
   type WikiRevertInput,
-  type WikiSaveWorktreeInput,
   type WikiSetChangeRequestStatusInput,
-  type WikiSetMapBackgroundsInput,
-  type WikiSetMirrorInput,
-  type WikiSetProjectLinkInput,
   type WikiSummary,
-  type WikiTarget,
   type WikiTransform,
   type WikiTransformInput,
-  type SourceControlProviderKind,
 } from "@t3tools/contracts";
 import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
 import { hostPreviewMimeTypeFromExtension } from "@t3tools/shared/filePreview";
-import { newProjectFolderName } from "@t3tools/shared/path";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as SecureRandom from "effect/crypto/SecureRandom";
@@ -167,15 +154,10 @@ import {
   parseMergeTree,
   type PendingCheckoutAmendment,
   PendingCheckoutAmendmentJson,
-  RETIRED_WIKI_REGISTRY_FILE,
-  THREAD_CHECKOUTS_FOLDER,
   type WikiMigration,
   WikiMigrationJson,
   WIKI_MIGRATION_FILE,
-  WIKI_REGISTRY_FILE,
   type WikiRecord,
-  type WikiRegistry,
-  WikiRegistryJson,
   wikiTerms,
 } from "./wikiStorage.ts";
 import {
@@ -185,10 +167,8 @@ import {
   locateBase,
   noteResult,
   orientResult,
-  searchFiles,
   type WikiLinksResult,
   type WikiOrientResult,
-  type WikiSearchResult,
 } from "./wikiViews.ts";
 
 /** A git command that exited non-zero; only ever the `cause` of a `WikiError`. */
@@ -213,58 +193,22 @@ export const person: WikiAuthor = { actor: "You", threadId: null };
 
 /**
  * Where a read comes from: a named change request's head, else `checkout` on disk, else the
- * thread's own open change request on that wiki, else the main line. A folder without Git is
- * read on disk. `wikiId` may also be the wiki's name, for agents.
+ * thread's own open change request on that root, else the main line. A folder without Git is
+ * read on disk.
  */
 export interface WikiReadTarget {
-  readonly wikiId: WikiId;
+  readonly wikiId: ProjectRootId;
   readonly changeRequestId?: WikiChangeRequestId | undefined;
   readonly threadId?: ThreadId | undefined;
   /** The root's own folder or one of its worktrees, read as its files stand. */
   readonly checkout?: string | undefined;
-  /**
-   * With `threadId` and no `changeRequestId`, read the thread's checkout of the wiki as its files
-   * stand, unsaved edits and all, when it has one. A change request's detail lists them apart.
-   */
-  readonly threadCheckout?: boolean | undefined;
-}
-
-/** The thread whose checkout of a wiki the fallback file tools work in. */
-export interface WikiCheckoutTarget {
-  readonly wikiId: WikiId;
-  readonly threadId?: ThreadId | undefined;
-}
-
-export interface WikiCheckoutReadResult {
-  /** Path from the checkout's root. */
-  readonly path: string;
-  readonly text: string;
-  readonly startLine: number;
-  readonly endLine: number;
-  readonly totalLines: number;
-}
-
-export interface WikiCheckoutWriteInput {
-  readonly wikiId: WikiId;
-  readonly path: string;
-  readonly content?: string | undefined;
-  readonly oldText?: string | undefined;
-  readonly newText?: string | undefined;
-  readonly delete?: boolean | undefined;
-}
-
-export interface WikiCheckoutWriteResult {
-  readonly path: string;
-  readonly change: "created" | "updated" | "deleted";
-  /** The errors and warnings of the bases the file now holds. Absent when none. */
-  readonly warnings?: ReadonlyArray<string>;
 }
 
 /** One root of a project as a call across its roots reads it: in `checkout`, as its files stand. */
 export interface ProjectRootRead {
   /** What its addresses and links name it by. */
   readonly key: string;
-  readonly wikiId: WikiId;
+  readonly wikiId: ProjectRootId;
   /** The root's own folder or one of its worktrees. */
   readonly checkout: string;
   readonly writable: boolean;
@@ -305,28 +249,15 @@ export class WikiService extends Context.Service<
     readonly useCodeFacts: (source: CodeFactsSource) => Effect.Effect<void>;
     /** Every change to any wiki, so open views know to read again. */
     readonly subscribe: Stream.Stream<WikiEvent>;
-    readonly register: (input: WikiRegisterInput) => Effect.Effect<WikiSummary, WikiError>;
-    readonly create: (input: WikiCreateInput) => Effect.Effect<WikiSummary, WikiError>;
-    /** Forgets the wiki; its folder and history stay as they are. */
-    readonly remove: (input: WikiTarget) => Effect.Effect<void, WikiError>;
-    readonly setMirror: (input: WikiSetMirrorInput) => Effect.Effect<WikiSummary, WikiError>;
-    readonly setMapBackgrounds: (
-      input: WikiSetMapBackgroundsInput,
-    ) => Effect.Effect<WikiSummary, WikiError>;
-    readonly setProjectLink: (
-      input: WikiSetProjectLinkInput,
-    ) => Effect.Effect<WikiSummary, WikiError>;
     /** The folder holding a wiki's main line, the repository its worktrees belong to. */
-    readonly root: (wikiId: WikiId) => Effect.Effect<string, WikiError>;
-    /** Pushes main to the mirror now; a failed push is recorded on the summary, not raised. */
-    readonly pushMirror: (input: WikiTarget) => Effect.Effect<WikiSummary, WikiError>;
+    readonly root: (wikiId: ProjectRootId) => Effect.Effect<string, WikiError>;
     readonly index: (input: WikiReadTarget) => Effect.Effect<WikiIndexResult, WikiError>;
     /**
      * Astrolabe: what the Projects tree's Docs filter keeps of `checkout` (the root's own folder
      * when absent), read on disk: `docPaths` of the root and of the project's roots inside it.
      */
     readonly docPaths: (input: {
-      readonly wikiId: WikiId;
+      readonly wikiId: ProjectRootId;
       readonly checkout?: string;
     }) => Effect.Effect<ReadonlyArray<string>, WikiError>;
     readonly readNote: (
@@ -373,10 +304,6 @@ export class WikiService extends Context.Service<
     readonly changeRequestsGet: (
       input: WikiReadTarget,
     ) => Effect.Effect<WikiChangeRequestDetail, WikiError>;
-    readonly changeRequestsOpen: (
-      input: WikiChangeRequestOpenInput,
-      author: WikiAuthor,
-    ) => Effect.Effect<WikiChangeRequest, WikiError>;
     /**
      * Lands one amendment on a change request: the named one, else the author's thread's open one,
      * else a new one titled `title` or the message's first line.
@@ -413,29 +340,6 @@ export class WikiService extends Context.Service<
       readonly transform: Extract<WikiTransform, { readonly kind: "rename" }>;
     }) => Effect.Effect<ProjectRenameResult, WikiError>;
     /**
-     * A document in the thread's checkout of the wiki as it stands on disk, whole or lines
-     * `startLine` to `endLine`: for a session whose own file tools can't reach the checkout.
-     */
-    readonly checkoutRead: (
-      input: WikiCheckoutTarget & {
-        readonly path: string;
-        readonly startLine?: number | undefined;
-        readonly endLine?: number | undefined;
-      },
-    ) => Effect.Effect<WikiCheckoutReadResult, WikiError>;
-    /** Searches the paths and lines of the documents in the thread's checkout, unsaved edits included. */
-    readonly checkoutSearch: (
-      input: WikiCheckoutTarget & { readonly query: string },
-    ) => Effect.Effect<WikiSearchResult, WikiError>;
-    /**
-     * Writes a note or a base in the author's thread's checkout, uncommitted, for the turn's save
-     * to land: whole `content`, one exact `oldText` replaced by `newText`, or `delete`.
-     */
-    readonly checkoutWrite: (
-      input: WikiCheckoutWriteInput,
-      author: WikiAuthor,
-    ) => Effect.Effect<WikiCheckoutWriteResult, WikiError>;
-    /**
      * A person's edit landing by itself: in the change request named, else the author's draft,
      * starting one on the first edit. Saves of one document in a run replace each other.
      */
@@ -469,87 +373,17 @@ export class WikiService extends Context.Service<
       input: WikiRevertInput,
       author: WikiAuthor,
     ) => Effect.Effect<WikiAmendResult, WikiError>;
-    /**
-     * Lands the uncommitted document edits in the worktree that has a change request checked out
-     * as one amendment on it, leaving that worktree clean.
-     */
-    readonly saveWorktree: (
-      input: WikiSaveWorktreeInput,
-      author: WikiAuthor,
-    ) => Effect.Effect<WikiAmendResult, WikiError>;
-    /** The wikis linked to a project. */
-    readonly linkedTo: (projectId: ProjectId) => Effect.Effect<ReadonlyArray<WikiId>, WikiError>;
-    /** The wiki linked to a project that `reference` names by id or name. */
-    readonly linkedWiki: (
-      projectId: ProjectId,
-      reference: string,
-    ) => Effect.Effect<WikiId, WikiError>;
-    /**
-     * Makes `folder` a worktree of the wiki on the thread's open change request, or detached at
-     * main's tip while it has none; one with unsaved edits stays as it is. Returns the folder
-     * holding the checkout, another one when the change request is checked out elsewhere.
-     */
-    readonly checkoutForThread: (input: {
-      readonly wikiId: WikiId;
-      readonly threadId: ThreadId;
-      readonly folder: string;
-    }) => Effect.Effect<string, WikiError>;
-    /**
-     * Lands a thread's checkout's unsaved document edits as one amendment on its open change
-     * request, opening one titled `title` when it has none. Null when nothing changed.
-     */
-    readonly saveThreadCheckout: (
-      input: {
-        readonly wikiId: WikiId;
-        readonly threadId: ThreadId;
-        readonly folder: string;
-        readonly title: string;
-        readonly message: string;
-      },
-      author: WikiAuthor,
-    ) => Effect.Effect<WikiAmendResult | null, WikiError>;
-    /** Removes a worktree of the wiki, unsaved edits and all. */
-    readonly removeCheckout: (input: {
-      readonly wikiId: WikiId;
-      readonly folder: string;
-    }) => Effect.Effect<void, WikiError>;
-    /** A person's act: lands an open change request on main and moves the checkout with it. */
-    readonly merge: (input: WikiChangeRequestTarget) => Effect.Effect<WikiMergeResult, WikiError>;
     readonly setChangeRequestStatus: (
       input: WikiSetChangeRequestStatusInput,
     ) => Effect.Effect<WikiChangeRequest, WikiError>;
-    readonly get: (wikiId: WikiId) => Effect.Effect<WikiSummary, WikiError>;
+    readonly get: (wikiId: ProjectRootId) => Effect.Effect<WikiSummary, WikiError>;
+    /** Records where each registered wiki went: old ids resolve to those project roots from then on. */
+    readonly recordMigration: (migration: WikiMigration) => Effect.Effect<void, WikiError>;
     /**
-     * Records where each registered wiki went, then sets the registry aside: old ids resolve to
-     * those project roots from then on.
+     * Fetches the host into its tracking refs and moves each open change request onto what the
+     * host holds when that only adds to it. The folder's own branches, main among them, stay put.
      */
-    readonly retireRegistry: (migration: WikiMigration) => Effect.Effect<void, WikiError>;
-    /** The wikis on a host, read from the registry alone. */
-    readonly hosted: Effect.Effect<ReadonlyArray<WikiId>, WikiError>;
-    /** Makes `remote` the wiki's main line, or with null makes it local again; drops a mirror. */
-    readonly setHost: (
-      wikiId: WikiId,
-      host: {
-        readonly projectId: ProjectId;
-        readonly remote: string;
-        readonly kind: SourceControlProviderKind;
-        readonly createdProject: boolean;
-      } | null,
-    ) => Effect.Effect<WikiSummary, WikiError>;
-    /** Fetches the host, fast-forwards main and the open change requests, and records how it went. */
-    readonly syncFromHost: (wikiId: WikiId) => Effect.Effect<WikiHostRelation, WikiError>;
-    /** Records what stopped a change request following the host, or clears it with null. */
-    readonly recordChangeRequestIssue: (
-      wikiId: WikiId,
-      message: string | null,
-    ) => Effect.Effect<void, WikiError>;
-    /** Records a sync or publish that failed, or clears one with null. */
-    readonly recordHostError: (
-      wikiId: WikiId,
-      message: string | null,
-    ) => Effect.Effect<void, WikiError>;
-    /** Pushes main without force, for a wiki moving onto a host. */
-    readonly pushMainToHost: (wikiId: WikiId) => Effect.Effect<void, WikiError>;
+    readonly syncFromHost: (wikiId: ProjectRootId) => Effect.Effect<void, WikiError>;
     /** Pushes a change request's branch without force; a host that moved refuses it. */
     readonly pushChangeRequest: (
       input: WikiChangeRequestTarget,
@@ -568,10 +402,6 @@ export class WikiService extends Context.Service<
     ) => Effect.Effect<WikiChangeRequest, WikiError>;
     readonly recordPullRequest: (
       input: WikiChangeRequestTarget & { readonly pullRequest: WikiPullRequestLink },
-    ) => Effect.Effect<WikiChangeRequest, WikiError>;
-    /** Records that the host merged a change request; main has already been synced. */
-    readonly recordHostMerge: (
-      input: WikiChangeRequestTarget,
     ) => Effect.Effect<WikiChangeRequest, WikiError>;
   }
 >()("t3/wiki/WikiService") {}
@@ -724,10 +554,7 @@ const isMediaFile = (file: string) => {
   return mime !== null && /^(image|audio|video|font)\/|\/pdf$/.test(mime) && !mime.includes("svg");
 };
 
-const decodeRegistry = Schema.decodeEffect(WikiRegistryJson);
-const encodeRegistry = Schema.encodeEffect(WikiRegistryJson);
 const decodeMigration = Schema.decodeEffect(WikiMigrationJson);
-const isWikiId = Schema.is(WikiId);
 const encodeMigration = Schema.encodeEffect(WikiMigrationJson);
 const decodeChangeRequest = Schema.decodeEffect(ChangeRequestRecordJson);
 const encodeChangeRequest = Schema.encodeEffect(ChangeRequestRecordJson);
@@ -766,10 +593,6 @@ const moveSubject = (from: string, to: string) => {
   return `Move ${documentSubject(from)} to ${folderOf(to) || "the root"}`;
 };
 
-/** One of a project's folders, named by its root id rather than registered as a wiki. */
-const isProjectFolder = (wiki: { readonly wikiId: string }) =>
-  parseProjectRootId(wiki.wikiId) !== null;
-
 const isCommitId = (value: string) => /^[0-9a-f]{4,64}$/i.test(value);
 
 const subjectOf = (message: string) => {
@@ -790,7 +613,7 @@ const planningError = (cause: unknown) =>
 
 /** Adds the wiki (and change request) a failure happened in, keeping everything else. */
 const inWiki =
-  (wikiId: WikiId, changeRequestId?: WikiChangeRequestId) =>
+  (wikiId: ProjectRootId, changeRequestId?: WikiChangeRequestId) =>
   (error: WikiError): WikiError => {
     if (error.wikiId !== undefined) return error;
     const changeRequest = error.changeRequestId ?? changeRequestId;
@@ -814,10 +637,8 @@ const make = Effect.gen(function* () {
   const serverSettings = yield* ServerSettings.ServerSettingsService;
 
   const events = yield* PubSub.sliding<WikiEvent>(256);
-  const registryPath = path.join(config.stateDir, WIKI_REGISTRY_FILE);
   const migrationPath = path.join(config.stateDir, WIKI_MIGRATION_FILE);
-  const registryLock = yield* Semaphore.make(1);
-  const registryCache = yield* Ref.make<WikiRegistry | undefined>(undefined);
+  const migrationLock = yield* Semaphore.make(1);
   const migrationCache = yield* Ref.make<WikiMigration | undefined>(undefined);
   const wikiLocks = new Map<string, Semaphore.Semaphore>();
   const fetchLocks = new Map<string, Semaphore.Semaphore>();
@@ -842,7 +663,11 @@ const make = Effect.gen(function* () {
   const newId = random.uuidV4().pipe(Effect.map((uuid) => uuid.replaceAll("-", "").slice(0, 12)));
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 
-  const publish = (kind: WikiEvent["kind"], wikiId: WikiId, changeRequestId: string | null) =>
+  const publish = (
+    kind: WikiEvent["kind"],
+    wikiId: ProjectRootId,
+    changeRequestId: string | null,
+  ) =>
     nowIso.pipe(
       Effect.flatMap((at) =>
         PubSub.publish(events, {
@@ -1289,101 +1114,40 @@ const make = Effect.gen(function* () {
       ),
     );
 
-  const registryError = (cause: unknown) =>
+  const migrationError = (cause: unknown) =>
     new WikiError({
       reason: "invalid",
-      message: "The wiki registry could not be read or written.",
+      message: "The record of where registered wikis went could not be read or written.",
       cause,
     });
-
-  const loadRegistry = Effect.gen(function* () {
-    const cached = yield* Ref.get(registryCache);
-    if (cached !== undefined) return cached;
-    const exists = yield* fileSystem.exists(registryPath).pipe(Effect.mapError(registryError));
-    const registry: WikiRegistry = exists
-      ? yield* fileSystem
-          .readFileString(registryPath)
-          .pipe(Effect.flatMap(decodeRegistry), Effect.mapError(registryError))
-      : { version: 1, wikis: [] };
-    yield* Ref.set(registryCache, registry);
-    return registry;
-  });
 
   const loadMigration = Effect.gen(function* () {
     const cached = yield* Ref.get(migrationCache);
     if (cached !== undefined) return cached;
-    const exists = yield* fileSystem.exists(migrationPath).pipe(Effect.mapError(registryError));
+    const exists = yield* fileSystem.exists(migrationPath).pipe(Effect.mapError(migrationError));
     const migration: WikiMigration = exists
       ? yield* fileSystem
           .readFileString(migrationPath)
-          .pipe(Effect.flatMap(decodeMigration), Effect.mapError(registryError))
+          .pipe(Effect.flatMap(decodeMigration), Effect.mapError(migrationError))
       : { version: 1, wikis: {}, droppedMirrors: [] };
     yield* Ref.set(migrationCache, migration);
     return migration;
   });
 
-  const retireRegistry: WikiService["Service"]["retireRegistry"] = (migration) =>
-    registryLock.withPermits(1)(
+  const recordMigration: WikiService["Service"]["recordMigration"] = (migration) =>
+    migrationLock.withPermits(1)(
       Effect.gen(function* () {
-        const contents = yield* encodeMigration(migration).pipe(Effect.mapError(registryError));
+        const contents = yield* encodeMigration(migration).pipe(Effect.mapError(migrationError));
         yield* writeFileStringAtomically({
           filePath: migrationPath,
           contents: `${contents}\n`,
         }).pipe(
           Effect.provideService(FileSystem.FileSystem, fileSystem),
           Effect.provideService(Path.Path, path),
-          Effect.mapError(registryError),
+          Effect.mapError(migrationError),
         );
-        if (yield* fileSystem.exists(registryPath).pipe(Effect.mapError(registryError))) {
-          yield* fileSystem
-            .rename(registryPath, path.join(config.stateDir, RETIRED_WIKI_REGISTRY_FILE))
-            .pipe(Effect.mapError(registryError));
-        }
         yield* Ref.set(migrationCache, migration);
-        yield* Ref.set(registryCache, { version: 1, wikis: [] });
       }),
-    );
-
-  const updateRegistry = <A>(
-    update: (registry: WikiRegistry) => Effect.Effect<readonly [WikiRegistry, A], WikiError>,
-  ) =>
-    registryLock.withPermits(1)(
-      Effect.gen(function* () {
-        const [next, result] = yield* update(yield* loadRegistry);
-        const contents = yield* encodeRegistry(next).pipe(Effect.mapError(registryError));
-        yield* writeFileStringAtomically({
-          filePath: registryPath,
-          contents: `${contents}\n`,
-        }).pipe(
-          Effect.provideService(FileSystem.FileSystem, fileSystem),
-          Effect.provideService(Path.Path, path),
-          Effect.mapError(registryError),
-        );
-        yield* Ref.set(registryCache, next);
-        return result;
-      }),
-    );
-
-  /** A project's folder keeps nothing here: its project and its repository say what it is. */
-  const requireRegistered = (wiki: WikiRecord) =>
-    !isProjectFolder(wiki)
-      ? Effect.void
-      : Effect.fail(
-          new WikiError({
-            reason: "invalid",
-            message: "This folder belongs to a project, so it has no wiki settings to change.",
-          }),
-        );
-
-  const replaceWiki = (next: WikiRecord) =>
-    updateRegistry((registry) =>
-      Effect.succeed([
-        {
-          ...registry,
-          wikis: registry.wikis.map((wiki) => (wiki.wikiId === next.wikiId ? next : wiki)),
-        },
-        next,
-      ] as const),
     );
 
   const trackedHostRoot = (remote: string) => `refs/wiki/host/${remote}/`;
@@ -1405,7 +1169,7 @@ const make = Effect.gen(function* () {
 
   /**
    * A folder of a project, as a wiki whose host is the folder's remote. A folder without Git has
-   * no host, mirror or main line, and is read on disk.
+   * no host or main line, and is read on disk.
    */
   const rootRecord = Effect.fn("WikiService.rootRecord")(function* (
     project: { readonly id: ProjectId; readonly title: string; readonly createdAt: IsoDateTime },
@@ -1415,12 +1179,11 @@ const make = Effect.gen(function* () {
       .realPath(root.path)
       .pipe(Effect.orElseSucceed(() => root.path));
     const named = {
-      wikiId: WikiId.make(projectRootId(project.id, root.key)),
+      wikiId: projectRootId(project.id, root.key),
+      projectId: project.id,
+      rootKey: root.key,
       name: root.kind === "workspace" ? project.title : root.name,
       root: folder,
-      projectIds: [project.id],
-      projectLinkedAt: {},
-      mirror: null,
       createdAt: project.createdAt,
       mapBackgrounds: yield* serverSettings.getSettings.pipe(
         Effect.map((settings) => settings.wikiMapBackgrounds),
@@ -1510,26 +1273,18 @@ const make = Effect.gen(function* () {
     return perProject.flat();
   });
 
-  /** A wiki by id, a project's folder by its root id, or by name for agents that know it by name. */
+  /** A project's folder by its root id, or by the id it had as a registered wiki. */
   const lookup = Effect.fn("WikiService.lookup")(function* (reference: string) {
-    const { wikis } = yield* loadRegistry;
-    const byId = wikis.find((wiki) => wiki.wikiId === reference);
-    if (byId !== undefined) return byId;
     const byRoot = yield* projectRootRecord(reference);
     if (byRoot !== undefined) return byRoot;
-    const migrated = isWikiId(reference) ? (yield* loadMigration).wikis[reference] : undefined;
+    const migrated = (yield* loadMigration).wikis[reference];
     if (migrated !== undefined) {
       const moved = yield* projectRootRecord(projectRootId(migrated.projectId, migrated.rootKey));
       if (moved !== undefined) return moved;
     }
-    const byName = wikis.filter((wiki) => wiki.name.toLowerCase() === reference.toLowerCase());
-    if (byName.length === 1 && byName[0] !== undefined) return byName[0];
     return yield* new WikiError({
       reason: "not-found",
-      message:
-        byName.length > 1
-          ? "Several wikis have this name; use the wiki's id."
-          : "No wiki has this id or name.",
+      message: "No project has a folder with this id.",
     });
   });
 
@@ -1566,11 +1321,6 @@ const make = Effect.gen(function* () {
       changeRequestId,
     );
 
-  const withRegisteredWiki = <A>(
-    reference: string,
-    body: (wiki: WikiRecord) => Effect.Effect<A, WikiError>,
-  ) => withWiki(reference, (wiki) => requireRegistered(wiki).pipe(Effect.andThen(body(wiki))));
-
   /** Serializes every write to one repository, whichever id named it. */
   const locked = <A, E, R>(wiki: WikiRecord, body: Effect.Effect<A, E, R>) => {
     let lock = wikiLocks.get(wiki.root);
@@ -1583,8 +1333,15 @@ const make = Effect.gen(function* () {
 
   const mainRef = (wiki: WikiRecord) => `refs/heads/${wiki.mainBranch}`;
 
+  /**
+   * The main line change requests start from and merge into. A host-backed root's is the host's,
+   * as the last fetch saw it: the folder's own main is the person's, and is never moved here.
+   */
   const mainTip = (wiki: WikiRecord) =>
-    revParse(wiki.root, mainRef(wiki)).pipe(
+    (wiki.host?.lastSyncedCommit != null
+      ? Effect.succeed<string | undefined>(wiki.host.lastSyncedCommit)
+      : revParse(wiki.root, mainRef(wiki))
+    ).pipe(
       Effect.filterOrFail(
         (tip): tip is string => tip !== undefined,
         () =>
@@ -2734,158 +2491,6 @@ const make = Effect.gen(function* () {
       input.changeRequestId,
     );
 
-  /** Moves main from `from` to `to`, and the folder that has main checked out with it. */
-  const moveMain = (wiki: WikiRecord, from: string, to: string, what: "merge" | "sync" = "merge") =>
-    moveWithCheckout(
-      wiki,
-      mainRef(wiki),
-      from,
-      to,
-      runGit(
-        "updateMain",
-        wiki.root,
-        ["update-ref", "-m", "wiki: merge change request", mainRef(wiki), to, from],
-        { allowExitCodes: [1, 128] },
-      ).pipe(
-        Effect.map((moved) =>
-          moved.exitCode === 0
-            ? ({ moved: true } as const)
-            : ({ moved: false, cause: moved.stderr } as const),
-        ),
-      ),
-      {
-        busy: (paths) => {
-          const where = paths.length ? `: ${paths.join(", ")}` : "";
-          return what === "merge"
-            ? `Local edits in the wiki folder overlap this merge${where}. Commit or set them aside, then merge again.`
-            : `Local edits in the wiki folder overlap what's new on the host${where}. Commit or set them aside, and the wiki catches up.`;
-        },
-        stale: (rolledBack, cause) =>
-          new WikiError({
-            reason: "stale",
-            message: rolledBack
-              ? "Main moved while merging, so nothing was merged. Merge again."
-              : "Main moved while merging and the wiki folder could not be put back; check its files before merging again.",
-            cause,
-          }),
-      },
-    );
-
-  /** Pushes main to the mirror and records how it went; never fails for the push itself. */
-  const pushToMirror = Effect.fn("WikiService.pushToMirror")(function* (wiki: WikiRecord) {
-    const mirror = wiki.mirror;
-    if (mirror === null) return wiki;
-    const at = yield* nowIso;
-    const attempt = Effect.gen(function* () {
-      const local = yield* mainTip(wiki);
-      const remote = yield* gitOut(
-        "lsRemote",
-        wiki.root,
-        ["ls-remote", mirror.url, mainRef(wiki)],
-        { timeoutMs: REMOTE_TIMEOUT_MS },
-      );
-      const remoteTip = remote.split("\t")[0]?.trim() || undefined;
-      // A remote commit this repository lacks, or one main does not contain, is work made on
-      // the mirror directly that this push replaces.
-      const overwrote =
-        remoteTip !== undefined &&
-        remoteTip !== local &&
-        !(
-          (yield* revParse(wiki.root, remoteTip)) !== undefined &&
-          (yield* isAncestor(wiki.root, remoteTip, local))
-        );
-      yield* runGit(
-        "push",
-        wiki.root,
-        ["push", "--force", "--no-verify", mirror.url, `${mainRef(wiki)}:${mainRef(wiki)}`],
-        { timeoutMs: REMOTE_TIMEOUT_MS },
-      );
-      return {
-        ...mirror,
-        lastPushedAt: at,
-        lastPushedCommit: local,
-        lastError: null,
-        overwroteRemoteAt: overwrote ? at : mirror.overwroteRemoteAt,
-      };
-    });
-    const status = yield* attempt.pipe(
-      Effect.catchTags({
-        WikiError: (error) =>
-          Effect.logWarning("Wiki mirror push failed").pipe(
-            Effect.annotateLogs({ wikiId: wiki.wikiId, cause: error }),
-            Effect.as({ ...mirror, lastError: "The push to the mirror failed." }),
-          ),
-      }),
-    );
-    const next = yield* updateRegistry((registry) => {
-      const current = registry.wikis.find((entry) => entry.wikiId === wiki.wikiId);
-      // The mirror was changed or removed meanwhile; this push's status no longer applies.
-      const updated =
-        current === undefined || current.mirror?.url !== mirror.url
-          ? current
-          : { ...current, mirror: status };
-      return Effect.succeed([
-        {
-          ...registry,
-          wikis: registry.wikis.map((entry) =>
-            entry.wikiId === wiki.wikiId && updated !== undefined ? updated : entry,
-          ),
-        },
-        updated ?? wiki,
-      ] as const);
-    });
-    yield* publish("mirror", wiki.wikiId, null);
-    return next;
-  });
-
-  const saveWorktree: WikiService["Service"]["saveWorktree"] = (input, author) =>
-    withWiki(
-      input.wikiId,
-      (wiki) =>
-        locked(
-          wiki,
-          Effect.gen(function* () {
-            const stored = yield* loadChangeRequest(wiki, input.changeRequestId);
-            yield* requireOpen(stored);
-            const at = yield* checkoutHolding(wiki, changeRequestBranch(input.changeRequestId));
-            if (at === null) {
-              return yield* new WikiError({
-                reason: "invalid",
-                message: `This ${wikiTerms(wiki).singular} is not checked out in a worktree.`,
-              });
-            }
-            return yield* withWorkspaceLease(
-              at,
-              Effect.gen(function* () {
-                if ((yield* gitOut("worktreeHead", at, ["rev-parse", "HEAD"])) !== stored.head) {
-                  return yield* new WikiError({
-                    reason: "stale",
-                    message: `The ${wikiTerms(wiki).singular} moved while this ran. Read it again and retry.`,
-                  });
-                }
-                const result = yield* landCheckoutEdits(
-                  wiki,
-                  at,
-                  stored.head,
-                  { kind: "existing", stored },
-                  author,
-                  input.message,
-                  false,
-                );
-                if (result === null) {
-                  return yield* new WikiError({
-                    reason: "invalid",
-                    message: "No document in this worktree has unsaved changes.",
-                  });
-                }
-                return result;
-              }),
-            );
-          }),
-        ),
-      input.changeRequestId,
-    );
-
   /**
    * A checkout's unsaved edits: documents by text and, with `attachments`, other visible files as
    * blobs written to the object store; null for a deleted one. With `since`, what commits made
@@ -2973,100 +2578,6 @@ const make = Effect.gen(function* () {
       .pipe(Effect.flatMap(decodePending), Effect.option);
   });
 
-  const clearPending = (at: string) =>
-    pendingFile(at).pipe(
-      Effect.flatMap((file) => fileSystem.remove(file, { force: true })),
-      Effect.ignore,
-    );
-
-  /**
-   * Lands the unsaved edits in `at`, whose HEAD is `from`, as one amendment on `target`, then
-   * leaves the folder clean on the target's branch; null when there were none. Callers hold the
-   * wiki's lock and the folder's lease.
-   */
-  const landCheckoutEdits = Effect.fn("WikiService.landCheckoutEdits")(function* (
-    wiki: WikiRecord,
-    at: string,
-    from: string,
-    target: Target,
-    author: WikiAuthor,
-    message: string,
-    /** A thread's checkout saves every visible file; a person's worktree only its documents. */
-    attachments: boolean,
-    /** Where the folder's own commits began, when they are to land as edits too. */
-    since?: string,
-  ) {
-    const edits = yield* checkoutEdits(at, attachments, since);
-    if (carriedNames(edits).length === 0) {
-      yield* clearPending(at);
-      return null;
-    }
-    const pending = Option.getOrUndefined(yield* readPending(at));
-    const gone = (file: string) =>
-      edits.changes[file] === null || (file in edits.blobs && edits.blobs[file] === null);
-    const present = (file: string) =>
-      typeof edits.changes[file] === "string" || typeof edits.blobs[file] === "string";
-    // Only the moves a transform made that still stand: a later edit may have undone one.
-    const moved = (pending?.moved ?? []).filter(({ from, to }) => gone(from) && present(to));
-    const result = yield* land(
-      wiki,
-      target,
-      author,
-      message,
-      (files, stamp) => ({
-        ...(Object.keys(edits.changes).length === 0
-          ? { changes: {}, errors: indexFiles(files).errors }
-          : // A move adds no edge, so an edge that stood unsupported only comes along.
-            planAmendment(files, edits.changes, stamp, { allowUnstamped: moved.length > 0 })),
-        blobs: edits.blobs,
-        ...(moved.length === 0 ? {} : { moved }),
-      }),
-      { follow: false, ...(pending === undefined ? {} : { pending }) },
-    );
-    yield* clearPending(at);
-    const branch = changeRequestBranch(result.changeRequest.changeRequestId);
-    const onBranch = yield* runGit("checkoutBranch", at, ["symbolic-ref", "-q", "HEAD"], {
-      allowExitCodes: [1],
-    });
-    // Moves HEAD alone: the folder already holds the edits the new branch's head has.
-    if (onBranch.stdout.trim() !== branch) {
-      yield* runGit("adoptBranch", at, ["symbolic-ref", "HEAD", branch]);
-    }
-    // The folder already holds the edits: line its index up with the new head, then write what
-    // the amendment changed besides them (stamps, map warnings, a head that moved meanwhile).
-    const touched = (yield* runGit("amendedFiles", at, [
-      "diff",
-      "--name-status",
-      "--no-renames",
-      "-z",
-      from,
-      result.commit,
-    ])).stdout
-      .split("\0")
-      .filter(Boolean);
-    const written: string[] = [];
-    const removed: string[] = [];
-    for (let position = 0; position + 1 < touched.length; position += 2) {
-      const file = touched[position + 1]!;
-      if (touched[position] === "D") removed.push(file);
-      else written.push(file);
-    }
-    yield* runGit("adoptHead", at, ["read-tree", result.commit]);
-    if (written.length) {
-      yield* runGit("writeAmended", at, ["checkout-index", "-f", "--", ...written]);
-    }
-    for (const file of removed) {
-      yield* fileSystem.remove(path.join(at, file), { force: true }).pipe(Effect.ignore);
-    }
-    return result;
-  });
-
-  /** Where a checkout's own commits began: the last commit `head` shares with main. */
-  const checkoutBase = (wiki: WikiRecord, head: string) =>
-    runGit("checkoutBase", wiki.root, ["merge-base", head, mainRef(wiki)], {
-      allowExitCodes: [1],
-    }).pipe(Effect.map((result) => (result.exitCode === 0 ? result.stdout.trim() : head)));
-
   /** Whether `folder` is one of the wiki's worktrees, with the branch it has checked out. */
   const listedCheckout = Effect.fn("WikiService.listedCheckout")(function* (
     wiki: WikiRecord,
@@ -3083,23 +2594,6 @@ const make = Effect.gen(function* () {
       .realPath(folder)
       .pipe(Effect.orElseSucceed(() => path.resolve(folder)));
     return parseWorktreeList(listed.stdout).find((entry) => path.resolve(entry.path) === real);
-  });
-
-  /** The thread's checkout of the wiki a read or an agent's transform works in, if it has one. */
-  const threadCheckout = Effect.fn("WikiService.threadCheckout")(function* (
-    wiki: WikiRecord,
-    target: Pick<WikiReadTarget, "changeRequestId" | "threadId" | "threadCheckout">,
-  ) {
-    if (!target.threadCheckout || target.threadId === undefined) return null;
-    if (target.changeRequestId !== undefined) return null;
-    const folder = path.join(
-      config.stateDir,
-      THREAD_CHECKOUTS_FOLDER,
-      target.threadId,
-      wiki.wikiId,
-    );
-    if (!(yield* fileSystem.exists(folder).pipe(Effect.orElseSucceed(() => false)))) return null;
-    return (yield* listedCheckout(wiki, folder)) === undefined ? null : folder;
   });
 
   /** A checkout's files as they stand: its HEAD's snapshot with the unsaved edits over it. */
@@ -3156,7 +2650,7 @@ const make = Effect.gen(function* () {
   /** The folder a read works in on disk, or null to read a commit. */
   const diskFolder = Effect.fn("WikiService.diskFolder")(function* (
     wiki: WikiRecord,
-    target: Pick<WikiReadTarget, "changeRequestId" | "checkout" | "threadId" | "threadCheckout">,
+    target: Pick<WikiReadTarget, "changeRequestId" | "checkout">,
   ) {
     if (wiki.plain && target.changeRequestId !== undefined) return yield* withoutGit(wiki);
     if (target.checkout !== undefined) {
@@ -3168,8 +2662,7 @@ const make = Effect.gen(function* () {
       }
       return yield* checkoutFolder(wiki, target.checkout);
     }
-    if (wiki.plain) return wiki.root;
-    return yield* threadCheckout(wiki, target);
+    return wiki.plain ? wiki.root : null;
   });
 
   /** Other roots of the wiki's project inside `folder`: their files are theirs. */
@@ -3444,13 +2937,7 @@ const make = Effect.gen(function* () {
       input.wikiId,
       (wiki) =>
         Effect.gen(function* () {
-          const folder = yield* diskFolder(wiki, {
-            changeRequestId: input.changeRequestId,
-            checkout: input.checkout,
-            ...(author.threadId === null
-              ? {}
-              : { threadId: author.threadId, threadCheckout: true }),
-          });
+          const folder = yield* diskFolder(wiki, input);
           if (folder === null) return yield* transform(input, author);
           return yield* locked(
             wiki,
@@ -3556,388 +3043,31 @@ const make = Effect.gen(function* () {
     );
   });
 
-  /** The thread's checkout of the wiki, which the fallback file tools work in alone. */
-  const requireCheckout = Effect.fn("WikiService.requireCheckout")(function* (
-    wiki: WikiRecord,
-    threadId: ThreadId | null | undefined,
-  ) {
-    const folder =
-      threadId == null ? null : yield* threadCheckout(wiki, { threadId, threadCheckout: true });
-    if (folder === null) {
-      return yield* new WikiError({
-        reason: "not-found",
-        message: `Your thread has no checkout of this ${wikiTerms(wiki).singular}.`,
-      });
-    }
-    return folder;
-  });
-
-  const outsideCheckout = (file: string) =>
-    new WikiError({
-      reason: "invalid",
-      message: `${file} is not a path inside the wiki: give one from its root, as in area/Name.md.`,
-    });
-
-  /** Where `file`, a wiki path, sits in a checkout. A link on disk leading out of it is refused. */
-  const checkoutFile = Effect.fn("WikiService.checkoutFile")(function* (
-    folder: string,
-    file: string,
-  ) {
-    const at = path.join(folder, file);
-    const root = yield* fileSystem
-      .realPath(folder)
-      .pipe(Effect.mapError(ioError("Could not read the checkout.")));
-    let probe = at;
-    while (
-      probe !== folder &&
-      !(yield* fileSystem.exists(probe).pipe(Effect.orElseSucceed(() => false)))
-    ) {
-      probe = path.dirname(probe);
-    }
-    const real = yield* fileSystem.realPath(probe).pipe(Effect.orElseSucceed(() => probe));
-    if (real !== root && !real.startsWith(`${root}${path.sep}`)) {
-      return yield* outsideCheckout(file);
-    }
-    return at;
-  });
-
-  const checkoutRead: WikiService["Service"]["checkoutRead"] = (input) =>
-    withWiki(input.wikiId, (wiki) =>
-      Effect.gen(function* () {
-        if (!isWikiPath(input.path)) return yield* outsideCheckout(input.path);
-        if (!isWikiDocument(input.path)) {
-          return yield* new WikiError({
-            reason: "invalid",
-            message: `${input.path} is not a note, base or canvas.`,
-          });
-        }
-        const folder = yield* requireCheckout(wiki, input.threadId);
-        const text = yield* fileSystem.readFileString(yield* checkoutFile(folder, input.path)).pipe(
-          Effect.mapError(
-            (cause) =>
-              new WikiError({
-                reason: "not-found",
-                message: `${input.path} is not in the wiki.`,
-                cause,
-              }),
-          ),
-        );
-        const lines = text.split("\n");
-        if (lines.at(-1) === "") lines.pop();
-        const startLine = Math.max(1, input.startLine ?? 1);
-        const endLine = Math.min(lines.length, input.endLine ?? lines.length);
-        return {
-          path: input.path,
-          text:
-            startLine === 1 && endLine === lines.length
-              ? text
-              : lines.slice(startLine - 1, endLine).join("\n"),
-          startLine,
-          endLine,
-          totalLines: lines.length,
-        };
-      }),
-    );
-
-  const checkoutSearch: WikiService["Service"]["checkoutSearch"] = (input) =>
-    withWiki(input.wikiId, (wiki) =>
-      Effect.gen(function* () {
-        const folder = yield* requireCheckout(wiki, input.threadId);
-        const { snapshot } = yield* checkoutSnapshot(wiki, folder);
-        return searchFiles(snapshot.files, input.query);
-      }),
-    );
-
-  const checkoutWrite: WikiService["Service"]["checkoutWrite"] = (input, author) =>
-    withWiki(input.wikiId, (wiki) =>
-      Effect.gen(function* () {
-        const file = input.path;
-        const refuse = (message: string) => new WikiError({ reason: "invalid", message });
-        if (!isWikiPath(file)) return yield* outsideCheckout(file);
-        if (isCanvasFile(file)) {
-          return yield* refuse("A canvas changes through a canvas transform, never its JSON.");
-        }
-        if (!isWikiDocument(file)) return yield* refuse(`${file} is not a note (.md) or a base.`);
-        const replacing = input.oldText !== undefined || input.newText !== undefined;
-        const modes = [input.content !== undefined, replacing, input.delete === true];
-        if (modes.filter(Boolean).length !== 1) {
-          return yield* refuse("Give one of content, oldText with newText, or delete.");
-        }
-        if (replacing && (input.oldText === undefined || input.newText === undefined)) {
-          return yield* refuse("oldText and newText go together.");
-        }
-        if (input.oldText === "") return yield* refuse("oldText cannot be empty.");
-        const folder = yield* requireCheckout(wiki, author.threadId);
-        return yield* locked(
-          wiki,
-          withWorkspaceLease(
-            folder,
-            Effect.gen(function* () {
-              const at = yield* checkoutFile(folder, file);
-              const existing = Option.getOrUndefined(
-                yield* fileSystem.readFileString(at).pipe(Effect.option),
-              );
-              const missing = new WikiError({
-                reason: "not-found",
-                message: `${file} is not in the wiki.`,
-              });
-              if (input.delete === true) {
-                if (existing === undefined) return yield* missing;
-                yield* fileSystem.remove(at);
-                return { path: file, change: "deleted" as const };
-              }
-              let next = input.content;
-              if (next === undefined) {
-                const oldText = input.oldText ?? "";
-                if (existing === undefined) return yield* missing;
-                const first = existing.indexOf(oldText);
-                if (first === -1) return yield* refuse(`oldText is not in ${file}.`);
-                if (existing.indexOf(oldText, first + 1) !== -1) {
-                  return yield* refuse(
-                    `oldText is in ${file} more than once: include more of the text around it.`,
-                  );
-                }
-                next = `${existing.slice(0, first)}${input.newText ?? ""}${existing.slice(first + oldText.length)}`;
-              }
-              yield* fileSystem.makeDirectory(path.dirname(at), { recursive: true });
-              yield* fileSystem.writeFileString(at, next);
-              const check = documentBaseCheck(file, next);
-              const warnings = [...check.errors, ...check.warnings];
-              return {
-                path: file,
-                change: existing === undefined ? "created" : "updated",
-                ...(warnings.length ? { warnings } : {}),
-              } as const;
-            }).pipe(
-              Effect.mapError((cause) =>
-                isWikiError(cause)
-                  ? cause
-                  : ioError("Could not write the note into the checkout.")(cause),
-              ),
-            ),
-          ),
-        );
-      }),
-    );
-
-  const checkoutForThread: WikiService["Service"]["checkoutForThread"] = (input) =>
-    withWiki(input.wikiId, (wiki) =>
-      locked(
-        wiki,
-        Effect.gen(function* () {
-          const own = yield* threadChangeRequest(wiki, input.threadId);
-          const branch = own === undefined ? null : changeRequestBranch(own.record.changeRequestId);
-          const listed = yield* listedCheckout(wiki, input.folder);
-          const elsewhere = branch === null ? null : yield* checkoutHolding(wiki, branch);
-          if (elsewhere !== null && elsewhere !== listed?.path) return elsewhere;
-          const main = yield* mainTip(wiki);
-          if (listed === undefined) {
-            yield* runGit("pruneWorktrees", wiki.root, ["worktree", "prune"]);
-            yield* fileSystem
-              .makeDirectory(path.dirname(input.folder), { recursive: true })
-              .pipe(
-                Effect.mapError(
-                  (cause) =>
-                    new WikiError({ reason: "invalid", message: "No folder for it.", cause }),
-                ),
-              );
-            yield* runGit(
-              "addThreadCheckout",
-              wiki.root,
-              branch === null
-                ? ["worktree", "add", "--quiet", "--detach", input.folder, main]
-                : ["worktree", "add", "--quiet", input.folder, branch.slice("refs/heads/".length)],
-            );
-            return input.folder;
-          }
-          const current = listed.branch === null ? null : `refs/heads/${listed.branch}`;
-          if (current === branch && (branch !== null || listed.head === main)) return input.folder;
-          // Unsaved edits and commits stay where they are; the turn-end save lands them.
-          const since =
-            listed.branch === null && listed.head !== null
-              ? yield* checkoutBase(wiki, listed.head)
-              : undefined;
-          if (carriedNames(yield* checkoutEdits(input.folder, true, since)).length > 0)
-            return input.folder;
-          yield* withWorkspaceLease(
-            input.folder,
-            runGit(
-              "switchThreadCheckout",
-              input.folder,
-              branch === null
-                ? ["checkout", "--quiet", "--detach", main]
-                : ["checkout", "--quiet", branch.slice("refs/heads/".length)],
-            ),
-          );
-          return input.folder;
-        }),
-      ),
-    );
-
-  const saveThreadCheckout: WikiService["Service"]["saveThreadCheckout"] = (input, author) =>
-    withWiki(input.wikiId, (wiki) =>
-      locked(
-        wiki,
-        withWorkspaceLease(
-          input.folder,
-          Effect.gen(function* () {
-            const listed = yield* listedCheckout(wiki, input.folder);
-            if (listed === undefined) return null;
-            const from = yield* gitOut("worktreeHead", input.folder, ["rev-parse", "HEAD"]);
-            const own = yield* threadChangeRequest(wiki, input.threadId);
-            // Commits made on a detached checkout belong to no branch: they land in this amendment.
-            const since = listed.branch === null ? yield* checkoutBase(wiki, from) : from;
-            const target: Target =
-              own !== undefined
-                ? { kind: "existing", stored: own }
-                : {
-                    kind: "new",
-                    changeRequestId: WikiChangeRequestId.make(yield* newId),
-                    base: since,
-                    title: oneLine(input.title) || subjectOf(input.message) || "Wiki change",
-                    draft: false,
-                  };
-            return yield* landCheckoutEdits(
-              wiki,
-              input.folder,
-              from,
-              target,
-              author,
-              input.message,
-              true,
-              since === from ? undefined : since,
-            );
-          }),
-        ),
-      ),
-    );
-
-  const removeCheckout: WikiService["Service"]["removeCheckout"] = (input) =>
-    withWiki(input.wikiId, (wiki) =>
-      locked(
-        wiki,
-        runGit("removeThreadCheckout", wiki.root, [
-          "worktree",
-          "remove",
-          "--force",
-          input.folder,
-        ]).pipe(
-          Effect.catchIf(
-            (error) => error.reason === "git-failed",
-            () => runGit("pruneWorktrees", wiki.root, ["worktree", "prune"]),
-          ),
-          Effect.asVoid,
-        ),
-      ),
-    );
-
-  const merge: WikiService["Service"]["merge"] = (input) =>
-    withWiki(
-      input.wikiId,
-      (wiki) =>
-        locked(
-          wiki,
-          Effect.gen(function* () {
-            if (wiki.host !== null) {
-              return yield* new WikiError({
-                reason: "invalid",
-                message: `This merges on the host, through its ${wikiTerms(wiki).singular}.`,
-              });
-            }
-            if (isProjectFolder(wiki)) {
-              return yield* new WikiError({
-                reason: "invalid",
-                message: "A project's folder merges through its host, and this one has none.",
-              });
-            }
-            const stored = yield* loadChangeRequest(wiki, input.changeRequestId);
-            yield* requireOpen(stored);
-            if (stored.record.draft) {
-              return yield* new WikiError({
-                reason: "invalid",
-                message: `A draft doesn't merge. Make it a ${wikiTerms(wiki).singular} first.`,
-              });
-            }
-            const main = yield* mainTip(wiki);
-            if (yield* isAncestor(wiki.root, stored.head, main)) {
-              return yield* new WikiError({
-                reason: "invalid",
-                message: `Nothing to merge: main already has every amendment in this ${wikiTerms(wiki).singular}.`,
-              });
-            }
-            const { tree, conflicts } = yield* mergeIntoMain(wiki, main, stored.head);
-            if (tree === null) {
-              return yield* new WikiError({
-                reason: "conflict",
-                message: `Merging conflicts with main in ${conflicts.join(", ") || "some files"}. ${
-                  conflicts.some(isCanvasFile)
-                    ? settleInWorktree(wikiTerms(wiki).singular)
-                    : `Amend the ${wikiTerms(wiki).singular} to reconcile, then merge again.`
-                }`,
-              });
-            }
-            const now = yield* DateTime.now;
-            const env = identity(person.actor, now);
-            const commit = yield* commitTree(
-              wiki.root,
-              tree,
-              [main, stored.head],
-              `Merge ${wikiTerms(wiki).singular}: ${oneLine(stored.record.title)}\n\nWiki-Change-Request: ${stored.record.changeRequestId}\n`,
-              env,
-            );
-            yield* moveMain(wiki, main, commit);
-            const done = yield* recordChangeRequest(
-              wiki,
-              stored,
-              {
-                ...stored.record,
-                status: "merged",
-                mergedCommit: commit,
-                updatedAt: DateTime.formatIso(now),
-              },
-              "Merge change request",
-              env,
-            );
-            yield* publish("merged", wiki.wikiId, stored.record.changeRequestId);
-            yield* pushToMirror(wiki);
-            return { changeRequest: yield* view(wiki, done), commit } satisfies WikiMergeResult;
-          }),
-        ),
-      input.changeRequestId,
-    );
-
   const summary = (wiki: WikiRecord) =>
     (wiki.plain ? Effect.succeed([]) : readChangeRequests(wiki)).pipe(
       Effect.map(
         (all) => all.filter(({ record }) => record.status === "open" && !record.draft).length,
       ),
-      // A wiki whose folder went away still lists, so it can be removed.
+      // A folder whose repository can't be read still lists.
       Effect.orElseSucceed(() => 0),
-      Effect.map((openChangeRequests): WikiSummary => {
-        const folder = parseProjectRootId(wiki.wikiId);
-        return {
-          wikiId: wiki.wikiId,
-          name: wiki.name,
-          root: wiki.root,
-          mainBranch: wiki.mainBranch,
-          projectIds: wiki.projectIds,
-          mirror: wiki.mirror,
-          host: wiki.host,
-          mapBackgrounds: wiki.mapBackgrounds,
-          openChangeRequests,
-          createdAt: wiki.createdAt,
-          ...(folder === null ? {} : { projectId: folder.projectId, rootKey: folder.rootKey }),
-        };
-      }),
+      Effect.map((openChangeRequests): WikiSummary => ({
+        wikiId: wiki.wikiId,
+        name: wiki.name,
+        root: wiki.root,
+        mainBranch: wiki.mainBranch,
+        host: wiki.host,
+        mapBackgrounds: wiki.mapBackgrounds,
+        openChangeRequests,
+        createdAt: wiki.createdAt,
+        projectId: wiki.projectId,
+        rootKey: wiki.rootKey,
+      })),
     );
 
-  /** Each project's Git folders, then each registered wiki that is none of them. */
+  /** Every folder of every project that isn't archived. */
   const list: WikiService["Service"]["list"] = Effect.gen(function* () {
     const folders = yield* projectRootRecords;
-    const covered = new Set(folders.map((wiki) => wiki.root));
-    const { wikis: registered } = yield* loadRegistry;
-    const wikis = [...folders, ...registered.filter((wiki) => !covered.has(wiki.root))];
-    return { wikis: yield* Effect.forEach(wikis, summary, { concurrency: 4 }) };
+    return { wikis: yield* Effect.forEach(folders, summary, { concurrency: 4 }) };
   });
 
   /** When each file was last changed on the line ending at `commit`. */
@@ -4520,12 +3650,8 @@ const make = Effect.gen(function* () {
 
   const changeRequestsList: WikiService["Service"]["changeRequestsList"] = (input, viewer) =>
     requireGit.pipe(
-      Effect.andThen(
-        input.wikiId === undefined
-          ? Effect.map(loadRegistry, (registry) => registry.wikis)
-          : // A folder without Git has no change requests to list.
-            Effect.map(lookup(input.wikiId), (wiki) => (wiki.plain ? [] : [wiki])),
-      ),
+      // A folder without Git has no change requests to list.
+      Effect.andThen(Effect.map(lookup(input.wikiId), (wiki) => (wiki.plain ? [] : [wiki]))),
       Effect.flatMap((wikis) =>
         Effect.forEach(
           wikis,
@@ -4577,11 +3703,6 @@ const make = Effect.gen(function* () {
       input.wikiId,
       (wiki) =>
         Effect.gen(function* () {
-          const checkout = yield* threadCheckout(wiki, input);
-          const unsaved =
-            checkout === null
-              ? undefined
-              : carriedNames(yield* checkoutEdits(checkout, true)).toSorted();
           const stored =
             input.changeRequestId !== undefined
               ? yield* loadChangeRequest(wiki, input.changeRequestId)
@@ -4592,9 +3713,7 @@ const make = Effect.gen(function* () {
             const { singular } = wikiTerms(wiki);
             return yield* new WikiError({
               reason: "not-found",
-              message: unsaved?.length
-                ? `This thread has no open ${singular} on this wiki yet. The turn's end opens one with its unsaved files: ${unsaved.join(", ")}.`
-                : `This thread has no open ${singular} on this wiki.`,
+              message: `This thread has no open ${singular} on this wiki.`,
             });
           }
           const main = yield* mainTip(wiki);
@@ -4632,46 +3751,9 @@ const make = Effect.gen(function* () {
                 : yield* mergePreview(wiki, stored, main),
             errors: (yield* snapshotAt(wiki, stored.head)).index.errors,
             ...(warnings.length ? { warnings } : {}),
-            ...(unsaved === undefined ? {} : { unsaved }),
           } satisfies WikiChangeRequestDetail;
         }),
       input.changeRequestId,
-    );
-
-  const changeRequestsOpen: WikiService["Service"]["changeRequestsOpen"] = (input, author) =>
-    withWiki(input.wikiId, (wiki) =>
-      locked(
-        wiki,
-        Effect.gen(function* () {
-          const now = yield* DateTime.now;
-          const at = DateTime.formatIso(now);
-          const changeRequestId = WikiChangeRequestId.make(yield* newId);
-          const base = yield* mainTip(wiki);
-          const stored = yield* createChangeRequest(
-            wiki,
-            {
-              version: 1,
-              changeRequestId,
-              title: input.title,
-              status: "open",
-              draft: false,
-              branch: changeRequestBranch(changeRequestId),
-              base,
-              threadId: author.threadId,
-              createdBy: actorName(author),
-              createdAt: at,
-              updatedAt: at,
-              mergedCommit: null,
-              pullRequest: null,
-              pushedHead: null,
-            },
-            base,
-            identity(author.actor, now),
-          );
-          yield* publish("status", wiki.wikiId, changeRequestId);
-          return yield* view(wiki, stored);
-        }),
-      ),
     );
 
   const setChangeRequestStatus: WikiService["Service"]["setChangeRequestStatus"] = (input) =>
@@ -4714,321 +3796,11 @@ const make = Effect.gen(function* () {
       input.changeRequestId,
     );
 
-  const addRecord = Effect.fn("WikiService.addRecord")(function* (
-    root: string,
-    name: string,
-    mainBranch: string,
-  ) {
-    const wikiId = WikiId.make(yield* newId);
-    const createdAt = yield* nowIso;
-    const record: WikiRecord = {
-      wikiId,
-      name,
-      root,
-      mainBranch,
-      projectIds: [],
-      projectLinkedAt: {},
-      mirror: null,
-      host: null,
-      mapBackgrounds: [],
-      createdAt,
-    };
-    yield* updateRegistry((registry) =>
-      registry.wikis.some((wiki) => wiki.root === root)
-        ? Effect.fail(
-            new WikiError({ reason: "invalid", message: "This folder is already a wiki." }),
-          )
-        : Effect.succeed([{ ...registry, wikis: [...registry.wikis, record] }, record] as const),
-    );
-    yield* publish("registered", wikiId, null);
-    return yield* summary(record);
-  });
-
-  const register: WikiService["Service"]["register"] = (input) =>
-    requireGit.pipe(
-      Effect.andThen(
-        Effect.gen(function* () {
-          const root = yield* fileSystem.realPath(input.root).pipe(
-            Effect.mapError(
-              (cause) =>
-                new WikiError({
-                  reason: "not-found",
-                  message: "This folder does not exist.",
-                  cause,
-                }),
-            ),
-          );
-          const notRepository = new WikiError({
-            reason: "invalid",
-            message: "Choose the top-level folder of a git repository.",
-          });
-          const topLevel = yield* runGit("topLevel", root, ["rev-parse", "--show-toplevel"], {
-            allowExitCodes: [128],
-          });
-          if (topLevel.exitCode !== 0) return yield* notRepository;
-          const top = yield* fileSystem
-            .realPath(topLevel.stdout.trim())
-            .pipe(Effect.orElseSucceed(() => ""));
-          if (top !== root) return yield* notRepository;
-          const head = yield* runGit("headBranch", root, ["symbolic-ref", "-q", "HEAD"], {
-            allowExitCodes: [1],
-          });
-          const ref = head.stdout.trim();
-          if (head.exitCode !== 0 || !ref.startsWith("refs/heads/")) {
-            return yield* new WikiError({
-              reason: "invalid",
-              message: "Check out the wiki's main branch in this folder, then add it.",
-            });
-          }
-          const mainBranch = ref.slice("refs/heads/".length);
-          if ((yield* revParse(root, ref)) === undefined) {
-            return yield* new WikiError({
-              reason: "invalid",
-              message: "The repository needs at least one commit to become a wiki.",
-            });
-          }
-          if ((yield* loadRegistry).wikis.some((wiki) => wiki.root === root)) {
-            return yield* new WikiError({
-              reason: "invalid",
-              message: "This folder is already a wiki.",
-            });
-          }
-          return yield* addRecord(root, input.name ?? path.basename(root), mainBranch);
-        }),
-      ),
-    );
-
-  const create: WikiService["Service"]["create"] = (input) =>
-    requireGit.pipe(
-      Effect.andThen(
-        Effect.gen(function* () {
-          const parent = path.join(config.baseDir, "wikis");
-          const folderError = (cause: unknown) =>
-            new WikiError({
-              reason: "invalid",
-              message: "Could not create the wiki's folder.",
-              cause,
-            });
-          yield* fileSystem
-            .makeDirectory(parent, { recursive: true })
-            .pipe(Effect.mapError(folderError));
-          const slug = newProjectFolderName(input.name);
-          let folder: string | undefined;
-          // Creating the folder without `recursive` is the claim, so two creates never share one.
-          for (let attempt = 1; attempt <= 100 && folder === undefined; attempt++) {
-            const candidate = path.join(parent, attempt === 1 ? slug : `${slug}-${attempt}`);
-            const claimed = yield* fileSystem.makeDirectory(candidate).pipe(
-              Effect.as(true),
-              Effect.catchIf(
-                (error) => error.reason._tag === "AlreadyExists",
-                () => Effect.succeed(false),
-              ),
-              Effect.mapError(folderError),
-            );
-            if (claimed) folder = candidate;
-          }
-          if (folder === undefined) return yield* folderError("Every folder name is taken.");
-          const root = folder;
-          const scaffold = Effect.gen(function* () {
-            const configured = yield* runGit(
-              "defaultBranch",
-              root,
-              ["config", "--get", "init.defaultBranch"],
-              {
-                allowExitCodes: [1],
-              },
-            );
-            const branch = configured.stdout.trim() || "main";
-            yield* runGit("init", root, ["init", "--quiet", `--initial-branch=${branch}`]);
-            yield* fileSystem
-              .writeFileString(path.join(root, "README.md"), `# ${input.name}\n`)
-              .pipe(Effect.mapError(folderError));
-            yield* runGit("add", root, ["add", "--force", "--", "README.md"]);
-            const tree = yield* gitOut("writeTree", root, ["write-tree"]);
-            const commit = yield* commitTree(
-              root,
-              tree,
-              [],
-              "Create wiki",
-              identity("Astrolabe", yield* DateTime.now),
-            );
-            yield* runGit("createMain", root, ["update-ref", `refs/heads/${branch}`, commit, ""]);
-            return {
-              root: yield* fileSystem.realPath(root).pipe(Effect.mapError(folderError)),
-              branch,
-            };
-          });
-          const made = yield* scaffold.pipe(
-            Effect.tapError(() => fileSystem.remove(root, { recursive: true }).pipe(Effect.ignore)),
-          );
-          return yield* addRecord(made.root, input.name, made.branch);
-        }),
-      ),
-    );
-
-  const remove: WikiService["Service"]["remove"] = (input) =>
-    withRegisteredWiki(input.wikiId, (wiki) =>
-      updateRegistry((registry) =>
-        Effect.succeed([
-          { ...registry, wikis: registry.wikis.filter((entry) => entry.wikiId !== wiki.wikiId) },
-          undefined,
-        ] as const),
-      ).pipe(Effect.andThen(publish("removed", wiki.wikiId, null))),
-    );
-
-  const setMirror: WikiService["Service"]["setMirror"] = (input) =>
-    withRegisteredWiki(input.wikiId, (wiki) =>
-      Effect.gen(function* () {
-        if (wiki.host !== null && input.url !== null) {
-          return yield* new WikiError({
-            reason: "invalid",
-            message: "A host wiki has no mirror: the host already holds its main line.",
-          });
-        }
-        // A URL that reads as an option would reach git as one.
-        if (input.url !== null && input.url.startsWith("-")) {
-          return yield* new WikiError({
-            reason: "invalid",
-            message: "This is not a git remote URL.",
-          });
-        }
-        const mirror =
-          input.url === null
-            ? null
-            : wiki.mirror?.url === input.url
-              ? wiki.mirror
-              : {
-                  url: input.url,
-                  lastPushedAt: null,
-                  lastPushedCommit: null,
-                  lastError: null,
-                  overwroteRemoteAt: null,
-                };
-        const next = yield* locked(wiki, replaceWiki({ ...wiki, mirror }));
-        yield* publish("mirror", wiki.wikiId, null);
-        return yield* summary(next);
-      }),
-    );
-
-  const setMapBackgrounds: WikiService["Service"]["setMapBackgrounds"] = (input) =>
-    withAnyWiki(input.wikiId, (wiki) =>
-      Effect.gen(function* () {
-        const names = new Set(input.backgrounds.map(({ name }) => name.toLowerCase()));
-        if (names.size !== input.backgrounds.length) {
-          return yield* new WikiError({
-            reason: "invalid",
-            message: "Two map backgrounds can't share a name.",
-          });
-        }
-        const addresses = input.backgrounds.flatMap(({ lightTiles, darkTiles }) =>
-          darkTiles === null ? [lightTiles] : [lightTiles, darkTiles],
-        );
-        if (addresses.some((address) => !/^https?:\/\//i.test(address))) {
-          return yield* new WikiError({
-            reason: "invalid",
-            message: "A map background's address starts with http:// or https://.",
-          });
-        }
-        // A project's folder draws on the server's backgrounds, which every folder shares.
-        const next = isProjectFolder(wiki)
-          ? yield* serverSettings.updateSettings({ wikiMapBackgrounds: input.backgrounds }).pipe(
-              Effect.as({ ...wiki, mapBackgrounds: input.backgrounds }),
-              Effect.mapError(
-                (cause) =>
-                  new WikiError({
-                    reason: "invalid",
-                    message: "The map backgrounds could not be saved.",
-                    cause,
-                  }),
-              ),
-            )
-          : yield* locked(wiki, replaceWiki({ ...wiki, mapBackgrounds: input.backgrounds }));
-        // A kind older clients decode; every kind only tells them to read again.
-        yield* publish("mirror", wiki.wikiId, null);
-        return yield* summary(next);
-      }),
-    );
-
-  const setProjectLink: WikiService["Service"]["setProjectLink"] = (input) =>
-    withRegisteredWiki(input.wikiId, (wiki) =>
-      locked(
-        wiki,
-        updateRegistry((registry) =>
-          Effect.map(nowIso, (at) => {
-            const current = registry.wikis.find((entry) => entry.wikiId === wiki.wikiId) ?? wiki;
-            const others = current.projectIds.filter((id) => id !== input.projectId);
-            const otherLinkTimes = Record.remove(current.projectLinkedAt, input.projectId);
-            const next = {
-              ...current,
-              projectIds: input.linked ? [...others, input.projectId] : others,
-              projectLinkedAt: !input.linked
-                ? otherLinkTimes
-                : current.projectIds.includes(input.projectId)
-                  ? current.projectLinkedAt
-                  : { ...otherLinkTimes, [input.projectId]: at },
-            };
-            return [
-              {
-                ...registry,
-                wikis: registry.wikis.map((entry) => (entry.wikiId === next.wikiId ? next : entry)),
-              },
-              next,
-            ] as const;
-          }),
-        ),
-      ).pipe(
-        Effect.tap(() => publish("linked", wiki.wikiId, null)),
-        Effect.flatMap(summary),
-      ),
-    );
-
-  const linkedTo: WikiService["Service"]["linkedTo"] = (projectId) =>
-    Effect.map(loadRegistry, (registry) =>
-      registry.wikis
-        .filter((wiki) => wiki.projectIds.includes(projectId))
-        .map((wiki) => wiki.wikiId),
-    );
-
-  const linkedWiki: WikiService["Service"]["linkedWiki"] = Effect.fn("WikiService.linkedWiki")(
-    function* (projectId, reference) {
-      const { wikis } = yield* loadRegistry;
-      const names = (wiki: WikiRecord) =>
-        wiki.wikiId === reference || wiki.name.toLowerCase() === reference.toLowerCase();
-      const linked = wikis.filter((wiki) => wiki.projectIds.includes(projectId));
-      const byId = linked.find((wiki) => wiki.wikiId === reference);
-      if (byId !== undefined) return byId.wikiId;
-      const found = linked.filter(names);
-      if (found.length === 1) return found[0]!.wikiId;
-      const listed = linked.map((wiki) => `"${wiki.name}"`).join(", ");
-      return yield* new WikiError({
-        reason: found.length > 1 ? "invalid" : "not-found",
-        message: `${
-          found.length > 1
-            ? "Several wikis linked to this project have this name; use the wiki's id."
-            : wikis.some(names)
-              ? "That wiki is not linked to this project."
-              : "No wiki has this id or name."
-        } ${linked.length === 0 ? "This project has no linked wikis." : `Its linked wikis: ${listed}.`}`,
-      });
-    },
-  );
-
-  const pushMirror: WikiService["Service"]["pushMirror"] = (input) =>
-    withWiki(input.wikiId, (wiki) =>
-      wiki.mirror === null
-        ? Effect.fail(new WikiError({ reason: "invalid", message: "This wiki has no mirror." }))
-        : locked(wiki, pushToMirror(wiki)).pipe(Effect.flatMap(summary)),
-    );
-
   const root: WikiService["Service"]["root"] = Effect.fn("WikiService.root")(function* (wikiId) {
     return (yield* lookup(wikiId)).root;
   });
 
   const get: WikiService["Service"]["get"] = (wikiId) => withAnyWiki(wikiId, summary);
-
-  const hosted: WikiService["Service"]["hosted"] = Effect.map(loadRegistry, (registry) =>
-    registry.wikis.filter((wiki) => wiki.host !== null).map((wiki) => wiki.wikiId),
-  );
 
   const requireHost = (wiki: WikiRecord) =>
     wiki.host === null
@@ -5036,97 +3808,6 @@ const make = Effect.gen(function* () {
           new WikiError({ reason: "invalid", message: "This wiki is not connected to a host." }),
         )
       : Effect.succeed(wiki.host);
-
-  /** Re-reads the wiki inside its lock, since a sync may have waited behind a disconnect. */
-  const replaceHost = (wiki: WikiRecord, update: (host: WikiHostStatus) => WikiHostStatus) =>
-    updateRegistry((registry) => {
-      const current = registry.wikis.find((entry) => entry.wikiId === wiki.wikiId);
-      if (current === undefined || current.host === null) {
-        return Effect.succeed([registry, undefined] as const);
-      }
-      const next = { ...current, host: update(current.host) };
-      return Effect.succeed([
-        {
-          ...registry,
-          wikis: registry.wikis.map((entry) => (entry.wikiId === next.wikiId ? next : entry)),
-        },
-        undefined,
-      ] as const);
-    }).pipe(Effect.andThen(publish("mirror", wiki.wikiId, null)));
-
-  const setHost: WikiService["Service"]["setHost"] = (wikiId, host) =>
-    withRegisteredWiki(wikiId, (wiki) =>
-      Effect.gen(function* () {
-        if (host !== null) {
-          // A name that reads as an option would reach git as one.
-          const known =
-            !host.remote.startsWith("-") &&
-            (yield* runGit("remoteUrl", wiki.root, ["remote", "get-url", host.remote], {
-              allowExitCodes: [2, 128],
-            })).exitCode === 0;
-          if (!known) {
-            return yield* new WikiError({
-              reason: "invalid",
-              message: `The wiki's folder has no git remote named ${host.remote}.`,
-            });
-          }
-        }
-        const next = yield* locked(
-          wiki,
-          Effect.gen(function* () {
-            // Links name pull requests on this host; a later host would read them as its own.
-            if (host === null) {
-              const now = yield* DateTime.now;
-              for (const stored of yield* readChangeRequests(wiki)) {
-                if (stored.record.pullRequest === null || stored.record.status === "merged") {
-                  continue;
-                }
-                yield* recordChangeRequest(
-                  wiki,
-                  stored,
-                  { ...stored.record, pullRequest: null, pushedHead: null },
-                  "Disconnect from the host",
-                  identity(person.actor, now),
-                );
-              }
-            }
-            return yield* replaceWiki({
-              ...wiki,
-              mirror: host === null ? wiki.mirror : null,
-              host:
-                host === null
-                  ? null
-                  : {
-                      ...host,
-                      lastSyncedAt: null,
-                      lastSyncedCommit: null,
-                      relation: null,
-                      lastError: null,
-                    },
-            });
-          }),
-        );
-        yield* publish("mirror", wiki.wikiId, null);
-        return yield* summary(next);
-      }),
-    );
-
-  const recordHostError: WikiService["Service"]["recordHostError"] = (wikiId, message) =>
-    withWiki(wikiId, (wiki) =>
-      wiki.host === null || wiki.host.lastError === message
-        ? Effect.void
-        : replaceHost(wiki, (host) => ({ ...host, lastError: message })),
-    );
-
-  const recordChangeRequestIssue: WikiService["Service"]["recordChangeRequestIssue"] = (
-    wikiId,
-    message,
-  ) =>
-    withWiki(wikiId, (wiki) =>
-      wiki.host === null || (wiki.host.changeRequestIssue ?? null) === message
-        ? Effect.void
-        : replaceHost(wiki, (host) => ({ ...host, changeRequestIssue: message })),
-    );
 
   /** What the host holds under main and `cr/`, read without fetching. */
   const hostRefs = Effect.fn("WikiService.hostRefs")(function* (wiki: WikiRecord, remote: string) {
@@ -5220,42 +3901,10 @@ const make = Effect.gen(function* () {
       Effect.gen(function* () {
         const host = yield* requireHost(wiki);
         const remote = yield* fetchHost(wiki, host.remote);
-        return yield* locked(
+        yield* locked(
           wiki,
           Effect.gen(function* () {
-            const local = yield* mainTip(wiki);
-            const remoteMain = remote.get(mainRef(wiki));
-            let main = local;
-            let relation: WikiHostRelation = "ahead";
-            let busy: string | null = null;
-            if (remoteMain === local) {
-              relation = "up-to-date";
-            } else if (remoteMain !== undefined) {
-              if (yield* isAncestor(wiki.root, local, remoteMain)) {
-                // A project's folder is the person's checkout: catching it up is theirs to do.
-                if (isProjectFolder(wiki)) {
-                  relation = "behind";
-                } else {
-                  // The folder's unsaved edits hold main back until they are dealt with.
-                  busy = yield* moveMain(wiki, local, remoteMain, "sync").pipe(
-                    Effect.as(null),
-                    Effect.catchIf(
-                      (error) => error.reason === "checkout-busy",
-                      (error) => Effect.succeed(error.message),
-                    ),
-                  );
-                  if (busy === null) {
-                    main = remoteMain;
-                    relation = "up-to-date";
-                    yield* publish("main-moved", wiki.wikiId, null);
-                  } else {
-                    relation = "behind";
-                  }
-                }
-              } else if (!(yield* isAncestor(wiki.root, remoteMain, local))) {
-                relation = "diverged";
-              }
-            }
+            const main = yield* mainTip(wiki);
             for (const stored of yield* readChangeRequests(wiki)) {
               const remoteHead = remote.get(changeRequestBranch(stored.record.changeRequestId));
               if (stored.record.status === "open" && remoteHead !== undefined) {
@@ -5269,29 +3918,7 @@ const make = Effect.gen(function* () {
                 );
               }
             }
-            const at = yield* nowIso;
-            yield* replaceHost(wiki, (current) => ({
-              ...current,
-              lastSyncedAt: at,
-              lastSyncedCommit: remoteMain ?? null,
-              relation,
-              lastError: busy,
-            }));
-            return relation;
           }),
-        );
-      }),
-    );
-
-  const pushMainToHost: WikiService["Service"]["pushMainToHost"] = (wikiId) =>
-    withWiki(wikiId, (wiki) =>
-      Effect.gen(function* () {
-        const host = yield* requireHost(wiki);
-        yield* runGit(
-          "pushMainToHost",
-          wiki.root,
-          ["push", "--no-verify", host.remote, `${mainRef(wiki)}:${mainRef(wiki)}`],
-          { timeoutMs: REMOTE_TIMEOUT_MS },
         );
       }),
     );
@@ -5481,64 +4108,21 @@ const make = Effect.gen(function* () {
       input.changeRequestId,
     );
 
-  const recordHostMerge: WikiService["Service"]["recordHostMerge"] = (input) =>
-    withWiki(
-      input.wikiId,
-      (wiki) =>
-        locked(
-          wiki,
-          Effect.gen(function* () {
-            const stored = yield* loadChangeRequest(wiki, input.changeRequestId);
-            if (stored.record.status === "merged") return yield* view(wiki, stored);
-            const now = yield* DateTime.now;
-            const next = yield* recordChangeRequest(
-              wiki,
-              stored,
-              {
-                ...stored.record,
-                status: "merged",
-                // The host's main: unsaved edits here can hold this folder's back.
-                mergedCommit: wiki.host?.lastSyncedCommit ?? (yield* mainTip(wiki)),
-                updatedAt: DateTime.formatIso(now),
-              },
-              "Merge change request",
-              identity(person.actor, now),
-            );
-            yield* publish("merged", wiki.wikiId, stored.record.changeRequestId);
-            return yield* view(wiki, next);
-          }),
-        ),
-      input.changeRequestId,
-    );
-
   return WikiService.of({
     list,
     root,
     get,
-    retireRegistry,
-    hosted,
-    setHost,
+    recordMigration,
     syncFromHost,
-    recordHostError,
-    recordChangeRequestIssue,
-    pushMainToHost,
     pushChangeRequest,
     adoptHostBranch,
     changeRequest,
     reconcileChangeRequest,
     recordPullRequest,
-    recordHostMerge,
     subscribe: Stream.fromPubSub(events),
-    register,
     useCodeFacts: Effect.fn("WikiService.useCodeFacts")(function* (source) {
       yield* Ref.set(codeFacts, source);
     }),
-    create,
-    remove,
-    setMirror,
-    setMapBackgrounds,
-    setProjectLink,
-    pushMirror,
     index,
     docPaths,
     readNote,
@@ -5550,28 +4134,17 @@ const make = Effect.gen(function* () {
     links,
     changeRequestsList,
     changeRequestsGet,
-    changeRequestsOpen,
     amend,
     transform,
     transformCheckout,
     projectIndex,
     projectRename,
-    checkoutRead,
-    checkoutSearch,
-    checkoutWrite,
     autosave,
     listFiles,
     draftPromote,
     draftMove,
     move,
     revertAmendment,
-    saveWorktree,
-    linkedTo,
-    linkedWiki,
-    checkoutForThread,
-    saveThreadCheckout,
-    removeCheckout,
-    merge,
     setChangeRequestStatus,
   });
 });

@@ -131,13 +131,11 @@ Astrolabe's own feature modules rarely conflict. These upstream files carry its 
   one past the larger of the two.
 - `apps/server/src/orchestration-v2/Orchestrator.ts`: Astrolabe's canvas and edited-file deciders
   live in `AstrolabeDeciders.ts`; only the wiring stays in the orchestrator.
-- `apps/server/src/mcp/toolkits/{canvas,changeGroups,code,wiki}/tools.ts`: tools whose handlers act
+- `apps/server/src/mcp/toolkits/{canvas,changeGroups,code,projectDocs}/tools.ts`: tools whose handlers act
   as the calling thread (`readsAsCaller`, `actsAsCaller`) must carry
   `McpSchema.EnabledWhen: hiddenFromOutsideClients`, or `McpToolAccess.toLayer` dies at startup.
 - `apps/server/src/mcp/toolkits/toolSearch/tools.ts`: the description names Astrolabe's tool
   prefixes so a search for one stays under the result cap.
-- `apps/server/src/mcp/toolkits/pullRequests/handlers.ts`: `pull_request_merge` and
-  `pull_request_update` refuse a host wiki's change request, which merges through the wiki.
 - `packages/client-runtime/src/relay/mercurianAccountSource.ts`: the cloud account service waits
   for a `client` with an id before it trusts a sign-out (Clerk's offline guard), so the Mercurian
   source sends one whenever its session is loaded.

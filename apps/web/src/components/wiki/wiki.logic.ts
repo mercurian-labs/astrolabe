@@ -55,8 +55,6 @@ export {
   changeRequestProblems,
   describeIndexError,
   describeWikiFailure,
-  summarizeMirror,
-  summarizeHost,
   hasUnpublishedWork,
   isWikiConflict,
   wikiPullRequestHost,
@@ -64,7 +62,6 @@ export {
   isTurnRunning,
   latestAmendmentFor,
   authorColor,
-  type MirrorTone,
   wikiMergeMethod,
   wikiTerms,
 } from "@t3tools/client-runtime/wikiLogic";

@@ -16,7 +16,6 @@ import {
 import {
   AuthFilesystemWriteScope,
   projectRootId,
-  WikiId,
   type EnvironmentId,
   type ProjectId,
   type ProjectRootCheckout,
@@ -63,8 +62,7 @@ type FileTab = Extract<CheckedOutRepositoryTab, { kind: "file" }>;
 // The board brings its own machinery; a note or base never loads it.
 const WikiCanvasPage = lazy(() => import("../wiki/WikiCanvasView"));
 
-const rootWikiId = (projectId: ProjectId, key: RootKey) =>
-  WikiId.make(projectRootId(projectId, key));
+const rootWikiId = (projectId: ProjectId, key: RootKey) => projectRootId(projectId, key);
 
 /** The worktrees a root's checkouts are among: the project's own for its folder. */
 const rootWorktrees = (

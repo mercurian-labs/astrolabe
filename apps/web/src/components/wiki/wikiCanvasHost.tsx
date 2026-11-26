@@ -17,7 +17,12 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import type { WikiSaveOutcome } from "@t3tools/client-runtime/wikiAutosave";
 import { describeWikiFailure, wikiSaveFailure } from "@t3tools/client-runtime/wikiLogic";
-import type { EnvironmentId, WikiChangeRequestId, WikiId, WikiTransform } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  WikiChangeRequestId,
+  ProjectRootId,
+  WikiTransform,
+} from "@t3tools/contracts";
 import type { WikiLinkLanding } from "@mercurian/wiki-editor/link-tools";
 import { lazy, Suspense, useState } from "react";
 
@@ -88,7 +93,7 @@ export function WikiAsset({
   asset,
 }: {
   readonly environmentId: EnvironmentId;
-  readonly wikiId: WikiId;
+  readonly wikiId: ProjectRootId;
   readonly commit: string;
   readonly checkout?: string | undefined;
   readonly board: string;
@@ -123,7 +128,7 @@ const NOTHING_CHANGED = "This amendment changes nothing.";
  * Astrolabe: a board's writes into a folder on disk, uncommitted: canvas-aware transforms through
  * the wiki, a note's whole text as a file.
  */
-export function useCanvasDiskWrites(environmentId: EnvironmentId, wikiId: WikiId) {
+export function useCanvasDiskWrites(environmentId: EnvironmentId, wikiId: ProjectRootId) {
   const runTransform = useAtomCommand(wikiEnvironment.transform, { reportFailure: false });
   const runWrite = useAtomCommand(projectEnvironment.writeFile, { reportFailure: false });
   const outcome = (result: AtomCommandResult<unknown, unknown>): WikiSaveOutcome => {
@@ -194,7 +199,7 @@ export function useWikiCanvasHost({
   projectLinks,
 }: {
   readonly environmentId: EnvironmentId;
-  readonly wikiId: WikiId;
+  readonly wikiId: ProjectRootId;
   readonly checkout?: string | undefined;
   readonly projectLinks?: CanvasProjectLinks | undefined;
   /** The board's own file, which its text cards' links are written in. */

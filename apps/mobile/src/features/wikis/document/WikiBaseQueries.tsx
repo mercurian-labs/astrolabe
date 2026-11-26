@@ -4,7 +4,12 @@ import {
   type WikiEditorEmbeddedFile,
   type WikiEditorResolvedLink,
 } from "@mercurian/wiki-editor/protocol";
-import type { EnvironmentId, WikiChangeRequestId, WikiId, WikiNoteInput } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  WikiChangeRequestId,
+  ProjectRootId,
+  WikiNoteInput,
+} from "@t3tools/contracts";
 import { useEffect } from "react";
 
 import { useEnvironmentQuery } from "../../../state/query";
@@ -20,7 +25,7 @@ export interface WikiBaseAnswer {
 
 interface Scope {
   readonly environmentId: EnvironmentId;
-  readonly wikiId: WikiId;
+  readonly wikiId: ProjectRootId;
   readonly changeRequestId: WikiChangeRequestId | undefined;
   /** The folder the notes are read in on disk, when the document is. */
   readonly checkout: string | null;
@@ -124,7 +129,7 @@ function WikiFileRead({
 interface WikiFileReadsProps {
   readonly paths: ReadonlyArray<string>;
   readonly environmentId: EnvironmentId;
-  readonly wikiId: WikiId;
+  readonly wikiId: ProjectRootId;
   readonly changeRequestId: WikiChangeRequestId | undefined;
   /** The file the embeds are written in. */
   readonly from: string;

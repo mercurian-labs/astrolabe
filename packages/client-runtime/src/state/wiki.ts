@@ -3,7 +3,7 @@ import {
   type EnvironmentId,
   type WikiChangeRequest,
   type WikiEvent,
-  type WikiId,
+  type ProjectRootId,
   type WikiIndexResult,
   type WikiSummary,
 } from "@t3tools/contracts";
@@ -48,14 +48,14 @@ export function createWikiEnvironmentAtoms<R, E>(
 
   /** The latest change to one wiki. Changes to other wikis leave it, and its readers, alone. */
   const wikiChangeByKey = Atom.family((key: string) => {
-    const [environmentId, wikiId] = JSON.parse(key) as [EnvironmentId, WikiId];
+    const [environmentId, wikiId] = JSON.parse(key) as [EnvironmentId, ProjectRootId];
     return Atom.make((get): WikiEvent | null => {
       const event = get(latestChange(environmentId));
       if (event !== null && event.wikiId === wikiId) return event;
       return Option.getOrNull(get.self<WikiEvent | null>()) ?? null;
     }).pipe(Atom.withLabel(`environment-data:wiki:change:${key}`));
   });
-  const wikiChange = (environmentId: EnvironmentId, wikiId: WikiId) =>
+  const wikiChange = (environmentId: EnvironmentId, wikiId: ProjectRootId) =>
     wikiChangeByKey(JSON.stringify([environmentId, wikiId]));
 
   const list = createEnvironmentRpcQueryAtomFamily(runtime, {
@@ -71,10 +71,7 @@ export function createWikiEnvironmentAtoms<R, E>(
   const changeRequests = createEnvironmentRpcQueryAtomFamily(runtime, {
     label: "environment-data:wiki:change-requests",
     tag: WS_METHODS.wikiChangeRequestsList,
-    refreshTrigger: ({ environmentId, input }) =>
-      input.wikiId === undefined
-        ? latestChange(environmentId)
-        : wikiChange(environmentId, input.wikiId),
+    refreshTrigger: ({ environmentId, input }) => wikiChange(environmentId, input.wikiId),
   });
 
   /**
@@ -139,26 +136,6 @@ export function createWikiEnvironmentAtoms<R, E>(
       tag: WS_METHODS.wikiChangeRequestsGet,
       refreshTrigger: ({ environmentId, input }) => wikiChange(environmentId, input.wikiId),
     }),
-    register: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:wiki:register",
-      tag: WS_METHODS.wikiRegister,
-    }),
-    create: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:wiki:create",
-      tag: WS_METHODS.wikiCreate,
-    }),
-    remove: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:wiki:remove",
-      tag: WS_METHODS.wikiRemove,
-    }),
-    openChangeRequest: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:wiki:change-request:open",
-      tag: WS_METHODS.wikiChangeRequestsOpen,
-    }),
-    amend: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:wiki:amend",
-      tag: WS_METHODS.wikiAmend,
-    }),
     transform: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:wiki:transform",
       tag: WS_METHODS.wikiTransform,
@@ -175,10 +152,6 @@ export function createWikiEnvironmentAtoms<R, E>(
       label: "environment-data:wiki:draft:move",
       tag: WS_METHODS.wikiDraftMove,
     }),
-    move: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:wiki:move",
-      tag: WS_METHODS.wikiMove,
-    }),
     keepCanvas: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:wiki:keep-canvas",
       tag: WS_METHODS.wikiKeepCanvas,
@@ -187,45 +160,9 @@ export function createWikiEnvironmentAtoms<R, E>(
       label: "environment-data:wiki:revert-amendment",
       tag: WS_METHODS.wikiRevertAmendment,
     }),
-    saveWorktree: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:wiki:save-worktree",
-      tag: WS_METHODS.wikiSaveWorktree,
-    }),
-    merge: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:wiki:merge",
-      tag: WS_METHODS.wikiMerge,
-    }),
     setChangeRequestStatus: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:wiki:change-request:set-status",
       tag: WS_METHODS.wikiSetChangeRequestStatus,
-    }),
-    setMirror: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:wiki:mirror:set",
-      tag: WS_METHODS.wikiSetMirror,
-    }),
-    setMapBackgrounds: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:wiki:map-backgrounds:set",
-      tag: WS_METHODS.wikiSetMapBackgrounds,
-    }),
-    setProjectLink: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:wiki:project-link:set",
-      tag: WS_METHODS.wikiSetProjectLink,
-    }),
-    pushMirror: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:wiki:mirror:push",
-      tag: WS_METHODS.wikiPushMirror,
-    }),
-    connectHost: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:wiki:host:connect",
-      tag: WS_METHODS.wikiConnectHost,
-    }),
-    disconnectHost: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:wiki:host:disconnect",
-      tag: WS_METHODS.wikiDisconnectHost,
-    }),
-    syncHost: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:wiki:host:sync",
-      tag: WS_METHODS.wikiSyncHost,
     }),
     publishChangeRequest: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:wiki:change-request:publish",

@@ -5,7 +5,7 @@ import type {
   WikiAmendmentSummary,
   WikiChangeRequest,
   WikiChangeRequestId,
-  WikiId,
+  ProjectRootId,
   WikiSummary,
 } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -352,7 +352,7 @@ function AmendmentRow({
   canRevert,
 }: {
   readonly environmentId: EnvironmentId;
-  readonly wikiId: WikiId;
+  readonly wikiId: ProjectRootId;
   readonly changeRequestId: WikiChangeRequestId;
   readonly amendment: WikiAmendmentSummary;
   readonly canRevert: boolean;

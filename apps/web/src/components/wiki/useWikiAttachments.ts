@@ -1,6 +1,6 @@
 import { attachmentPath, pastedFileName, type WikiPlacement } from "@mercurian/wiki/placement";
 import { linkFiles, shortestLink } from "@mercurian/wiki/resolve-link";
-import type { EnvironmentId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
+import type { EnvironmentId, WikiChangeRequestId, ProjectRootId } from "@t3tools/contracts";
 
 import { useStableCallback } from "~/hooks/useStableCallback";
 import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
@@ -25,7 +25,7 @@ const arrivingName = (file: File, arrival: WikiFileArrival, at: Date) =>
 /** Lands attachments of `source` where the wiki's settings put them. */
 export function useWikiAttachments(input: {
   readonly environmentId: EnvironmentId;
-  readonly wikiId: WikiId;
+  readonly wikiId: ProjectRootId;
   /** What's read and written: the change request edits land in, if one's named. */
   readonly savesTo: WikiChangeRequestId | undefined;
   /** Astrolabe: a folder on disk the attachment is written into instead, uncommitted. */

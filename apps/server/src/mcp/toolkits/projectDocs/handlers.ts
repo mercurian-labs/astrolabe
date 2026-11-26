@@ -6,7 +6,6 @@ import {
   projectRootId,
   type WikiAgentTransform,
   WikiError,
-  WikiId,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Path from "effect/Path";
@@ -71,7 +70,7 @@ const access = Effect.fn("ProjectDocsToolkit.access")(function* () {
             ...root,
             read: {
               key: root.key,
-              wikiId: WikiId.make(projectRootId(caller.projectId, root.key)),
+              wikiId: projectRootId(caller.projectId, root.key),
               checkout: root.checkout ?? root.path,
               writable: root.writable,
             },

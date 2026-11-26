@@ -1,5 +1,5 @@
 import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";
-import type { EnvironmentId, ProjectId, WikiId } from "@t3tools/contracts";
+import type { EnvironmentId, ProjectId, ProjectRootId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { composerWikiNoteItems } from "./composerWikiNoteItems";
@@ -16,7 +16,7 @@ const overview = (
   ({
     environmentId,
     wiki: {
-      wikiId: `${owner}:${rootKey}` as WikiId,
+      wikiId: `${owner}:${rootKey}` as ProjectRootId,
       name: rootKey,
       root,
       projectIds: [],

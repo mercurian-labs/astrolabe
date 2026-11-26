@@ -10,7 +10,7 @@ import type {
   WikiBaseFilter,
   WikiChangeRequest,
   WikiChangeRequestId,
-  WikiId,
+  ProjectRootId,
   WikiMapBackground,
   WikiQueryResult,
 } from "@t3tools/contracts";
@@ -263,7 +263,7 @@ export function WikiBaseResults({
   editing,
 }: {
   readonly environmentId: EnvironmentId;
-  readonly wikiId: WikiId;
+  readonly wikiId: ProjectRootId;
   /** The folder the base was read in on disk, whose images it shows. */
   readonly checkout?: string | undefined;
   readonly result: WikiQueryResult;
@@ -308,7 +308,7 @@ export function WikiBase({
   editing,
 }: {
   readonly environmentId: EnvironmentId;
-  readonly wikiId: WikiId;
+  readonly wikiId: ProjectRootId;
   readonly changeRequestId: WikiChangeRequestId | undefined;
   /** Astrolabe: a project root's folder, read on disk instead of a commit. */
   readonly checkout?: string | undefined;
@@ -521,7 +521,7 @@ export function WikiBasePage({
   diskRevision,
 }: {
   readonly environmentId: EnvironmentId;
-  readonly wikiId: WikiId;
+  readonly wikiId: ProjectRootId;
   readonly file: string;
   /** Astrolabe: a project root's folder, read and written on disk rather than in a draft. */
   readonly checkout?: string | undefined;

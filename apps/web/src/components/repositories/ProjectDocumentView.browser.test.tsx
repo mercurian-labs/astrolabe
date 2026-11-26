@@ -2,7 +2,7 @@ import {
   EnvironmentId,
   ProjectId,
   RootKey,
-  WikiId,
+  ProjectRootId,
   type ProjectRootCheckout,
   type WikiIndexResult,
   type WikiNoteResult,
@@ -208,7 +208,7 @@ function setup({ hosted = false } = {}) {
     ["proj:docs", index("proj:docs", ["Guide.md"], [])],
   ]);
   const note: WikiNoteResult = {
-    wikiId: WikiId.make("proj:app"),
+    wikiId: ProjectRootId.make("proj:app"),
     commit: "c1",
     name: "Plan",
     file: "Plan.md",
@@ -296,7 +296,7 @@ describe("ProjectDocumentView", () => {
       repositoryTabKey({
         kind: "file",
         environmentId,
-        wikiId: WikiId.make("proj:lib"),
+        wikiId: ProjectRootId.make("proj:lib"),
         checkout: { cwd: "/dev/lib" },
         path: "Spec.md",
       }),

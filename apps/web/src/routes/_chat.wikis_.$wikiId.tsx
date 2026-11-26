@@ -1,4 +1,4 @@
-import type { WikiId } from "@t3tools/contracts";
+import type { ProjectRootId } from "@t3tools/contracts";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 
@@ -31,7 +31,7 @@ function LegacyWikiLink() {
         wikiTabKey({
           kind: "note",
           environmentId,
-          wikiId: wikiId as WikiId,
+          wikiId: wikiId as ProjectRootId,
           file: documentFile(note),
           changeRequestId: undefined,
         }),

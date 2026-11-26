@@ -161,10 +161,7 @@ function GroupDetails({
   const startThread = useStartChangeGroupThread(showBeside);
   const drafts = useChangeGroupDrafts(group);
   const code = group.members.filter((member) => member.side === "code");
-  // A wiki's change request from before Projects has no place in Changes any more.
-  const docs = group.members.filter(
-    (member) => member.side === "docs" && member.ref.kind !== "wiki-change-request",
-  );
+  const docs = group.members.filter((member) => member.side === "docs");
   const byKey = new Map(candidates.map((member) => [member.key, member]));
   const pending = (decisions?.pending ?? [])
     .map((entry) => ({ entry, member: byKey.get(changeGroupMemberKey(entry.member)) }))

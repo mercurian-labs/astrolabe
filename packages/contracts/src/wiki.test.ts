@@ -1,50 +1,53 @@
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
+import { WikiNoteContextRecord } from "./composerContext.ts";
 import { WikiListResult } from "./wiki.ts";
 
 const decodeList = Schema.decodeUnknownSync(WikiListResult);
-const encodeList = Schema.encodeSync(WikiListResult);
+const decodeNote = Schema.decodeSync(WikiNoteContextRecord);
 
-// A wiki as a server from before wikis linked to several projects sends it.
-const olderWiki = (projectId: string | null) => ({
-  wikiId: "w1",
-  name: "Plans",
-  root: "/Users/someone/plans",
+const projectRoot = {
+  wikiId: "p1:api",
+  name: "api",
+  root: "/Users/someone/app/api",
   mainBranch: "main",
-  projectId,
-  mirror: null,
   openChangeRequests: 0,
   createdAt: "2026-10-01T00:00:00.000Z",
-});
+  projectId: "p1",
+  rootKey: "api",
+};
 
 describe("WikiSummary", () => {
-  it("reads an older server's wiki, folding its one project into the linked ones", () => {
-    const { wikis } = decodeList({ wikis: [olderWiki("p1"), olderWiki(null)] });
-    expect(wikis.map((wiki) => wiki.projectIds)).toEqual([["p1"], []]);
-    expect(wikis[0]).not.toHaveProperty("projectId");
+  it("reads a project root by its project and root key", () => {
+    expect(decodeList({ wikis: [projectRoot] }).wikis[0]).toMatchObject({
+      wikiId: "p1:api",
+      projectId: "p1",
+      rootKey: "api",
+    });
   });
 
-  it("reads a wiki with neither field as linked to no project", () => {
-    const { projectId: _, ...bare } = olderWiki(null);
-    expect(decodeList({ wikis: [bare] }).wikis[0]?.projectIds).toEqual([]);
+  it("reads an older server's registered wiki, dropping its mirror and links", () => {
+    const { projectId: _, rootKey: __, ...rest } = projectRoot;
+    const older = { ...rest, wikiId: "6ad86f0445ac", mirror: null, projectIds: ["p1"] };
+    const [wiki] = decodeList({ wikis: [older] }).wikis;
+    expect(wiki?.wikiId).toBe("6ad86f0445ac");
+    expect(wiki).not.toHaveProperty("mirror");
+    expect(wiki).not.toHaveProperty("projectIds");
   });
+});
 
-  it("prefers the linked projects when a server sends both", () => {
-    const wiki = { ...olderWiki("p1"), projectIds: ["p2", "p3"] };
-    expect(decodeList({ wikis: [wiki] }).wikis[0]?.projectIds).toEqual(["p2", "p3"]);
-  });
-
-  it("encodes the linked projects only", () => {
-    const decoded = decodeList({ wikis: [olderWiki("p1")] });
-    const { projectId: _, ...rest } = olderWiki("p1");
-    expect(encodeList(decoded).wikis).toStrictEqual([{ ...rest, projectIds: ["p1"] }]);
-  });
-
-  it("reads a project folder's project beside its root key, and sends it back", () => {
-    const folder = { ...olderWiki("p1"), projectIds: ["p1"], rootKey: "api" };
-    const decoded = decodeList({ wikis: [folder] });
-    expect(decoded.wikis[0]).toMatchObject({ projectId: "p1", rootKey: "api", projectIds: ["p1"] });
-    expect(encodeList(decoded).wikis).toStrictEqual([folder]);
+describe("WikiNoteContextRecord", () => {
+  it("still reads a note saved under a registered wiki's old id", () => {
+    const record = decodeNote({
+      version: 1,
+      contextId: "ctx-1",
+      label: "Plan",
+      kind: "wiki-note",
+      wikiId: "6ad86f0445ac",
+      wikiName: "Plans",
+      name: "Plan",
+    });
+    expect(record.wikiId).toBe("6ad86f0445ac");
   });
 });

@@ -1,4 +1,4 @@
-import { EnvironmentId, ProjectId, WikiId } from "@t3tools/contracts";
+import { EnvironmentId, ProjectId, ProjectRootId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -53,7 +53,7 @@ describe("Repositories tab keys", () => {
       {
         kind: "file",
         environmentId,
-        wikiId: WikiId.make("wiki-1"),
+        wikiId: ProjectRootId.make("wiki-1"),
         checkout: { branch: "cr/abc" },
         path: "AGENTS.md",
       },

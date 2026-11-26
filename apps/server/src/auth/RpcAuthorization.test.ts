@@ -102,9 +102,9 @@ describe("RPC authorization scopes", () => {
     }
   });
 
-  it("keeps moving a wiki's files behind source control write", () => {
-    expect(requiredScopeForRpcMethod(WS_METHODS.wikiMove)).toBe(AuthSourceControlWriteScope);
-    expect(clientRpcRequiredScopes(WS_METHODS.wikiMove, undefined)).toEqual([
+  it("keeps saving a draft of a project's documents behind source control write", () => {
+    expect(requiredScopeForRpcMethod(WS_METHODS.wikiAutosave)).toBe(AuthSourceControlWriteScope);
+    expect(clientRpcRequiredScopes(WS_METHODS.wikiAutosave, undefined)).toEqual([
       AuthSourceControlWriteScope,
     ]);
   });

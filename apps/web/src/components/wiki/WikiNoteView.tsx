@@ -5,7 +5,7 @@ import type {
   EnvironmentId,
   WikiChangeRequest,
   WikiChangeRequestId,
-  WikiId,
+  ProjectRootId,
   WikiIndexResult,
 } from "@t3tools/contracts";
 import { useBlocker } from "@tanstack/react-router";
@@ -111,7 +111,7 @@ function LinkPreview({
   onOpen,
 }: {
   readonly environmentId: EnvironmentId;
-  readonly wikiId: WikiId;
+  readonly wikiId: ProjectRootId;
   readonly changeRequestId: WikiChangeRequestId | undefined;
   readonly draft: WikiChangeRequest | null;
   readonly index: WikiIndexResult | null;
@@ -169,7 +169,7 @@ export function WikiNoteView({
   diskRevision,
 }: {
   readonly environmentId: EnvironmentId;
-  readonly wikiId: WikiId;
+  readonly wikiId: ProjectRootId;
   readonly file: string;
   /** Astrolabe: a project root's folder read on disk; its edits go through `saveText`. */
   readonly checkout?: string | undefined;

@@ -28,7 +28,7 @@ import {
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   RunId,
   ThreadId,
-  WikiId,
+  ProjectRootId,
   type OrchestrationV2ThreadShell,
   type OrchestrationV2ShellSnapshot,
   type ModelSelection,
@@ -805,7 +805,7 @@ describe("composerDraftStore wiki notes", () => {
   const threadId = ThreadId.make("thread-with-wiki-note");
   const threadRef = scopeThreadRef(TEST_ENVIRONMENT_ID, threadId);
   const note = wikiNoteContextRecord({
-    wikiId: WikiId.make("plans"),
+    wikiId: ProjectRootId.make("plans"),
     wikiName: "Plans",
     name: "Login flow",
   });

@@ -16,7 +16,6 @@ import {
   type PullRequestReviewGuideResult,
   type ThreadPullRequestLink,
   SourceControlProviderKind,
-  WikiId,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as SecureRandom from "effect/crypto/SecureRandom";
@@ -38,7 +37,6 @@ import * as ProjectService from "../../../project/ProjectService.ts";
 import * as PullRequestWatchService from "../../../pullRequest/PullRequestWatchService.ts";
 import * as PullRequestReviewGuideService from "../../../pullRequest/PullRequestReviewGuideService.ts";
 import * as PullRequestService from "../../../pullRequest/PullRequestService.ts";
-import * as WikiService from "../../../wiki/WikiService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import * as McpToolAccessTestkit from "../../McpToolAccess.testkit.ts";
@@ -157,7 +155,6 @@ interface HarnessOptions {
   >;
   readonly pullRequests?: Partial<PullRequestService.PullRequestService["Service"]>;
   readonly git?: Partial<GitManager.GitManager["Service"]>;
-  readonly wikis?: Partial<WikiService.WikiService["Service"]>;
 }
 
 const NO_GUIDE: PullRequestReviewGuideResult = { guide: null, run: null, currentHeadSha: "head-1" };
@@ -215,7 +212,6 @@ const makeHarness = Effect.fn("makePullRequestsToolkitHarness")(function* (
       ...options.pullRequests,
     }),
     Layer.mock(GitManager.GitManager)(options.git ?? {}),
-    Layer.mock(WikiService.WikiService)({ hosted: Effect.succeed([]), ...options.wikis }),
     Layer.succeed(SecureRandom.SecureRandom, testCrypto),
     McpToolAccessTestkit.liveThreadsLayer,
   );
@@ -1128,87 +1124,6 @@ describe("source control tools", () => {
         },
       ]);
     }),
-  );
-
-  it.effect("leaves a host wiki's change request to the wiki", () =>
-    Effect.gen(function* () {
-      const actions: Array<PullRequestActionInput> = [];
-      const wikiId = WikiId.make("wiki:plans");
-      const harness = yield* makeHarness({
-        thread: branchThread,
-        pullRequests: {
-          runAction: (input) => Effect.sync(() => void actions.push(input)),
-          update: () => Effect.sync(() => void actions.push({} as never)),
-        },
-        wikis: {
-          hosted: Effect.succeed([wikiId]),
-          get: () =>
-            Effect.succeed({ wikiId, name: "Plans", host: { projectId: PROJECT_ID } } as never),
-          changeRequestsList: () =>
-            Effect.succeed({
-              changeRequests: [{ pullRequest: { number: 42, repository: "T3Tools/T3Code" } }],
-            } as never),
-        },
-      });
-      for (const attempt of [
-        harness.call("pull_request_merge", { expectedHeadSha: "abc123" }),
-        harness.call("pull_request_update", { title: "New title" }),
-      ]) {
-        const error = yield* Effect.flip(attempt);
-        expect(error.message).toContain('change request of the wiki "Plans"');
-      }
-      expect(actions).toEqual([]);
-    }),
-  );
-
-  it.effect(
-    "a stacked merge leaves a wiki's lower layer to the wiki, and an unreadable wiki stops it",
-    () =>
-      Effect.gen(function* () {
-        const actions: Array<PullRequestActionInput> = [];
-        const wikiId = WikiId.make("wiki:plans");
-        let listed: Effect.Effect<never, never> | null = null;
-        const harness = yield* makeHarness({
-          thread: branchThread,
-          pullRequests: {
-            stack: () =>
-              Effect.succeed({
-                id: "stack-1",
-                number: 7,
-                url: "https://github.com/acme/app/stacks/7",
-                base: "main",
-                layers: [
-                  { number: 41, state: "open", headSha: "bbb", headBranch: "layer-41" },
-                  { number: 42, state: "open", headSha: "ccc", headBranch: "layer-42" },
-                ],
-              } as never),
-            runAction: (input) => Effect.sync(() => void actions.push(input)),
-            summary: () => Effect.succeed({ state: "merged" } as never),
-          },
-          wikis: {
-            hosted: Effect.succeed([wikiId]),
-            get: () =>
-              Effect.succeed({ wikiId, name: "Plans", host: { projectId: PROJECT_ID } } as never),
-            changeRequestsList: () =>
-              listed ??
-              (Effect.succeed({
-                changeRequests: [{ pullRequest: { number: 41, repository: "T3Tools/T3Code" } }],
-              }) as never),
-          },
-        });
-        const stacked = yield* Effect.flip(
-          harness.call("pull_request_merge", { expectedHeadSha: "ccc", stack: true }),
-        );
-        expect(stacked.message).toContain('#41 is a change request of the wiki "Plans"');
-        listed = Effect.fail("list failed") as never;
-        const unreadable = yield* Effect.flip(
-          harness.call("pull_request_merge", { expectedHeadSha: "ccc" }),
-        );
-        expect(unreadable.message).toContain(
-          'Could not read the change requests of the wiki "Plans"',
-        );
-        expect(actions).toEqual([]);
-      }),
   );
 
   it.effect("a stack merge pins every open layer up to the PR", () =>

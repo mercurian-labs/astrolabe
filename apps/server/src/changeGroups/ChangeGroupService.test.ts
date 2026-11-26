@@ -2,17 +2,18 @@ import {
   DEFAULT_CHANGE_GROUP_GROUPING_SETTINGS,
   type ChangeGroupDecisions,
   type ThreadPullRequestLink,
-  WikiChangeRequestId,
-  WikiId,
 } from "@t3tools/contracts";
 import { deriveChangeGroups, type ChangeGroupThread } from "@t3tools/shared/changeGroups";
+import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   applyChangeGroupChange,
+  ChangeGroupStoreJson,
   describeChangeGroup,
   foldThreadBranches,
   migrateWikiMembers,
+  withoutWikiMembers,
 } from "./ChangeGroupService.ts";
 
 const empty: ChangeGroupDecisions = {
@@ -25,6 +26,7 @@ const empty: ChangeGroupDecisions = {
   pending: [],
   updatedAt: "2026-10-19T00:00:00Z",
 };
+const decodeStoredChangeGroups = Schema.decodeSync(ChangeGroupStoreJson);
 const pr = { kind: "pull-request" as const, host: "github.com", repository: "acme/app", number: 7 };
 const at = "2026-10-19T01:00:00Z";
 
@@ -148,7 +150,6 @@ describe("one group in full", () => {
     ];
     const [group] = deriveChangeGroups({
       threads,
-      wikiChanges: [],
       decisions: [],
       settings: DEFAULT_CHANGE_GROUP_GROUPING_SETTINGS,
     });
@@ -169,14 +170,11 @@ describe("one group in full", () => {
 describe("a group's wiki change requests after wikis become project roots", () => {
   const wikiMember = (wikiId: string, changeRequestId: string) => ({
     kind: "wiki-change-request" as const,
-    wikiId: WikiId.make(wikiId),
-    changeRequestId: WikiChangeRequestId.make(changeRequestId),
+    wikiId,
+    changeRequestId,
   });
   const thread = { kind: "thread" as const, threadId: "thread-2" };
-  const migration = {
-    pullRequests: new Map([["wiki:w1/cr-open", pr]]),
-    wikiIds: new Map([["w1", "app:notes"]]),
-  };
+  const pullRequests = new Map([["wiki:w1/cr-open", pr]]);
 
   it("become their pull requests, and leave without one", () => {
     const { decisions, dropped } = migrateWikiMembers(
@@ -189,7 +187,7 @@ describe("a group's wiki change requests after wikis become project roots", () =
         ],
         pending: [{ member: wikiMember("w1", "cr-draft"), note: "Same plan" }],
       },
-      migration,
+      pullRequests,
     );
     expect(decisions.added).toEqual([
       { member: pr, reason: "manual", note: "The docs" },
@@ -199,17 +197,38 @@ describe("a group's wiki change requests after wikis become project roots", () =
     expect(dropped).toEqual(["wiki:w1/cr-local", "wiki:w1/cr-draft"]);
   });
 
-  it("rewrite the keys taken out or dismissed", () => {
+  it("rewrite the keys taken out or dismissed, and drop those of no pull request", () => {
     const { decisions, dropped } = migrateWikiMembers(
       {
         ...empty,
         removed: ["wiki:w1/cr-open", "pr:github.com/acme/app#7", "wiki:w1/cr-local"],
         dismissed: ["wiki:other/cr-1", "thread:thread-3"],
       },
-      migration,
+      pullRequests,
     );
-    expect(decisions.removed).toEqual(["pr:github.com/acme/app#7", "wiki:app:notes/cr-local"]);
-    expect(decisions.dismissed).toEqual(["wiki:other/cr-1", "thread:thread-3"]);
+    expect(decisions.removed).toEqual(["pr:github.com/acme/app#7"]);
+    expect(decisions.dismissed).toEqual(["thread:thread-3"]);
     expect(dropped).toEqual([]);
+  });
+
+  it("still read from a stored file, which loads without them", () => {
+    const stored = decodeStoredChangeGroups(
+      JSON.stringify({
+        version: 1,
+        decisions: [
+          {
+            ...empty,
+            added: [
+              { member: wikiMember("w1", "cr-local"), reason: "manual", note: "" },
+              { member: pr, reason: "manual", note: "" },
+            ],
+            removed: ["wiki:w1/cr-gone"],
+          },
+        ],
+      }),
+    );
+    const [decisions] = withoutWikiMembers(stored).decisions;
+    expect(decisions?.added).toEqual([{ member: pr, reason: "manual", note: "" }]);
+    expect(decisions?.removed).toEqual([]);
   });
 });

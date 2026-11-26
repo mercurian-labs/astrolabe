@@ -28,7 +28,7 @@ import type {
   ThreadContextRecord,
   ThreadId,
   TurnItemId,
-  WikiId,
+  ProjectRootId,
   WikiContextRecord,
   WikiNoteContextRecord,
 } from "@t3tools/contracts";
@@ -393,7 +393,7 @@ export function wikiContextReference(record: WikiContextRecord): ComposerContext
 
 /** One record per note, so referencing it again reuses the chip. */
 export function wikiNoteContextRecord(note: {
-  readonly wikiId: WikiId;
+  readonly wikiId: ProjectRootId;
   readonly wikiName: string;
   readonly name: string;
 }): WikiNoteContextRecord {

@@ -1,16 +1,14 @@
 import {
+  ChangeGroupAddedMember,
   ChangeGroupDecisions,
   ChangeGroupError,
+  ChangeGroupMemberRef,
   ChangeGroupReason,
-  type ChangeGroupMemberRef,
   changeGroupMemberKey,
-  changeGroupMemberRefOfKey,
   PullRequestChecksState,
   PullRequestReviewDecision,
   type ChangeGroupListResult,
   type ChangeGroupUpdateInput,
-  type WikiChangeRequestId,
-  WikiId,
 } from "@t3tools/contracts";
 import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
 import {
@@ -18,7 +16,6 @@ import {
   findChangeGroup,
   type ChangeGroup,
   type ChangeGroupThread,
-  type ChangeGroupWikiChange,
 } from "@t3tools/shared/changeGroups";
 import { fromJsonStringPretty } from "@t3tools/shared/schemaJson";
 import * as Context from "effect/Context";
@@ -26,10 +23,8 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
-import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
@@ -37,16 +32,12 @@ import * as Stream from "effect/Stream";
 import * as ServerConfig from "../config.ts";
 import * as EventStore from "../orchestration-v2/EventStore.ts";
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
-import { forkParked } from "../serverActivation.ts";
 import * as ServerSettings from "../serverSettings.ts";
-import { WikiHostBridge } from "../wiki/WikiHostService.ts";
-import * as WikiService from "../wiki/WikiService.ts";
 
 /**
  * Change groups on this environment. Membership rules live in `@t3tools/shared/changeGroups` so
  * the server and every client derive the same groups; this service keeps per-group decisions
- * (`change-groups.json` in the state directory) and, once an armed group's code has merged,
- * merges its documentation too, as the person who armed it asked.
+ * (`change-groups.json` in the state directory).
  */
 export class ChangeGroupService extends Context.Service<
   ChangeGroupService,
@@ -65,22 +56,44 @@ export class ChangeGroupService extends Context.Service<
       readonly groupId: string | null;
       readonly memberKeys: ReadonlyArray<string>;
     }) => Effect.Effect<ChangeGroupDetail | null, ChangeGroupError>;
-    /** Merges the documentation of armed groups whose code has merged. */
-    readonly mergeArmed: Effect.Effect<void>;
     /** Rewrites stored decisions that name wikis' change requests, as `migrateWikiMembers` does. */
     readonly adoptWikiMigration: (
-      migration: WikiMemberMigration,
+      pullRequests: ReadonlyMap<string, PullRequestRef>,
     ) => Effect.Effect<void, ChangeGroupError>;
   }
 >()("t3/changeGroups/ChangeGroupService") {}
 
+/** A wiki's change request, a member before wikis became project roots. */
+const LegacyWikiMember = Schema.Struct({
+  kind: Schema.Literal("wiki-change-request"),
+  wikiId: Schema.String,
+  changeRequestId: Schema.String,
+});
+const StoredMember = Schema.Union([ChangeGroupMemberRef, LegacyWikiMember]);
+
+/** Decisions as `change-groups.json` holds them: one written before then can name a wiki's. */
+const StoredDecisions = Schema.Struct({
+  ...ChangeGroupDecisions.fields,
+  added: Schema.Array(Schema.Struct({ ...ChangeGroupAddedMember.fields, member: StoredMember })),
+  pending: Schema.Array(Schema.Struct({ member: StoredMember, note: Schema.String })).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
+});
+type StoredChangeGroupDecisions = typeof StoredDecisions.Type;
+
 const ChangeGroupStore = Schema.Struct({
   version: Schema.Literal(1),
-  decisions: Schema.Array(ChangeGroupDecisions),
+  decisions: Schema.Array(StoredDecisions),
 });
-type ChangeGroupStore = typeof ChangeGroupStore.Type;
-const ChangeGroupStoreJson = fromJsonStringPretty(ChangeGroupStore);
-const decodeStore = Schema.decodeEffect(ChangeGroupStoreJson);
+interface ChangeGroupStore {
+  readonly version: 1;
+  readonly decisions: ReadonlyArray<ChangeGroupDecisions>;
+}
+export const ChangeGroupStoreJson = fromJsonStringPretty(ChangeGroupStore);
+
+/** The key a wiki's change request had as a member. */
+export const legacyWikiMemberKey = (wikiId: string, changeRequestId: string) =>
+  `wiki:${wikiId}/${changeRequestId}`;
 const encodeStore = Schema.encodeEffect(ChangeGroupStoreJson);
 
 /**
@@ -216,41 +229,29 @@ export function describeChangeGroup(
 
 type PullRequestRef = Extract<ChangeGroupMemberRef, { readonly kind: "pull-request" }>;
 
-export interface WikiMemberMigration {
-  /** The pull request each wiki change request (by member key) became, when it had one. */
-  readonly pullRequests: ReadonlyMap<string, PullRequestRef>;
-  /** Each registered wiki's id, to the id of the project root it became. */
-  readonly wikiIds: ReadonlyMap<string, string>;
-}
-
 /**
- * Decisions with wikis' change requests gone: one with a pull request becomes that pull request,
- * one without leaves (`dropped` lists them). Keys taken out or dismissed follow the same way, or
- * else move to the wiki's project root.
+ * Decisions with wikis' change requests gone: one with a pull request (in `pullRequests`, by its
+ * old member key) becomes that pull request, one without leaves (`dropped` lists them). Keys
+ * taken out or dismissed follow the same way.
  */
 export function migrateWikiMembers(
-  decisions: ChangeGroupDecisions,
-  migration: WikiMemberMigration,
+  decisions: StoredChangeGroupDecisions,
+  pullRequests: ReadonlyMap<string, PullRequestRef>,
 ): { readonly decisions: ChangeGroupDecisions; readonly dropped: ReadonlyArray<string> } {
   const dropped: string[] = [];
-  const member = (ref: ChangeGroupMemberRef): ChangeGroupMemberRef | null => {
+  const member = (ref: typeof StoredMember.Type): ChangeGroupMemberRef | null => {
     if (ref.kind !== "wiki-change-request") return ref;
-    const key = changeGroupMemberKey(ref);
-    const pullRequest = migration.pullRequests.get(key);
+    const key = legacyWikiMemberKey(ref.wikiId, ref.changeRequestId);
+    const pullRequest = pullRequests.get(key);
     if (pullRequest === undefined) dropped.push(key);
     return pullRequest ?? null;
   };
   const keyOf = (key: string) => {
-    const ref = changeGroupMemberRefOfKey(key);
-    if (ref?.kind !== "wiki-change-request") return key;
-    const pullRequest = migration.pullRequests.get(key);
-    if (pullRequest !== undefined) return changeGroupMemberKey(pullRequest);
-    const wikiId = migration.wikiIds.get(ref.wikiId);
-    return wikiId === undefined
-      ? key
-      : changeGroupMemberKey({ ...ref, wikiId: WikiId.make(wikiId) });
+    if (!key.startsWith("wiki:")) return [key];
+    const pullRequest = pullRequests.get(key);
+    return pullRequest === undefined ? [] : [changeGroupMemberKey(pullRequest)];
   };
-  const keys = (list: ReadonlyArray<string>) => [...new Set(list.map(keyOf))];
+  const keys = (list: ReadonlyArray<string>) => [...new Set(list.flatMap(keyOf))];
   return {
     decisions: {
       ...decisions,
@@ -268,6 +269,14 @@ export function migrateWikiMembers(
     dropped,
   };
 }
+
+/** Stored decisions without a wiki's change request that the migration had no pull request for. */
+export const withoutWikiMembers = (stored: typeof ChangeGroupStore.Type): ChangeGroupStore => ({
+  version: 1,
+  decisions: stored.decisions.map((decision) => migrateWikiMembers(decision, new Map()).decisions),
+});
+
+const decodeStoredChangeGroups = Schema.decodeEffect(ChangeGroupStoreJson);
 
 const storeError = (cause: unknown) =>
   new ChangeGroupError({ message: `Change groups could not be read or saved: ${String(cause)}` });
@@ -339,8 +348,6 @@ const make = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const projections = yield* ProjectionStore.ProjectionStoreV2;
-  const wikis = yield* WikiService.WikiService;
-  const wikiHost = yield* WikiHostBridge;
   const settings = yield* ServerSettings.ServerSettingsService;
   const eventStore = yield* EventStore.EventStoreV2;
   const storePath = path.join(config.stateDir, "change-groups.json");
@@ -350,15 +357,17 @@ const make = Effect.gen(function* () {
   const cache = yield* Ref.make<ChangeGroupStore | undefined>(undefined);
   const lock = yield* Semaphore.make(1);
 
+  const readStored = Effect.gen(function* () {
+    if (!(yield* fileSystem.exists(storePath))) return { version: 1 as const, decisions: [] };
+    return yield* fileSystem
+      .readFileString(storePath)
+      .pipe(Effect.flatMap(decodeStoredChangeGroups));
+  }).pipe(Effect.mapError(storeError));
+
   const load = Effect.gen(function* () {
     const cached = yield* Ref.get(cache);
     if (cached !== undefined) return cached;
-    const exists = yield* fileSystem.exists(storePath).pipe(Effect.mapError(storeError));
-    const store: ChangeGroupStore = exists
-      ? yield* fileSystem
-          .readFileString(storePath)
-          .pipe(Effect.flatMap(decodeStore), Effect.mapError(storeError))
-      : { version: 1, decisions: [] };
+    const store = withoutWikiMembers(yield* readStored);
     yield* Ref.set(cache, store);
     return store;
   });
@@ -420,12 +429,12 @@ const make = Effect.gen(function* () {
     return { decisions: store.decisions, threadBranches: yield* threadBranches };
   });
 
-  const adoptWikiMigration: ChangeGroupService["Service"]["adoptWikiMigration"] = (migration) =>
+  const adoptWikiMigration: ChangeGroupService["Service"]["adoptWikiMigration"] = (pullRequests) =>
     lock.withPermits(1)(
       Effect.gen(function* () {
-        const store = yield* load;
+        const store = yield* readStored;
         const migrated = store.decisions.map((decision) => {
-          const result = migrateWikiMembers(decision, migration);
+          const result = migrateWikiMembers(decision, pullRequests);
           return { groupId: decision.groupId, ...result };
         });
         for (const { groupId, dropped } of migrated) {
@@ -495,31 +504,10 @@ const make = Effect.gen(function* () {
         branch: thread.branch,
         ...(branches[thread.id] === undefined ? {} : { branches: branches[thread.id] }),
       }));
-    const { changeRequests } = yield* wikis
-      .changeRequestsList({})
-      .pipe(Effect.mapError(storeError));
-    // By the wikis the requests name: the list names a wiki in a project's folder by the folder.
-    const summaries = yield* Effect.forEach(
-      new Set(changeRequests.map((changeRequest) => changeRequest.wikiId)),
-      (wikiId) => wikis.get(wikiId).pipe(Effect.option),
-      { concurrency: 4 },
-    );
-    const names = new Map(
-      summaries.flatMap((summary) =>
-        Option.isSome(summary)
-          ? [[summary.value.wikiId as string, summary.value.name] as const]
-          : [],
-      ),
-    );
-    const wikiChanges: ChangeGroupWikiChange[] = changeRequests.map((changeRequest) => ({
-      wikiName: names.get(changeRequest.wikiId) ?? "Wiki",
-      changeRequest,
-    }));
     const { decisions } = yield* load;
     const { changeGroupGrouping } = yield* settings.getSettings.pipe(Effect.mapError(storeError));
     const groups = deriveChangeGroups({
       threads,
-      wikiChanges,
       decisions,
       settings: changeGroupGrouping,
     });
@@ -538,45 +526,7 @@ const make = Effect.gen(function* () {
     },
   );
 
-  // An armed group's documentation merges once all of its open code has merged. A merge the
-  // wiki refuses (a conflict, a busy checkout) stays open for the person to finish.
-  const mergeArmed: ChangeGroupService["Service"]["mergeArmed"] = Effect.gen(function* () {
-    for (const group of yield* groups) {
-      if (!group.armed) continue;
-      const code = group.members.filter(
-        (member) => member.side === "code" && member.state !== "closed",
-      );
-      if (code.length === 0 || code.some((member) => member.state !== "merged")) continue;
-      for (const member of group.members) {
-        if (member.ref.kind !== "wiki-change-request" || member.state !== "open") continue;
-        const { wikiId, changeRequestId } = member.ref;
-        yield* (wikiHost.merge ?? wikis.merge)({
-          wikiId,
-          changeRequestId: changeRequestId as WikiChangeRequestId,
-        }).pipe(
-          Effect.tap(() =>
-            Effect.logInfo("Merged a change group's documentation with its code", {
-              groupId: group.groupId,
-              changeRequestId,
-            }),
-          ),
-          Effect.catch((error) =>
-            Effect.logWarning("A change group's documentation could not merge", {
-              groupId: group.groupId,
-              changeRequestId,
-              error,
-            }),
-          ),
-        );
-      }
-    }
-  }).pipe(Effect.catch((error) => Effect.logWarning("Change groups could not be read", { error })));
-
-  // Pull requests' states refresh about once a minute (`PullRequestSyncReactor`), so a minute's
-  // sweep follows a merge closely without watching each one.
-  yield* forkParked(mergeArmed.pipe(Effect.repeat(Schedule.spaced("1 minute")), Effect.asVoid));
-
-  return ChangeGroupService.of({ list, update, groups, group, mergeArmed, adoptWikiMigration });
+  return ChangeGroupService.of({ list, update, groups, group, adoptWikiMigration });
 });
 
 export const layer = Layer.effect(ChangeGroupService, make);

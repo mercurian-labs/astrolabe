@@ -22,8 +22,7 @@ import { joinChangeGroupOnFirstSend, useChangeGroupDraftStore } from "./changeGr
 
 /**
  * The tab a member opens in: a pull request's (named by the project of the thread that linked
- * it), or a thread's chat. Null for a pull request whose thread is gone, and for an old wiki's
- * change request.
+ * it), or a thread's chat. Null for a pull request whose thread is gone.
  */
 export function changeGroupMemberTabKey(
   environmentId: EnvironmentId,
@@ -33,7 +32,6 @@ export function changeGroupMemberTabKey(
   if (ref.kind === "thread") {
     return chatTabKey(scopeThreadRef(environmentId, ThreadId.make(ref.threadId)));
   }
-  if (ref.kind === "wiki-change-request") return null;
   const thread =
     member.threadId === null
       ? null

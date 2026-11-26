@@ -7,7 +7,7 @@ import {
   ProjectId,
   projectRootId,
   RootKey,
-  WikiId,
+  type ProjectRootId,
   type EnvironmentId,
   type ProjectRootCheckout,
   type WikiChangeRequestId,
@@ -47,7 +47,7 @@ export function useProjectDocument(params: WikiDocumentParams) {
   const environmentId = params.environmentId as EnvironmentId;
   const projectId = ProjectId.make(params.projectId);
   const rootKey = RootKey.make(params.rootKey);
-  const wikiId = WikiId.make(projectRootId(projectId, rootKey));
+  const wikiId = projectRootId(projectId, rootKey);
   const routeChangeRequestId = params.changeRequestId as WikiChangeRequestId | undefined;
   const list = useEnvironmentQuery(
     projectRootsEnvironment.list({ environmentId, input: { projectId } }),
@@ -99,7 +99,11 @@ export function useProjectDocument(params: WikiDocumentParams) {
 
 export type ProjectDocument = ReturnType<typeof useProjectDocument>;
 
-type IndexRead = { readonly key: string; readonly wikiId: WikiId; readonly checkout?: string };
+type IndexRead = {
+  readonly key: string;
+  readonly wikiId: ProjectRootId;
+  readonly checkout?: string;
+};
 
 const projectIndexesAtom = Atom.family((key: string) => {
   const [environmentId, reads] = JSON.parse(key) as [EnvironmentId, ReadonlyArray<IndexRead>];
@@ -138,7 +142,7 @@ export function useProjectLinkRoots(input: {
       .filter((root) => root.key !== rootKey && root.state !== "missing")
       .map((root): IndexRead => ({
         key: root.key,
-        wikiId: WikiId.make(projectRootId(projectId, root.key)),
+        wikiId: projectRootId(projectId, root.key),
         ...(disk || root.state === "plain" ? { checkout: root.path } : {}),
       })),
   ]);

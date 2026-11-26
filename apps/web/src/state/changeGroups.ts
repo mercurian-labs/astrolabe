@@ -19,7 +19,6 @@ import { useEnvironments } from "./environments";
 import { environmentPresentations } from "./presentation";
 import { serverEnvironment } from "./server";
 import { environmentThreadShells } from "./threads";
-import { wikiEnvironment } from "./wiki";
 
 /** Astrolabe: what people decided about each change group, and deciding more. */
 export const changeGroupEnvironment = createChangeGroupEnvironmentAtoms(connectionAtomRuntime);
@@ -41,7 +40,6 @@ const changeGroupsAtom = Atom.family((key: string) =>
       return environmentChangeGroups({
         environmentId,
         threads,
-        overviews: get(wikiEnvironment.overview(environmentId)) ?? [],
         decisions: decisions?.decisions ?? [],
         settings: settings?.changeGroupGrouping ?? null,
         threadBranches: decisions?.threadBranches ?? {},
@@ -139,7 +137,6 @@ const changeRequestsAtom = Atom.family((environmentId: EnvironmentId) =>
     environmentChangeRequests({
       environmentId,
       threads: get(environmentThreadShells.threadShellsAtom),
-      overviews: get(wikiEnvironment.overview(environmentId)) ?? [],
     }),
   ).pipe(Atom.withLabel(`change-requests:${environmentId}`)),
 );

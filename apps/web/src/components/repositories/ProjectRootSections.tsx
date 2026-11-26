@@ -1,10 +1,5 @@
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
-import {
-  projectRootId,
-  WikiId,
-  type ProjectRootCheckout,
-  type ProjectWorktree,
-} from "@t3tools/contracts";
+import { projectRootId, type ProjectRootCheckout, type ProjectWorktree } from "@t3tools/contracts";
 import { workspaceRelativeFilePath } from "@t3tools/shared/path";
 import { useGT } from "gt-react";
 import { FolderGit2Icon, FolderIcon } from "lucide-react";
@@ -150,7 +145,7 @@ function RootWorktrees({
   const gt = useGT();
   const owner: WorktreesTarget = {
     environmentId: repository.environmentId,
-    wikiId: WikiId.make(projectRootId(repository.id, root.key)),
+    wikiId: projectRootId(repository.id, root.key),
   };
   const { data, error } = useProjectWorktrees(owner);
   const [chosen, setChosen] = useState<ReadonlyMap<string, boolean>>(new Map());

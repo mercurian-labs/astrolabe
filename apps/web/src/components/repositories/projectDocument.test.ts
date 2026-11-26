@@ -2,7 +2,7 @@ import {
   EnvironmentId,
   ProjectId,
   RootKey,
-  WikiId,
+  ProjectRootId,
   type ProjectRootCheckout,
   type WikiIndexResult,
 } from "@t3tools/contracts";
@@ -45,11 +45,11 @@ const roots = [
 describe("projectDocumentOwner", () => {
   it("reads a project's tab as its own folder's and a root id as that root's", () => {
     expect(projectDocumentOwner({ projectId })).toEqual({ projectId, rootKey: null });
-    expect(projectDocumentOwner({ wikiId: WikiId.make("proj:docs") })).toEqual({
+    expect(projectDocumentOwner({ wikiId: ProjectRootId.make("proj:docs") })).toEqual({
       projectId,
       rootKey: "docs",
     });
-    expect(projectDocumentOwner({ wikiId: WikiId.make("almagest") })).toBeNull();
+    expect(projectDocumentOwner({ wikiId: ProjectRootId.make("almagest") })).toBeNull();
   });
 });
 

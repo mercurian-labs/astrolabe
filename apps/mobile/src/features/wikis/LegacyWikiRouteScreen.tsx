@@ -1,7 +1,7 @@
 /* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { useAtomSet } from "@effect/atom-react";
 import { StackActions, useNavigation, type StaticScreenProps } from "@react-navigation/native";
-import { parseProjectRootId, type EnvironmentId, type WikiId } from "@t3tools/contracts";
+import { parseProjectRootId, type EnvironmentId, type ProjectRootId } from "@t3tools/contracts";
 import { useEffect, useRef } from "react";
 
 import { LoadingScreen } from "../../components/LoadingScreen";
@@ -26,7 +26,7 @@ export function LegacyWikiRouteScreen({ route }: StaticScreenProps<LegacyWikiPar
   const index = useEnvironmentQuery(
     known
       ? null
-      : wikiEnvironment.index({ environmentId, input: { wikiId: params.wikiId as WikiId } }),
+      : wikiEnvironment.index({ environmentId, input: { wikiId: params.wikiId as ProjectRootId } }),
   );
   const settled = known || index.data !== null || index.error !== null;
   const redirect = settled ? legacyWikiRedirect(params, index.data?.wikiId ?? null) : null;

@@ -4,10 +4,11 @@ import { assert, it } from "@effect/vitest";
 import {
   CommandId,
   ProjectId,
+  ProjectRootId,
   projectRootId,
   RootKey,
+  ThreadId,
   type WikiMapBackground,
-  WikiId,
 } from "@t3tools/contracts";
 import type * as SourceControlProvider from "@t3tools/source-control-core/server/SourceControlProvider";
 import * as SecureRandom from "effect/crypto/SecureRandom";
@@ -38,10 +39,37 @@ import * as TaskFolderStore from "../workspace/TaskFolderStore.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import { migrateWikis } from "./wikiMigration.ts";
 import * as WikiService from "./WikiService.ts";
-import { type WikiRecord, WikiMigrationJson, WikiRegistryJson } from "./wikiStorage.ts";
+import { WikiMigrationJson } from "./wikiStorage.ts";
 
-const encodeRegistry = Schema.encodeEffect(WikiRegistryJson);
 const decodeMigration = Schema.decodeEffect(WikiMigrationJson);
+
+/** A wiki as an older server kept it in `wikis.json`, every field it wrote. */
+interface RegisteredWiki {
+  readonly wikiId: string;
+  readonly name: string;
+  readonly root: string;
+  readonly mainBranch: string;
+  readonly projectIds: ReadonlyArray<ProjectId>;
+  readonly projectLinkedAt: Readonly<Record<string, string>>;
+  readonly mirror: {
+    readonly url: string;
+    readonly lastPushedAt: string | null;
+    readonly lastPushedCommit: string | null;
+    readonly lastError: string | null;
+    readonly overwroteRemoteAt: string | null;
+  } | null;
+  readonly host: {
+    readonly projectId: ProjectId;
+    readonly remote: string;
+    readonly lastSyncedAt: string | null;
+    readonly lastSyncedCommit: string | null;
+    readonly relation: string | null;
+    readonly lastError: string | null;
+    readonly createdProject?: boolean;
+  } | null;
+  readonly mapBackgrounds: ReadonlyArray<WikiMapBackground>;
+  readonly createdAt: string;
+}
 
 const layerEnrichment = ProjectEnrichmentService.layer.pipe(
   Layer.provide(
@@ -67,7 +95,7 @@ const layerNoHosts = Layer.mock(SourceControlProviderRegistry.SourceControlProvi
 });
 
 interface Adopted {
-  readonly calls: Array<ChangeGroupService.WikiMemberMigration>;
+  readonly calls: Array<ReadonlyMap<string, unknown>>;
   /** How many of the next calls fail, as a crash partway through would. */
   failing: number;
 }
@@ -81,9 +109,9 @@ const layer = (baseDir: string, adopted: Adopted) =>
     ),
     Layer.provideMerge(
       Layer.mock(ChangeGroupService.ChangeGroupService)({
-        adoptWikiMigration: (migration) =>
+        adoptWikiMigration: (pullRequests) =>
           Effect.suspend(() => {
-            adopted.calls.push(migration);
+            adopted.calls.push(pullRequests);
             if (adopted.failing === 0) return Effect.void;
             adopted.failing -= 1;
             return Effect.die("change groups could not be saved");
@@ -116,7 +144,7 @@ interface Harness {
   readonly adopted: Adopted;
   /** A fresh Git repository outside the state dir, or below `inside`. */
   readonly repository: (name: string, inside?: string) => Effect.Effect<string>;
-  readonly register: (wikis: ReadonlyArray<WikiRecord>) => Effect.Effect<void>;
+  readonly register: (wikis: ReadonlyArray<RegisteredWiki>) => Effect.Effect<void>;
   readonly project: (
     id: string,
     workspaceRoot: string,
@@ -148,15 +176,18 @@ const withMigration = <A, E>(body: (harness: Harness) => Effect.Effect<A, E, Ser
         );
         return yield* fileSystem.realPath(folder);
       }).pipe(Effect.orDie);
-    const register = (wikis: ReadonlyArray<WikiRecord>) =>
-      encodeRegistry({ version: 1, wikis }).pipe(
-        Effect.flatMap((contents) =>
-          fileSystem
-            .makeDirectory(config.stateDir, { recursive: true })
-            .pipe(Effect.andThen(fileSystem.writeFileString(stateFile("wikis.json"), contents))),
-        ),
-        Effect.orDie,
-      );
+    const register = (wikis: ReadonlyArray<RegisteredWiki>) =>
+      fileSystem
+        .makeDirectory(config.stateDir, { recursive: true })
+        .pipe(
+          Effect.andThen(
+            fileSystem.writeFileString(
+              stateFile("wikis.json"),
+              JSON.stringify({ version: 1, wikis }, null, 2),
+            ),
+          ),
+          Effect.orDie,
+        );
     const project = (id: string, workspaceRoot: string) =>
       ProjectService.ProjectService.pipe(
         Effect.flatMap((projects) =>
@@ -188,9 +219,9 @@ const withMigration = <A, E>(body: (harness: Harness) => Effect.Effect<A, E, Ser
 const wiki = (
   id: string,
   root: string,
-  fields: Partial<Pick<WikiRecord, "projectIds" | "host" | "mirror" | "mapBackgrounds">> = {},
-): WikiRecord => ({
-  wikiId: WikiId.make(id),
+  fields: Partial<Pick<RegisteredWiki, "projectIds" | "host" | "mirror" | "mapBackgrounds">> = {},
+): RegisteredWiki => ({
+  wikiId: id,
   name: `Wiki ${id}`,
   root,
   mainBranch: "main",
@@ -239,13 +270,12 @@ it.effect("adds a linked wiki's folder to each project it was linked to", () =>
       assert.deepEqual(yield* trackedPaths(app), [notes]);
       assert.deepEqual(yield* trackedPaths(api), [notes]);
       const recorded = yield* harness.migration;
-      assert.deepEqual(recorded.wikis[WikiId.make("w1")], {
+      assert.deepEqual(recorded.wikis["w1"], {
         projectId: app,
         rootKey: RootKey.make("wiki-w1"),
       });
       assert.isFalse(yield* harness.exists("wikis.json"));
       assert.isTrue(yield* harness.exists("wikis.json.pre-projects"));
-      assert.deepEqual(harness.adopted.calls.at(-1)?.wikiIds, new Map([["w1", "app:wiki-w1"]]));
     }),
   ),
 );
@@ -265,11 +295,11 @@ it.effect("adds no folder for a wiki already inside the project's folder", () =>
 
       assert.deepEqual(yield* trackedPaths(app), []);
       const recorded = yield* harness.migration;
-      assert.deepEqual(recorded.wikis[WikiId.make("inner")], {
+      assert.deepEqual(recorded.wikis["inner"], {
         projectId: app,
         rootKey: RootKey.make("docs"),
       });
-      assert.deepEqual(recorded.wikis[WikiId.make("same")], {
+      assert.deepEqual(recorded.wikis["same"], {
         projectId: app,
         rootKey: RootKey.make("app"),
       });
@@ -300,7 +330,7 @@ it.effect("gives an unlinked wiki its host's project, which stays", () =>
       yield* migrateWikis();
 
       assert.equal(yield* projectCount, before);
-      assert.deepEqual((yield* harness.migration).wikis[WikiId.make("hosted")], {
+      assert.deepEqual((yield* harness.migration).wikis["hosted"], {
         projectId: backing,
         rootKey: RootKey.make("notes"),
       });
@@ -321,7 +351,7 @@ it.effect("makes a project of an unlinked wiki without one", () =>
       assert.isTrue(made._tag === "Some");
       if (made._tag !== "Some") return;
       assert.equal(made.value.title, "Wiki alone");
-      assert.deepEqual((yield* harness.migration).wikis[WikiId.make("alone")], {
+      assert.deepEqual((yield* harness.migration).wikis["alone"], {
         projectId: made.value.id,
         rootKey: RootKey.make("notes"),
       });
@@ -357,7 +387,7 @@ it.effect("logs and records each mirror it stops pushing", () =>
       assert.include(JSON.stringify(warnings), url);
       assert.include(JSON.stringify(warnings), "Wiki mirrored");
       assert.deepEqual((yield* harness.migration).droppedMirrors, [
-        { wikiId: WikiId.make("mirrored"), name: "Wiki mirrored", url },
+        { wikiId: "mirrored", name: "Wiki mirrored", url },
       ]);
     }),
   ),
@@ -385,7 +415,7 @@ it.effect("carries every wiki's map backgrounds to the server, the first as the 
         ["Streets", "Satellite", "Terrain"],
       );
       const root = yield* (yield* WikiService.WikiService).get(
-        WikiId.make(projectRootId(app, RootKey.make("wiki-one"))),
+        projectRootId(app, RootKey.make("wiki-one")),
       );
       assert.deepEqual(root.mapBackgrounds, settings.wikiMapBackgrounds);
     }),
@@ -450,17 +480,81 @@ it.effect("still finds a wiki by its old id, as the project root it became", () 
       const notes = yield* harness.repository("notes");
       yield* harness.register([wiki("w1", notes, { projectIds: [app] })]);
       const wikis = yield* WikiService.WikiService;
-      assert.equal((yield* wikis.get(WikiId.make("w1"))).wikiId, "w1");
+      const old = ProjectRootId.make("w1");
+      assert.equal((yield* Effect.flip(wikis.get(old))).reason, "not-found");
 
       yield* migrateWikis();
 
-      const found = yield* wikis.get(WikiId.make("w1"));
+      const found = yield* wikis.get(old);
       assert.equal<string>(found.wikiId, projectRootId(app, RootKey.make("wiki-w1")));
       assert.equal(found.root, notes);
-      assert.equal(yield* wikis.root(WikiId.make("w1")), notes);
+      assert.equal(yield* wikis.root(old), notes);
       assert.deepEqual(
         (yield* wikis.list).wikis.map((entry) => entry.wikiId).toSorted(),
         [projectRootId(app, RootKey.make("app")), found.wikiId].toSorted(),
+      );
+    }),
+  ),
+);
+
+it.effect("turns a wiki change request's pull request into the member a change group keeps", () =>
+  withMigration((harness) =>
+    Effect.gen(function* () {
+      const appRoot = yield* harness.repository("app");
+      yield* ProcessRunner.ProcessRunner.pipe(
+        Effect.flatMap((runner) =>
+          runner.run({
+            command: "git",
+            args: [
+              "-C",
+              appRoot,
+              "-c",
+              "user.name=Fixture",
+              "-c",
+              "user.email=fixture@example.com",
+              "commit",
+              "--quiet",
+              "--allow-empty",
+              "-m",
+              "Start",
+            ],
+          }),
+        ),
+        Effect.provide(ProcessRunner.layer.pipe(Layer.provideMerge(NodeServices.layer))),
+        Effect.orDie,
+      );
+      const app = yield* harness.project("app", appRoot);
+      const wikis = yield* WikiService.WikiService;
+      const wikiId = projectRootId(app, RootKey.make("app"));
+      const { changeRequest } = yield* wikis
+        .amend(
+          { wikiId, message: "Plan", changes: { "Plan.md": "# Plan\n" } },
+          { actor: "Agent", threadId: ThreadId.make("thread-a") },
+        )
+        .pipe(Effect.orDie);
+      yield* wikis
+        .recordPullRequest({
+          wikiId,
+          changeRequestId: changeRequest.changeRequestId,
+          pullRequest: {
+            repository: "acme/app",
+            number: 7,
+            url: "https://github.com/acme/app/pull/7",
+          },
+        })
+        .pipe(Effect.orDie);
+      yield* harness.register([wiki("same", appRoot, { projectIds: [app] })]);
+
+      yield* migrateWikis();
+
+      assert.deepEqual(
+        harness.adopted.calls.at(-1),
+        new Map([
+          [
+            `wiki:same/${changeRequest.changeRequestId}`,
+            { kind: "pull-request", host: "github.com", repository: "acme/app", number: 7 },
+          ],
+        ]),
       );
     }),
   ),

@@ -11,7 +11,6 @@ import {
   documentFile,
   findMap,
   isCanvasFile,
-  isHidden,
   key,
   linkDestination,
   linkedDocument,
@@ -35,7 +34,7 @@ import {
 } from "@mercurian/wiki";
 import type {
   WikiChangeRequestDetail,
-  WikiId,
+  ProjectRootId,
   WikiIndexResult,
   WikiNoteResult,
   WikiQueryInput,
@@ -53,7 +52,7 @@ const outgoingTargets = (index: WikiIndex, file: string): ReadonlyArray<string> 
 };
 
 export const indexResult = (
-  wikiId: WikiId,
+  wikiId: ProjectRootId,
   commit: string,
   index: WikiIndex,
   editTimes: ReadonlyMap<string, string> = new Map(),
@@ -190,7 +189,7 @@ const ambiguousLinks = (
  * find; a client names a file with a leading `/`. A canvas reads as its outline.
  */
 export const noteResult = (
-  wikiId: WikiId,
+  wikiId: ProjectRootId,
   commit: string,
   index: WikiIndex,
   files: WikiFiles,
@@ -515,48 +514,3 @@ export const withCanvasOutlines = (detail: WikiChangeRequestDetail): WikiChangeR
     return { ...change, before: outline(change.before), after: outline(change.after) };
   }),
 });
-
-const MAX_SEARCH_FILES = 40;
-const MAX_LINES_PER_FILE = 5;
-const MAX_LINE_LENGTH = 240;
-
-export interface WikiSearchResult {
-  readonly matches: ReadonlyArray<{
-    readonly path: string;
-    readonly lines: ReadonlyArray<{ readonly line: number; readonly text: string }>;
-  }>;
-  /** True when more files or lines matched than the result carries. */
-  readonly truncated: boolean;
-}
-
-/** Case-insensitive substring search over document paths and lines, bounded for an agent's context. */
-export const searchFiles = (files: WikiFiles, query: string): WikiSearchResult => {
-  const needle = query.toLowerCase();
-  const matches: Array<WikiSearchResult["matches"][number]> = [];
-  let truncated = false;
-  // A hidden document is read only by its exact path, which search never offers.
-  for (const [path, source] of Object.entries(files).toSorted(([a], [b]) => a.localeCompare(b))) {
-    if (isHidden(path)) continue;
-    const lines: Array<{ line: number; text: string }> = [];
-    let more = false;
-    source.split("\n").forEach((text, position) => {
-      if (!text.toLowerCase().includes(needle)) return;
-      if (lines.length >= MAX_LINES_PER_FILE) {
-        more = true;
-        return;
-      }
-      lines.push({
-        line: position + 1,
-        text: text.length > MAX_LINE_LENGTH ? `${text.slice(0, MAX_LINE_LENGTH)}…` : text,
-      });
-    });
-    if (lines.length === 0 && !path.toLowerCase().includes(needle)) continue;
-    if (matches.length >= MAX_SEARCH_FILES) {
-      truncated = true;
-      break;
-    }
-    truncated ||= more;
-    matches.push({ path, lines });
-  }
-  return { matches, truncated };
-};

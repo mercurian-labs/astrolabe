@@ -718,7 +718,6 @@ const layerOrchestrationV2Runtime = RuntimeLayer.layerProduction.pipe(
       Layer.provide(RuntimeLayer.layerProjectService),
     ),
   ),
-  Layer.provide(WikiHostService.layerBridge.pipe(Layer.provide(layerWikiHost))),
 );
 
 const layerOrchestrationApplication = Layer.merge(

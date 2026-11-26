@@ -23,7 +23,6 @@ import {
   type RepositoryIdentity,
   TurnItemId,
   WikiError,
-  WikiId,
   type WikiKeepCanvasInput,
   type WikiKeepCanvasResult,
 } from "@t3tools/contracts";
@@ -298,7 +297,7 @@ const make = Effect.gen(function* () {
   const keep: CanvasKeep["Service"]["keep"] = Effect.fn("CanvasKeep.keep")(
     function* (input, author) {
       const place = yield* placeOf(input, author);
-      const wikiId = WikiId.make(projectRootId(input.projectId, place.root.key));
+      const wikiId = projectRootId(input.projectId, place.root.key);
       const file = canvasFile(place.path ?? input.name);
       if (file === null) {
         return yield* new WikiError({

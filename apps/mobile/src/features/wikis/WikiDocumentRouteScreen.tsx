@@ -23,13 +23,7 @@ import {
   wikiTerms,
 } from "@t3tools/client-runtime/wikiLogic";
 import { linkFiles, resolveLink, unwrittenFile } from "@mercurian/wiki/resolve-link";
-import {
-  projectRootId,
-  RootKey,
-  WikiId,
-  type EnvironmentId,
-  type ThreadId,
-} from "@t3tools/contracts";
+import { projectRootId, RootKey, type EnvironmentId, type ThreadId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
@@ -310,7 +304,7 @@ function WikiNoteScreen({
       const other = doc.roots?.find((root) => root.key === elsewhere.root);
       return {
         input: {
-          wikiId: WikiId.make(projectRootId(doc.projectId, RootKey.make(elsewhere.root))),
+          wikiId: projectRootId(doc.projectId, RootKey.make(elsewhere.root)),
           name: exactWikiPath(elsewhere.file),
           ...(disk !== null && other !== undefined ? { checkout: other.path } : {}),
         },

@@ -1,7 +1,6 @@
 import {
   parseProjectRootId,
   projectRootId,
-  WikiId,
   type EnvironmentId,
   type ProjectId,
   type ProjectRootCheckout,
@@ -52,7 +51,7 @@ export function projectRootFileTab(input: {
   return {
     kind: "file",
     environmentId,
-    wikiId: WikiId.make(projectRootId(projectId, root.key)),
+    wikiId: projectRootId(projectId, root.key),
     checkout: { cwd: root.path },
     path: file,
   };

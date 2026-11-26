@@ -1,4 +1,4 @@
-import type { EnvironmentId, WikiId, WikiQueryResult } from "@t3tools/contracts";
+import type { EnvironmentId, ProjectRootId, WikiQueryResult } from "@t3tools/contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
 
@@ -7,7 +7,7 @@ import { WikiBaseResults } from "./WikiBaseView";
 
 import "~/index.css";
 
-const at = { environmentId: "env-1" as EnvironmentId, wikiId: "wiki-1" as WikiId };
+const at = { environmentId: "env-1" as EnvironmentId, wikiId: "wiki-1" as ProjectRootId };
 
 const result = (overrides: Partial<WikiQueryResult>): WikiQueryResult => ({
   commit: "4f1c2a9",

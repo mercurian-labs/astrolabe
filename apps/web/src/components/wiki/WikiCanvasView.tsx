@@ -17,7 +17,7 @@ import type {
   EnvironmentId,
   UnifiedSettings,
   WikiChangeRequestId,
-  WikiId,
+  ProjectRootId,
 } from "@t3tools/contracts";
 import { useBlocker } from "@tanstack/react-router";
 import { TriangleAlertIcon } from "lucide-react";
@@ -83,7 +83,7 @@ function CanvasBoardPane({
 }: {
   readonly tabKey: string;
   readonly environmentId: EnvironmentId;
-  readonly wikiId: WikiId;
+  readonly wikiId: ProjectRootId;
   readonly checkout: string | undefined;
   readonly projectLinks: CanvasProjectLinks | undefined;
   readonly changeRequestId: WikiChangeRequestId | undefined;
@@ -206,7 +206,7 @@ export default function WikiCanvasPage({
 }: {
   readonly tabKey: string;
   readonly environmentId: EnvironmentId;
-  readonly wikiId: WikiId;
+  readonly wikiId: ProjectRootId;
   readonly file: string;
   /** Astrolabe: a project root's folder, read and written on disk rather than in a draft. */
   readonly checkout?: string | undefined;

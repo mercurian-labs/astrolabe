@@ -1,4 +1,4 @@
-import type { EnvironmentId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
+import type { EnvironmentId, WikiChangeRequestId, ProjectRootId } from "@t3tools/contracts";
 
 import { documentFile } from "./wiki.logic";
 
@@ -10,7 +10,7 @@ export type WikiTab =
   | {
       readonly kind: "note";
       readonly environmentId: EnvironmentId;
-      readonly wikiId: WikiId;
+      readonly wikiId: ProjectRootId;
       /** Its path from the wiki's root. */
       readonly file: string;
       readonly changeRequestId: WikiChangeRequestId | undefined;
@@ -18,7 +18,7 @@ export type WikiTab =
   | {
       readonly kind: "change-request";
       readonly environmentId: EnvironmentId;
-      readonly wikiId: WikiId;
+      readonly wikiId: ProjectRootId;
       readonly changeRequestId: WikiChangeRequestId;
     };
 
@@ -53,7 +53,7 @@ export function parseWikiTabKey(key: string): WikiTab | null {
     return {
       kind: "note",
       environmentId: environmentId as EnvironmentId,
-      wikiId: wikiId as WikiId,
+      wikiId: wikiId as ProjectRootId,
       // A layout saved before wikis had folders holds a note's bare name.
       file: documentFile(name),
       changeRequestId: changeRequestId ? (changeRequestId as WikiChangeRequestId) : undefined,
@@ -66,7 +66,7 @@ export function parseWikiTabKey(key: string): WikiTab | null {
     return {
       kind: "change-request",
       environmentId: environmentId as EnvironmentId,
-      wikiId: wikiId as WikiId,
+      wikiId: wikiId as ProjectRootId,
       changeRequestId: changeRequestId as WikiChangeRequestId,
     };
   }

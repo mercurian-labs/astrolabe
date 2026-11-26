@@ -9,7 +9,7 @@ import {
   type TerminalMetadataStreamEvent,
   ThreadId,
   WikiError,
-  WikiId,
+  ProjectRootId,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -42,7 +42,7 @@ import {
 import * as WorkspaceWatcher from "./WorkspaceWatcher.ts";
 
 const projectId = ProjectId.make("project-1");
-const wikiIdOfRepo = WikiId.make("wiki-1");
+const wikiIdOfRepo = ProjectRootId.make("wiki-1");
 
 const layerVcsProcess = VcsProcess.layer.pipe(Layer.provide(NodeServices.layer));
 const layerBase = Layer.mergeAll(
@@ -104,7 +104,7 @@ const fixture = Effect.gen(function* () {
       getById: () => Effect.sync(() => Option.some({ workspaceRoot: state.workspaceRoot })),
     } as unknown as ProjectService.ProjectService["Service"]),
     Effect.provideService(WikiService.WikiService, {
-      root: (wikiId: WikiId) =>
+      root: (wikiId: ProjectRootId) =>
         wikiId === wikiIdOfRepo
           ? Effect.succeed(repo)
           : Effect.fail(
@@ -220,7 +220,7 @@ describe("ProjectWorktreeService", () => {
         expect(listed.worktrees.map((worktree) => worktree.branch)).toEqual(["main", "alpha"]);
         expect(listed.worktrees.every((worktree) => worktree.isRepository)).toBe(true);
 
-        const unknown = yield* Effect.flip(service.list({ wikiId: WikiId.make("wiki-2") }));
+        const unknown = yield* Effect.flip(service.list({ wikiId: ProjectRootId.make("wiki-2") }));
         expect(unknown.message).toBe("No wiki has this id or name.");
         const neither = yield* Effect.flip(service.list({}));
         expect(neither.message).toBe("Name a project or a wiki.");

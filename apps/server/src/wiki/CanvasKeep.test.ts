@@ -18,7 +18,6 @@ import {
   TurnItemId,
   type WikiAmendResult,
   type WikiError,
-  WikiId,
   type WikiTransformInput,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -254,7 +253,7 @@ it.effect("lands a board as a new canvas, at the coordinates the thread showed",
     assert.equal(result.rootKey, "app");
     assert.deepEqual(result.notes, []);
     assert.equal(transforms[0]?.title, "Keep The merge");
-    assert.equal(transforms[0]?.wikiId, WikiId.make(projectRootId(PROJECT, RootKey.make("app"))));
+    assert.equal(transforms[0]?.wikiId, projectRootId(PROJECT, RootKey.make("app")));
     assert.isUndefined(transforms[0]?.changeRequestId);
     assert.deepEqual(authors, [WikiService.person]);
     assert.equal(transforms[0]?.message, "Keep The merge");

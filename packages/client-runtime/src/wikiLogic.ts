@@ -28,7 +28,6 @@ import type {
   WikiIndexError,
   WikiIndexResult,
   WikiMergePreview,
-  WikiMirrorStatus,
 } from "@t3tools/contracts";
 
 import { sourceControlClients } from "./sourceControlClients.ts";
@@ -464,42 +463,6 @@ function isWikiError(
     (value as { _tag?: unknown })._tag === "WikiError" &&
     typeof (value as { message?: unknown }).message === "string"
   );
-}
-
-export type MirrorTone = "none" | "ok" | "pending" | "error" | "warning";
-
-/** The mirror's state in one short phrase and tone, for rows and headers. */
-export function summarizeMirror(
-  mirror: WikiMirrorStatus | null,
-  formatAgo: (iso: string) => string,
-): { readonly tone: MirrorTone; readonly label: string } {
-  if (mirror === null) return { tone: "none", label: "No mirror" };
-  if (mirror.lastError) return { tone: "error", label: "Mirror push failed" };
-  if (
-    mirror.overwroteRemoteAt &&
-    (mirror.lastPushedAt === null || mirror.overwroteRemoteAt >= mirror.lastPushedAt)
-  ) {
-    return { tone: "warning", label: "Mirror overwritten" };
-  }
-  if (mirror.lastPushedAt) {
-    return { tone: "ok", label: `Mirrored ${formatAgo(mirror.lastPushedAt)}` };
-  }
-  return { tone: "pending", label: "Mirror not pushed yet" };
-}
-
-/** A host wiki's state in one short phrase and tone, for its settings. */
-export function summarizeHost(
-  host: WikiHostStatus | null | undefined,
-  formatAgo: (iso: string) => string,
-): { readonly tone: MirrorTone; readonly label: string } {
-  if (host == null) return { tone: "none", label: "Not connected" };
-  // Being held behind is the sync working as designed; its `lastError` says why.
-  if (host.relation === "behind") return { tone: "warning", label: "Main is behind the host" };
-  if (host.lastError) return { tone: "error", label: "Sync failed" };
-  if (host.relation === "diverged") return { tone: "error", label: "Main has diverged" };
-  if (host.relation === "ahead") return { tone: "warning", label: "Main is ahead of the host" };
-  if (host.lastSyncedAt) return { tone: "ok", label: `Synced ${formatAgo(host.lastSyncedAt)}` };
-  return { tone: "pending", label: "Not synced yet" };
 }
 
 /** Whether a change request holds work the host has not received. */
