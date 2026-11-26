@@ -1,6 +1,11 @@
 /* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
-import type { ProjectWorktree, ProjectWorktreeListResult } from "@t3tools/contracts";
+import type {
+  ProjectId,
+  ProjectWorktree,
+  ProjectWorktreeListResult,
+  RootKey,
+} from "@t3tools/contracts";
 import {
   EllipsisIcon,
   EyeOffIcon,
@@ -14,9 +19,18 @@ import {
   Trash2Icon,
   UndoIcon,
 } from "lucide-react";
-import { Fragment, useEffect, useEffectEvent, useId, useState, type ReactNode } from "react";
+import {
+  Fragment,
+  useEffect,
+  useEffectEvent,
+  useId,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { requestConfirmDialog } from "~/confirmDialog";
+import { projectRootsEnvironment } from "~/state/projectRoots";
 import { useEnvironmentQuery } from "~/state/query";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { vcsEnvironment } from "~/state/vcs";
@@ -337,6 +351,7 @@ export function WorktreeFiles({
   onOpenFile,
   fileMenuActions,
   hideDotFiles,
+  docsOf = null,
 }: {
   readonly owner: WorktreeOwner;
   readonly worktree: ProjectWorktree;
@@ -345,9 +360,31 @@ export function WorktreeFiles({
   readonly onOpenFile: (path: string) => void;
   readonly fileMenuActions?: ReadonlyArray<FileMenuAction>;
   readonly hideDotFiles?: boolean;
+  /** The project root it is a checkout of, under the Projects filter's Docs; null for All files. */
+  readonly docsOf?: { readonly projectId: ProjectId; readonly rootKey: RootKey } | null;
 }) {
   const watch = useWorktreeWatch(owner, worktree.path);
   const changedFiles = useWorktreeChangedFiles(owner, worktree.path);
+  const docs = useEnvironmentQuery(
+    docsOf === null
+      ? null
+      : projectRootsEnvironment.docPaths({
+          environmentId: owner.environmentId,
+          input: { ...docsOf, checkout: worktree.path },
+        }),
+  );
+  // Any change can move what the documents link, not only a folder's listing.
+  const docsRevision = watch?.unwatched
+    ? `${worktree.head}:${changedFiles}`
+    : String(watch?.changes ?? 0);
+  const readDocsAt = useRef(docsRevision);
+  const refreshDocs = docs.refresh;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the watch reports edits on disk, which can add or drop documents and what they link
+  useEffect(() => {
+    if (readDocsAt.current === docsRevision) return;
+    readDocsAt.current = docsRevision;
+    if (docsOf !== null) refreshDocs();
+  }, [docsRevision, docsOf, refreshDocs]);
   return (
     <div className="ms-4 border-s border-sidebar-border ps-1">
       <FileBrowserPanel
@@ -359,6 +396,9 @@ export function WorktreeFiles({
         onOpenFile={onOpenFile}
         {...(fileMenuActions ? { fileMenuActions } : {})}
         {...(hideDotFiles === undefined ? {} : { hideDotFiles })}
+        {...(docsOf === null
+          ? {}
+          : { onlyPaths: docs.error === null ? (docs.data?.paths ?? null) : [] })}
         workspaceMutationId={
           watch?.unwatched ? `${worktree.head}:${changedFiles}` : String(watch?.listings ?? 0)
         }

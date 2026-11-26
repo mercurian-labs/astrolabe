@@ -621,6 +621,8 @@ import {
 import { Project, ProjectMutation, ProjectMutationError } from "./project.ts";
 // Astrolabe
 import {
+  ProjectRootsDocPathsInput,
+  ProjectRootsDocPathsResult,
   ProjectRootsError,
   ProjectRootsListInput,
   ProjectRootsListResult,
@@ -800,6 +802,7 @@ export const WS_METHODS = {
 
   // Astrolabe: one address space over a project's folders.
   projectRootsList: "projectRoots.list",
+  projectRootsDocPaths: "projectRoots.docPaths",
 
   // Astrolabe: local wikis.
   wikiList: "wiki.list",
@@ -2679,6 +2682,13 @@ const WsProjectRootsListRpc = Rpc.make(WS_METHODS.projectRootsList, {
   error: Schema.Union([ProjectRootsError, EnvironmentAuthorizationError]),
 });
 
+// Astrolabe: what the Projects tree's Docs filter keeps.
+const WsProjectRootsDocPathsRpc = Rpc.make(WS_METHODS.projectRootsDocPaths, {
+  payload: ProjectRootsDocPathsInput,
+  success: ProjectRootsDocPathsResult,
+  error: Schema.Union([ProjectRootsError, EnvironmentAuthorizationError]),
+});
+
 // Astrolabe: local wikis. Every change is pushed on `wiki.subscribe` so open views read again.
 const WsWikiListRpc = Rpc.make(WS_METHODS.wikiList, {
   payload: Schema.Struct({}),
@@ -3527,6 +3537,7 @@ export const WsAstrolabeRpcGroup = RpcGroup.make(
   WsVcsReadBaseTextRpc,
   WsSubscribeVcsBaseTextRpc,
   WsProjectRootsListRpc,
+  WsProjectRootsDocPathsRpc,
   WsWikiListRpc,
   WsWikiSubscribeRpc,
   WsWikiRegisterRpc,

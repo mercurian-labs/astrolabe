@@ -44,6 +44,7 @@ import {
   setAllDirectoriesExpanded,
   writeExpandedDirectories,
 } from "./fileTreeExpansion";
+import { keptTreePaths } from "./fileTreeFilter";
 import { buildFileTreePathUpdates, shouldRebuildFileTree } from "./fileTreePathReconciliation";
 import { loadFileAncestors } from "./loadFileAncestors";
 import { useDirectoryEntries } from "./useDirectoryEntries";
@@ -70,6 +71,11 @@ interface FileBrowserPanelProps {
   fileMenuActions?: ReadonlyArray<FileMenuAction>;
   /** Astrolabe: leaves out anything starting with a dot, as a wiki's document tree does. */
   hideDotFiles?: boolean;
+  /**
+   * Astrolabe: shows only these files (the Projects tree's Docs), the folders holding them and the
+   * selected file; null while they are being read.
+   */
+  onlyPaths?: ReadonlyArray<string> | null;
   answersPanelFind?: boolean;
 }
 
@@ -206,6 +212,7 @@ export default function FileBrowserPanel({
   sidebar,
   fileMenuActions = NO_FILE_MENU_ACTIONS,
   hideDotFiles = false,
+  onlyPaths,
   answersPanelFind = false,
 }: FileBrowserPanelProps) {
   const panelPath = (relativePath: string) =>
@@ -219,14 +226,17 @@ export default function FileBrowserPanel({
     entries: directoryEntries,
     load,
     refresh,
-    ready,
+    ready: listed,
     error,
     isPending,
     loadingDirectories,
   } = useDirectoryEntries(environmentId, cwd);
-  const listedEntries = hideDotFiles
-    ? directoryEntries.filter((entry) => !isHidden(entry.path))
-    : directoryEntries;
+  const ready = listed && onlyPaths !== null;
+  const kept = onlyPaths == null ? null : keptTreePaths(onlyPaths, selectedPath);
+  const keeps = (entry: ProjectEntry) =>
+    (!hideDotFiles || !isHidden(entry.path)) && (kept === null || kept.has(entry.path));
+  const listedEntries =
+    hideDotFiles || kept !== null ? directoryEntries.filter(keeps) : directoryEntries;
   const [query, setQuery] = useState("");
   const [expandAll, setExpandAll] = useState(false);
   const pathSearch = useProjectPathSearch(
@@ -236,7 +246,12 @@ export default function FileBrowserPanel({
     messages,
   );
   const { entries, entryKinds, treePaths, directoryPaths, expandableDirectoryPaths } =
-    buildTreeEntries(listedEntries, pathSearch.entries, pathSearch.isPending, query);
+    buildTreeEntries(
+      listedEntries,
+      kept === null ? pathSearch.entries : pathSearch.entries.filter(keeps),
+      pathSearch.isPending,
+      query,
+    );
   const entryKindsRef = useRef(entryKinds);
   const previousTreePathsRef = useRef<readonly string[] | null>(null);
   const syncingSelectionRef = useRef(false);
@@ -707,6 +722,11 @@ export default function FileBrowserPanel({
           <T>Loading files…</T>
         </div>
       )}
+      {kept !== null && ready && !isPending && entries.length === 0 && !error ? (
+        <div role="status" className="px-3 py-4 text-xs text-muted-foreground">
+          <T>No docs here.</T>
+        </div>
+      ) : null}
       {hasNoSearchMatches ? (
         ready && !isPending && !pathSearch.isPending && !error && !pathSearch.error ? (
           <div role="status" className="px-3 py-4 text-xs text-muted-foreground">

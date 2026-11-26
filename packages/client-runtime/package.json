@@ -424,6 +424,10 @@
       "types": "./src/state/worktrees.ts",
       "default": "./src/state/worktrees.ts"
     },
+    "./state/projectRoots": {
+      "types": "./src/state/projectRoots.ts",
+      "default": "./src/state/projectRoots.ts"
+    },
     "./state/runtime": {
       "types": "./src/state/runtime.ts",
       "default": "./src/state/runtime.ts"

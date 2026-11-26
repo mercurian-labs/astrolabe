@@ -315,6 +315,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.languageServersSettings]: "languageServers",
   [WS_METHODS.languageServersUpdateSettings]: "languageServers",
   [WS_METHODS.projectRootsList]: "workspace",
+  [WS_METHODS.projectRootsDocPaths]: "workspace",
   [WS_METHODS.wikiList]: "wiki",
   [WS_METHODS.wikiSubscribe]: "wiki",
   [WS_METHODS.wikiRegister]: "wiki",

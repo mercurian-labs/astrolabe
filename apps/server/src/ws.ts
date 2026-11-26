@@ -1,4 +1,6 @@
 import { GitCommandError, OrchestrationDispatchCommandError } from "@t3tools/contracts";
+// Astrolabe
+import { projectRootId, ProjectRootsError, WikiId } from "@t3tools/contracts";
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- A synchronous digest inside the pure provider mapping.
 import * as NodeCrypto from "node:crypto";
 import * as FeatureFlags from "@t3tools/shared/FeatureFlags";
@@ -1521,6 +1523,18 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
         projectRoots
           .forThread({ projectId: input.projectId, worktreePath: input.worktreePath ?? null })
           .pipe(Effect.map((roots) => ({ roots }))),
+      [WS_METHODS.projectRootsDocPaths]: (input) =>
+        wikis
+          .docPaths({
+            wikiId: WikiId.make(projectRootId(input.projectId, input.rootKey)),
+            ...(input.checkout === undefined ? {} : { checkout: input.checkout }),
+          })
+          .pipe(
+            Effect.map((paths) => ({ paths })),
+            Effect.mapError(
+              (error) => new ProjectRootsError({ operation: "docPaths", detail: error.message }),
+            ),
+          ),
       [WS_METHODS.wikiList]: (_input) => wikis.list,
       [WS_METHODS.wikiSubscribe]: (_input) => wikis.subscribe,
       [WS_METHODS.wikiRegister]: (input) => wikis.register(input),

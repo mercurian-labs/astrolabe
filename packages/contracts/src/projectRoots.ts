@@ -48,10 +48,27 @@ export const ProjectRootsListResult = Schema.Struct({
 });
 export type ProjectRootsListResult = typeof ProjectRootsListResult.Type;
 
+export const ProjectRootsDocPathsInput = Schema.Struct({
+  projectId: ProjectId,
+  rootKey: RootKey,
+  /** The root's own folder or one of its Git worktrees, read on disk. Absent for its own folder. */
+  checkout: Schema.optional(TrimmedNonEmptyString),
+});
+export type ProjectRootsDocPathsInput = typeof ProjectRootsDocPathsInput.Type;
+
+export const ProjectRootsDocPathsResult = Schema.Struct({
+  /**
+   * From the checkout, `/`-separated: its notes, canvases, bases and skill maps, the files they
+   * link, and the same of the project's other roots inside it.
+   */
+  paths: Schema.Array(Schema.String),
+});
+export type ProjectRootsDocPathsResult = typeof ProjectRootsDocPathsResult.Type;
+
 export class ProjectRootsError extends Schema.TaggedError<ProjectRootsError>()(
   "ProjectRootsError",
   {
-    operation: Schema.Literals(["list", "resolve"]),
+    operation: Schema.Literals(["list", "resolve", "docPaths"]),
     detail: Schema.String,
   },
 ) {

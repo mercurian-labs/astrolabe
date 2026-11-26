@@ -9,8 +9,9 @@ import { storedChoice } from "../projects/storedChoice";
 
 /**
  * Astrolabe: the Projects sidebar's filter. The repositories widen (any of them, none picked is every
- * repository), hidden worktrees drop out, and "has changes" narrows to worktrees with uncommitted
- * files. What the focused tab is in shows whatever the filter says.
+ * repository), hidden worktrees drop out, "has changes" narrows to worktrees with uncommitted
+ * files, and Docs narrows each file tree to documents and what they link. What the focused tab is
+ * in shows whatever the filter says.
  */
 export interface RepositoryFilter {
   /** Repository keys (`environmentId:projectId`), as `FilterPicks` reads them. */
@@ -18,12 +19,15 @@ export interface RepositoryFilter {
   /** Worktree keys (`environmentId:path`), so a new worktree shows until it is hidden. */
   readonly hidden: ReadonlyArray<string>;
   readonly changed: boolean;
+  /** Docs, against All files: the same trees, tabs and routes, only fewer rows. */
+  readonly docs: boolean;
 }
 
 export const EMPTY_REPOSITORY_FILTER: RepositoryFilter = {
   repositories: [],
   hidden: [],
   changed: false,
+  docs: false,
 };
 
 /** The repositories the filter keeps, or null for every one. */
@@ -90,6 +94,7 @@ export function parseRepositoryFilter(stored: string): RepositoryFilter | null {
     repositories: parseFilterPicks(record.repositories),
     hidden: strings(record.hidden),
     changed: record.changed === true,
+    docs: record.docs === true,
   };
 }
 
@@ -104,7 +109,10 @@ export const useStoredRepositoryFilter = repositoryFilterStore.useValue;
 
 export const storeRepositoryFilter = (filter: RepositoryFilter) =>
   repositoryFilterStore.set(
-    filter.repositories?.length === 0 && filter.hidden.length === 0 && !filter.changed
+    filter.repositories?.length === 0 &&
+      filter.hidden.length === 0 &&
+      !filter.changed &&
+      !filter.docs
       ? EMPTY_REPOSITORY_FILTER
       : filter,
   );
