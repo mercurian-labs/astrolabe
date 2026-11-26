@@ -41,6 +41,8 @@ export const WikiRecord = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed([])),
   ),
   createdAt: IsoDateTime,
+  /** A project's folder without Git, read on disk; never stored. Its `mainBranch` names nothing. */
+  plain: Schema.optionalKey(Schema.Literal(true)),
 });
 export type WikiRecord = typeof WikiRecord.Type;
 

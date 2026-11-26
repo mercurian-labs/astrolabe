@@ -495,6 +495,7 @@ import { AgentFeedbackAnswerInput, AgentFeedbackRequestError } from "./agentFeed
 import {
   WikiAmendInput,
   WikiAmendResult,
+  WikiCheckoutTransformResult,
   WikiAutosaveInput,
   WikiAutosaveResult,
   WikiChangeRequest,
@@ -2772,7 +2773,7 @@ const WsWikiAmendRpc = Rpc.make(WS_METHODS.wikiAmend, {
 
 const WsWikiTransformRpc = Rpc.make(WS_METHODS.wikiTransform, {
   payload: WikiTransformInput,
-  success: WikiAmendResult,
+  success: Schema.Union([WikiAmendResult, WikiCheckoutTransformResult]),
   error: Schema.Union([WikiError, EnvironmentAuthorizationError]),
 });
 

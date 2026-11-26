@@ -138,7 +138,7 @@ describe("astrolabe_wiki_query", () => {
       expect(result.isError).not.toBe(true);
       expect(result.structuredContent).toEqual(rows);
       expect(tools.calls).toEqual([
-        { wikiId: "Plans", base: "Open decisions", view: "Open", threadId, checkout: true },
+        { wikiId: "Plans", base: "Open decisions", view: "Open", threadId, threadCheckout: true },
       ]);
       const warnings = ["views[0].columns is not a view key and is ignored; did you mean order?"];
       const warned = yield* harness(Effect.succeed({ ...rows, warnings })).call({

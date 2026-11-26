@@ -2115,7 +2115,7 @@ it.effect("reads a thread's checkout as it stands, unsaved edits included", () =
         "Product.skillmap.md": MAP.replace("How the product fits together", "Edited on disk"),
       });
       const warning = "views[0].columns is not a view key and is ignored; did you mean order?";
-      const inCheckout = { wikiId, threadId, checkout: true };
+      const inCheckout = { wikiId, threadId, threadCheckout: true };
       const links = yield* wikis.links({ ...inCheckout, name: "Beta" });
       assert.deepEqual(links.outgoing, [{ target: "Delta", unresolved: true, types: [] }]);
       assert.equal(
@@ -2132,7 +2132,11 @@ it.effect("reads a thread's checkout as it stands, unsaved edits included", () =
       assert.include(unopened.message, "Beta.md, Open.base, Product.skillmap.md");
 
       // Without a checkout, or naming none, a read sees the commit.
-      const committed = { wikiId, threadId: ThreadId.make("thread-elsewhere"), checkout: true };
+      const committed = {
+        wikiId,
+        threadId: ThreadId.make("thread-elsewhere"),
+        threadCheckout: true,
+      };
       assert.deepEqual((yield* wikis.links({ ...committed, name: "Beta" })).outgoing, []);
       assert.deepEqual((yield* wikis.links({ wikiId, threadId, name: "Beta" })).outgoing, []);
 
@@ -2176,7 +2180,12 @@ it.effect(
         assert.equal(yield* read(folder, "area/Gamma.md"), "# Beta\n\nBeta, edited natively.\n");
         assert.include(yield* read(folder, "Alpha.md"), "[[Gamma]]");
         assert.equal(yield* git(root, ["for-each-ref", "refs/heads/cr/"]), "");
-        const backlinks = yield* wikis.links({ wikiId, threadId, checkout: true, name: "Gamma" });
+        const backlinks = yield* wikis.links({
+          wikiId,
+          threadId,
+          threadCheckout: true,
+          name: "Gamma",
+        });
         assert.deepEqual(backlinks.backlinks, ["Alpha"]);
 
         const moved = yield* wikis.transformCheckout(
@@ -3440,7 +3449,7 @@ const projectOver = (input: {
 const rootIdOf = (projectId: ProjectId, key: string) =>
   WikiId.make(projectRootId(projectId, RootKey.make(key)));
 
-it.effect("lists each project's Git folders, then the registered wikis in none of them", () =>
+it.effect("lists each project's folders, then the registered wikis in none of them", () =>
   withWikis((harness) =>
     Effect.gen(function* () {
       const wikis = yield* WikiService.WikiService;
@@ -3466,12 +3475,13 @@ it.effect("lists each project's Git folders, then the registered wikis in none o
           [rootIdOf(project.id, "app"), app, project.id, "app"],
           [rootIdOf(project.id, "lib"), lib, project.id, "lib"],
           [rootIdOf(project.id, "docs"), docs, project.id, "docs"],
+          [rootIdOf(project.id, "plain"), plain, project.id, "plain"],
           [registered.wikiId, registered.root, undefined, undefined],
         ],
       );
       assert.deepEqual(
         listed.map((wiki) => wiki.name),
-        [project.title, "lib", "docs", registered.summary.name],
+        [project.title, "lib", "docs", "plain", registered.summary.name],
       );
       assert.deepEqual(listed[2]?.projectIds, [project.id]);
     }),
@@ -3508,7 +3518,7 @@ it.effect("reads a project folder's notes by its root id, and keeps no wiki sett
       const refused = yield* failure(wikis.setMirror({ wikiId, url: "https://example.com/x.git" }));
       assert.equal(refused.reason, "invalid");
       assert.equal((yield* failure(wikis.remove({ wikiId }))).reason, "invalid");
-      assert.equal((yield* failure(wikis.get(rootIdOf(project.id, "plain")))).reason, "invalid");
+      assert.equal((yield* wikis.get(rootIdOf(project.id, "plain"))).root, plain);
       assert.equal((yield* failure(wikis.get(rootIdOf(project.id, "gone")))).reason, "not-found");
     }),
   ),
@@ -3591,6 +3601,292 @@ it.effect("takes a project folder's host and main line from its remote", () =>
       assert.equal((yield* wikis.readNote({ wikiId, name: "Alpha" })).source, FIXTURE["Alpha.md"]);
       // Background syncs follow registered host wikis only, so nothing touches this folder unasked.
       assert.isFalse((yield* wikis.hosted).includes(wikiId));
+    }),
+  ),
+);
+
+/**
+ * Gives `file` one fixed time, after writing `text` when given: a rewrite of the same size then
+ * looks to the disk like no change at all. Times are seconds, as for Node's `utimes`.
+ */
+const setTime = (root: string, file: string, text?: string, seconds = 1_700_000_000) =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const at = (yield* Path.Path).join(root, file);
+    if (text !== undefined) yield* fileSystem.writeFileString(at, text).pipe(Effect.orDie);
+    yield* fileSystem.utimes(at, seconds, seconds).pipe(Effect.orDie);
+  });
+
+const OPEN_BASE =
+  "filters: 'status == \"open\"'\nviews:\n  - type: table\n    name: Open\n    order: [file.basename]\n";
+
+it.effect("reads a folder without Git on disk: its notes, links, bases and files", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const wikis = yield* WikiService.WikiService;
+      const app = yield* commitNotes(yield* harness.folder("app"), { "README.md": "# App\n" });
+      const plain = yield* harness.folder("plain");
+      yield* write(plain, {
+        "Alpha.md": "---\nstatus: open\n---\n# Alpha\n\nAlpha builds on [[Beta]].\n",
+        "Beta.md": "---\nstatus: done\n---\n# Beta\n",
+        "Open.base": OPEN_BASE,
+        "img/pic.png": "png",
+        ".gitignore": "drafts/\n",
+        "drafts/Secret.md": "# Secret\n",
+        ".obsidian/Hidden.md": "# Hidden\n",
+        "node_modules/pkg/README.md": "# Package\n",
+      });
+      const project = yield* projectOver({
+        id: "project-plain",
+        workspaceRoot: app,
+        trackedFolders: [{ name: "plain", path: plain }],
+      });
+      const wikiId = rootIdOf(project.id, "plain");
+
+      const summary = yield* wikis.get(wikiId);
+      assert.equal(summary.root, plain);
+      assert.isNull(summary.host ?? null);
+      assert.isNull(summary.mirror);
+      assert.include(
+        (yield* wikis.list).wikis.map((wiki) => wiki.wikiId),
+        wikiId,
+      );
+
+      const index = yield* wikis.index({ wikiId });
+      assert.match(index.commit, /^disk-[0-9a-f]+$/);
+      assert.deepEqual(
+        index.notes.map((note) => note.name),
+        ["Alpha", "Beta"],
+      );
+      assert.deepEqual(index.links, [{ from: "Alpha", to: "Beta" }]);
+      assert.deepEqual(index.unresolved, []);
+      assert.deepEqual(
+        index.bases.map((base) => base.file),
+        ["Open.base"],
+      );
+      assert.isString(index.notes[0]?.editedAt);
+      assert.deepEqual((yield* wikis.readNote({ wikiId, name: "Beta" })).incoming, ["Alpha"]);
+      const open = yield* wikis.query({ wikiId, base: "Open" });
+      assert.deepEqual(
+        open.rows.map((row) => row.name),
+        ["Alpha"],
+      );
+      assert.deepEqual(
+        (yield* wikis.listFiles({ wikiId })).files.map((file) => file.file),
+        ["Alpha.md", "Beta.md", "Open.base", "img/pic.png"],
+      );
+      const files = yield* wikis.readFiles({ wikiId, paths: ["Beta", "img/pic.png", "Gone.md"] });
+      assert.deepEqual(
+        files.files.map((file) => [file.file, file.exists, file.text]),
+        [
+          ["Beta.md", true, "---\nstatus: done\n---\n# Beta\n"],
+          ["img/pic.png", true, null],
+          ["Gone.md", false, null],
+        ],
+      );
+
+      // A note written on disk is read at once; Git's ways of changing it are refused.
+      yield* write(plain, { "Gamma.md": "# Gamma\n\nSee [[Alpha]].\n" });
+      assert.deepEqual((yield* wikis.readNote({ wikiId, name: "Alpha" })).incoming, ["Gamma"]);
+      const changeRequestId = "abc" as WikiChangeRequestId;
+      const refusals: ReadonlyArray<Effect.Effect<object, WikiError>> = [
+        wikis.autosave(
+          {
+            wikiId,
+            document: "Beta.md",
+            write: { kind: "text", file: "Beta.md", text: "# B\n" },
+          },
+          WikiService.person,
+        ),
+        wikis.transform(
+          { wikiId, message: "Move", transform: { kind: "rename", from: "Beta", to: "B" } },
+          WikiService.person,
+        ),
+        wikis.changeRequestsGet({ wikiId, changeRequestId }),
+        wikis.index({ wikiId, changeRequestId }),
+      ];
+      for (const refused of refusals) {
+        assert.equal((yield* failure(refused)).reason, "invalid");
+      }
+      assert.deepEqual(
+        (yield* wikis.changeRequestsList({ wikiId }, WikiService.person)).changeRequests,
+        [],
+      );
+    }),
+  ),
+);
+
+it.effect("reads a folder without Git again only once something in it changed", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const wikis = yield* WikiService.WikiService;
+      const plain = yield* harness.folder("notes");
+      yield* write(plain, { "Alpha.md": "# Alpha\n\nOne.\n", "sub/Beta.md": "# Beta\n" });
+      const project = yield* projectOver({ id: "project-notes", workspaceRoot: plain });
+      const wikiId = rootIdOf(project.id, "notes");
+      const source = () =>
+        wikis.readNote({ wikiId, name: "Alpha" }).pipe(Effect.map((n) => n.source));
+      yield* setTime(plain, "Alpha.md");
+      assert.equal(yield* source(), "# Alpha\n\nOne.\n");
+      const first = (yield* wikis.index({ wikiId })).commit;
+
+      // Same size and time: what was read stands, so the folder is not walked or read again.
+      yield* setTime(plain, "Alpha.md", "# Alpha\n\nTwo.\n");
+      assert.equal(yield* source(), "# Alpha\n\nOne.\n");
+      assert.equal((yield* wikis.index({ wikiId })).commit, first);
+      yield* setTime(plain, "Alpha.md", undefined, 1_700_000_100);
+      assert.equal(yield* source(), "# Alpha\n\nTwo.\n");
+      assert.notEqual((yield* wikis.index({ wikiId })).commit, first);
+
+      // A file added to a folder moves the folder's time.
+      yield* write(plain, { "sub/Gamma.md": "# Gamma\n" });
+      assert.deepEqual(
+        (yield* wikis.index({ wikiId })).notes.map((note) => note.name),
+        ["Alpha", "sub/Beta", "sub/Gamma"],
+      );
+    }),
+  ),
+);
+
+it.effect("leaves a nested repository's and a nested folder's notes to their own roots", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const wikis = yield* WikiService.WikiService;
+      const path = yield* Path.Path;
+      const workspace = yield* harness.folder("workspace");
+      yield* write(workspace, { "Top.md": "# Top\n", "inner/Inner.md": "# Inner\n" });
+      yield* commitNotes(path.join(workspace, "repo"), { "Repo.md": "# Repo\n" });
+      const project = yield* projectOver({
+        id: "project-nested",
+        workspaceRoot: workspace,
+        trackedFolders: [{ name: "inner", path: path.join(workspace, "inner") }],
+      });
+      const names = (key: string) =>
+        wikis
+          .index({ wikiId: rootIdOf(project.id, key) })
+          .pipe(Effect.map((index) => index.notes.map((note) => note.name)));
+
+      assert.deepEqual(yield* names("workspace"), ["Top"]);
+      assert.deepEqual(yield* names("inner"), ["Inner"]);
+      assert.deepEqual(yield* names("repo"), ["Repo"]);
+    }),
+  ),
+);
+
+it.effect("reads a Git checkout on disk, uncommitted notes included, and no other folder", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const wikis = yield* WikiService.WikiService;
+      const path = yield* Path.Path;
+      const docs = yield* commitNotes(yield* harness.folder("docs"));
+      const project = yield* projectOver({ id: "project-disk", workspaceRoot: docs });
+      const wikiId = rootIdOf(project.id, "docs");
+      yield* write(docs, {
+        "Gamma.md": "# Gamma\n\nAfter [[Alpha]].\n",
+        "Beta.md": "# Beta\n\nEdited.\n",
+      });
+
+      const committed = yield* wikis.index({ wikiId });
+      assert.notInclude(
+        committed.notes.map((note) => note.name),
+        "Gamma",
+      );
+      const onDisk = yield* wikis.index({ wikiId, checkout: docs });
+      assert.equal(onDisk.commit, yield* mainAt(docs));
+      assert.include(
+        onDisk.notes.map((note) => note.name),
+        "Gamma",
+      );
+      assert.equal(
+        (yield* wikis.readNote({ wikiId, name: "Beta", checkout: docs })).source,
+        "# Beta\n\nEdited.\n",
+      );
+      assert.deepEqual((yield* wikis.links({ wikiId, name: "Alpha", checkout: docs })).backlinks, [
+        "Gamma",
+      ]);
+
+      // What was read is kept while git's status and the edited notes' times hold.
+      const beta = () =>
+        wikis
+          .readNote({ wikiId, name: "Beta", checkout: docs })
+          .pipe(Effect.map((note) => note.source));
+      yield* setTime(docs, "Beta.md");
+      assert.equal(yield* beta(), "# Beta\n\nEdited.\n");
+      yield* setTime(docs, "Beta.md", "# Beta\n\nEditeD.\n");
+      assert.equal(yield* beta(), "# Beta\n\nEdited.\n");
+      yield* setTime(docs, "Beta.md", undefined, 1_700_000_100);
+      assert.equal(yield* beta(), "# Beta\n\nEditeD.\n");
+
+      // A worktree of the repository is a checkout of it; any other folder is not.
+      const worktree = path.join(path.dirname(docs), "docs-feature");
+      yield* git(docs, ["worktree", "add", "--quiet", "-b", "feature", worktree]);
+      yield* write(worktree, { "Delta.md": "# Delta\n" });
+      assert.include(
+        (yield* wikis.index({ wikiId, checkout: worktree })).notes.map((note) => note.name),
+        "Delta",
+      );
+      const elsewhere = yield* harness.folder("elsewhere");
+      for (const checkout of [elsewhere, path.join(docs, "area"), "docs", "/nowhere/at/all"]) {
+        yield* write(docs, { "area/Note.md": "# Note\n" });
+        assert.equal((yield* failure(wikis.index({ wikiId, checkout }))).reason, "invalid");
+      }
+    }),
+  ),
+);
+
+it.effect("moves a note on disk with its links, in a folder without Git and in a worktree", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const wikis = yield* WikiService.WikiService;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const plain = yield* harness.folder("plain");
+      yield* write(plain, FIXTURE);
+      const docs = yield* commitNotes(yield* harness.folder("docs"));
+      const project = yield* projectOver({
+        id: "project-move",
+        workspaceRoot: docs,
+        trackedFolders: [{ name: "plain", path: plain }],
+      });
+      const rename = { kind: "rename", from: "Beta", to: "area/Gamma" } as const;
+
+      const inPlain = yield* wikis.transformCheckout(
+        { wikiId: rootIdOf(project.id, "plain"), message: "Move", transform: rename },
+        WikiService.person,
+      );
+      assert.deepEqual(inPlain, {
+        written: ["Alpha.md", "Product.skillmap.md", "area/Gamma.md"],
+        removed: ["Beta.md"],
+        errors: [],
+      });
+      assert.include(yield* read(plain, "Alpha.md"), "[[Gamma]]");
+      assert.isFalse(yield* fileSystem.exists(path.join(plain, "Beta.md")).pipe(Effect.orDie));
+      assert.deepEqual(
+        (yield* wikis.readNote({ wikiId: rootIdOf(project.id, "plain"), name: "area/Gamma" }))
+          .incoming,
+        ["Alpha"],
+      );
+
+      const worktree = path.join(path.dirname(docs), "docs-move");
+      yield* git(docs, ["worktree", "add", "--quiet", "-b", "move", worktree]);
+      const main = yield* mainAt(docs);
+      const wikiId = rootIdOf(project.id, "docs");
+      const inWorktree = yield* wikis.transformCheckout(
+        { wikiId, message: "Move", checkout: worktree, transform: rename },
+        WikiService.person,
+      );
+      assert.deepEqual("removed" in inWorktree ? inWorktree.removed : [], ["Beta.md"]);
+      assert.include(yield* read(worktree, "Alpha.md"), "[[Gamma]]");
+      assert.equal(yield* read(docs, "Alpha.md"), FIXTURE["Alpha.md"]);
+      assert.equal(yield* mainAt(docs), main);
+      assert.equal(yield* git(docs, ["for-each-ref", "refs/heads/cr/"]), "");
+      const refused = yield* failure(
+        wikis.transformCheckout(
+          { wikiId, message: "Move", checkout: plain, transform: rename },
+          WikiService.person,
+        ),
+      );
+      assert.equal(refused.reason, "invalid");
     }),
   ),
 );

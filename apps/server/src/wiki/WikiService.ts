@@ -120,6 +120,7 @@ import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
+import * as Hash from "effect/Hash";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
@@ -133,9 +134,11 @@ import * as Stream from "effect/Stream";
 import * as ServerConfig from "../config.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
+import { isWithinRoot } from "../workspace/KnownWorkspaces.ts";
 import * as ProjectRoots from "../workspace/ProjectRoots.ts";
 import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
 import { parseWorktreeList } from "../worktrees/worktreeList.ts";
+import { type PlainScan, plainScanFresh, scanPlainFolder } from "./plainFolder.ts";
 import {
   AMENDMENT_LOG_FORMAT,
   CHANGE_REQUEST_BRANCH_PREFIX,
@@ -207,18 +210,21 @@ export interface WikiCheckout {
 export const person: WikiAuthor = { actor: "You", threadId: null };
 
 /**
- * Where a read comes from: a named change request's head, else the thread's own open change
- * request on that wiki, else the main line. `wikiId` may also be the wiki's name, for agents.
+ * Where a read comes from: a named change request's head, else `checkout` on disk, else the
+ * thread's own open change request on that wiki, else the main line. A folder without Git is
+ * read on disk. `wikiId` may also be the wiki's name, for agents.
  */
 export interface WikiReadTarget {
   readonly wikiId: WikiId;
   readonly changeRequestId?: WikiChangeRequestId | undefined;
   readonly threadId?: ThreadId | undefined;
+  /** The root's own folder or one of its worktrees, read as its files stand. */
+  readonly checkout?: string | undefined;
   /**
    * With `threadId` and no `changeRequestId`, read the thread's checkout of the wiki as its files
    * stand, unsaved edits and all, when it has one. A change request's detail lists them apart.
    */
-  readonly checkout?: boolean | undefined;
+  readonly threadCheckout?: boolean | undefined;
 }
 
 /** The thread whose checkout of a wiki the fallback file tools work in. */
@@ -361,13 +367,15 @@ export class WikiService extends Context.Service<
       input: WikiAmendInput,
       author: WikiAuthor,
     ) => Effect.Effect<WikiAmendResult, WikiError>;
+    /** Lands as an amendment; never on disk, whatever `checkout` says. */
     readonly transform: (
       input: WikiTransformInput,
       author: WikiAuthor,
     ) => Effect.Effect<WikiAmendResult, WikiError>;
     /**
-     * An agent's transform: written uncommitted into its thread's checkout of the wiki, for the
-     * turn's save to land, when it has one and names no change request; else as `transform`.
+     * A transform written uncommitted on disk: in `checkout`, in a folder without Git, or in the
+     * agent's thread's checkout of the wiki (for the turn's save to land) when it has one and
+     * names no change request. Otherwise as `transform`.
      */
     readonly transformCheckout: (
       input: WikiTransformInput,
@@ -578,6 +586,24 @@ interface Snapshot {
   readonly others: ReadonlyArray<WikiBlob>;
 }
 
+/** Documents read from a folder on disk as its files stand. */
+interface DiskRead {
+  /** The checkout's HEAD; for a folder without Git, a digest of what was read. */
+  readonly commit: string;
+  readonly snapshot: Snapshot;
+  /** Documents on disk that differ from `commit`; none for a folder without Git. */
+  readonly changes: WikiChanges;
+  /** A folder without Git: its files and their times on disk. */
+  readonly plain: {
+    readonly scan: PlainScan;
+    readonly listing: FileListing;
+    readonly times: WikiFileTimes;
+  } | null;
+}
+
+/** What git's pathspecs match of a document, at any depth. */
+const DOCUMENT_PATHSPECS = ["*.md", "*.base", "*.canvas"] as const;
+
 interface ChangedFiles {
   readonly files: ReadonlyArray<string>;
   readonly moves: ReadonlyArray<{ readonly from: string; readonly to: string }>;
@@ -765,6 +791,9 @@ const make = Effect.gen(function* () {
   const codeFacts = yield* Ref.make<CodeFactsSource | null>(null);
   const corpusLocks = new Map<string, Semaphore.Semaphore>();
   const fileListings = lru<FileListing>(8);
+  // By folder: a disk read is reused while what decides it (git's status, the files' times) holds.
+  const checkoutReads = lru<{ readonly key: string; readonly read: DiskRead }>(8);
+  const plainReads = lru<DiskRead>(8);
   // A change request's every read asks for its preview, and a canvas's merge reads three blobs.
   const mergePreviews = lru<WikiTreeMerge>(64);
 
@@ -1297,7 +1326,10 @@ const make = Effect.gen(function* () {
     return head || "main";
   });
 
-  /** A Git folder of a project, as a wiki whose host is the folder's remote. */
+  /**
+   * A folder of a project, as a wiki whose host is the folder's remote. A folder without Git has
+   * no host, mirror or main line, and is read on disk.
+   */
   const rootRecord = Effect.fn("WikiService.rootRecord")(function* (
     project: { readonly id: ProjectId; readonly title: string; readonly createdAt: IsoDateTime },
     root: ProjectRoot,
@@ -1305,17 +1337,31 @@ const make = Effect.gen(function* () {
     const folder = yield* fileSystem
       .realPath(root.path)
       .pipe(Effect.orElseSucceed(() => root.path));
+    const named = {
+      wikiId: WikiId.make(projectRootId(project.id, root.key)),
+      name: root.kind === "workspace" ? project.title : root.name,
+      root: folder,
+      projectIds: [project.id],
+      projectLinkedAt: {},
+      mirror: null,
+      createdAt: project.createdAt,
+    };
+    if (root.state === "plain") {
+      const plain: WikiRecord = {
+        ...named,
+        mainBranch: "main",
+        host: null,
+        mapBackgrounds: [],
+        plain: true,
+      };
+      return plain;
+    }
     const host = root.hostBacked ? yield* projectRootFolders.host(root.path) : null;
     const mainBranch = yield* defaultBranch(folder, host?.remote ?? "origin");
     const { wikis } = yield* loadRegistry;
     const record: WikiRecord = {
-      wikiId: WikiId.make(projectRootId(project.id, root.key)),
-      name: root.kind === "workspace" ? project.title : root.name,
-      root: folder,
+      ...named,
       mainBranch,
-      projectIds: [project.id],
-      projectLinkedAt: {},
-      mirror: null,
       host:
         host === null
           ? null
@@ -1332,7 +1378,6 @@ const make = Effect.gen(function* () {
             },
       // Until map backgrounds leave wikis, a registered wiki's folder keeps drawing on its own.
       mapBackgrounds: wikis.find((wiki) => wiki.root === folder)?.mapBackgrounds ?? [],
-      createdAt: project.createdAt,
     };
     return record;
   });
@@ -1351,19 +1396,16 @@ const make = Effect.gen(function* () {
       .pipe(Effect.orElseSucceed((): ReadonlyArray<ProjectRoot> => []));
     const root = roots.find((candidate) => candidate.key === parsed.rootKey);
     if (root === undefined) return undefined;
-    if (root.state !== "git") {
+    if (root.state === "missing") {
       return yield* new WikiError({
-        reason: root.state === "missing" ? "not-found" : "invalid",
-        message:
-          root.state === "missing"
-            ? `The folder ${root.path} is gone.`
-            : `The folder ${root.path} is not a Git repository.`,
+        reason: "not-found",
+        message: `The folder ${root.path} is gone.`,
       });
     }
     return yield* rootRecord(project.value, root);
   });
 
-  /** Every Git folder of every project that isn't archived, as wikis. */
+  /** Every folder of every project that isn't archived, as wikis. */
   const projectRootRecords = Effect.gen(function* () {
     const shells = yield* projects
       .listShells()
@@ -1379,7 +1421,7 @@ const make = Effect.gen(function* () {
         projectRootFolders.list(shell.id).pipe(
           Effect.flatMap((roots) =>
             Effect.forEach(
-              roots.filter((root) => root.state === "git"),
+              roots.filter((root) => root.state !== "missing"),
               (root) => rootRecord(shell, root),
             ),
           ),
@@ -1409,17 +1451,37 @@ const make = Effect.gen(function* () {
     });
   });
 
-  /** Runs `body` against a known wiki, with git checked and failures naming the wiki. */
+  const withoutGit = (wiki: WikiRecord) =>
+    new WikiError({
+      reason: "invalid",
+      message: `${wiki.root} is not a Git repository, so it has no change requests, drafts or history: its files are edited on disk.`,
+    });
+
+  /** Runs `body` against a known wiki, a folder without Git too, with failures naming it. */
+  const withAnyWiki = <A>(
+    reference: string,
+    body: (wiki: WikiRecord) => Effect.Effect<A, WikiError>,
+    changeRequestId?: WikiChangeRequestId,
+  ) =>
+    lookup(reference).pipe(
+      Effect.flatMap((wiki) =>
+        (wiki.plain ? Effect.void : requireGit).pipe(
+          Effect.andThen(body(wiki)),
+          Effect.mapError(inWiki(wiki.wikiId, changeRequestId)),
+        ),
+      ),
+    );
+
+  /** Runs `body` against a known wiki in Git, with git checked and failures naming the wiki. */
   const withWiki = <A>(
     reference: string,
     body: (wiki: WikiRecord) => Effect.Effect<A, WikiError>,
     changeRequestId?: WikiChangeRequestId,
   ) =>
-    requireGit.pipe(
-      Effect.andThen(lookup(reference)),
-      Effect.flatMap((wiki) =>
-        body(wiki).pipe(Effect.mapError(inWiki(wiki.wikiId, changeRequestId))),
-      ),
+    withAnyWiki(
+      reference,
+      (wiki) => (wiki.plain ? Effect.fail(withoutGit(wiki)) : body(wiki)),
+      changeRequestId,
     );
 
   const withRegisteredWiki = <A>(
@@ -1776,14 +1838,14 @@ const make = Effect.gen(function* () {
     target: WikiReadTarget,
     read: (wiki: WikiRecord, commit: string, snapshot: Snapshot) => A,
   ) =>
-    withWiki(
+    withAnyWiki(
       target.wikiId,
       (wiki) =>
         Effect.gen(function* () {
-          const checkout = yield* threadCheckout(wiki, target);
-          if (checkout !== null) {
-            const { head, snapshot } = yield* checkoutSnapshot(wiki, checkout);
-            return read(wiki, head, snapshot);
+          const folder = yield* diskFolder(wiki, target);
+          if (folder !== null) {
+            const { commit, snapshot } = yield* diskRead(wiki, folder);
+            return read(wiki, commit, snapshot);
           }
           const commit = yield* readCommit(wiki, target);
           return read(wiki, commit, yield* snapshotAt(wiki, commit));
@@ -2902,9 +2964,9 @@ const make = Effect.gen(function* () {
   /** The thread's checkout of the wiki a read or an agent's transform works in, if it has one. */
   const threadCheckout = Effect.fn("WikiService.threadCheckout")(function* (
     wiki: WikiRecord,
-    target: WikiReadTarget,
+    target: Pick<WikiReadTarget, "changeRequestId" | "threadId" | "threadCheckout">,
   ) {
-    if (!target.checkout || target.threadId === undefined) return null;
+    if (!target.threadCheckout || target.threadId === undefined) return null;
     if (target.changeRequestId !== undefined) return null;
     const folder = path.join(
       config.stateDir,
@@ -2947,20 +3009,221 @@ const make = Effect.gen(function* () {
     return { head, edits, snapshot };
   });
 
+  /**
+   * The folder `checkout` names, once it is the root's own folder or, for Git, one of the worktrees
+   * git lists for it. Any other path is refused.
+   */
+  const checkoutFolder = Effect.fn("WikiService.checkoutFolder")(function* (
+    wiki: WikiRecord,
+    checkout: string,
+  ) {
+    const refused = new WikiError({
+      reason: "invalid",
+      message: `${checkout} is not a checkout of ${wiki.name}: give its folder or one of its worktrees.`,
+    });
+    if (!path.isAbsolute(checkout)) return yield* refused;
+    const real = yield* fileSystem.realPath(checkout).pipe(Effect.mapError(() => refused));
+    const root = yield* fileSystem.realPath(wiki.root).pipe(Effect.orElseSucceed(() => wiki.root));
+    if (real === root) return real;
+    if (wiki.plain || (yield* listedCheckout(wiki, real)) === undefined) return yield* refused;
+    return real;
+  });
+
+  /** The folder a read works in on disk, or null to read a commit. */
+  const diskFolder = Effect.fn("WikiService.diskFolder")(function* (
+    wiki: WikiRecord,
+    target: Pick<WikiReadTarget, "changeRequestId" | "checkout" | "threadId" | "threadCheckout">,
+  ) {
+    if (wiki.plain && target.changeRequestId !== undefined) return yield* withoutGit(wiki);
+    if (target.checkout !== undefined) {
+      if (target.changeRequestId !== undefined) {
+        return yield* new WikiError({
+          reason: "invalid",
+          message: "Name a change request or a checkout to read, not both.",
+        });
+      }
+      return yield* checkoutFolder(wiki, target.checkout);
+    }
+    if (wiki.plain) return wiki.root;
+    return yield* threadCheckout(wiki, target);
+  });
+
+  /** Other roots of the wiki's project inside `folder`: their files are theirs. */
+  const nestedRoots = Effect.fn("WikiService.nestedRoots")(function* (
+    wiki: WikiRecord,
+    folder: string,
+  ) {
+    const parsed = parseProjectRootId(wiki.wikiId);
+    if (parsed === null) return new Set<string>();
+    const roots = yield* projectRootFolders
+      .list(parsed.projectId)
+      .pipe(Effect.orElseSucceed((): ReadonlyArray<ProjectRoot> => []));
+    const inside = yield* Effect.forEach(
+      roots.filter((root) => root.key !== parsed.rootKey),
+      (root) => fileSystem.realPath(root.path).pipe(Effect.orElseSucceed(() => root.path)),
+    );
+    return new Set(inside.filter((at) => at !== folder && isWithinRoot(path, at, folder)));
+  });
+
+  /** A folder without Git as it stands, walked again only once a file or folder it read moved. */
+  const plainRead = Effect.fn("WikiService.plainRead")(function* (
+    wiki: WikiRecord,
+    folder: string,
+  ) {
+    const cached = plainReads.get(folder);
+    if (
+      cached?.plain != null &&
+      (yield* plainScanFresh(cached.plain.scan).pipe(
+        Effect.provideService(FileSystem.FileSystem, fileSystem),
+      ))
+    ) {
+      return cached;
+    }
+    const scan = yield* scanPlainFolder(folder, yield* nestedRoots(wiki, folder)).pipe(
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
+      Effect.provideService(Path.Path, path),
+    );
+    const others = scan.files.flatMap(({ file }) =>
+      isWikiDocument(file) ? [] : [{ file, oid: "" }],
+    );
+    const entries = scan.files.map(({ file, size }) => ({ file, oid: "", size }));
+    const isoTimes = (time: "modified" | "created") =>
+      new Map(
+        scan.files.flatMap((entry) => {
+          const at = entry[time];
+          return at === undefined ? [] : [[entry.file, at.toISOString()] as const];
+        }),
+      );
+    const read: DiskRead = {
+      commit: `disk-${(Hash.string(scan.stamps.join("\n")) >>> 0).toString(16)}`,
+      snapshot: {
+        files: scan.documents,
+        index: yield* Effect.try({
+          try: () =>
+            indexFiles(
+              scan.documents,
+              others.map((entry) => entry.file),
+            ),
+          catch: planningError,
+        }),
+        others,
+      },
+      changes: {},
+      plain: {
+        scan,
+        listing: {
+          entries,
+          byFile: new Map(entries.map((entry) => [entry.file, entry])),
+          links: linkFiles(entries.map((entry) => entry.file)),
+        },
+        times: { modified: isoTimes("modified"), created: isoTimes("created") },
+      },
+    };
+    plainReads.set(folder, read);
+    return read;
+  });
+
+  /**
+   * A Git checkout's documents as they stand: its HEAD's with the edits git's status names over
+   * them. Status asks after documents alone, so git compares only those with its index; the read
+   * is reused while HEAD, that status and the edited documents' times hold.
+   */
+  const gitDiskRead = Effect.fn("WikiService.gitDiskRead")(function* (
+    wiki: WikiRecord,
+    folder: string,
+  ) {
+    const head = yield* gitOut("worktreeHead", folder, ["rev-parse", "HEAD"]);
+    const status = (yield* runGit("documentStatus", folder, [
+      "status",
+      "--porcelain=v1",
+      "-z",
+      "--no-renames",
+      "--untracked-files=all",
+      "--",
+      ...DOCUMENT_PATHSPECS,
+    ])).stdout;
+    const edited = new Map<string, boolean>();
+    for (const record of status.split("\0")) {
+      const file = record.slice(3);
+      if (record.length >= 4 && isWikiDocument(file)) {
+        edited.set(file, record.slice(0, 2).includes("D"));
+      }
+    }
+    const times = yield* Effect.forEach(
+      [...edited].filter(([, deleted]) => !deleted),
+      ([file]) =>
+        fileSystem.stat(path.join(folder, file)).pipe(
+          Effect.map(
+            (info) => `${file}:${Option.getOrUndefined(info.mtime)?.getTime()}:${info.size}`,
+          ),
+          Effect.orElseSucceed(() => `${file}:gone`),
+        ),
+      { concurrency: 16 },
+    );
+    const key = [head, status, ...times].join("\0");
+    const cached = checkoutReads.get(folder);
+    if (cached?.key === key) return cached.read;
+    const committed = yield* snapshotAt(wiki, head);
+    const changes: Record<string, string | null> = {};
+    for (const [file, deleted] of edited) {
+      changes[file] = deleted
+        ? null
+        : yield* fileSystem.readFileString(path.join(folder, file)).pipe(
+            Effect.mapError(
+              (cause) =>
+                new WikiError({
+                  reason: "invalid",
+                  message: `${file} could not be read from ${folder}.`,
+                  cause,
+                }),
+            ),
+          );
+    }
+    const files = edited.size === 0 ? committed.files : applyChanges(committed.files, changes);
+    const read: DiskRead = {
+      commit: head,
+      snapshot:
+        edited.size === 0
+          ? committed
+          : {
+              files,
+              index: yield* Effect.try({
+                try: () =>
+                  indexFiles(
+                    files,
+                    committed.others.map((entry) => entry.file),
+                  ),
+                catch: planningError,
+              }),
+              others: committed.others,
+            },
+      changes,
+      plain: null,
+    };
+    checkoutReads.set(folder, { key, read });
+    return read;
+  });
+
+  const diskRead = (wiki: WikiRecord, folder: string) =>
+    wiki.plain ? plainRead(wiki, folder) : gitDiskRead(wiki, folder);
+
   const ioError = (message: string) => (cause: unknown) =>
     new WikiError({ reason: "git-failed", message, cause });
 
   /**
-   * Plans a transform on a checkout's files and writes the result there, uncommitted. Its stamps
-   * carry the amendment id the turn's save will land under. Callers hold the lock and the lease.
+   * Plans a transform on a checkout's files and writes the result there, uncommitted. In Git its
+   * stamps carry the amendment id a turn's save would land under. Callers hold the lock and the
+   * lease.
    */
   const transformInCheckout = Effect.fn("WikiService.transformInCheckout")(function* (
     wiki: WikiRecord,
     folder: string,
     change: WikiTransform,
   ): Effect.fn.Return<WikiCheckoutTransformResult, WikiError> {
-    const { snapshot } = yield* checkoutSnapshot(wiki, folder);
-    const stored = yield* readPending(folder);
+    const { snapshot } = wiki.plain
+      ? yield* plainRead(wiki, folder)
+      : yield* checkoutSnapshot(wiki, folder);
+    const stored = wiki.plain ? Option.none() : yield* readPending(folder);
     const pending = Option.isSome(stored)
       ? stored.value
       : { amendment: yield* newId, minted: 0, moved: [] };
@@ -3020,14 +3283,16 @@ const make = Effect.gen(function* () {
           yield* fileSystem.remove(on(dir), { recursive: true });
         }
       }
-      yield* fileSystem.writeFileString(
-        yield* pendingFile(folder),
-        yield* encodePending({
-          amendment: pending.amendment,
-          minted,
-          moved: chainMoves(pending.moved, planned.moved ?? []),
-        }),
-      );
+      if (!wiki.plain) {
+        yield* fileSystem.writeFileString(
+          yield* pendingFile(folder),
+          yield* encodePending({
+            amendment: pending.amendment,
+            minted,
+            moved: chainMoves(pending.moved, planned.moved ?? []),
+          }),
+        );
+      }
     }).pipe(
       Effect.mapError((cause) =>
         isWikiError(cause)
@@ -3044,19 +3309,17 @@ const make = Effect.gen(function* () {
   });
 
   const transformCheckout: WikiService["Service"]["transformCheckout"] = (input, author) =>
-    withWiki(
+    withAnyWiki(
       input.wikiId,
       (wiki) =>
         Effect.gen(function* () {
-          const folder =
-            author.threadId === null
-              ? null
-              : yield* threadCheckout(wiki, {
-                  wikiId: wiki.wikiId,
-                  threadId: author.threadId,
-                  changeRequestId: input.changeRequestId,
-                  checkout: true,
-                });
+          const folder = yield* diskFolder(wiki, {
+            changeRequestId: input.changeRequestId,
+            checkout: input.checkout,
+            ...(author.threadId === null
+              ? {}
+              : { threadId: author.threadId, threadCheckout: true }),
+          });
           if (folder === null) return yield* transform(input, author);
           return yield* locked(
             wiki,
@@ -3072,9 +3335,7 @@ const make = Effect.gen(function* () {
     threadId: ThreadId | null | undefined,
   ) {
     const folder =
-      threadId == null
-        ? null
-        : yield* threadCheckout(wiki, { wikiId: wiki.wikiId, threadId, checkout: true });
+      threadId == null ? null : yield* threadCheckout(wiki, { threadId, threadCheckout: true });
     if (folder === null) {
       return yield* new WikiError({
         reason: "not-found",
@@ -3419,7 +3680,7 @@ const make = Effect.gen(function* () {
     );
 
   const summary = (wiki: WikiRecord) =>
-    readChangeRequests(wiki).pipe(
+    (wiki.plain ? Effect.succeed([]) : readChangeRequests(wiki)).pipe(
       Effect.map(
         (all) => all.filter(({ record }) => record.status === "open" && !record.draft).length,
       ),
@@ -3631,11 +3892,35 @@ const make = Effect.gen(function* () {
     return corpus;
   });
 
+  /** A folder without Git as a base lists it: every file, with its times on disk. */
+  const plainCorpus = (commit: string, plain: NonNullable<DiskRead["plain"]>) => {
+    const cached = corpora.get(commit);
+    if (cached !== undefined) return cached.corpus;
+    const corpus = baseCorpus(
+      plain.scan.files.map(({ file, size }) => ({
+        file,
+        size,
+        ...(/\.(md|canvas)$/i.test(file) && file in plain.scan.documents
+          ? { source: plain.scan.documents[file] }
+          : {}),
+      })),
+      plain.times,
+    );
+    corpora.set(commit, { corpus, code: undefined });
+    return corpus;
+  };
+
   const index: WikiService["Service"]["index"] = (input) =>
-    withWiki(
+    withAnyWiki(
       input.wikiId,
       (wiki) =>
         Effect.gen(function* () {
+          const folder = yield* diskFolder(wiki, input);
+          if (folder !== null) {
+            const disk = yield* diskRead(wiki, folder);
+            const times = disk.plain?.times ?? (yield* editTimesAt(wiki, disk.commit));
+            return indexResult(wiki.wikiId, disk.commit, disk.snapshot.index, times.modified);
+          }
           const commit = yield* readCommit(wiki, input);
           const snapshot = yield* snapshotAt(wiki, commit);
           const times = yield* editTimesAt(wiki, commit);
@@ -3656,14 +3941,14 @@ const make = Effect.gen(function* () {
     }));
 
   const query: WikiService["Service"]["query"] = (input) =>
-    withWiki(
+    withAnyWiki(
       input.wikiId,
       (wiki) =>
         Effect.gen(function* () {
-          const checkout = yield* threadCheckout(wiki, input);
-          const inCheckout = checkout === null ? null : yield* checkoutSnapshot(wiki, checkout);
-          const commit = inCheckout?.head ?? (yield* readCommit(wiki, input));
-          const snapshot = inCheckout?.snapshot ?? (yield* snapshotAt(wiki, commit));
+          const folder = yield* diskFolder(wiki, input);
+          const disk = folder === null ? null : yield* diskRead(wiki, folder);
+          const commit = disk?.commit ?? (yield* readCommit(wiki, input));
+          const snapshot = disk?.snapshot ?? (yield* snapshotAt(wiki, commit));
           // Unsaved edits from the view are read as if they had landed.
           const viewed = yield* Effect.try({
             try: () => (input.edits?.length ? applyBaseEdits(snapshot.files, input.edits) : {}),
@@ -3681,17 +3966,16 @@ const make = Effect.gen(function* () {
                 snapshot.others.map((entry) => entry.file),
               )
             : snapshot.index;
-          const changes = { ...inCheckout?.edits.changes, ...viewed };
+          const changes = { ...disk?.changes, ...viewed };
           const located = locateBase(index, input);
           if ("problem" in located) {
             return yield* new WikiError({ reason: located.problem, message: located.message });
           }
-          const code = yield* codeAt(wiki, commit);
-          const committed = yield* corpusAt(
-            wiki,
-            commit,
-            code.state === "ready" ? code.files : undefined,
-          );
+          const code: CodeFacts = wiki.plain ? { state: "off" } : yield* codeAt(wiki, commit);
+          const committed =
+            disk?.plain == null
+              ? yield* corpusAt(wiki, commit, code.state === "ready" ? code.files : undefined)
+              : plainCorpus(disk.commit, disk.plain);
           const corpus =
             Object.keys(changes).length > 0 ? corpusWithChanges(committed, changes) : committed;
           const now = yield* Clock.currentTimeMillis;
@@ -3736,13 +4020,20 @@ const make = Effect.gen(function* () {
     return yield* new WikiError({ reason: "not-found", message: "No commit has this id here." });
   });
 
+  /** A folder without Git's file listing as it stands; its files are read on disk. */
+  const plainListing = (wiki: WikiRecord) =>
+    plainRead(wiki, wiki.root).pipe(
+      Effect.map((disk) => ({ commit: disk.commit, plain: disk.plain! })),
+    );
+
   const readFiles: WikiService["Service"]["readFiles"] = (input) =>
-    withWiki(
+    withAnyWiki(
       input.wikiId,
       (wiki) =>
         Effect.gen(function* () {
-          const commit = yield* fileCommit(wiki, input);
-          const listing = yield* fileListingAt(wiki, commit);
+          const plain = wiki.plain ? yield* plainListing(wiki) : null;
+          const commit = plain?.commit ?? (yield* fileCommit(wiki, input));
+          const listing = plain?.plain.listing ?? (yield* fileListingAt(wiki, commit));
           const found = input.paths.map((path) => listedFile(listing, path, input.from ?? null));
           // A media file's existence is all a card needs here: its bytes come as an asset.
           const readable = found.flatMap((entry) =>
@@ -3750,16 +4041,27 @@ const make = Effect.gen(function* () {
               ? [entry]
               : [],
           );
-          const contents = yield* readObjects(
-            wiki.root,
-            readable.map((entry) => entry.oid),
+          const contents =
+            plain === null
+              ? yield* readObjects(
+                  wiki.root,
+                  readable.map((entry) => entry.oid),
+                )
+              : yield* Effect.forEach(readable, ({ file }) =>
+                  file in plain.plain.scan.documents
+                    ? Effect.succeed(plain.plain.scan.documents[file] ?? null)
+                    : fileSystem
+                        .readFileString(path.join(wiki.root, file))
+                        .pipe(Effect.orElseSucceed(() => null)),
+                );
+          const texts = new Map(
+            readable.map((entry, position) => [entry.file, contents[position]]),
           );
-          const texts = new Map(readable.map((entry, position) => [entry.oid, contents[position]]));
           return {
             commit,
             files: input.paths.map((path, position) => {
               const entry = found[position];
-              const text = entry === undefined ? undefined : texts.get(entry.oid);
+              const text = entry === undefined ? undefined : texts.get(entry.file);
               return {
                 path,
                 exists: entry !== undefined,
@@ -3775,12 +4077,13 @@ const make = Effect.gen(function* () {
     );
 
   const listFiles: WikiService["Service"]["listFiles"] = (input) =>
-    withWiki(
+    withAnyWiki(
       input.wikiId,
       (wiki) =>
         Effect.gen(function* () {
-          const commit = yield* fileCommit(wiki, input);
-          const listing = yield* fileListingAt(wiki, commit);
+          const plain = wiki.plain ? yield* plainListing(wiki) : null;
+          const commit = plain?.commit ?? (yield* fileCommit(wiki, input));
+          const listing = plain?.plain.listing ?? (yield* fileListingAt(wiki, commit));
           return {
             commit,
             files: listing.entries.flatMap(({ file, size }) =>
@@ -3898,7 +4201,8 @@ const make = Effect.gen(function* () {
       Effect.andThen(
         input.wikiId === undefined
           ? Effect.map(loadRegistry, (registry) => registry.wikis)
-          : Effect.map(lookup(input.wikiId), (wiki) => [wiki]),
+          : // A folder without Git has no change requests to list.
+            Effect.map(lookup(input.wikiId), (wiki) => (wiki.plain ? [] : [wiki])),
       ),
       Effect.flatMap((wikis) =>
         Effect.forEach(
@@ -4417,7 +4721,7 @@ const make = Effect.gen(function* () {
     return (yield* lookup(wikiId)).root;
   });
 
-  const get: WikiService["Service"]["get"] = (wikiId) => withWiki(wikiId, summary);
+  const get: WikiService["Service"]["get"] = (wikiId) => withAnyWiki(wikiId, summary);
 
   const hosted: WikiService["Service"]["hosted"] = Effect.map(loadRegistry, (registry) =>
     registry.wikis.filter((wiki) => wiki.host !== null).map((wiki) => wiki.wikiId),

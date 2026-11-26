@@ -123,12 +123,12 @@ export const layer = McpToolAccess.toLayer(WikiToolkit, {
   // Reads see the calling thread's checkout as it stands, unsaved edits included.
   astrolabe_wiki_orient: McpToolAccess.reads((input) =>
     read(input.wiki, (wikis, threadId) =>
-      wikis.orient({ ...target(input), map: input.map.trim(), threadId, checkout: true }),
+      wikis.orient({ ...target(input), map: input.map.trim(), threadId, threadCheckout: true }),
     ),
   ),
   astrolabe_wiki_links: McpToolAccess.reads((input) =>
     read(input.wiki, (wikis, threadId) =>
-      wikis.links({ ...target(input), threadId, checkout: true }),
+      wikis.links({ ...target(input), threadId, threadCheckout: true }),
     ),
   ),
   astrolabe_wiki_query: McpToolAccess.reads(({ base, view, ...input }) =>
@@ -139,7 +139,7 @@ export const layer = McpToolAccess.toLayer(WikiToolkit, {
           base: base.trim(),
           ...(view === undefined ? {} : { view: view.trim() }),
           threadId,
-          checkout: true,
+          threadCheckout: true,
         })
         .pipe(
           // The property picker's list is for the app; an agent reads the base's YAML instead.
@@ -157,7 +157,7 @@ export const layer = McpToolAccess.toLayer(WikiToolkit, {
   astrolabe_wiki_change_request: McpToolAccess.reads((input) =>
     read(input.wiki, (wikis, threadId) =>
       wikis
-        .changeRequestsGet({ ...target(input), threadId, checkout: true })
+        .changeRequestsGet({ ...target(input), threadId, threadCheckout: true })
         .pipe(
           Effect.map((detail) => withSyntax(withCanvasOutlines(detail), changesBrokenBase(detail))),
         ),

@@ -252,10 +252,20 @@ export const WikiCanvasSummary = Schema.Struct({
   editedAt: Schema.optional(IsoDateTime),
 });
 
-/** Reads come from a change request's head when one is named, else from the main line. */
+/**
+ * An absolute folder holding the root's files on disk: the root itself or, for Git, one of its
+ * worktrees. Read or written there as the files stand, uncommitted ones included.
+ */
+const WikiCheckoutFolder = Schema.optional(TrimmedNonEmptyString);
+
+/**
+ * Reads come from a change request's head when one is named, from `checkout` on disk when it is
+ * given, else from the main line. A folder without Git is always read on disk.
+ */
 export const WikiReadScope = Schema.Struct({
   wikiId: WikiId,
   changeRequestId: Schema.optional(WikiChangeRequestId),
+  checkout: WikiCheckoutFolder,
 });
 export type WikiReadScope = typeof WikiReadScope.Type;
 
@@ -283,6 +293,7 @@ export const WikiNoteInput = Schema.Struct({
   /** A path from the root; a bare name searches as a link does. */
   name: TrimmedNonEmptyString,
   changeRequestId: Schema.optional(WikiChangeRequestId),
+  checkout: WikiCheckoutFolder,
 });
 export type WikiNoteInput = typeof WikiNoteInput.Type;
 
@@ -384,6 +395,7 @@ export type WikiCodeStatusResult = typeof WikiCodeStatusResult.Type;
 export const WikiQueryInput = Schema.Struct({
   wikiId: WikiId,
   changeRequestId: Schema.optional(WikiChangeRequestId),
+  checkout: WikiCheckoutFolder,
   base: Schema.optional(TrimmedNonEmptyString),
   source: Schema.optional(Schema.String),
   note: Schema.optional(TrimmedNonEmptyString),
@@ -800,7 +812,12 @@ export const WikiTransform = Schema.Union([
 ]);
 export type WikiTransform = typeof WikiTransform.Type;
 
-export const WikiTransformInput = Schema.Struct({ ...WikiWriteTarget, transform: WikiTransform });
+/** With `checkout`, or in a folder without Git, written uncommitted on disk there instead. */
+export const WikiTransformInput = Schema.Struct({
+  ...WikiWriteTarget,
+  checkout: WikiCheckoutFolder,
+  transform: WikiTransform,
+});
 export type WikiTransformInput = typeof WikiTransformInput.Type;
 
 export const WikiAmendResult = Schema.Struct({
@@ -822,7 +839,7 @@ export const WikiAmendResult = Schema.Struct({
 });
 export type WikiAmendResult = typeof WikiAmendResult.Type;
 
-/** A transform written into a thread's wiki checkout, uncommitted: the turn's end saves it. */
+/** A transform written into a checkout on disk, uncommitted. */
 export const WikiCheckoutTransformResult = Schema.Struct({
   /** Paths from the checkout's root. */
   written: Schema.Array(Schema.String),
