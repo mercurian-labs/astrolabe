@@ -1,7 +1,7 @@
 import type { ProjectRootCheckout } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { docsTreeEntries, projectDocumentParams } from "./fileTreeDocs";
+import { docsFilterButton, docsTreeEntries, projectDocumentParams } from "./fileTreeDocs";
 
 describe("docsTreeEntries", () => {
   it("keeps the documents, the files they link and the folders holding them", () => {
@@ -83,5 +83,23 @@ describe("projectDocumentParams", () => {
         absolutePath: "/x/Plan.md",
       }),
     ).toBeNull();
+  });
+});
+
+describe("docsFilterButton", () => {
+  const titles = { off: "Show", on: "Showing docs" };
+
+  it("fills the filter button and names it while the tree shows docs alone", () => {
+    expect(docsFilterButton(true, titles)).toEqual({
+      title: "Showing docs",
+      icon: "line.3.horizontal.decrease.circle.fill",
+    });
+  });
+
+  it("draws it plain while every file shows", () => {
+    expect(docsFilterButton(false, titles)).toEqual({
+      title: "Show",
+      icon: "line.3.horizontal.decrease.circle",
+    });
   });
 });

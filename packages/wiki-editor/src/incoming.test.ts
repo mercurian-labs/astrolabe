@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   ambiguousLink,
+  linkFitsSeveral,
   resolveIncomingNote,
   wikiEmbeds,
   wikilinkNoteName,
@@ -88,5 +89,13 @@ describe("resolveIncomingNote", () => {
   });
   it("never clobbers edits when the note changed underneath", () => {
     expect(resolveIncomingNote({ baseline: "a", buffer: "ab", incoming: "c" })).toBe("conflict");
+  });
+});
+
+describe("linkFitsSeveral", () => {
+  it("names every folder's match and how to write the link to choose one", () => {
+    expect(linkFitsSeveral(["api:Release train.md", "web:notes/Release train.md"])).toBe(
+      "Fits api:Release train, web:notes/Release train. Put a folder's name first, as api:Release train, to choose one.",
+    );
   });
 });

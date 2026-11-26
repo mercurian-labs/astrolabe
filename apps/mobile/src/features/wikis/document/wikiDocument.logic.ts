@@ -1,5 +1,9 @@
 import type { WikiChangeRequest, WikiIndexResult } from "@t3tools/contracts";
-import type { WikiEditorAuthor, WikiEditorResolvedLink } from "@mercurian/wiki-editor/protocol";
+import type {
+  WikiEditorAuthor,
+  WikiEditorLinkRoot,
+  WikiEditorResolvedLink,
+} from "@mercurian/wiki-editor/protocol";
 import type { WikiPlacement } from "@mercurian/wiki/placement";
 import { folderOf, type ProjectFile } from "@mercurian/wiki/resolve-link";
 import {
@@ -8,6 +12,7 @@ import {
   PERSON_ACTOR,
   projectWikiLinkFile,
   resolveProjectWikiLink,
+  wikiDocumentFiles,
   wikiLinkOpens,
 } from "@t3tools/client-runtime/wikiLogic";
 
@@ -107,6 +112,15 @@ export function projectLinkOpens(input: {
     ? here()
     : { kind: "open", ...unwritten };
 }
+
+/** Every other folder's documents, which the editor page's bare links reach past `root`'s own. */
+export const otherLinkRoots = (
+  roots: ReadonlyMap<string, WikiIndexResult>,
+  root: string,
+): ReadonlyArray<WikiEditorLinkRoot> =>
+  [...roots].flatMap(([key, index]) =>
+    key === root ? [] : [{ root: key, files: wikiDocumentFiles(index) }],
+  );
 
 /** A file as a link from `root` names it: bare in its own root, `key:path` in another. */
 export const projectFileLabel = (file: ProjectFile, root: string): string =>

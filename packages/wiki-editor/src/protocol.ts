@@ -141,6 +141,12 @@ export type WikiEditorCanvasAnswer =
   /** Why a write failed, null when it didn't. */
   | { readonly kind: "failure"; readonly message: string | null };
 
+/** Another folder of a project, whose documents a bare link reaches when its own has none. */
+export interface WikiEditorLinkRoot {
+  readonly root: string;
+  readonly files: ReadonlyArray<string>;
+}
+
 /** Where a link landed, as `resolveLink` says. */
 export interface WikiEditorResolvedLink {
   readonly file: string | null;
@@ -250,6 +256,9 @@ export type WikiEditorCommand =
       /** The wiki's documents and this note's own path, which its links search from. */
       readonly files?: ReadonlyArray<string>;
       readonly from?: string;
+      /** In a project: the folder `files` are in, by key, and every other folder's documents. */
+      readonly root?: string;
+      readonly roots?: ReadonlyArray<WikiEditorLinkRoot>;
     }
   /** A note a link preview asked for, sent again if it changes; null when it isn't written. */
   | {
@@ -418,6 +427,9 @@ const isResolvedLink = (value: unknown): value is WikiEditorResolvedLink =>
   (typeof value.file === "string" || value.file === null) &&
   "others" in value &&
   isStringArray(value.others);
+
+const isLinkRoot = (value: unknown): value is WikiEditorLinkRoot =>
+  isRecord(value) && typeof value.root === "string" && isStringArray(value.files);
 
 const isFile = (value: unknown): value is WikiEditorFile =>
   isRecord(value) &&
@@ -687,6 +699,8 @@ export function parseWikiEditorCommand(value: unknown): WikiEditorCommand | null
               ? { files: value.files.filter((file): file is string => typeof file === "string") }
               : {}),
             ...(typeof value.from === "string" ? { from: value.from } : {}),
+            ...(typeof value.root === "string" ? { root: value.root } : {}),
+            ...(Array.isArray(value.roots) ? { roots: value.roots.filter(isLinkRoot) } : {}),
           }
         : null;
     case "noteRead":

@@ -61,7 +61,7 @@ import { ThreadRouteScreen } from "../threads/ThreadRouteScreen";
 import { FilePreviewLoading, FilePreviewNotice } from "./FilePreviewFeedback";
 import { FileMarkdownPreview } from "./FileMarkdownPreview";
 import { FileTreeBrowser } from "./FileTreeBrowser";
-import { docsTreeEntries, projectDocumentParams } from "./fileTreeDocs";
+import { docsFilterButton, docsTreeEntries, projectDocumentParams } from "./fileTreeDocs";
 import { useFileTreeEntries } from "./useFileTreeEntries";
 import { preloadWorkspaceFileContents } from "./preload-workspace-file";
 import { SourceFileSurface } from "./SourceFileSurface";
@@ -110,8 +110,12 @@ function FilesBrowserHeader(props: {
         : {
             menus: [
               {
-                title: gt("Show"),
-                icon: "line.3.horizontal.decrease.circle",
+                ...docsFilterButton(docs.only, {
+                  off: gt("Show"),
+                  on: gt("Showing docs", {
+                    $context: "file tree filter is on: notes, canvases and bases",
+                  }),
+                }),
                 items: [
                   {
                     id: "all",

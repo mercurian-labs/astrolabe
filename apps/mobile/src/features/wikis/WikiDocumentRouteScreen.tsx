@@ -18,7 +18,6 @@ import {
   isTurnRunning,
   wikiDocumentScope,
   wikiDraft,
-  wikiDocumentFiles,
   wikiDocumentFilesWithDraft,
   wikiTerms,
 } from "@t3tools/client-runtime/wikiLogic";
@@ -43,7 +42,7 @@ import { wikiEnvironment } from "../../state/wiki";
 import {
   isSkillMapFile,
   isWikiBaseFile,
-  projectFileLabel,
+  otherLinkRoots,
   projectLinkOpens,
   projectResolvedLink,
   wikiDocumentAuthor,
@@ -273,22 +272,9 @@ function WikiNoteScreen({
     () => (ownDocuments ? linkFiles(ownDocuments) : null),
     [ownDocuments],
   );
-  // Another folder's documents as a link from here writes them, so they don't mark as missing.
-  const documents = useMemo(
-    () =>
-      ownDocuments === null
-        ? null
-        : [
-            ...ownDocuments,
-            ...[...(linkRoots ?? [])].flatMap(([key, other]) =>
-              key === doc.rootKey
-                ? []
-                : wikiDocumentFiles(other).map((file) =>
-                    projectFileLabel({ root: key, file }, doc.rootKey),
-                  ),
-            ),
-          ],
-    [ownDocuments, linkRoots, doc.rootKey],
+  const otherRoots = useMemo(
+    () => (linkRoots === null ? null : otherLinkRoots(linkRoots, doc.rootKey)),
+    [linkRoots, doc.rootKey],
   );
   const linkingFile = data?.file ?? null;
   /** Where a link's preview reads: this folder as the page does, another as its own main line. */
@@ -327,14 +313,15 @@ function WikiNoteScreen({
   };
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the wiki's types cross into the editor's web view, outside React
   useEffect(() => {
-    if (!linkTypes || documents === null) return;
+    if (!linkTypes || ownDocuments === null) return;
     editor.current?.send({
       type: "linkTypes",
       types: linkTypes,
-      files: documents,
+      files: ownDocuments,
       ...(linkingFile === null ? {} : { from: linkingFile }),
+      ...(otherRoots === null ? {} : { root: doc.rootKey, roots: otherRoots }),
     });
-  }, [linkTypes, documents, linkingFile]);
+  }, [linkTypes, ownDocuments, linkingFile, otherRoots, doc.rootKey]);
 
   // The notes the page's link previews show, read here, as the blocks are.
   const [previewNames, setPreviewNames] = useState<ReadonlyArray<string>>([]);

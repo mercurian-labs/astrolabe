@@ -2,7 +2,21 @@ import { locateProjectRoot } from "@t3tools/client-runtime/projectDocEditTarget"
 import { isWikiDocument } from "@mercurian/wiki/resolve-link";
 import type { ProjectEntry, ProjectRootCheckout } from "@t3tools/contracts";
 
+import type { AppBarMenu } from "../../components/ui/AppBar.types";
+import { workspaceListFilterIcon } from "../layout/workspace/WorkspaceListHeader.types";
 import type { WikiDocumentParams } from "../wikis/wikiRoutes";
+
+/**
+ * Astrolabe: the Show menu's button, filled and named for it while the tree shows docs alone, as
+ * other lists mark a filter that hides some of what they hold.
+ */
+export const docsFilterButton = (
+  only: boolean,
+  titles: { readonly off: string; readonly on: string },
+): Pick<AppBarMenu, "title" | "icon"> => ({
+  title: only ? titles.on : titles.off,
+  icon: workspaceListFilterIcon(only),
+});
 
 /**
  * Astrolabe: the tree the Docs filter shows: each of `paths` (notes, canvases, bases, skill maps

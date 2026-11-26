@@ -6,7 +6,7 @@ import { createRoot } from "react-dom/client";
 
 import type { BaseCellValue } from "./baseCells";
 import { BaseBlock } from "./BaseBlock";
-import { wikiEmbeds } from "./incoming";
+import { linkFitsSeveral, wikiEmbeds } from "./incoming";
 import { createWikiEditorPage, type WikiEditorPage } from "./mobilePageController";
 import { WikiLinkPreview, type WikiLinkPeek } from "./linkTools";
 import { MobileCanvas, MobileCanvasEmbed } from "./mobileCanvas";
@@ -42,6 +42,16 @@ function LinkPreview({
     (listener) => page.watchNote(link.name, listener),
     () => page.getNote(link.name),
   );
+  const { linkScope } = useSyncExternalStore(page.subscribe, page.getState);
+  const ambiguous = linkScope?.resolve?.(link.name).ambiguous ?? [];
+  if (ambiguous.length > 0) {
+    // Open asks the person which one, as a tap on the link does.
+    return (
+      <WikiLinkPreview link={link} source={undefined} onOpen={() => openNote(link.name)}>
+        <p className="cm-wiki-link-preview-text">{linkFitsSeveral(ambiguous)}</p>
+      </WikiLinkPreview>
+    );
+  }
   return (
     <WikiLinkPreview
       link={link}

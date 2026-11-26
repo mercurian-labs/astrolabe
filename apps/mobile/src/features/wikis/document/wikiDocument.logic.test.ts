@@ -8,6 +8,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   isSkillMapFile,
   isWikiBaseFile,
+  otherLinkRoots,
   projectLinkOpens,
   projectResolvedLink,
   wikiDocumentAuthor,
@@ -183,6 +184,27 @@ describe("projectLinkOpens", () => {
         placement: DEFAULT_WIKI_LOCATION_SETTINGS,
       }),
     ).toMatchObject({ kind: "open", root: "app" });
+  });
+});
+
+describe("otherLinkRoots", () => {
+  it("hands the editor page every other folder's documents, so a bare link can reach them", () => {
+    const index = (...files: string[]) =>
+      ({
+        notes: files.map((file) => ({ file })),
+        canvases: [{ file: "Board.canvas" }],
+        bases: [],
+        maps: [],
+      }) as unknown as WikiIndexResult;
+    const roots = new Map([
+      ["app", index("docs/Plan.md")],
+      ["api", index("Release train.md")],
+      ["web", index("notes/Release train.md")],
+    ]);
+    expect(otherLinkRoots(roots, "app")).toEqual([
+      { root: "api", files: ["Release train.md", "Board.canvas"] },
+      { root: "web", files: ["notes/Release train.md", "Board.canvas"] },
+    ]);
   });
 });
 
