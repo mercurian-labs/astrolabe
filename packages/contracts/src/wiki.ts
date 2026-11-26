@@ -13,6 +13,7 @@ import {
 } from "./baseSchemas.ts";
 import { SourceControlProviderKind } from "./sourceControl.ts";
 import { WikiCanvasAgentTransform, WikiCanvasTransform } from "./canvas.ts";
+import { RootKey } from "./projectRoots.ts";
 
 /** Astrolabe: local wikis. A wiki is a git repository of linked markdown notes. */
 export const WikiId = TrimmedNonEmptyString.pipe(Schema.brand("WikiId"));
@@ -157,9 +158,15 @@ const WikiSummaryFields = {
   mapBackgrounds: Schema.optionalKey(Schema.Array(WikiMapBackground)),
   openChangeRequests: NonNegativeInt,
   createdAt: IsoDateTime,
+  /** The project whose folder this is, with `rootKey`; absent for a registered wiki. */
+  projectId: Schema.optionalKey(ProjectId),
+  rootKey: Schema.optionalKey(RootKey),
 };
 
-/** Older servers send one nullable `projectId` instead of `projectIds`; it reads as the list. */
+/**
+ * Older servers send one nullable `projectId` instead of `projectIds`; it reads as the list. Beside
+ * a `rootKey`, `projectId` is instead the project the folder belongs to.
+ */
 export const WikiSummary = Schema.Struct({
   ...WikiSummaryFields,
   projectIds: Schema.optionalKey(WikiSummaryFields.projectIds),
@@ -168,7 +175,8 @@ export const WikiSummary = Schema.Struct({
   Schema.decodeTo(Schema.toType(Schema.Struct(WikiSummaryFields)), {
     decode: SchemaGetter.transform(({ projectId, projectIds, ...summary }) => ({
       ...summary,
-      projectIds: projectIds ?? (projectId ? [projectId] : []),
+      projectIds: projectIds ?? (projectId && summary.rootKey === undefined ? [projectId] : []),
+      ...(projectId && summary.rootKey !== undefined ? { projectId } : {}),
     })),
     encode: SchemaGetter.transform((summary) => summary),
   }),

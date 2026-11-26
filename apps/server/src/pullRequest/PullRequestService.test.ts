@@ -150,6 +150,41 @@ it.effect("reads maintainer edits and changes them through the update command", 
   }),
 );
 
+it.effect(
+  "reads a pull request through a folder the project tracks, which holds another repository",
+  () =>
+    Effect.gen(function* () {
+      const reads: Array<{ readonly cwd: string; readonly repository: string }> = [];
+      const docs = project({
+        id: "p1",
+        title: "docs",
+        workspaceRoot: "/docs",
+        repository: "acme/docs",
+      });
+      const service = yield* makeService({
+        projects: [
+          project({ id: "p1", title: "app", workspaceRoot: "/app", repository: "acme/app" }),
+        ],
+        providers: [
+          fakePullRequestProvider(SourceControlProviderKind.make("github"), {
+            getChangeRequest: ({ cwd, repository }) =>
+              Effect.sync(() => {
+                reads.push({ cwd, repository });
+                return hostedChangeRequest("Body");
+              }),
+          }),
+        ],
+        resolveRepositoryIdentity: (cwd) =>
+          Effect.succeed(cwd === "/docs" ? (docs.repositoryIdentity ?? null) : null),
+      });
+      const ref = { projectId: "p1" as ProjectId, repository: "acme/docs", number: 1 };
+      const refused = yield* Effect.flip(service.detail(ref));
+      assert.include(refused.message, "does not belong to the selected project");
+      yield* service.detail(PullRequestService.throughCheckout(ref, "/docs"));
+      assert.deepStrictEqual(reads, [{ cwd: "/docs", repository: "acme/docs" }]);
+    }),
+);
+
 it.effect("refuses maintainer edits on a host without the capability", () =>
   Effect.gen(function* () {
     let writes = 0;

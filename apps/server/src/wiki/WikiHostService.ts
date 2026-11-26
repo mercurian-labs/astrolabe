@@ -166,25 +166,34 @@ const make = Effect.gen(function* () {
         )
       : Effect.succeed(wiki.host);
 
-  const refOf = (projectId: ProjectId, link: WikiPullRequestLink): PullRequestRef => ({
-    projectId,
-    repository: link.repository,
-    number: link.number,
-  });
+  /** A project's folder may hold another repository than the project's own, so it reads there. */
+  const refOf = (
+    wiki: WikiSummary,
+    projectId: ProjectId,
+    link: WikiPullRequestLink,
+  ): PullRequestRef => {
+    const ref = { projectId, repository: link.repository, number: link.number };
+    return wiki.rootKey === undefined ? ref : PullRequestService.throughCheckout(ref, wiki.root);
+  };
 
   /** The repository's name as `PullRequestRef` wants it, from the host's own link. */
   const repositoryOf = Effect.fn("WikiHostService.repositoryOf")(function* (
+    wiki: WikiSummary,
     projectId: ProjectId,
     url: string,
   ) {
     const parsed = sourceControlDefinitions.parseChangeRequestUrl(url)?.link;
     if (parsed !== undefined) return parsed.repository;
-    const project = yield* projects
-      .getById(projectId)
-      .pipe(Effect.mapError(hostError("The wiki's project could not be read.")));
-    const repository = Option.isSome(project)
-      ? sourceControlDefinitions.repositorySelector(project.value.repositoryIdentity)
-      : null;
+    const identity =
+      wiki.rootKey === undefined
+        ? yield* projects.getById(projectId).pipe(
+            Effect.map((project) =>
+              Option.isSome(project) ? project.value.repositoryIdentity : null,
+            ),
+            Effect.mapError(hostError("The wiki's project could not be read.")),
+          )
+        : yield* projects.readRepositoryIdentity({ workspaceRoot: wiki.root });
+    const repository = sourceControlDefinitions.repositorySelector(identity);
     if (repository === null) {
       return yield* new WikiError({
         reason: "invalid",
@@ -238,7 +247,7 @@ const make = Effect.gen(function* () {
       });
     }
     const link: WikiPullRequestLink = {
-      repository: yield* repositoryOf(projectId, opened.url),
+      repository: yield* repositoryOf(wiki, projectId, opened.url),
       number: opened.number,
       url: opened.url,
     };
@@ -249,11 +258,11 @@ const make = Effect.gen(function* () {
     });
     // An agent's work asks no reviewer until a person marks it ready, where the host can say so.
     if (existing === undefined && entry.threadId !== null) {
-      yield* pullRequests.detail(refOf(projectId, link)).pipe(
+      yield* pullRequests.detail(refOf(wiki, projectId, link)).pipe(
         Effect.flatMap((detail) =>
           detail.capabilities.actions.includes("draft")
             ? pullRequests
-                .runAction({ ...refOf(projectId, link), action: "draft" })
+                .runAction({ ...refOf(wiki, projectId, link), action: "draft" })
                 .pipe(Effect.asVoid)
             : Effect.void,
         ),
@@ -406,6 +415,12 @@ const make = Effect.gen(function* () {
       const wiki = yield* wikis.get(input.wikiId);
       // A failed connect undoes itself by disconnecting, which must never touch a working wiki.
       if (wiki.host != null) return yield* sync(input);
+      if (wiki.rootKey !== undefined) {
+        return yield* new WikiError({
+          reason: "invalid",
+          message: "This folder's repository has no remote on a host that takes pull requests.",
+        });
+      }
       const provider = yield* providers
         .resolve({ cwd: wiki.root })
         .pipe(
@@ -489,7 +504,7 @@ const make = Effect.gen(function* () {
           message: `This ${wikiTerms(wiki).singular} has nothing to merge yet.`,
         });
       }
-      const ref = refOf(projectId, published.pullRequest);
+      const ref = refOf(wiki, projectId, published.pullRequest);
       const unreadable = hostError(
         `The ${wikiTerms(wiki).singular} could not be read from the host.`,
       );
@@ -542,7 +557,7 @@ const make = Effect.gen(function* () {
     const wiki = yield* wikis.get(input.wikiId);
     const entry = yield* wikis.changeRequest(input);
     if (wiki.host != null && entry.pullRequest != null && entry.status !== input.status) {
-      const ref = refOf(wiki.host.projectId, entry.pullRequest);
+      const ref = refOf(wiki, wiki.host.projectId, entry.pullRequest);
       const action = input.status === "open" ? "reopen" : "close";
       const failed = hostError(`The host refused to change this ${wikiTerms(wiki).singular}.`);
       const detail = yield* pullRequests.detail(ref).pipe(Effect.mapError(failed));

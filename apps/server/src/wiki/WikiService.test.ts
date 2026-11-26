@@ -6,11 +6,15 @@ import {
   type CanvasEdit,
   CommandId,
   ProjectId,
+  projectRootId,
+  RootKey,
+  SourceControlProviderKind,
   ThreadId,
   type WikiChangeRequestId,
   type WikiError,
   WikiId,
 } from "@t3tools/contracts";
+import type * as SourceControlProvider from "@t3tools/source-control-core/server/SourceControlProvider";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -22,6 +26,7 @@ import type * as Scope from "effect/Scope";
 import * as TestClock from "effect/testing/TestClock";
 
 import * as ServerConfig from "../config.ts";
+import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
 import * as RuntimeLayer from "../orchestration-v2/runtimeLayer.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ProcessRunner from "../processRunner.ts";
@@ -30,8 +35,11 @@ import * as ProjectFaviconResolver from "../project/ProjectFaviconResolver.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as RepositoryIdentityResolver from "../project/RepositoryIdentityResolver.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
+import * as ProjectRoots from "../workspace/ProjectRoots.ts";
+import * as TaskFolderStore from "../workspace/TaskFolderStore.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import * as ThreadWikiCheckouts from "./ThreadWikiCheckouts.ts";
 import * as WikiService from "./WikiService.ts";
@@ -58,9 +66,37 @@ const layerEnrichment = ProjectEnrichmentService.layer.pipe(
   ),
 );
 
+/** A folder whose origin is on GitHub takes pull requests there; any other has no host. */
+const layerHosts = Layer.mock(SourceControlProviderRegistry.SourceControlProviderRegistry)({
+  resolveLink: () => undefined,
+  resolveHandle: ({ cwd }) =>
+    git(cwd, ["remote", "get-url", "origin"]).pipe(
+      Effect.provide(NodeServices.layer),
+      Effect.map((remoteUrl) => ({
+        provider: {} as SourceControlProvider.SourceControlProvider["Service"],
+        context: remoteUrl.startsWith("https://github.com/")
+          ? {
+              provider: {
+                kind: SourceControlProviderKind.make("github"),
+                name: "GitHub",
+                baseUrl: "https://github.com",
+              },
+              remoteName: "origin",
+              remoteUrl,
+            }
+          : null,
+      })),
+    ),
+});
+
 /** The service over real git and a real (in-memory) project service, with its data at `baseDir`. */
 const layer = (baseDir: string) =>
   WikiService.layer.pipe(
+    Layer.provideMerge(
+      ProjectRoots.layer.pipe(
+        Layer.provide(Layer.mergeAll(ProjectStore.layer, TaskFolderStore.layer, layerHosts)),
+      ),
+    ),
     Layer.provideMerge(RuntimeLayer.layerProjectService),
     Layer.provideMerge(layerEnrichment),
     Layer.provideMerge(WorkspacePaths.layer),
@@ -3365,6 +3401,196 @@ it.effect("reopens a discarded draft, unless another has started since", () =>
       assert.equal((yield* failure(status("open"))).reason, "invalid");
       yield* status("closed", next.changeRequest!.changeRequestId);
       assert.equal((yield* status("open")).status, "open");
+    }),
+  ),
+);
+
+/** Commits `files` on main in `root`, made a Git repository if it is not one yet. */
+const commitNotes = (root: string, files: Readonly<Record<string, string>> = FIXTURE) =>
+  Effect.gen(function* () {
+    yield* (yield* FileSystem.FileSystem)
+      .makeDirectory(root, { recursive: true })
+      .pipe(Effect.orDie);
+    yield* git(root, ["init", "--quiet", "--initial-branch=main"]);
+    yield* write(root, files);
+    yield* git(root, ["add", "."]);
+    yield* git(root, ["commit", "--quiet", "-m", "Notes"]);
+    return root;
+  });
+
+/** A project in the in-memory store over `workspaceRoot`, tracking `trackedFolders` beside it. */
+const projectOver = (input: {
+  readonly id: string;
+  readonly workspaceRoot: string;
+  readonly trackedFolders?: ReadonlyArray<{ readonly name: string; readonly path: string }>;
+}) =>
+  ProjectService.ProjectService.pipe(
+    Effect.flatMap((projects) =>
+      projects.create({
+        commandId: CommandId.make(`cmd-${input.id}`),
+        projectId: ProjectId.make(input.id),
+        title: `Project ${input.id}`,
+        workspaceRoot: input.workspaceRoot,
+        trackedFolders: input.trackedFolders ?? [],
+      }),
+    ),
+    Effect.orDie,
+  );
+
+const rootIdOf = (projectId: ProjectId, key: string) =>
+  WikiId.make(projectRootId(projectId, RootKey.make(key)));
+
+it.effect("lists each project's Git folders, then the registered wikis in none of them", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const wikis = yield* WikiService.WikiService;
+      const path = yield* Path.Path;
+      const app = yield* commitNotes(yield* harness.folder("app"));
+      const lib = yield* commitNotes(path.join(app, "vendor", "lib"), { "Lib.md": "# Lib\n" });
+      const docs = yield* commitNotes(yield* harness.folder("docs"), { "Guide.md": "# Guide\n" });
+      const plain = yield* harness.folder("plain");
+      const registered = yield* registeredWiki(harness);
+      const project = yield* projectOver({
+        id: "project-app",
+        workspaceRoot: app,
+        trackedFolders: [
+          { name: "docs", path: docs },
+          { name: "plain", path: plain },
+        ],
+      });
+
+      const listed = (yield* wikis.list).wikis;
+      assert.deepEqual(
+        listed.map((wiki) => [wiki.wikiId, wiki.root, wiki.projectId, wiki.rootKey]),
+        [
+          [rootIdOf(project.id, "app"), app, project.id, "app"],
+          [rootIdOf(project.id, "lib"), lib, project.id, "lib"],
+          [rootIdOf(project.id, "docs"), docs, project.id, "docs"],
+          [registered.wikiId, registered.root, undefined, undefined],
+        ],
+      );
+      assert.deepEqual(
+        listed.map((wiki) => wiki.name),
+        [project.title, "lib", "docs", registered.summary.name],
+      );
+      assert.deepEqual(listed[2]?.projectIds, [project.id]);
+    }),
+  ),
+);
+
+it.effect("reads a project folder's notes by its root id, and keeps no wiki settings for it", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const wikis = yield* WikiService.WikiService;
+      const app = yield* commitNotes(yield* harness.folder("app"), { "README.md": "# App\n" });
+      const docs = yield* commitNotes(yield* harness.folder("docs"));
+      const plain = yield* harness.folder("plain");
+      const project = yield* projectOver({
+        id: "project-docs",
+        workspaceRoot: app,
+        trackedFolders: [
+          { name: "docs", path: docs },
+          { name: "plain", path: plain },
+        ],
+      });
+      const wikiId = rootIdOf(project.id, "docs");
+
+      const note = yield* wikis.readNote({ wikiId, name: "Alpha" });
+      assert.equal(note.source, FIXTURE["Alpha.md"]);
+      assert.deepEqual(note.incoming, []);
+      assert.deepEqual((yield* wikis.readNote({ wikiId, name: "Beta" })).incoming, ["Alpha"]);
+      const summary = yield* wikis.get(wikiId);
+      assert.equal(summary.root, docs);
+      assert.equal(summary.mainBranch, "main");
+      assert.isNull(summary.host ?? null);
+      assert.equal(yield* wikis.root(wikiId), docs);
+
+      const refused = yield* failure(wikis.setMirror({ wikiId, url: "https://example.com/x.git" }));
+      assert.equal(refused.reason, "invalid");
+      assert.equal((yield* failure(wikis.remove({ wikiId }))).reason, "invalid");
+      assert.equal((yield* failure(wikis.get(rootIdOf(project.id, "plain")))).reason, "invalid");
+      assert.equal((yield* failure(wikis.get(rootIdOf(project.id, "gone")))).reason, "not-found");
+    }),
+  ),
+);
+
+it.effect(
+  "lists a registered wiki in a project's folder once, and both its ids share a writer",
+  () =>
+    withWikis((harness) =>
+      Effect.gen(function* () {
+        const { root, wikiId: registered, wikis } = yield* registeredWiki(harness);
+        const project = yield* projectOver({ id: "project-vault", workspaceRoot: root });
+        const folder = rootIdOf(project.id, "vault");
+        assert.deepEqual(
+          (yield* wikis.list).wikis.map((wiki) => wiki.wikiId),
+          [folder],
+        );
+        assert.equal((yield* wikis.get(registered)).wikiId, registered);
+        const main = yield* mainAt(root);
+
+        // Each finds the other's draft only if the two wait on one lock.
+        const [first, second] = yield* Effect.all(
+          [
+            wikis.autosave(
+              { wikiId: registered, ...noteEdit("# Alpha\n\nEdited.\n") },
+              WikiService.person,
+            ),
+            wikis.autosave(
+              {
+                wikiId: folder,
+                document: "Beta.md",
+                write: { kind: "text", file: "Beta.md", text: "# Beta\n\nEdited.\n" },
+              },
+              WikiService.person,
+            ),
+          ],
+          { concurrency: "unbounded" },
+        );
+        assert.equal(first.changeRequest?.changeRequestId, second.changeRequest?.changeRequestId);
+        assert.equal(yield* mainAt(root), main);
+        const { changeRequests } = yield* wikis.changeRequestsList(
+          { wikiId: folder },
+          WikiService.person,
+        );
+        assert.equal(changeRequests.length, 1);
+        assert.equal(changeRequests[0]?.amendments.length, 2);
+      }),
+    ),
+);
+
+it.effect("takes a project folder's host and main line from its remote", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const wikis = yield* WikiService.WikiService;
+      const root = yield* harness.folder("handbook");
+      yield* git(root, ["init", "--quiet", "--initial-branch=trunk"]);
+      yield* write(root, FIXTURE);
+      yield* git(root, ["add", "."]);
+      yield* git(root, ["commit", "--quiet", "-m", "Notes"]);
+      yield* git(root, ["remote", "add", "origin", "https://github.com/acme/handbook.git"]);
+      yield* git(root, ["update-ref", "refs/remotes/origin/trunk", "HEAD"]);
+      yield* git(root, ["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk"]);
+      yield* git(root, ["checkout", "--quiet", "-b", "feature"]);
+      yield* write(root, { "Alpha.md": "# Alpha\n\nOn a branch.\n" });
+      yield* git(root, ["commit", "--quiet", "-am", "Branch work"]);
+      const project = yield* projectOver({ id: "project-handbook", workspaceRoot: root });
+      const wikiId = rootIdOf(project.id, "handbook");
+
+      const summary = yield* wikis.get(wikiId);
+      assert.equal(summary.mainBranch, "trunk");
+      assert.deepEqual(summary.host, {
+        projectId: project.id,
+        remote: "origin",
+        kind: SourceControlProviderKind.make("github"),
+        lastSyncedAt: null,
+        lastSyncedCommit: null,
+        relation: null,
+        lastError: null,
+      });
+      assert.equal((yield* wikis.readNote({ wikiId, name: "Alpha" })).source, FIXTURE["Alpha.md"]);
+      // Background syncs follow registered host wikis only, so nothing touches this folder unasked.
+      assert.isFalse((yield* wikis.hosted).includes(wikiId));
     }),
   ),
 );

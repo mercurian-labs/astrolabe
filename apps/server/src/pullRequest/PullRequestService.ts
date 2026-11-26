@@ -174,7 +174,22 @@ const routingCredential = Context.Reference<{
   readonly viewer: string;
 } | null>("t3/PullRequestService/routingCredential", { defaultValue: () => null });
 const credentialNamespace = Symbol("pullRequestCredentialNamespace");
+const checkoutPath = Symbol("pullRequestCheckout");
 type CredentialRef = PullRequestRef & { readonly [credentialNamespace]?: string };
+
+/**
+ * `ref` read through `cwd`, a checkout of its repository that the project tracks while the
+ * project's own folder holds another repository.
+ */
+export const throughCheckout = <Ref extends PullRequestRef>(ref: Ref, cwd: string): Ref => ({
+  ...ref,
+  [checkoutPath]: cwd,
+});
+
+const checkoutOf = (ref: PullRequestRef) => {
+  const cwd = checkoutPath in ref ? ref[checkoutPath] : undefined;
+  return typeof cwd === "string" ? cwd : undefined;
+};
 
 export class PullRequestService extends Context.Service<
   PullRequestService,
@@ -366,6 +381,11 @@ export interface SupportedProject {
   readonly remote: string;
   readonly repositoryKey: string | null;
 }
+
+type ProjectFilter = Pick<PullRequestListInput, "projectId" | "projectIds" | "host"> & {
+  /** Read the one project as if its folder were this checkout. */
+  readonly checkout?: string;
+};
 
 interface WorkspaceProjects {
   /** Every project read, with its repository identity resolved. */
@@ -914,11 +934,16 @@ export const make = Effect.gen(function* () {
   });
 
   const listWorkspaceProjects = (
-    filter: Pick<PullRequestListInput, "projectId" | "projectIds" | "host">,
+    filter: ProjectFilter,
   ): Effect.Effect<WorkspaceProjects, PullRequestError> =>
     Effect.flatMap(sharedProjectReads, (shared) => {
       if (shared === null || !shared.open) return readWorkspaceProjects(filter);
-      const key = JSON.stringify([filter.projectId, filter.projectIds, filter.host]);
+      const key = JSON.stringify([
+        filter.projectId,
+        filter.projectIds,
+        filter.host,
+        filter.checkout,
+      ]);
       const existing = shared.reads.get(key);
       if (existing !== undefined) return existing;
       return Effect.cached(readWorkspaceProjects(filter)).pipe(
@@ -942,13 +967,22 @@ export const make = Effect.gen(function* () {
     });
 
   const readWorkspaceProjects = (
-    filter: Pick<PullRequestListInput, "projectId" | "projectIds" | "host">,
+    filter: ProjectFilter,
   ): Effect.Effect<WorkspaceProjects, PullRequestError> =>
     (filter.projectId === undefined
       ? projects.listShells(
           filter.projectIds === undefined ? undefined : { projectIds: filter.projectIds },
         )
-      : projects.getShell(filter.projectId).pipe(Effect.map(Option.toArray))
+      : projects.getShell(filter.projectId).pipe(
+          Effect.map((shell) => {
+            const { checkout } = filter;
+            return Option.toArray(shell).map((project) =>
+              checkout === undefined
+                ? project
+                : { ...project, workspaceRoot: checkout, repositoryIdentity: null },
+            );
+          }),
+        )
     ).pipe(
       Effect.mapError(
         (error) =>
@@ -1047,8 +1081,14 @@ export const make = Effect.gen(function* () {
     );
 
   // Azure derives organization from the checkout; require the matching repository.
-  const requireProject = (ref: PullRequestRef): Effect.Effect<SupportedProject, PullRequestError> =>
-    listWorkspaceProjects({ projectId: ref.projectId }).pipe(
+  const requireProject = (
+    ref: PullRequestRef,
+  ): Effect.Effect<SupportedProject, PullRequestError> => {
+    const checkout = checkoutOf(ref);
+    return listWorkspaceProjects({
+      projectId: ref.projectId,
+      ...(checkout === undefined ? {} : { checkout }),
+    }).pipe(
       Effect.flatMap(({ supported }): Effect.Effect<SupportedProject, PullRequestError> => {
         const own = supported[0];
         const repository = ref.repository.trim();
@@ -1152,6 +1192,7 @@ export const make = Effect.gen(function* () {
         );
       }),
     );
+  };
 
   const canonicalRef = Effect.fn("PullRequestService.canonicalRef")(function* <
     I extends PullRequestRef,
@@ -3114,16 +3155,26 @@ export const make = Effect.gen(function* () {
       ref.number,
       ref.expectedAccountId ?? null,
       ref[credentialNamespace] ?? null,
+      checkoutOf(ref) ?? null,
     ]);
   const refOfCacheKey = (key: string): PullRequestRef => {
-    const [, projectId, host, repository, number, expectedAccountId, fingerprint] = JSON.parse(
-      key,
-    ) as [number, string, string | null, string, number, string | null, string | null];
+    const [, projectId, host, repository, number, expectedAccountId, fingerprint, checkout] =
+      JSON.parse(key) as [
+        number,
+        string,
+        string | null,
+        string,
+        number,
+        string | null,
+        string | null,
+        string | null,
+      ];
     return {
       projectId,
       ...(host === null ? {} : { host }),
       ...(expectedAccountId === null ? {} : { expectedAccountId }),
       ...(fingerprint === null ? {} : { [credentialNamespace]: fingerprint }),
+      ...(checkout === null ? {} : { [checkoutPath]: checkout }),
       repository,
       number,
     } as PullRequestRef;

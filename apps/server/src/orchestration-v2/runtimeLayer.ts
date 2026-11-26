@@ -76,6 +76,7 @@ import * as CodeIndex from "../codeIndex/CodeIndex.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as FeedbackStore from "../feedback/FeedbackStore.ts";
 import * as WorkspaceFolders from "../workspace/WorkspaceFolders.ts";
+import * as ProjectRoots from "../workspace/ProjectRoots.ts";
 import * as TaskFolderStore from "../workspace/TaskFolderStore.ts";
 
 export const layerEventInfrastructure = Layer.mergeAll(
@@ -323,7 +324,12 @@ const layerManagedProjectFoldersProvided = ManagedProjectFolders.layer.pipe(
   Layer.provide(layerProjectService),
 );
 // One per server: it holds each wiki's write lock, the event stream, and index caches.
-const layerWikiServiceProvided = WikiService.layer.pipe(Layer.provide(layerProjectService));
+const layerWikiServiceProvided = WikiService.layer.pipe(
+  Layer.provide(layerProjectService),
+  Layer.provide(
+    ProjectRoots.layer.pipe(Layer.provide(Layer.merge(ProjectStore.layer, TaskFolderStore.layer))),
+  ),
+);
 const layerThreadWikiCheckoutsProvided = ThreadWikiCheckouts.layer.pipe(
   Layer.provide(layerWikiServiceProvided),
 );

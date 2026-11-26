@@ -2,25 +2,32 @@ import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import {
+  CommandId,
+  ProjectId,
+  projectRootId,
   type PullRequestAction,
   type PullRequestDetail,
   type PullRequestMergeCapabilities,
   type PullRequestState,
   type PullRequestSummary,
+  RootKey,
+  SourceControlProviderKind,
   ThreadId,
   type WikiChangeRequestId,
   type WikiError,
-  type WikiId,
+  WikiId,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 
 import * as ServerConfig from "../config.ts";
+import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
 import * as RuntimeLayer from "../orchestration-v2/runtimeLayer.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ProcessRunner from "../processRunner.ts";
@@ -33,6 +40,8 @@ import * as ServerSettings from "../serverSettings.ts";
 import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
+import * as ProjectRoots from "../workspace/ProjectRoots.ts";
+import * as TaskFolderStore from "../workspace/TaskFolderStore.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import * as WikiHostService from "./WikiHostService.ts";
 import * as WikiService from "./WikiService.ts";
@@ -176,10 +185,37 @@ const makeLayers = (baseDir: string, bare: string, clone: string, host: FakeHost
   const layerRegistry = Layer.mock(SourceControlProviderRegistry.SourceControlProviderRegistry)({
     resolve: () => Effect.succeed(provider as never),
     resolveLink: () => undefined,
+    // Every folder with an origin is on this host.
+    resolveHandle: ({ cwd }) =>
+      git(cwd, ["remote", "get-url", "origin"]).pipe(
+        Effect.map((remoteUrl) => ({
+          provider: provider as never,
+          context:
+            remoteUrl === ""
+              ? null
+              : {
+                  provider: {
+                    kind: SourceControlProviderKind.make("gitlab"),
+                    name: "GitLab",
+                    baseUrl: "https://gitlab.com",
+                  },
+                  remoteName: "origin",
+                  remoteUrl,
+                },
+        })),
+      ),
   });
   const layerProjects = RuntimeLayer.layerProjectService;
   return WikiHostService.layer.pipe(
-    Layer.provideMerge(WikiService.layer),
+    Layer.provideMerge(
+      WikiService.layer.pipe(
+        Layer.provide(
+          ProjectRoots.layer.pipe(
+            Layer.provide(Layer.mergeAll(ProjectStore.layer, TaskFolderStore.layer, layerRegistry)),
+          ),
+        ),
+      ),
+    ),
     Layer.provideMerge(Layer.mergeAll(layerPullRequests, layerRegistry)),
     Layer.provideMerge(layerProjects),
     Layer.provideMerge(layerEnrichment),
@@ -888,4 +924,52 @@ it.effect("publishing a change request on a wiki with no host is an error", () =
       }),
     { connect: false },
   ),
+);
+
+it.effect(
+  "a folder a project tracks publishes and merges through that project, leaving its main",
+  () =>
+    withFixture(
+      ({ root, bare, clone, host, wikis, hosts }) =>
+        Effect.gen(function* () {
+          const fileSystem = yield* FileSystem.FileSystem;
+          const path = yield* Path.Path;
+          yield* git(root, ["push", "--quiet", "origin", "main"]);
+          yield* git(clone, ["clone", "--quiet", bare, "."]);
+          // The project's own folder is another repository, with no host at all.
+          const app = path.join(path.dirname(root), "app");
+          yield* fileSystem.makeDirectory(app).pipe(Effect.orDie);
+          yield* git(app, ["init", "--quiet", "--initial-branch=main"]);
+          yield* git(app, ["commit", "--quiet", "--allow-empty", "-m", "App"]);
+          const projects = yield* ProjectService.ProjectService;
+          const project = yield* projects
+            .create({
+              commandId: CommandId.make("cmd-app"),
+              projectId: ProjectId.make("project-app"),
+              title: "App",
+              workspaceRoot: app,
+              trackedFolders: [{ name: "handbook", path: root }],
+            })
+            .pipe(Effect.orDie);
+          const wikiId = WikiId.make(projectRootId(project.id, RootKey.make("handbook")));
+          assert.equal((yield* wikis.get(wikiId)).host?.projectId, project.id);
+
+          const main = yield* git(root, ["rev-parse", "main"]);
+          const { changeRequest } = yield* wikis.amend(
+            { wikiId, message: "Add One", changes: { "One.md": "# One\n" } },
+            agent("thread-a"),
+          );
+          const target = { wikiId, changeRequestId: changeRequest.changeRequestId };
+          const published = yield* hosts.publish(target);
+          assert.equal(published.pullRequest?.number, 1);
+          assert.isTrue(host.pulls[0]?.isDraft);
+
+          const merged = yield* hosts.merge(target);
+          assert.equal(merged.changeRequest.status, "merged");
+          assert.equal(merged.commit, yield* git(bare, ["rev-parse", "main"]));
+          assert.equal(yield* git(root, ["rev-parse", "main"]), main);
+          assert.isTrue(Option.isNone(yield* projects.getByWorkspaceRoot(root)));
+        }),
+      { connect: false },
+    ),
 );

@@ -40,6 +40,13 @@ describe("WikiSummary", () => {
     const { projectId: _, ...rest } = olderWiki("p1");
     expect(encodeList(decoded).wikis).toStrictEqual([{ ...rest, projectIds: ["p1"] }]);
   });
+
+  it("reads a project folder's project beside its root key, and sends it back", () => {
+    const folder = { ...olderWiki("p1"), projectIds: ["p1"], rootKey: "api" };
+    const decoded = decodeList({ wikis: [folder] });
+    expect(decoded.wikis[0]).toMatchObject({ projectId: "p1", rootKey: "api", projectIds: ["p1"] });
+    expect(encodeList(decoded).wikis).toStrictEqual([folder]);
+  });
 });
 
 describe("wikiCheckoutReach", () => {

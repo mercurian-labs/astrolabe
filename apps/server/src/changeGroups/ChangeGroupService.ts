@@ -23,6 +23,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
@@ -405,11 +406,22 @@ const make = Effect.gen(function* () {
         branch: thread.branch,
         ...(branches[thread.id] === undefined ? {} : { branches: branches[thread.id] }),
       }));
-    const { wikis: summaries } = yield* wikis.list.pipe(Effect.mapError(storeError));
-    const names = new Map(summaries.map((wiki) => [wiki.wikiId as string, wiki.name]));
     const { changeRequests } = yield* wikis
       .changeRequestsList({})
       .pipe(Effect.mapError(storeError));
+    // By the wikis the requests name: the list names a wiki in a project's folder by the folder.
+    const summaries = yield* Effect.forEach(
+      new Set(changeRequests.map((changeRequest) => changeRequest.wikiId)),
+      (wikiId) => wikis.get(wikiId).pipe(Effect.option),
+      { concurrency: 4 },
+    );
+    const names = new Map(
+      summaries.flatMap((summary) =>
+        Option.isSome(summary)
+          ? [[summary.value.wikiId as string, summary.value.name] as const]
+          : [],
+      ),
+    );
     const wikiChanges: ChangeGroupWikiChange[] = changeRequests.map((changeRequest) => ({
       wikiName: names.get(changeRequest.wikiId) ?? "Wiki",
       changeRequest,

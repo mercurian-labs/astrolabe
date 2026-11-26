@@ -477,10 +477,16 @@ const layerPullRequestService = PullRequestService.layer.pipe(
   Layer.provide(SourceControlRateLimit.layer),
 );
 
+const layerProjectRoots = ProjectRoots.layer.pipe(
+  Layer.provide(
+    Layer.mergeAll(ProjectStore.layer, TaskFolderStore.layer, layerSourceControlProviderRegistry),
+  ),
+);
+
 const layerWikiHost = WikiHostService.layer.pipe(
   Layer.provide(layerPullRequestService),
   Layer.provide(layerSourceControlProviderRegistry),
-  Layer.provide(WikiService.layer),
+  Layer.provide(WikiService.layer.pipe(Layer.provide(layerProjectRoots))),
   Layer.provide(RuntimeLayer.layerProjectService),
 );
 
@@ -608,6 +614,7 @@ const layerLanguageServers = LanguageServers.layer.pipe(
       Layer.provide(GitVcsDriver.layer),
       Layer.provide(RuntimeLayer.layerProjectService),
       Layer.provide(WorkspacePaths.layer),
+      Layer.provide(layerProjectRoots),
     ),
   ),
 );
@@ -621,11 +628,7 @@ const layerWorkspace = Layer.mergeAll(
   WorkspaceFolders.layer.pipe(
     Layer.provide(Layer.merge(ProjectStore.layer, TaskFolderStore.layer)),
   ),
-  ProjectRoots.layer.pipe(
-    Layer.provide(
-      Layer.mergeAll(ProjectStore.layer, TaskFolderStore.layer, layerSourceControlProviderRegistry),
-    ),
-  ),
+  layerProjectRoots,
 );
 
 const layerProjectFaviconResolver = ProjectFaviconResolver.layer.pipe(

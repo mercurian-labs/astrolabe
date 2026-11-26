@@ -7,6 +7,7 @@ import {
   ProjectRootsError,
   ProjectRootWriteTargetError,
   type RootKey,
+  type SourceControlProviderKind,
   type WorkspaceFolderState,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
@@ -77,7 +78,11 @@ export class ProjectRoots extends Context.Service<
       { readonly root: ProjectRootCheckout; readonly path: string | null },
       ProjectRootsError | ProjectRootWriteTargetError
     >;
-    readonly isHostBacked: (folder: string) => Effect.Effect<boolean>;
+    /** The remote a Git folder's pull requests go through, and its host; null when it has none. */
+    readonly host: (folder: string) => Effect.Effect<{
+      readonly remote: string;
+      readonly kind: SourceControlProviderKind;
+    } | null>;
   }
 >()("t3/workspace/ProjectRoots") {}
 
@@ -111,10 +116,14 @@ const make = Effect.gen(function* () {
     return (yield* exists(folder)) ? "plain" : "missing";
   });
 
-  const isHostBacked: ProjectRoots["Service"]["isHostBacked"] = (folder) =>
+  const host: ProjectRoots["Service"]["host"] = (folder) =>
     sourceControl.resolveHandle({ cwd: folder }).pipe(
-      Effect.map((handle) => handle.context !== null && handle.context.provider.kind !== "unknown"),
-      Effect.orElseSucceed(() => false),
+      Effect.map(({ context }) =>
+        context === null || context.provider.kind === "unknown"
+          ? null
+          : { remote: context.remoteName, kind: context.provider.kind },
+      ),
+      Effect.orElseSucceed(() => null),
     );
 
   const list: ProjectRoots["Service"]["list"] = Effect.fn("ProjectRoots.list")(
@@ -158,7 +167,7 @@ const make = Effect.gen(function* () {
             key: keys[index]!,
             ...entry,
             state,
-            hostBacked: state === "git" && (yield* isHostBacked(entry.path)),
+            hostBacked: state === "git" && (yield* host(entry.path)) !== null,
           };
         }),
         { concurrency: DETECTION_CONCURRENCY },
@@ -351,7 +360,7 @@ const make = Effect.gen(function* () {
     },
   );
 
-  return ProjectRoots.of({ list, forThread, locate, resolve, writeTarget, isHostBacked });
+  return ProjectRoots.of({ list, forThread, locate, resolve, writeTarget, host });
 });
 
 export const layer = Layer.effect(ProjectRoots, make);

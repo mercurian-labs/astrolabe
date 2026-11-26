@@ -52,7 +52,11 @@ import {
 } from "@mercurian/wiki";
 import {
   type CodeIndexError,
+  type IsoDateTime,
+  parseProjectRootId,
   type ProjectId,
+  type ProjectRoot,
+  projectRootId,
   type ThreadId,
   type WikiAmendInput,
   type WikiAmendResult,
@@ -129,6 +133,7 @@ import * as Stream from "effect/Stream";
 import * as ServerConfig from "../config.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
+import * as ProjectRoots from "../workspace/ProjectRoots.ts";
 import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
 import { parseWorktreeList } from "../worktrees/worktreeList.ts";
 import {
@@ -696,6 +701,10 @@ const moveSubject = (from: string, to: string) => {
   return `Move ${documentSubject(from)} to ${folderOf(to) || "the root"}`;
 };
 
+/** One of a project's folders, named by its root id rather than registered as a wiki. */
+const isProjectFolder = (wiki: { readonly wikiId: string }) =>
+  parseProjectRootId(wiki.wikiId) !== null;
+
 const isCommitId = (value: string) => /^[0-9a-f]{4,64}$/i.test(value);
 
 const subjectOf = (message: string) => {
@@ -736,6 +745,7 @@ const make = Effect.gen(function* () {
   const git = yield* GitVcsDriver.GitVcsDriver;
   const random = yield* SecureRandom.SecureRandom;
   const projects = yield* ProjectService.ProjectService;
+  const projectRootFolders = yield* ProjectRoots.ProjectRoots;
 
   const events = yield* PubSub.sliding<WikiEvent>(256);
   const registryPath = path.join(config.stateDir, "wikis.json");
@@ -1248,6 +1258,17 @@ const make = Effect.gen(function* () {
       }),
     );
 
+  /** A project's folder keeps nothing here: its project and its repository say what it is. */
+  const requireRegistered = (wiki: WikiRecord) =>
+    !isProjectFolder(wiki)
+      ? Effect.void
+      : Effect.fail(
+          new WikiError({
+            reason: "invalid",
+            message: "This folder belongs to a project, so it has no wiki settings to change.",
+          }),
+        );
+
   const replaceWiki = (next: WikiRecord) =>
     updateRegistry((registry) =>
       Effect.succeed([
@@ -1259,11 +1280,124 @@ const make = Effect.gen(function* () {
       ] as const),
     );
 
-  /** A wiki by id, or by name for agents that know it by name. */
+  const trackedHostRoot = (remote: string) => `refs/wiki/host/${remote}/`;
+
+  /** A repository's main line: its host's default branch, else the branch its folder has out. */
+  const defaultBranch = Effect.fn("WikiService.defaultBranch")(function* (
+    root: string,
+    remote: string,
+  ) {
+    const named = yield* git
+      .resolveDefaultBranchName(root, remote)
+      .pipe(Effect.orElseSucceed(() => null));
+    if (named !== null) return named;
+    const head = yield* gitOut("headBranch", root, ["symbolic-ref", "-q", "--short", "HEAD"], {
+      allowExitCodes: [1, 128],
+    }).pipe(Effect.orElseSucceed(() => ""));
+    return head || "main";
+  });
+
+  /** A Git folder of a project, as a wiki whose host is the folder's remote. */
+  const rootRecord = Effect.fn("WikiService.rootRecord")(function* (
+    project: { readonly id: ProjectId; readonly title: string; readonly createdAt: IsoDateTime },
+    root: ProjectRoot,
+  ) {
+    const folder = yield* fileSystem
+      .realPath(root.path)
+      .pipe(Effect.orElseSucceed(() => root.path));
+    const host = root.hostBacked ? yield* projectRootFolders.host(root.path) : null;
+    const mainBranch = yield* defaultBranch(folder, host?.remote ?? "origin");
+    const { wikis } = yield* loadRegistry;
+    const record: WikiRecord = {
+      wikiId: WikiId.make(projectRootId(project.id, root.key)),
+      name: root.kind === "workspace" ? project.title : root.name,
+      root: folder,
+      mainBranch,
+      projectIds: [project.id],
+      projectLinkedAt: {},
+      mirror: null,
+      host:
+        host === null
+          ? null
+          : {
+              projectId: project.id,
+              remote: host.remote,
+              kind: host.kind,
+              lastSyncedAt: null,
+              // What the last fetch saw: a folder keeps no sync state of its own.
+              lastSyncedCommit:
+                (yield* revParse(folder, `${trackedHostRoot(host.remote)}${mainBranch}`)) ?? null,
+              relation: null,
+              lastError: null,
+            },
+      // Until map backgrounds leave wikis, a registered wiki's folder keeps drawing on its own.
+      mapBackgrounds: wikis.find((wiki) => wiki.root === folder)?.mapBackgrounds ?? [],
+      createdAt: project.createdAt,
+    };
+    return record;
+  });
+
+  const projectRootRecord = Effect.fn("WikiService.projectRootRecord")(function* (
+    reference: string,
+  ) {
+    const parsed = parseProjectRootId(reference);
+    if (parsed === null) return undefined;
+    const project = yield* projects
+      .getById(parsed.projectId)
+      .pipe(Effect.orElseSucceed(() => Option.none()));
+    if (Option.isNone(project)) return undefined;
+    const roots = yield* projectRootFolders
+      .list(parsed.projectId)
+      .pipe(Effect.orElseSucceed((): ReadonlyArray<ProjectRoot> => []));
+    const root = roots.find((candidate) => candidate.key === parsed.rootKey);
+    if (root === undefined) return undefined;
+    if (root.state !== "git") {
+      return yield* new WikiError({
+        reason: root.state === "missing" ? "not-found" : "invalid",
+        message:
+          root.state === "missing"
+            ? `The folder ${root.path} is gone.`
+            : `The folder ${root.path} is not a Git repository.`,
+      });
+    }
+    return yield* rootRecord(project.value, root);
+  });
+
+  /** Every Git folder of every project that isn't archived, as wikis. */
+  const projectRootRecords = Effect.gen(function* () {
+    const shells = yield* projects
+      .listShells()
+      .pipe(
+        Effect.mapError(
+          (cause) =>
+            new WikiError({ reason: "invalid", message: "Projects couldn't be read.", cause }),
+        ),
+      );
+    const perProject = yield* Effect.forEach(
+      shells.filter((shell) => shell.archivedAt == null),
+      (shell) =>
+        projectRootFolders.list(shell.id).pipe(
+          Effect.flatMap((roots) =>
+            Effect.forEach(
+              roots.filter((root) => root.state === "git"),
+              (root) => rootRecord(shell, root),
+            ),
+          ),
+          // A project whose folders can't be read lists none, rather than hiding every other.
+          Effect.orElseSucceed((): ReadonlyArray<WikiRecord> => []),
+        ),
+      { concurrency: 4 },
+    );
+    return perProject.flat();
+  });
+
+  /** A wiki by id, a project's folder by its root id, or by name for agents that know it by name. */
   const lookup = Effect.fn("WikiService.lookup")(function* (reference: string) {
     const { wikis } = yield* loadRegistry;
     const byId = wikis.find((wiki) => wiki.wikiId === reference);
     if (byId !== undefined) return byId;
+    const byRoot = yield* projectRootRecord(reference);
+    if (byRoot !== undefined) return byRoot;
     const byName = wikis.filter((wiki) => wiki.name.toLowerCase() === reference.toLowerCase());
     if (byName.length === 1 && byName[0] !== undefined) return byName[0];
     return yield* new WikiError({
@@ -1288,12 +1422,17 @@ const make = Effect.gen(function* () {
       ),
     );
 
-  /** Serializes every write to one wiki. */
+  const withRegisteredWiki = <A>(
+    reference: string,
+    body: (wiki: WikiRecord) => Effect.Effect<A, WikiError>,
+  ) => withWiki(reference, (wiki) => requireRegistered(wiki).pipe(Effect.andThen(body(wiki))));
+
+  /** Serializes every write to one repository, whichever id named it. */
   const locked = <A, E, R>(wiki: WikiRecord, body: Effect.Effect<A, E, R>) => {
-    let lock = wikiLocks.get(wiki.wikiId);
+    let lock = wikiLocks.get(wiki.root);
     if (lock === undefined) {
       lock = Semaphore.makeUnsafe(1);
-      wikiLocks.set(wiki.wikiId, lock);
+      wikiLocks.set(wiki.root, lock);
     }
     return lock.withPermits(1)(body);
   };
@@ -3217,6 +3356,12 @@ const make = Effect.gen(function* () {
                 message: `This merges on the host, through its ${wikiTerms(wiki).singular}.`,
               });
             }
+            if (isProjectFolder(wiki)) {
+              return yield* new WikiError({
+                reason: "invalid",
+                message: "A project's folder merges through its host, and this one has none.",
+              });
+            }
             const stored = yield* loadChangeRequest(wiki, input.changeRequestId);
             yield* requireOpen(stored);
             if (stored.record.draft) {
@@ -3280,24 +3425,32 @@ const make = Effect.gen(function* () {
       ),
       // A wiki whose folder went away still lists, so it can be removed.
       Effect.orElseSucceed(() => 0),
-      Effect.map((openChangeRequests): WikiSummary => ({
-        wikiId: wiki.wikiId,
-        name: wiki.name,
-        root: wiki.root,
-        mainBranch: wiki.mainBranch,
-        projectIds: wiki.projectIds,
-        mirror: wiki.mirror,
-        host: wiki.host,
-        mapBackgrounds: wiki.mapBackgrounds,
-        openChangeRequests,
-        createdAt: wiki.createdAt,
-      })),
+      Effect.map((openChangeRequests): WikiSummary => {
+        const folder = parseProjectRootId(wiki.wikiId);
+        return {
+          wikiId: wiki.wikiId,
+          name: wiki.name,
+          root: wiki.root,
+          mainBranch: wiki.mainBranch,
+          projectIds: wiki.projectIds,
+          mirror: wiki.mirror,
+          host: wiki.host,
+          mapBackgrounds: wiki.mapBackgrounds,
+          openChangeRequests,
+          createdAt: wiki.createdAt,
+          ...(folder === null ? {} : { projectId: folder.projectId, rootKey: folder.rootKey }),
+        };
+      }),
     );
 
-  const list: WikiService["Service"]["list"] = loadRegistry.pipe(
-    Effect.flatMap((registry) => Effect.forEach(registry.wikis, summary, { concurrency: 4 })),
-    Effect.map((wikis) => ({ wikis })),
-  );
+  /** Each project's Git folders, then each registered wiki that is none of them. */
+  const list: WikiService["Service"]["list"] = Effect.gen(function* () {
+    const folders = yield* projectRootRecords;
+    const covered = new Set(folders.map((wiki) => wiki.root));
+    const { wikis: registered } = yield* loadRegistry;
+    const wikis = [...folders, ...registered.filter((wiki) => !covered.has(wiki.root))];
+    return { wikis: yield* Effect.forEach(wikis, summary, { concurrency: 4 }) };
+  });
 
   /** When each file was last changed on the line ending at `commit`. */
   const editTimesAt = Effect.fn("WikiService.editTimesAt")(function* (
@@ -3436,10 +3589,10 @@ const make = Effect.gen(function* () {
   ) {
     const cached = corpora.get(commit);
     if (cached !== undefined && cached.code === code) return cached.corpus;
-    let lock = corpusLocks.get(wiki.wikiId);
+    let lock = corpusLocks.get(wiki.root);
     if (lock === undefined) {
       lock = Semaphore.makeUnsafe(1);
-      corpusLocks.set(wiki.wikiId, lock);
+      corpusLocks.set(wiki.root, lock);
     }
     return yield* lock.withPermits(1)(buildCorpus(wiki, commit, code));
   });
@@ -4088,7 +4241,7 @@ const make = Effect.gen(function* () {
     );
 
   const remove: WikiService["Service"]["remove"] = (input) =>
-    withWiki(input.wikiId, (wiki) =>
+    withRegisteredWiki(input.wikiId, (wiki) =>
       updateRegistry((registry) =>
         Effect.succeed([
           { ...registry, wikis: registry.wikis.filter((entry) => entry.wikiId !== wiki.wikiId) },
@@ -4098,7 +4251,7 @@ const make = Effect.gen(function* () {
     );
 
   const setMirror: WikiService["Service"]["setMirror"] = (input) =>
-    withWiki(input.wikiId, (wiki) =>
+    withRegisteredWiki(input.wikiId, (wiki) =>
       Effect.gen(function* () {
         if (wiki.host !== null && input.url !== null) {
           return yield* new WikiError({
@@ -4132,7 +4285,7 @@ const make = Effect.gen(function* () {
     );
 
   const setMapBackgrounds: WikiService["Service"]["setMapBackgrounds"] = (input) =>
-    withWiki(input.wikiId, (wiki) =>
+    withRegisteredWiki(input.wikiId, (wiki) =>
       Effect.gen(function* () {
         const names = new Set(input.backgrounds.map(({ name }) => name.toLowerCase()));
         if (names.size !== input.backgrounds.length) {
@@ -4161,7 +4314,7 @@ const make = Effect.gen(function* () {
     );
 
   const setProjectLink: WikiService["Service"]["setProjectLink"] = (input) =>
-    withWiki(input.wikiId, (wiki) =>
+    withRegisteredWiki(input.wikiId, (wiki) =>
       locked(
         wiki,
         updateRegistry((registry) =>
@@ -4295,7 +4448,7 @@ const make = Effect.gen(function* () {
     }).pipe(Effect.andThen(publish("mirror", wiki.wikiId, null)));
 
   const setHost: WikiService["Service"]["setHost"] = (wikiId, host) =>
-    withWiki(wikiId, (wiki) =>
+    withRegisteredWiki(wikiId, (wiki) =>
       Effect.gen(function* () {
         if (host !== null) {
           // A name that reads as an option would reach git as one.
@@ -4368,8 +4521,6 @@ const make = Effect.gen(function* () {
         : replaceHost(wiki, (host) => ({ ...host, changeRequestIssue: message })),
     );
 
-  const trackedHostRoot = (remote: string) => `refs/wiki/host/${remote}/`;
-
   /** What the host holds under main and `cr/`, read without fetching. */
   const hostRefs = Effect.fn("WikiService.hostRefs")(function* (wiki: WikiRecord, remote: string) {
     const listed = yield* gitOut(
@@ -4421,10 +4572,10 @@ const make = Effect.gen(function* () {
   ) {
     const trackingRoot = trackedHostRoot(remote);
     const tracking = (ref: string) => `${trackingRoot}${ref.slice("refs/heads/".length)}`;
-    let lock = fetchLocks.get(wiki.wikiId);
+    let lock = fetchLocks.get(wiki.root);
     if (lock === undefined) {
       lock = Semaphore.makeUnsafe(1);
-      fetchLocks.set(wiki.wikiId, lock);
+      fetchLocks.set(wiki.root, lock);
     }
     // Two fetches into one tracking ref would fail each other on git's ref lock.
     return yield* lock.withPermits(1)(
@@ -4474,20 +4625,25 @@ const make = Effect.gen(function* () {
               relation = "up-to-date";
             } else if (remoteMain !== undefined) {
               if (yield* isAncestor(wiki.root, local, remoteMain)) {
-                // The folder's unsaved edits hold main back until they are dealt with.
-                busy = yield* moveMain(wiki, local, remoteMain, "sync").pipe(
-                  Effect.as(null),
-                  Effect.catchIf(
-                    (error) => error.reason === "checkout-busy",
-                    (error) => Effect.succeed(error.message),
-                  ),
-                );
-                if (busy === null) {
-                  main = remoteMain;
-                  relation = "up-to-date";
-                  yield* publish("main-moved", wiki.wikiId, null);
-                } else {
+                // A project's folder is the person's checkout: catching it up is theirs to do.
+                if (isProjectFolder(wiki)) {
                   relation = "behind";
+                } else {
+                  // The folder's unsaved edits hold main back until they are dealt with.
+                  busy = yield* moveMain(wiki, local, remoteMain, "sync").pipe(
+                    Effect.as(null),
+                    Effect.catchIf(
+                      (error) => error.reason === "checkout-busy",
+                      (error) => Effect.succeed(error.message),
+                    ),
+                  );
+                  if (busy === null) {
+                    main = remoteMain;
+                    relation = "up-to-date";
+                    yield* publish("main-moved", wiki.wikiId, null);
+                  } else {
+                    relation = "behind";
+                  }
                 }
               } else if (!(yield* isAncestor(wiki.root, remoteMain, local))) {
                 relation = "diverged";
