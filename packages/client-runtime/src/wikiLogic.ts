@@ -8,9 +8,16 @@ import {
   linkFiles,
   linkPath,
   resolveLink,
+  resolveProjectLink,
   unwrittenFile,
+  unwrittenProjectFile,
   writtenLink,
+  writtenProjectLink,
+  type ProjectFile,
+  type ProjectLinker,
+  type ProjectLinkFiles,
   type ResolvedLink,
+  type ResolvedProjectLink,
   type WikiLinkFiles,
 } from "@mercurian/wiki/resolve-link";
 import type {
@@ -177,6 +184,60 @@ export const wikiLinkFile = (
 ): string =>
   (index === null ? null : resolveWikiLink(index, target, from).file) ??
   unwrittenFile(target, from);
+
+/** A project's roots' indexes, by root key. */
+type ProjectLinkableIndex = ReadonlyMap<string, LinkableIndex>;
+
+/** What a link in a project can land on: each root's files, each made ready once. */
+const projectWikiLinkFiles = (roots: ProjectLinkableIndex): ProjectLinkFiles =>
+  new Map([...roots].map(([root, index]) => [root, wikiLinkFiles(index)] as const));
+
+/** Where a link written in `from` lands across a project, the way the server resolves it. */
+export const resolveProjectWikiLink = (
+  roots: ProjectLinkableIndex,
+  target: string,
+  from: ProjectLinker,
+): ResolvedProjectLink => resolveProjectLink(target, from, projectWikiLinkFiles(roots));
+
+/**
+ * What a `[[` in a file of `fromRoot` can complete to: every root's notes, canvases and bases, a
+ * file in another root labelled and written with its `root:`.
+ */
+export function projectWikiLinkOptions(
+  roots: ProjectLinkableIndex,
+  fromRoot: string,
+  showHidden: boolean,
+): ReadonlyArray<{ readonly label: string; readonly apply: string; readonly root: string }> {
+  const files = projectWikiLinkFiles(roots);
+  return [...roots].flatMap(([root, index]) =>
+    [...index.notes, ...index.canvases, ...index.bases].flatMap(({ file }) =>
+      !showHidden && isHidden(file)
+        ? []
+        : [
+            {
+              label: root === fromRoot ? noteNameOfFile(file) : `${root}:${noteNameOfFile(file)}`,
+              apply: writtenProjectLink({ root, file }, fromRoot, files),
+              root,
+            },
+          ],
+    ),
+  );
+}
+
+/**
+ * The file a link opens across a project: the one it lands on, else where writing it would land.
+ * Null for an ambiguous link, which the person has to choose for.
+ */
+export function projectWikiLinkFile(
+  roots: ProjectLinkableIndex | null,
+  target: string,
+  from: ProjectLinker,
+): ProjectFile | null {
+  if (roots === null) return unwrittenProjectFile(target, from, new Map());
+  const found = resolveProjectWikiLink(roots, target, from);
+  if (found.file !== null) return found.file;
+  return found.ambiguous.length > 0 ? null : unwrittenProjectFile(target, from, roots);
+}
 
 /** The repository file a whole-path link names when it is no document, as a code file's link is. */
 export const linkedFilePath = (target: string): string | null => {

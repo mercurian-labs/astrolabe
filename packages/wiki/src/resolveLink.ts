@@ -207,3 +207,131 @@ export function unwrittenFile(target: string, from: string | null): string {
         : joined(folder, text);
   return /\.(md|base|canvas)$/i.test(path) ? path : `${path}.md`;
 }
+
+/** A document in a project: its root's key and its path from that root. */
+export interface ProjectFile {
+  readonly root: string;
+  readonly file: string;
+}
+
+/** Each of a project's roots, by key, made ready to search. */
+export type ProjectLinkFiles = ReadonlyMap<string, WikiLinkFiles>;
+
+export function projectLinkFiles(
+  roots: Iterable<readonly [root: string, files: Iterable<string>]>,
+): ProjectLinkFiles {
+  return new Map([...roots].map(([root, files]) => [root, linkFiles(files)] as const));
+}
+
+/** Where a link is written: the linking file's root, and the file, if any. */
+export interface ProjectLinker {
+  readonly root: string;
+  readonly file: string | null;
+}
+
+export interface ResolvedProjectLink {
+  /** The file the link opens; null for a red link and for an ambiguous one. */
+  readonly file: ProjectFile | null;
+  /** What else the chosen root's search matched, as `ResolvedLink.others`. */
+  readonly others: ReadonlyArray<ProjectFile>;
+  /** Every match, root by root, when a bare link misses its own root and finds several others. */
+  readonly ambiguous: ReadonlyArray<ProjectFile>;
+}
+
+const UNRESOLVED_IN_PROJECT: ResolvedProjectLink = { file: null, others: [], ambiguous: [] };
+
+const inRoot = (root: string, found: ResolvedLink): ResolvedProjectLink => ({
+  file: found.file === null ? null : { root, file: found.file },
+  others: found.others.map((file) => ({ root, file })),
+  ambiguous: [],
+});
+
+/**
+ * `root:rest` when the text before the first `:` is exactly a known root's key; else null, so
+ * `[[Note: subtitle]]` stays a note's name.
+ */
+export function rootPrefix(
+  target: string,
+  roots: { readonly has: (root: string) => boolean },
+): { readonly root: string; readonly rest: string } | null {
+  const text = target.trim();
+  const colon = text.indexOf(":");
+  if (colon <= 0) return null;
+  const root = text.slice(0, colon);
+  return roots.has(root) ? { root, rest: text.slice(colon + 1) } : null;
+}
+
+/**
+ * The file `target` opens across a project. The linking root's own search always comes first, so
+ * no other root can retarget a link that lands there. Then `root:` names a root to search alone.
+ * Else a bare name or path takes the one other root that has it; several are ambiguous, never
+ * picked. A `/`, `./` or `../` path names a place in its own root and searches nowhere else.
+ */
+export function resolveProjectLink(
+  target: string,
+  from: ProjectLinker,
+  files: ProjectLinkFiles,
+): ResolvedProjectLink {
+  const own = files.get(from.root);
+  if (own !== undefined) {
+    const found = resolveLink(target, from.file, own);
+    if (found.file !== null) return inRoot(from.root, found);
+  }
+  const prefixed = rootPrefix(target, files);
+  if (prefixed !== null) {
+    const there = files.get(prefixed.root);
+    if (there === undefined) return UNRESOLVED_IN_PROJECT;
+    const linker = prefixed.root === from.root ? from.file : null;
+    return inRoot(prefixed.root, resolveLink(prefixed.rest, linker, there));
+  }
+  if (/^(?:\/|\.\.?\/)/.test(linkPath(target))) return UNRESOLVED_IN_PROJECT;
+  const matches: ResolvedProjectLink[] = [];
+  for (const [root, rootFiles] of files) {
+    if (root === from.root) continue;
+    const found = inRoot(root, resolveLink(target, null, rootFiles));
+    if (found.file !== null) matches.push(found);
+  }
+  const [only, ...rest] = matches;
+  if (only === undefined) return UNRESOLVED_IN_PROJECT;
+  if (rest.length === 0) return only;
+  return {
+    file: null,
+    others: [],
+    ambiguous: matches.flatMap((match) =>
+      match.file === null ? [] : [match.file, ...match.others],
+    ),
+  };
+}
+
+/** What a link to `target` writes from `fromRoot`: its shortest form, after `root:` elsewhere. */
+export function shortestProjectLink(
+  target: ProjectFile,
+  fromRoot: string,
+  files: ProjectLinkFiles,
+): string {
+  const text = shortestLink(target.file, files.get(target.root) ?? linkFiles([]));
+  return target.root === fromRoot ? text : `${target.root}:${text}`;
+}
+
+/** A project link's inside as a new one writes it: `|title` when the text says more than that. */
+export function writtenProjectLink(
+  target: ProjectFile,
+  fromRoot: string,
+  files: ProjectLinkFiles,
+): string {
+  const text = shortestProjectLink(target, fromRoot, files);
+  const title = noteName(nameOf(target.file));
+  return text === title ? text : `${text}|${title}`;
+}
+
+/** Where a project link that resolves nowhere would be written: the root it names, else its own. */
+export function unwrittenProjectFile(
+  target: string,
+  from: ProjectLinker,
+  roots: { readonly has: (root: string) => boolean },
+): ProjectFile {
+  const prefixed = rootPrefix(target, roots);
+  if (prefixed === null) return { root: from.root, file: unwrittenFile(target, from.file) };
+  const linker = prefixed.root === from.root ? from.file : null;
+  return { root: prefixed.root, file: unwrittenFile(prefixed.rest, linker) };
+}

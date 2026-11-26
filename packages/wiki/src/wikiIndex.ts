@@ -8,7 +8,12 @@ import {
   linkFiles,
   linkPath,
   resolveLink,
+  resolveProjectLink,
   unwrittenFile,
+  unwrittenProjectFile,
+  type ProjectFile,
+  type ProjectLinkFiles,
+  type ResolvedProjectLink,
   type WikiLinkFiles,
 } from "./resolveLink.ts";
 import { isMapFile, parseMap, type MapEdgeRef, type SkillMap } from "./skillMap.ts";
@@ -289,4 +294,89 @@ export function walk(
   for (const [id, name] of names) if (!targets.has(id)) visit(name, 0);
   for (const [id, name] of names) if (!visited.has(id)) visit(name, 0);
   return lines.join("\n");
+}
+
+/** Every root of a project indexed on its own, and their documents as a link searches them all. */
+export interface ProjectIndex {
+  readonly roots: ReadonlyMap<string, WikiIndex>;
+  readonly documents: ProjectLinkFiles;
+}
+
+export function indexProject(
+  roots: Iterable<readonly [root: string, files: WikiFiles]>,
+): ProjectIndex {
+  const indexes = new Map([...roots].map(([root, files]) => [root, indexFiles(files)] as const));
+  return {
+    roots: indexes,
+    documents: new Map([...indexes].map(([root, index]) => [root, index.documents] as const)),
+  };
+}
+
+type ProjectLinkable = Pick<ProjectIndex, "documents">;
+
+/** Where a note's or canvas's link leads across the project; a file card is a path in its root. */
+export const projectLinkDestination = (
+  index: ProjectLinkable,
+  link: { readonly target: string; readonly card?: "text" | "file" },
+  from: ProjectFile,
+): ResolvedProjectLink =>
+  resolveProjectLink(link.card === "file" ? `/${link.target}` : link.target, from, index.documents);
+
+/** A link between a project's documents, by root and path at both ends. */
+export interface ProjectLink {
+  readonly from: ProjectFile;
+  /** As first written. */
+  readonly target: string;
+  /** Null for a red link and for an ambiguous one. */
+  readonly to: ProjectFile | null;
+  /** The matches an ambiguous link chooses between; empty otherwise. */
+  readonly ambiguous: ReadonlyArray<ProjectFile>;
+}
+
+const projectFileKey = ({ root, file }: ProjectFile) => `${root}\0${file}`;
+
+/** Each distinct document each note and canvas links to; a red or ambiguous link by its text. */
+export function projectLinks(index: ProjectIndex): ReadonlyArray<ProjectLink> {
+  const result: ProjectLink[] = [];
+  for (const [root, rootIndex] of index.roots) {
+    const sources = [...rootIndex.notes.values(), ...rootIndex.canvases.values()];
+    for (const { file, links: outgoing } of sources) {
+      const from = { root, file };
+      const reached = new Set<string>();
+      for (const link of outgoing) {
+        const landed = projectLinkDestination(index, link, from);
+        const id = landed.file === null ? `\0${key(link.target)}` : projectFileKey(landed.file);
+        if (reached.has(id)) continue;
+        reached.add(id);
+        result.push({ from, target: link.target, to: landed.file, ambiguous: landed.ambiguous });
+      }
+    }
+  }
+  return result;
+}
+
+/** The project's notes and canvases linking to `file`, a red link by where writing it lands. */
+export function projectBacklinks(
+  index: ProjectIndex,
+  file: ProjectFile,
+): ReadonlyArray<ProjectFile> {
+  const wanted = projectFileKey(file);
+  const leads = (
+    link: { readonly target: string; readonly card?: "text" | "file" },
+    from: ProjectFile,
+  ) => {
+    const landed = projectLinkDestination(index, link, from);
+    if (landed.file !== null) return projectFileKey(landed.file) === wanted;
+    if (landed.ambiguous.length > 0) return false;
+    const unwritten = unwrittenProjectFile(link.target, from, index.documents);
+    return unwritten.root === file.root && key(unwritten.file) === key(file.file);
+  };
+  const sources: ProjectFile[] = [];
+  for (const [root, rootIndex] of index.roots) {
+    for (const source of [...rootIndex.notes.values(), ...rootIndex.canvases.values()]) {
+      const from = { root, file: source.file };
+      if (source.links.some((link) => leads(link, from))) sources.push(from);
+    }
+  }
+  return sources;
 }

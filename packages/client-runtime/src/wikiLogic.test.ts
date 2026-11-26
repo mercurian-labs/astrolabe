@@ -12,6 +12,9 @@ import {
   draftMovedTo,
   isDocumentFile,
   keepCanvasName,
+  projectWikiLinkFile,
+  projectWikiLinkOptions,
+  resolveProjectWikiLink,
   resolveWikiLink,
   wikiDocumentFilesWithDraft,
   wikiDocumentScope,
@@ -248,5 +251,69 @@ describe("documents by path", () => {
       file: "a/Plan.md",
       others: ["b/Plan.md"],
     });
+  });
+});
+
+describe("links across a project's roots", () => {
+  const index = (files: ReadonlyArray<string>) =>
+    ({
+      notes: files.filter((file) => file.endsWith(".md")).map((file) => ({ file })),
+      canvases: files.filter((file) => file.endsWith(".canvas")).map((file) => ({ file })),
+      bases: [],
+      maps: [],
+    }) as unknown as WikiIndexResult;
+  const roots = new Map([
+    ["web", index(["Plan.md", "a/Note.md"])],
+    ["app", index(["docs/Plan.md", "Spec.md", ".hidden/Secret.md"])],
+    ["lib", index(["Spec.md", "Board.canvas"])],
+  ]);
+  const web = { root: "web", file: "a/L.md" } as const;
+
+  it("resolves in the linker's root first, then the one other root that has it", () => {
+    expect(resolveProjectWikiLink(roots, "Plan", web).file).toEqual({
+      root: "web",
+      file: "Plan.md",
+    });
+    expect(resolveProjectWikiLink(roots, "Plan", { root: "lib", file: null }).ambiguous).toEqual([
+      { root: "web", file: "Plan.md" },
+      { root: "app", file: "docs/Plan.md" },
+    ]);
+    expect(resolveProjectWikiLink(roots, "app:Plan", web).file).toEqual({
+      root: "app",
+      file: "docs/Plan.md",
+    });
+    expect(resolveProjectWikiLink(roots, "Board.canvas", web).file).toEqual({
+      root: "lib",
+      file: "Board.canvas",
+    });
+  });
+
+  it("opens what a link lands on, else where writing it lands, and nothing for an ambiguous one", () => {
+    expect(projectWikiLinkFile(roots, "Note", web)).toEqual({ root: "web", file: "a/Note.md" });
+    expect(projectWikiLinkFile(roots, "Spec", web)).toBeNull();
+    expect(projectWikiLinkFile(roots, "New", web)).toEqual({ root: "web", file: "a/New.md" });
+    expect(projectWikiLinkFile(roots, "lib:x/New", web)).toEqual({ root: "lib", file: "x/New.md" });
+    expect(projectWikiLinkFile(null, "lib:New", web)).toEqual({
+      root: "web",
+      file: "a/lib:New.md",
+    });
+  });
+
+  it("completes to every root's documents, another root's with its `root:`", () => {
+    expect(projectWikiLinkOptions(roots, "web", false)).toEqual([
+      { label: "Plan", apply: "Plan", root: "web" },
+      { label: "a/Note", apply: "Note", root: "web" },
+      { label: "app:docs/Plan", apply: "app:Plan|Plan", root: "app" },
+      { label: "app:Spec", apply: "app:Spec|Spec", root: "app" },
+      { label: "lib:Spec", apply: "lib:Spec|Spec", root: "lib" },
+      { label: "lib:Board.canvas", apply: "lib:Board.canvas|Board.canvas", root: "lib" },
+    ]);
+    expect(projectWikiLinkOptions(roots, "app", true).filter(({ root }) => root === "app")).toEqual(
+      [
+        { label: "docs/Plan", apply: "Plan", root: "app" },
+        { label: "Spec", apply: "Spec", root: "app" },
+        { label: ".hidden/Secret", apply: ".hidden/Secret|Secret", root: "app" },
+      ],
+    );
   });
 });

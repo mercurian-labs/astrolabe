@@ -8,9 +8,10 @@ import {
   folderOf,
   isWikiDocument,
   isWikiPath,
-  linkFiles,
+  projectLinkFiles,
   resolveLink,
-  shortestLink,
+  resolveProjectLink,
+  shortestProjectLink,
 } from "./resolveLink.ts";
 import {
   isMapFile,
@@ -258,37 +259,60 @@ export interface PlannedMove {
   readonly moved: ReadonlyArray<WikiMove>;
 }
 
-/** What a link becomes when `moves` happen: null leaves it. */
-function linkRewriter(
-  files: ReadonlyArray<string>,
+type LinkRewrite = (linker: string) => (target: string, embed: boolean) => string | null;
+
+/**
+ * What a link in each root becomes when `moves` happen in `root`: null leaves it. A link that led
+ * to a moved file takes the form a new link would; any other that would change target is pinned.
+ */
+function projectLinkRewriter(
+  roots: ReadonlyMap<string, ReadonlyArray<string>>,
+  root: string,
   moves: ReadonlyMap<string, string>,
-): (linker: string) => (target: string, embed: boolean) => string | null {
-  const before = linkFiles(files);
-  const after = linkFiles(files.map((file) => moves.get(file) ?? file));
-  return (linker) => {
-    const movedLinker = moves.get(linker) ?? linker;
+): (linkerRoot: string) => LinkRewrite {
+  const before = projectLinkFiles(roots);
+  const after = projectLinkFiles(
+    [...roots].map(([each, files]) =>
+      each === root
+        ? ([each, files.map((file) => moves.get(file) ?? file)] as const)
+        : [each, files],
+    ),
+  );
+  return (linkerRoot) => (linker) => {
+    const movedLinker = linkerRoot === root ? (moves.get(linker) ?? linker) : linker;
     return (target, embed) => {
-      const landed = resolveLink(target, linker, before).file;
+      const landed = resolveProjectLink(target, { root: linkerRoot, file: linker }, before).file;
       if (landed === null) return null;
-      const destination = moves.get(landed) ?? landed;
-      const stays = resolveLink(target, movedLinker, after).file === destination;
+      const moved = landed.root === root ? moves.get(landed.file) : undefined;
+      const destination = moved === undefined ? landed : { root, file: moved };
+      const now = resolveProjectLink(target, { root: linkerRoot, file: movedLinker }, after).file;
+      const stays = now?.root === destination.root && now.file === destination.file;
       // A moved file's links take the written form; anything else keeps working as it stands.
-      if (stays && (embed || !moves.has(landed))) return null;
-      const text = shortestLink(destination, after);
+      if (stays && (embed || moved === undefined)) return null;
+      const text = shortestProjectLink(destination, linkerRoot, after);
       return text === target ? null : text;
     };
   };
 }
 
+/** One root, keyed so that no link's prefix can name it. */
+const linkRewriter = (files: ReadonlyArray<string>, moves: ReadonlyMap<string, string>) =>
+  projectLinkRewriter(new Map([["", files]]), "", moves)("");
+
+const allFiles = (files: WikiFiles, others: ReadonlyArray<WikiBlob>) => [
+  ...Object.keys(files),
+  ...others.map(({ file }) => file),
+];
+
 function applyMoves(
   files: WikiFiles,
   others: ReadonlyArray<WikiBlob>,
   moves: ReadonlyMap<string, string>,
+  rewrite: LinkRewrite,
   inBases?: (linker: string) => (name: string) => string | null,
 ): PlannedMove {
   const index = indexFiles(files);
   refuseMalformedMaps(index);
-  const rewrite = linkRewriter([...Object.keys(files), ...others.map(({ file }) => file)], moves);
   const paths = new Map([...moves].map(([from, to]) => [key(from), to]));
   const changes: Record<string, string | null> = {};
   const put = (file: string, source: string, next: string) => {
@@ -356,9 +380,20 @@ const taken = (
   others: ReadonlyArray<WikiBlob>,
   path: string,
   except: string | null = null,
-) =>
-  [...Object.keys(files), ...others.map(({ file }) => file)].some(
-    (file) => file !== except && key(file) === key(path),
+) => allFiles(files, others).some((file) => file !== except && key(file) === key(path));
+
+interface MovePlan {
+  readonly moves: ReadonlyMap<string, string>;
+  readonly inBases?: (linker: string) => (name: string) => string | null;
+}
+
+const planIn = (files: WikiFiles, others: ReadonlyArray<WikiBlob>, plan: MovePlan) =>
+  applyMoves(
+    files,
+    others,
+    plan.moves,
+    linkRewriter(allFiles(files, others), plan.moves),
+    plan.inBases,
   );
 
 /**
@@ -372,6 +407,15 @@ export function planRename(
   from: string,
   to: string,
 ): PlannedMove {
+  return planIn(files, others, documentMoves(files, others, from, to));
+}
+
+function documentMoves(
+  files: WikiFiles,
+  others: ReadonlyArray<WikiBlob>,
+  from: string,
+  to: string,
+): MovePlan {
   const index = indexFiles(files);
   const { file: fromFile, others: rivals } = resolveLink(from, null, index.documents);
   if (fromFile === null) throw new AmendmentError(`No document named ${from}`);
@@ -393,7 +437,7 @@ export function planRename(
     linkedDocument(index, literal, linker) === fromFile
       ? `${literal.slice(0, literal.lastIndexOf("/") + 1)}${written}`
       : null;
-  return applyMoves(files, others, moves, inPlace ? inBases : undefined);
+  return inPlace ? { moves, inBases } : { moves };
 }
 
 /**
@@ -406,13 +450,22 @@ export function planFolderRename(
   from: string,
   to: string,
 ): PlannedMove {
+  return planIn(files, others, folderMoves(files, others, from, to));
+}
+
+function folderMoves(
+  files: WikiFiles,
+  others: ReadonlyArray<WikiBlob>,
+  from: string,
+  to: string,
+): MovePlan {
   const folder = from.replace(/^\/+|\/+$/g, "");
   const destination = to.replace(/^\/+|\/+$/g, "");
   if (!isWikiPath(destination)) throw new AmendmentError(`Not a folder's path: ${to}`);
   if (key(destination).startsWith(`${key(folder)}/`)) {
     throw new AmendmentError(`${from} can't move inside itself`);
   }
-  const all = [...Object.keys(files), ...others.map(({ file }) => file)];
+  const all = allFiles(files, others);
   const held = all.filter((file) => file.startsWith(`${folder}/`));
   if (held.length === 0) throw new AmendmentError(`No folder named ${from}`);
   if (destination === folder) throw new AmendmentError(`${from} is already there`);
@@ -426,8 +479,61 @@ export function planFolderRename(
   const moves = new Map(
     held.map((file) => [file, `${destination}${file.slice(folder.length)}`] as const),
   );
-  return applyMoves(files, others, moves);
+  return { moves };
 }
+
+/** A project root's files, as a move in one root reads them. */
+export interface ProjectRootFiles {
+  readonly files: WikiFiles;
+  readonly others: ReadonlyArray<WikiBlob>;
+}
+
+/**
+ * A move in `root`, with every root's links that led to what moved, or would change target,
+ * rewritten as in a single root; a link in another root takes the `root:` form. Each changed
+ * root's move, `root` always.
+ */
+function planInProject(
+  roots: ReadonlyMap<string, ProjectRootFiles>,
+  root: string,
+  plan: (files: WikiFiles, others: ReadonlyArray<WikiBlob>) => MovePlan,
+): ReadonlyMap<string, PlannedMove> {
+  const moving = roots.get(root);
+  if (moving === undefined) throw new AmendmentError(`No root named ${root}`);
+  const { moves, inBases } = plan(moving.files, moving.others);
+  const listed = new Map(
+    [...roots].map(([each, { files, others }]) => [each, allFiles(files, others)] as const),
+  );
+  const rewrite = projectLinkRewriter(listed, root, moves);
+  const planned = new Map<string, PlannedMove>();
+  for (const [each, { files, others }] of roots) {
+    if (each === root) {
+      planned.set(each, applyMoves(files, others, moves, rewrite(each), inBases));
+      continue;
+    }
+    const linked = applyMoves(files, others, new Map(), rewrite(each));
+    if (Object.keys(linked.changes).length > 0) planned.set(each, linked);
+  }
+  return planned;
+}
+
+/** `planRename` in one of a project's roots, its links followed across every root. */
+export const planProjectRename = (
+  roots: ReadonlyMap<string, ProjectRootFiles>,
+  root: string,
+  from: string,
+  to: string,
+): ReadonlyMap<string, PlannedMove> =>
+  planInProject(roots, root, (files, others) => documentMoves(files, others, from, to));
+
+/** `planFolderRename` in one of a project's roots, its links followed across every root. */
+export const planProjectFolderRename = (
+  roots: ReadonlyMap<string, ProjectRootFiles>,
+  root: string,
+  from: string,
+  to: string,
+): ReadonlyMap<string, PlannedMove> =>
+  planInProject(roots, root, (files, others) => folderMoves(files, others, from, to));
 
 /** A rename, of a document or of a folder, however it was asked for. */
 export const planMove = (

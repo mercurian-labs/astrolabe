@@ -6,9 +6,13 @@ import {
   linkFiles,
   planAmendment,
   planFolderRename,
+  planProjectFolderRename,
+  planProjectRename,
   planRename,
   resolveLink,
   shortestLink,
+  type PlannedMove,
+  type ProjectRootFiles,
   type WikiBlob,
   type WikiFiles,
 } from "./index.ts";
@@ -403,5 +407,91 @@ describe("writing a link", () => {
     [".hidden/Lone.md", ".hidden/Lone"],
   ])("shortest for %s is %s", (file, text) => {
     expect(shortestLink(file, listed)).toBe(text);
+  });
+});
+
+describe("moving a document in a project", () => {
+  const project = (roots: Readonly<Record<string, WikiFiles>>) =>
+    new Map<string, ProjectRootFiles>(
+      Object.entries(roots).map(([root, files]) => [root, { files, others: [] }]),
+    );
+  /** Each root's written files, a deleted one left out. */
+  const written = (planned: ReadonlyMap<string, PlannedMove>) =>
+    Object.fromEntries(
+      [...planned].map(([root, { changes }]) => [
+        root,
+        Object.fromEntries(Object.entries(changes).filter(([, text]) => text !== null)),
+      ]),
+    );
+  const roots = {
+    web: {
+      "Index.md":
+        "[[app:Plan]] [[app:docs/Plan|the plan]] ![[app:docs/Plan#H]] [[Lib]] [[Spec]] [[Note: subtitle]] [[Plan]]",
+      "Plan.md": "own",
+      "Note: subtitle.md": "n",
+      "Draft.md": "d",
+    },
+    app: { "docs/Plan.md": "p", "Ref.md": "[[Plan]] [[web:Index]]", "Other.md": "o" },
+    lib: { "Lib.md": "l", "Spec.md": "s" },
+  };
+
+  it("rewrites another root's links to what moved in their `root:` form, and nothing else", () => {
+    const planned = planProjectRename(project(roots), "app", "docs/Plan", "plans/Plan");
+    expect(written(planned)).toEqual({
+      app: { "plans/Plan.md": "p" },
+      web: {
+        "Index.md":
+          "[[app:Plan]] [[app:Plan|the plan]] ![[app:Plan#H]] [[Lib]] [[Spec]] [[Note: subtitle]] [[Plan]]",
+      },
+    });
+    expect(planned.get("app")?.moved).toEqual([{ from: "docs/Plan.md", to: "plans/Plan.md" }]);
+    expect(planned.get("web")?.moved).toEqual([]);
+  });
+
+  it("qualifies a bare link that found another root when what it found moves", () => {
+    const planned = planProjectRename(project(roots), "lib", "Lib", "Library");
+    expect(written(planned).web?.["Index.md"]).toContain("[[lib:Library]]");
+    expect(planned.has("app")).toBe(false);
+  });
+
+  it("pins a bare link with its root when a move elsewhere would make it ambiguous", () => {
+    const planned = planProjectRename(project(roots), "app", "Other", "Spec");
+    expect(written(planned)).toEqual({
+      app: { "Spec.md": "o" },
+      web: {
+        "Index.md":
+          "[[app:Plan]] [[app:docs/Plan|the plan]] ![[app:docs/Plan#H]] [[Lib]] [[lib:Spec]] [[Note: subtitle]] [[Plan]]",
+      },
+    });
+  });
+
+  it("pins a bare link with its root when its own root gains that name", () => {
+    const planned = planProjectRename(project(roots), "web", "Draft", "Lib");
+    expect(written(planned).web).toEqual({
+      "Lib.md": "d",
+      "Index.md":
+        "[[app:Plan]] [[app:docs/Plan|the plan]] ![[app:docs/Plan#H]] [[lib:Lib]] [[Spec]] [[Note: subtitle]] [[Plan]]",
+    });
+  });
+
+  it("moves a linker without touching the links it makes into other roots", () => {
+    const planned = planProjectRename(project(roots), "app", "Ref", "deep/Ref");
+    expect(written(planned)).toEqual({ app: { "deep/Ref.md": "[[Plan]] [[web:Index]]" } });
+  });
+
+  it("follows a folder rename into other roots", () => {
+    const planned = planProjectFolderRename(project(roots), "app", "docs", "notes");
+    expect(written(planned).web?.["Index.md"]).toBe(
+      "[[app:Plan]] [[app:Plan|the plan]] ![[app:Plan#H]] [[Lib]] [[Spec]] [[Note: subtitle]] [[Plan]]",
+    );
+    expect(written(planned).app).toEqual({ "notes/Plan.md": "p" });
+  });
+
+  it("plans the root it is given as a single root would, and refuses one it doesn't know", () => {
+    const alone = planRename(roots.app, [], "docs/Plan", "plans/Plan");
+    expect(planProjectRename(project(roots), "app", "docs/Plan", "plans/Plan").get("app")).toEqual(
+      alone,
+    );
+    expect(() => planProjectRename(project(roots), "nope", "Plan", "X")).toThrow(AmendmentError);
   });
 });
