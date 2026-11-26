@@ -15,14 +15,14 @@ import { SettingsRow, SettingsSection } from "./settingsLayout";
 const selectLocations = (settings: UnifiedSettings) => settings.wikiLocations;
 
 const ATTACHMENTS: Readonly<Record<Settings["attachments"], string>> = {
-  root: "Wiki root",
+  root: "Top of the folder",
   folder: "A folder",
   beside: "Beside the document",
   subfolder: "A subfolder beside it",
 };
 const NEW_NOTES: Readonly<Record<Settings["newNotes"], string>> = {
   beside: "Beside the linking file",
-  root: "Wiki root",
+  root: "Top of the folder",
   folder: "A folder",
 };
 
@@ -59,8 +59,8 @@ function Choice<Value extends string>({
 }
 
 /**
- * A row for a folder's path, saved as it's typed, as the rest of the page saves. One no wiki can
- * hold, `..` above all, isn't saved, and the row says so.
+ * A row for a folder's path, saved as it's typed, as the rest of the page saves. One outside the
+ * project's folder, `..` above all, isn't saved, and the row says so.
  */
 function FolderRow({
   title,
@@ -84,7 +84,7 @@ function FolderRow({
       status={
         refused ? (
           <span className="text-destructive">
-            A wiki can't hold this folder, so it isn't saved. Use a path inside the wiki, without
+            This folder isn't inside the project's folder, so it isn't saved. Use a path without
             `..` or `.git`.
           </span>
         ) : null
@@ -108,7 +108,7 @@ function FolderRow({
   );
 }
 
-/** Where a server's wikis put what's new, as Obsidian's Files and links settings do per vault. */
+/** Where documents put what's new on a server, as Obsidian's Files and links settings do per vault. */
 export function WikiLocationSettings({
   environmentId,
   serverLabel,
@@ -140,7 +140,7 @@ export function WikiLocationSettings({
           title={locations.attachments === "folder" ? "Attachment folder" : "Attachment subfolder"}
           description={
             locations.attachments === "folder"
-              ? "A path from the top of the wiki."
+              ? "A path from the top of the document's project folder."
               : "A path from the document's own folder."
           }
           label="Attachment folder"
@@ -163,7 +163,7 @@ export function WikiLocationSettings({
       {locations.newNotes === "folder" ? (
         <FolderRow
           title="New note folder"
-          description="A path from the top of the wiki. If it doesn't exist, notes land at the top."
+          description="A path from the top of the project folder. If it doesn't exist, notes land at the top."
           label="New note folder"
           value={locations.newNoteFolder}
           onCommit={(newNoteFolder) => update({ newNoteFolder })}

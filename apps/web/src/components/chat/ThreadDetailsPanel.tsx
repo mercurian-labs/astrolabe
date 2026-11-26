@@ -28,7 +28,6 @@ import { ThreadAutomationsPanel } from "./ThreadAutomationsPanel";
 import { ThreadRelationshipsPanel } from "./ThreadRelationshipsControl";
 import { ThreadRepositorySections } from "./ThreadRepositorySections";
 import { ThreadServersPanel } from "./ThreadServersPanel";
-import { ThreadWikisSection } from "./ThreadWikisSection";
 import { ThreadChangeGroupRows } from "../changeRequests/groups/ThreadChangeGroupRows";
 import {
   ThreadDetailsContext,
@@ -310,14 +309,6 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                     ) : null}
                   </div>
                 </ThreadDetailsSection>
-              ) : null}
-
-              {!props.draftId && visible.wikis ? (
-                <ThreadWikisSection
-                  environmentId={props.environmentId}
-                  projectId={props.projectId}
-                  threadId={props.threadId}
-                />
               ) : null}
 
               {density === "full" && !props.draftId && visible.servers ? (

@@ -84,16 +84,16 @@ it.effect("drops triggers whose command this build does not know", () =>
   Effect.gen(function* () {
     const parsed = yield* decode(ResolvedKeybindingTriggers, {
       triggers: [
-        { kind: "menu", command: "section.wikis", sequence: ["g", "w"] },
+        { kind: "menu", command: "section.settings", sequence: ["g", "w"] },
         { kind: "menu", command: "future.command", sequence: ["x"] },
-        { kind: "chord", command: "section.wikis", keys: ["x"] },
+        { kind: "chord", command: "section.settings", keys: ["x"] },
         { kind: "alias", command: "tab.close", name: "quit", shortest: 1 },
       ],
       unboundCommands: ["usage.open", "future.command"],
     });
     assert.deepEqual(parsed, {
       triggers: [
-        { kind: "menu", command: "section.wikis", sequence: ["g", "w"] },
+        { kind: "menu", command: "section.settings", sequence: ["g", "w"] },
         { kind: "alias", command: "tab.close", name: "quit", shortest: 1 },
       ],
       unboundCommands: ["usage.open"],

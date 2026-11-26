@@ -14,20 +14,15 @@ import { showChangeRequestTab } from "../../pullRequest/pullRequestWorkspace";
 import { PullRequestGlyph } from "../../pullRequest/pullRequestIcons";
 import { SIDEBAR_ROW_ACTIVE_CLASS, SIDEBAR_ROW_SURFACE_CLASS } from "../../sidebar/SidebarCard";
 import { Badge } from "../../ui/badge";
-import { wikiScopeKey } from "../../wiki/wikiTabs";
-import { changeRequestWikiScope } from "../../wiki/wikiScope";
-import { useChangeRequestKind, type ChangeRequestKind } from "../changeRequestKind";
 import { CountedSectionHeader } from "../CountedSectionHeader";
 import { changeGroupStateVariant } from "./changeGroupPresentation";
 import { changeGroupTabKey } from "./changeGroupTabs";
 import { changeGroupMemberTabKey } from "./useChangeGroupActions";
 
 /** The project filter's choice, as the list holds it. */
-export interface ChangeGroupScope {
-  readonly kind: ChangeRequestKind;
+interface ChangeGroupScope {
   readonly projectId: ProjectId | undefined;
   readonly projectEnvironmentId: EnvironmentId | undefined;
-  readonly wikiScope: string | null;
 }
 
 /**
@@ -45,9 +40,7 @@ export function ChangeGroupsSection({
   readonly projectId: ProjectId | undefined;
   readonly projectEnvironmentId: EnvironmentId | undefined;
 }) {
-  const kind = useChangeRequestKind();
-  const wikiScope = changeRequestWikiScope.useValue();
-  const scope: ChangeGroupScope = { kind, projectId, projectEnvironmentId, wikiScope };
+  const scope: ChangeGroupScope = { projectId, projectEnvironmentId };
   const groups = useChangeGroups();
   const focusedKey = useWorkspaceFocusedKey();
   const [expanded, setExpanded] = useState(true);
@@ -91,13 +84,9 @@ function inScope(
   scope: ChangeGroupScope,
 ): boolean {
   const { ref } = member;
-  if (scope.kind === "wikis") {
-    if (ref.kind !== "wiki-change-request") return false;
-    return scope.wikiScope === null || scope.wikiScope === wikiScopeKey(environmentId, ref.wikiId);
-  }
-  if (scope.kind === "repositories" || scope.projectId !== undefined) {
+  if (ref.kind === "wiki-change-request") return false;
+  if (scope.projectId !== undefined) {
     if (ref.kind !== "pull-request") return false;
-    if (scope.projectId === undefined) return true;
     if (environmentId !== scope.projectEnvironmentId || member.threadId === null) return false;
     const thread = readThreadShell(scopeThreadRef(environmentId, ThreadId.make(member.threadId)));
     return thread?.projectId === scope.projectId;
@@ -137,7 +126,9 @@ function GroupCard({
           </Badge>
         </button>
         <ul className="flex flex-col pl-5.5">
-          {group.members.map((member) => {
+          {group.members.flatMap((member) => {
+            // A wiki's change request from before Projects has no place in Changes any more.
+            if (member.ref.kind === "wiki-change-request") return [];
             const Icon = member.side === "code" ? PullRequestGlyph.pullRequest : BookOpenIcon;
             const memberKey = changeGroupMemberTabKey(group.environmentId, member);
             return (

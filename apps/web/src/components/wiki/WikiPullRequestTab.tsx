@@ -2,11 +2,18 @@
 import type {
   EnvironmentId,
   ThreadPullRequestLink,
+  WikiAmendmentSummary,
   WikiChangeRequest,
+  WikiChangeRequestId,
+  WikiId,
   WikiSummary,
 } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { unmergedPullRequests } from "@t3tools/client-runtime/wikiPullRequests";
+import {
+  changeRequestPullRequests,
+  pullRequestNudge,
+  unmergedPullRequests,
+} from "@t3tools/client-runtime/wikiPullRequests";
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigate } from "@tanstack/react-router";
 import { MessagesSquareIcon, TriangleAlertIcon } from "lucide-react";
@@ -15,17 +22,23 @@ import { useState } from "react";
 import { ensureLocalApi } from "~/localApi";
 import { workspace } from "~/panes/workspace";
 import { useThreadShell } from "~/state/entities";
+import { projectRootsEnvironment } from "~/state/projectRoots";
 import { useEnvironmentQuery } from "~/state/query";
 import { wikiEnvironment } from "~/state/wiki";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
+import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
+import { repositoryTabKey } from "../repositories/repositoryTabs";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
+import { toastManager } from "../ui/toast";
+import { projectRootFileTab } from "./projectRootFileTab";
 import { changeRequestProblems, hasUnpublishedWork, wikiTerms } from "./wiki.logic";
-import { AmendmentRow, LinkedPullRequests, NO_LINKS } from "./WikiChangeRequestView";
 import { useWikiCommand } from "./wikiEnvironment";
-import { wikiTabKey } from "./wikiTabs";
 import { WikiPart } from "./WikiParts";
+
+const NO_LINKS: ReadonlyArray<ThreadPullRequestLink> = [];
+const PULL_REQUEST_STATE_LABEL = { open: "Open", merged: "Merged", closed: "Closed" } as const;
 
 export interface WikiPullRequestChange {
   readonly wiki: WikiSummary;
@@ -101,17 +114,29 @@ export function WikiPullRequestTab({
   const open = changeRequest.status === "open";
   const files = detail.data?.files ?? [];
   const errors = detail.data === null ? [] : changeRequestProblems(detail.data);
-  const openNote = (file: string) =>
-    workspace.open(
-      wikiTabKey({
-        kind: "note",
-        environmentId,
-        wikiId,
-        file,
-        // An open change's notes read inside it; a merged or closed one's from main.
-        changeRequestId: open ? changeRequestId : undefined,
-      }),
-    );
+  // A document opens as its Projects file, in the folder of the project root this is.
+  const roots = useEnvironmentQuery(
+    wiki.projectId === undefined
+      ? null
+      : projectRootsEnvironment.list({ environmentId, input: { projectId: wiki.projectId } }),
+  );
+  const openNote = (file: string) => {
+    const tab =
+      wiki.projectId === undefined || wiki.rootKey === undefined || roots.data === null
+        ? null
+        : projectRootFileTab({
+            environmentId,
+            projectId: wiki.projectId,
+            roots: roots.data.roots,
+            rootKey: wiki.rootKey,
+            file,
+          });
+    if (tab === null) {
+      toastManager.add({ type: "warning", title: `${file} isn't on disk here` });
+      return;
+    }
+    workspace.open(repositoryTabKey(tab));
+  };
 
   return (
     <div
@@ -168,7 +193,6 @@ export function WikiPullRequestTab({
           status={changeRequest.status}
           noun={terms.singular}
           busy={busy}
-          canMerge={false}
           canClose={canSetStatus}
           onClose={() =>
             void run(() => setStatus({ environmentId, input: { ...target, status: "closed" } }))
@@ -235,5 +259,144 @@ export function WikiPullRequestTab({
         </WikiPart.Section>
       </div>
     </div>
+  );
+}
+
+/**
+ * The thread's pull requests, each with its state, and once they settle, the change's offer to
+ * follow: close when every one closed without merging. A merge happens from the pull request's
+ * own header.
+ */
+function LinkedPullRequests({
+  links,
+  status,
+  noun,
+  busy,
+  canClose,
+  onClose,
+}: {
+  readonly links: ReadonlyArray<ThreadPullRequestLink>;
+  readonly status: "open" | "merged" | "closed";
+  readonly noun: string;
+  readonly busy: boolean;
+  readonly canClose: boolean;
+  readonly onClose: () => void;
+}) {
+  const linked = changeRequestPullRequests(links);
+  if (linked.length === 0) return null;
+  const nudge = pullRequestNudge(status, links);
+  return (
+    <div className="flex flex-col gap-2">
+      <ul aria-label="Pull requests" className="flex flex-col gap-1 text-sm">
+        {linked.map((link) => {
+          const state = link.snapshot?.state ?? null;
+          const Glyph =
+            state === "merged"
+              ? PullRequestGlyph.merged
+              : state === "closed"
+                ? PullRequestGlyph.closed
+                : PullRequestGlyph.pullRequest;
+          return (
+            <li
+              key={`${link.host}:${link.repository}:${link.number}`}
+              className="flex items-center gap-2"
+            >
+              <Glyph aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+              <span className="min-w-0 truncate">
+                {`${link.snapshot?.title ?? link.repository} #${link.number}`}
+              </span>
+              <span className="shrink-0 text-muted-foreground">
+                {state === null ? "Not read yet" : PULL_REQUEST_STATE_LABEL[state]}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      {nudge ? (
+        <Alert variant="info">
+          {nudge.kind === "merge" ? <PullRequestGlyph.merged /> : <PullRequestGlyph.closed />}
+          <AlertTitle>
+            {nudge.kind === "merge"
+              ? `Pull request #${nudge.pullRequest.number} merged`
+              : `Pull request #${nudge.pullRequest.number} closed without merging`}
+          </AlertTitle>
+          <AlertDescription>
+            <span>
+              {nudge.kind === "merge"
+                ? "Merge these docs too, so they match the code on main."
+                : `Close this ${noun} too?`}
+            </span>
+            {nudge.kind === "merge" ? null : (
+              <Button
+                size="sm"
+                variant="outline"
+                className="mt-1 w-fit"
+                disabled={busy || !canClose}
+                onClick={onClose}
+              >
+                {`Close ${noun}`}
+              </Button>
+            )}
+          </AlertDescription>
+        </Alert>
+      ) : null}
+    </div>
+  );
+}
+
+function AmendmentRow({
+  environmentId,
+  wikiId,
+  changeRequestId,
+  amendment,
+  canRevert,
+}: {
+  readonly environmentId: EnvironmentId;
+  readonly wikiId: WikiId;
+  readonly changeRequestId: WikiChangeRequestId;
+  readonly amendment: WikiAmendmentSummary;
+  readonly canRevert: boolean;
+}) {
+  const canWrite = useAtomValue(wikiEnvironment.revertAmendment.permissionAtom(environmentId));
+  const revert = useWikiCommand(wikiEnvironment.revertAmendment, "Couldn't revert");
+  const [busy, setBusy] = useState(false);
+  return (
+    <li className="flex flex-wrap items-start gap-3 px-3 py-2">
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="text-sm break-words text-foreground">
+          {amendment.reverts ? "Revert: " : null}
+          {amendment.subject}
+        </span>
+        <span className="text-xs break-words text-muted-foreground">
+          {`${amendment.actor} · ${formatRelativeTimeLabel(amendment.at)} · ${amendment.files.join(", ")}`}
+        </span>
+      </div>
+      {canRevert ? (
+        <Button
+          variant="ghost-muted"
+          size="xs"
+          disabled={!canWrite || busy}
+          onClick={async () => {
+            setBusy(true);
+            const outcome = await revert({
+              environmentId,
+              input: { wikiId, changeRequestId, commit: amendment.commit },
+            });
+            setBusy(false);
+            const notes = outcome.ok ? (outcome.value.canvases ?? []) : [];
+            if (notes.length > 0) {
+              toastManager.add({
+                type: "info",
+                title: "Reverted, and the canvas was fitted to later work",
+                description: notes.flatMap((each) => each.notes).join(" "),
+              });
+            }
+          }}
+        >
+          {busy ? <Spinner /> : null}
+          Revert
+        </Button>
+      ) : null}
+    </li>
   );
 }

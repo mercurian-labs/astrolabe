@@ -24,7 +24,7 @@ import {
   type WikiReadScope,
 } from "@t3tools/contracts";
 import { useGT } from "gt-react";
-import { useContext } from "react";
+import { lazy, Suspense, useContext } from "react";
 
 import { PanesHostContext } from "~/panes/panesHost";
 import { activateTab, allTabs, openTab } from "~/panes/arrangement";
@@ -44,8 +44,8 @@ import { Spinner } from "../ui/spinner";
 import { toastManager } from "../ui/toast";
 import { useWikiPlacement } from "../wiki/wikiEnvironment";
 import { useWikiTreeView } from "../wiki/wikiTreeView";
-import { wikiTabKey } from "../wiki/wikiTabs";
 import { WikiBasePage } from "../wiki/WikiBaseView";
+import { requestWikiCanvasFrame } from "../wiki/wikiCanvasBoards";
 import { WikiNoteView, type ProjectNoteLinks, type WikiDraftEdits } from "../wiki/WikiNoteView";
 import {
   locateProjectDocument,
@@ -59,6 +59,9 @@ import { ProjectDraftPill } from "./ProjectDraftPill";
 import { repositoryTabKey, type CheckedOutRepositoryTab } from "./repositoryTabs";
 
 type FileTab = Extract<CheckedOutRepositoryTab, { kind: "file" }>;
+
+// The board brings its own machinery; a note or base never loads it.
+const WikiCanvasPage = lazy(() => import("../wiki/WikiCanvasView"));
 
 const rootWikiId = (projectId: ProjectId, key: RootKey) =>
   WikiId.make(projectRootId(projectId, key));
@@ -78,7 +81,7 @@ const addressOf = (file: ProjectFile, fromRoot: string) =>
   file.root === fromRoot ? file.file : `${file.root}:${file.file}`;
 
 /**
- * Astrolabe: a note or base in a Projects file tab, in the wiki's editors. Its root, path and
+ * Astrolabe: a note, canvas or base in a Projects file tab, in the wiki's editors. Its root, path and
  * checkout come from the tab; its links reach every root of the project. A hosted repository's main checkout on
  * its default branch saves to the person's draft, opened as a pull request when they ask; every
  * other checkout saves on disk (`projectDocEditTarget`).
@@ -207,6 +210,7 @@ function ProjectDocument({
   const { showHidden } = useWikiTreeView();
   const placement = useWikiPlacement(environmentId);
   const canWriteFiles = useEnvironmentScope(environmentId, AuthFilesystemWriteScope);
+  const canTransform = useAtomValue(wikiEnvironment.transform.permissionAtom(environmentId));
   const writeFile = useAtomCommand(projectEnvironment.writeFile, { reportFailure: false });
   const watch = useWorktreeWatch(
     route === "disk" ? rootWorktrees(environmentId, projectId, root) : null,
@@ -222,7 +226,7 @@ function ProjectDocument({
         : openTab(arrangement, key, leafWithTab(arrangement.root, tabKey)?.id),
     );
   };
-  const openDocument = (target: ProjectFile) => {
+  const openDocument = (target: ProjectFile, link?: string) => {
     const next = projectDocumentTab({
       environmentId,
       projectId,
@@ -237,7 +241,9 @@ function ProjectDocument({
       });
       return;
     }
-    openKey(repositoryTabKey(next));
+    const key = repositoryTabKey(next);
+    if (link !== undefined) requestWikiCanvasFrame(key, target.file, link);
+    openKey(key);
   };
   const ambiguity = (matches: ReadonlyArray<ProjectFile>) =>
     gt("Fits {places}. Put a folder's name first, as {example}, to choose one.", {
@@ -251,7 +257,7 @@ function ProjectDocument({
     const linked = linkedFilePath(target);
     if (linked !== null) return openDocument({ root: root.key, file: linked });
     const found = landing(target, from);
-    if (found.file !== null) return openDocument(found.file);
+    if (found.file !== null) return openDocument(found.file, target);
     if (found.ambiguous.length > 0) {
       toastManager.add({
         type: "warning",
@@ -316,8 +322,7 @@ function ProjectDocument({
   }
   const title = documentPath(file);
   const location = located.prefix === "" ? tab.checkoutName : root.name;
-  const registerUnsaved = (check: () => boolean, save: () => Promise<boolean>) =>
-    registerUnsavedCheck(tabKey, check, save);
+  const registerUnsaved = (check: () => boolean) => registerUnsavedCheck(tabKey, check);
   const diskRevision = String(watch?.changes ?? 0);
   const renderDraftPill = (edits: WikiDraftEdits) =>
     draft === null ? null : (
@@ -327,19 +332,42 @@ function ProjectDocument({
         draft={draft}
         changeRequests={all ?? []}
         edits={edits}
-        onOpenDraft={() =>
-          openKey(
-            wikiTabKey({
-              kind: "change-request",
-              environmentId,
-              wikiId,
-              changeRequestId: draft.changeRequestId,
-            }),
-          )
-        }
         onOpenTab={openKey}
       />
     );
+  if (/\.canvas$/i.test(file)) {
+    return (
+      <Suspense
+        fallback={
+          <Empty>
+            <Spinner size="md" tone="muted" />
+          </Empty>
+        }
+      >
+        <WikiCanvasPage
+          tabKey={tabKey}
+          environmentId={environmentId}
+          wikiId={wikiId}
+          file={file}
+          changeRequestId={route === "draft" ? draftScope : undefined}
+          cardsFrom={draft?.changeRequestId}
+          savesTo={undefined}
+          parent={location}
+          registerUnsaved={registerUnsaved}
+          onOpenNote={openLink}
+          onOpenFile={(path) => openDocument({ root: root.key, file: path })}
+          onOpenTab={openKey}
+          projectLinks={{
+            resolve: (target) => projectLinks.resolve(target),
+            follow: (target, from) => openLink(target, from),
+          }}
+          {...(route === "disk"
+            ? { checkout, canWrite: canWriteFiles && canTransform, diskRevision }
+            : { renderDraftPill })}
+        />
+      </Suspense>
+    );
+  }
   if (/\.base$/i.test(file)) {
     return (
       <WikiBasePage

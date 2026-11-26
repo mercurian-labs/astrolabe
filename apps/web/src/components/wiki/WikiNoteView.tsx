@@ -331,6 +331,7 @@ export function WikiNoteView({
     wikiId,
     commit: data?.commit ?? "",
     from: tabFile,
+    checkout,
   });
   const { embed } = useWikiAttachments({
     environmentId,
@@ -480,6 +481,7 @@ export function WikiNoteView({
                     environmentId={environmentId}
                     wikiId={wikiId}
                     changeRequestId={changeRequestId}
+                    checkout={checkout}
                     target={target}
                     from={data.file}
                     onOpen={(link) => onOpenNote(link, data.file)}

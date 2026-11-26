@@ -90,7 +90,7 @@ each message below its line. It updates as you and agents edit.
 
 ## Edit
 
-Files open in the tabs every section shares (see [Tabs and splits](./thread-sidebar.md#tabs-and-splits)), beside chats and documents. Notes (`.md`) and bases (`.base`) open as
+Files open in the tabs every section shares (see [Tabs and splits](./thread-sidebar.md#tabs-and-splits)), beside chats and documents. Notes (`.md`), canvases (`.canvas`) and bases (`.base`) open as
 documents, with links to any of the project's folders: `[[` offers every folder's documents, and
 one in another folder is written `folder:Name`. A bare name that several folders have is marked
 ambiguous and opens nothing until you add its folder. Code opens with line numbers and its

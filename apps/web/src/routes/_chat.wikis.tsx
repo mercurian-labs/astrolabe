@@ -1,9 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
-/**
- * Astrolabe: the Wikis section. Its documents open as tabs of the shared panes, which the
- * `_chat` layout renders; the route only says the sidebar lists wikis.
- */
+/** Astrolabe: the old Wikis section, kept for one release: its documents live in Projects now. */
 export const Route = createFileRoute("/_chat/wikis")({
-  component: () => null,
+  beforeLoad: () => {
+    throw redirect({ to: "/repositories", replace: true });
+  },
 });

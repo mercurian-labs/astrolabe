@@ -53,7 +53,7 @@ import { Button, InlineButton } from "../ui/button";
 import { useAssetUrls } from "../../assets/assetUrls";
 import { observeResize } from "../../lib/observeResize";
 import { useThreadShell } from "../../state/entities";
-import { useOpenWikiTab } from "../wiki/useOpenWiki";
+import { useOpenWikiTab } from "../wiki/LegacyWikiTab";
 import {
   threadReadTargetId,
   threadReadTargetTitle,

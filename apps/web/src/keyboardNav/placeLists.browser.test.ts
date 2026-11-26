@@ -66,7 +66,6 @@ function rootFrom(element: Element) {
     openSearch: () => {},
     openFilePicker: () => {},
     openCommandLine: () => {},
-    findDocument: () => {},
   };
   return whichKeyRoot(DEFAULT_RESOLVED_TRIGGERS, (id) => appCommand(id, context));
 }
@@ -149,7 +148,7 @@ describe("which keys a sidebar row keeps from the page", () => {
 const RAIL = `
   <nav data-app-rail>
     <button data-sidebar="menu-button" data-slot="tooltip-trigger" id="threads">Threads</button>
-    <button data-sidebar="menu-button" data-slot="tooltip-trigger" id="wikis" aria-current="page">Wikis</button>
+    <button data-sidebar="menu-button" data-slot="tooltip-trigger" id="projects" aria-current="page">Projects</button>
     <button data-sidebar="menu-button" data-slot="tooltip-trigger" id="prs">Pull Requests</button>
     <button data-sidebar="menu-button" data-slot="tooltip-trigger" id="usage">Usage</button>
     <button data-sidebar="menu-button" data-slot="tooltip-trigger" id="settings">Settings</button>
@@ -160,8 +159,8 @@ describe("the icon rail's buttons, a list", () => {
     using _cleanup = cleanup();
     document.body.innerHTML = RAIL;
     const rail = document.querySelector("[data-app-rail]")!;
-    expect(listDefaultRow(rail)?.id).toBe("wikis");
-    press(byId("wikis"), "j");
+    expect(listDefaultRow(rail)?.id).toBe("projects");
+    press(byId("projects"), "j");
     expect(document.activeElement?.id).toBe("prs");
     expect(listDefaultRow(rail)?.id).toBe("prs");
     // A place with no list has no row to land on.
@@ -176,8 +175,8 @@ describe("the icon rail's buttons, a list", () => {
     press(document.activeElement as HTMLElement, "j");
     expect(document.activeElement?.id).toBe("prs");
     press(byId("prs"), "k");
-    expect(document.activeElement?.id).toBe("wikis");
-    press(byId("wikis"), "End");
+    expect(document.activeElement?.id).toBe("projects");
+    press(byId("projects"), "End");
     expect(document.activeElement?.id).toBe("settings");
     press(byId("settings"), "j");
     expect(document.activeElement?.id).toBe("settings");
@@ -197,7 +196,7 @@ describe("the icon rail's buttons, a list", () => {
     const stops = [...document.querySelectorAll("button")].filter(
       (button) => button.tabIndex === 0,
     );
-    expect(stops.map((button) => button.id)).toEqual(["wikis"]);
+    expect(stops.map((button) => button.id)).toEqual(["projects"]);
   });
 
   it("opens a section on Enter, hands Escape on, and leaves `/` to the page", () => {

@@ -834,6 +834,8 @@ export const WikiAutosaveInput = Schema.Struct({
   /** The document being edited: what names the amendment, and what later saves replace. */
   document: TrimmedNonEmptyString,
   write: WikiAutosaveWrite,
+  /** Astrolabe: an attachment written uncommitted into this checkout on disk instead. */
+  checkout: WikiCheckoutFolder,
 });
 export type WikiAutosaveInput = typeof WikiAutosaveInput.Type;
 

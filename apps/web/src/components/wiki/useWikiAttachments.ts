@@ -28,17 +28,27 @@ export function useWikiAttachments(input: {
   readonly wikiId: WikiId;
   /** What's read and written: the change request edits land in, if one's named. */
   readonly savesTo: WikiChangeRequestId | undefined;
+  /** Astrolabe: a folder on disk the attachment is written into instead, uncommitted. */
+  readonly checkout?: string | undefined;
   readonly source: string | null;
   readonly placement: WikiPlacement;
   /** The commit an attachment just landed in. */
   readonly onLanded?: (commit: string) => void;
 }) {
-  const { environmentId, wikiId, savesTo, source, placement, onLanded } = input;
-  const landing = savesTo === undefined ? {} : { changeRequestId: savesTo };
+  const { environmentId, wikiId, savesTo, checkout, source, placement, onLanded } = input;
+  const landing =
+    checkout !== undefined
+      ? { checkout }
+      : savesTo === undefined
+        ? {}
+        : { changeRequestId: savesTo };
   const send = useWikiAutosaveCommand();
   const runFileList = useAtomQueryRunner(wikiEnvironment.fileList, QUIET_READ);
   const listFiles = async () => {
-    const listed = await runFileList({ environmentId, input: { wikiId, ...landing } });
+    const listed = await runFileList({
+      environmentId,
+      input: { wikiId, ...(savesTo === undefined ? {} : { changeRequestId: savesTo }) },
+    });
     return listed._tag === "Success" ? listed.value.files.map(({ file }) => file) : [];
   };
   /** Lands `name`'s bytes; the path it got, or null when the wiki refused it. */

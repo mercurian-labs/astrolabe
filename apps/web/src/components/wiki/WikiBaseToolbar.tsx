@@ -687,7 +687,8 @@ function LayoutSettings({
             "https://tiles.openfreemap.org/styles/liberty",
           )}
           <p className="text-muted-foreground text-xs">
-            Saved in this file. Tiles that need a key belong in Settings → Wikis.
+            Saved in this file. Tiles that need a key belong in Settings → Projects, under Map
+            backgrounds.
           </p>
         </>
       ) : null}

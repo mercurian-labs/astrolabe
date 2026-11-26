@@ -41,9 +41,8 @@ import {
   pullRequestTargetOfKey,
   type FullPullRequestTarget,
 } from "~/components/pullRequest/pullRequestTabs";
-import { useWikiTabLabel, WikiTabView, type WikiTabNav } from "~/components/wiki/WikiTabView";
-import { useWikiChangeRequestPullRequest } from "~/components/wiki/wikiEnvironment";
-import { parseWikiTabKey, type WikiTab } from "~/components/wiki/wikiTabs";
+import { LegacyWikiTab, useLegacyWikiTabLabel } from "~/components/wiki/LegacyWikiTab";
+import { parseWikiTabKey } from "~/components/wiki/wikiTabs";
 import { isElectron } from "~/env";
 import { isTerminalFocused } from "~/lib/terminalFocus";
 import {
@@ -80,31 +79,6 @@ function showKeyIn(
     : openTab(arrangement, key, arrangement.focused);
 }
 
-/** Where a wiki tab's links lead: into the same panes, each tab standing on its own. */
-function paneTabNav(
-  store: PaneArrangementStore,
-  openPullRequest?: (target: FullPullRequestTarget) => void,
-): WikiTabNav {
-  const open = (key: string, placement: "tab" | "beside" = "tab") =>
-    store.update((arrangement) => showKeyIn(arrangement, key, placement));
-  return {
-    // A pull request opens beside, named in full so its tab reads on its own.
-    openPullRequest:
-      openPullRequest ?? ((target) => open(surfaceKey(pullRequestSurface(target).id), "beside")),
-    open,
-    replace: (from, key) =>
-      store.update((arrangement) =>
-        leafWithTab(arrangement.root, key)
-          ? activateTab(arrangement, key)
-          : replaceTab(arrangement, from, key),
-      ),
-    openThread: (ref: ScopedThreadRef) =>
-      store === workspace.store
-        ? workspace.openChat(chatTabKey(ref))
-        : store.update((arrangement) => showKeyIn(arrangement, chatTabKey(ref), "beside")),
-  };
-}
-
 /** "Open in <section>" for a tab whose home section has more to show of it. */
 export interface SectionTabMove {
   readonly label: string;
@@ -115,7 +89,7 @@ export interface SectionTabMove {
 export function useSectionTabLabel(key: string): PaneTabLabel | null {
   const chat = parseChatTabKey(key);
   const thread = useThreadShell(chat);
-  const wikiLabel = useWikiTabLabel(key);
+  const legacyWikiLabel = useLegacyWikiTabLabel(key);
   const repositoryLabel = useRepositoryTabLabel(key);
   const groupLabel = useChangeGroupTabLabel(key);
   if (repositoryLabel !== null) return repositoryLabel;
@@ -126,7 +100,7 @@ export function useSectionTabLabel(key: string): PaneTabLabel | null {
       icon: <MessageSquareIcon className="size-3.5 shrink-0" />,
     };
   }
-  if (parseWikiTabKey(key) !== null) return wikiLabel;
+  if (legacyWikiLabel !== null) return legacyWikiLabel;
   const pullRequest = pullRequestTargetOfKey(key);
   if (pullRequest !== null) {
     return {
@@ -146,14 +120,11 @@ export function SectionTabContent({
   tabKey,
   store,
   active,
-  openPullRequest,
   openAll,
 }: {
   readonly tabKey: string;
   readonly store: PaneArrangementStore;
   readonly active: boolean;
-  /** Where a change request's pull request opens, for panes that hold them their own way. */
-  readonly openPullRequest?: (target: FullPullRequestTarget) => void;
   /** How tabs open together (a change group's tab group), for panes that hold them their own way. */
   readonly openAll?: (keys: ReadonlyArray<string>, group: EnvironmentChangeGroup) => void;
 }) {
@@ -206,17 +177,7 @@ export function SectionTabContent({
     );
   }
   const wiki = parseWikiTabKey(tabKey);
-  if (wiki !== null) {
-    return (
-      <PaneWiki
-        tabKey={tabKey}
-        tab={wiki}
-        store={store}
-        active={active}
-        {...(openPullRequest ? { openPullRequest } : {})}
-      />
-    );
-  }
+  if (wiki !== null) return <LegacyWikiTab tabKey={tabKey} tab={wiki} store={store} />;
   const pullRequest = pullRequestTargetOfKey(tabKey);
   if (pullRequest !== null) {
     return <PanePullRequest tabKey={tabKey} target={pullRequest} store={store} active={active} />;
@@ -324,31 +285,6 @@ function shortcutContext() {
     isWeb: !isElectron,
     isDesktop: isElectron,
   };
-}
-
-/** A wiki tab; a host wiki's change request on the host reads as the pull request it is. */
-function PaneWiki({
-  tabKey,
-  tab,
-  store,
-  active,
-  openPullRequest,
-}: {
-  readonly tabKey: string;
-  readonly tab: WikiTab;
-  readonly store: PaneArrangementStore;
-  readonly active: boolean;
-  readonly openPullRequest?: (target: FullPullRequestTarget) => void;
-}) {
-  const pullRequest = useWikiChangeRequestPullRequest(
-    tab.environmentId,
-    tab.wikiId,
-    tab.kind === "change-request" ? tab.changeRequestId : null,
-  );
-  if (pullRequest !== null) {
-    return <PanePullRequest tabKey={tabKey} target={pullRequest} store={store} active={active} />;
-  }
-  return <WikiTabView tabKey={tabKey} tab={tab} nav={paneTabNav(store, openPullRequest)} />;
 }
 
 /**

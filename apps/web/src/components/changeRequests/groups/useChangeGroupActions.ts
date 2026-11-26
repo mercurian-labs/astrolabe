@@ -17,13 +17,13 @@ import { changeGroupEnvironment } from "~/state/changeGroups";
 import { readThreadShell } from "~/state/entities";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { toastManager } from "../../ui/toast";
-import { wikiTabKey } from "../../wiki/wikiTabs";
 import { chatTabKey } from "~/sectionTabs/sectionTabs";
 import { joinChangeGroupOnFirstSend, useChangeGroupDraftStore } from "./changeGroupJoins";
 
 /**
  * The tab a member opens in: a pull request's (named by the project of the thread that linked
- * it), a wiki change request's, or a thread's chat. Null for a pull request whose thread is gone.
+ * it), or a thread's chat. Null for a pull request whose thread is gone, and for an old wiki's
+ * change request.
  */
 export function changeGroupMemberTabKey(
   environmentId: EnvironmentId,
@@ -33,14 +33,7 @@ export function changeGroupMemberTabKey(
   if (ref.kind === "thread") {
     return chatTabKey(scopeThreadRef(environmentId, ThreadId.make(ref.threadId)));
   }
-  if (ref.kind === "wiki-change-request") {
-    return wikiTabKey({
-      kind: "change-request",
-      environmentId,
-      wikiId: ref.wikiId,
-      changeRequestId: ref.changeRequestId,
-    });
-  }
+  if (ref.kind === "wiki-change-request") return null;
   const thread =
     member.threadId === null
       ? null

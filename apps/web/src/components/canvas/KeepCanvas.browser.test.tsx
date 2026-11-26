@@ -44,7 +44,7 @@ vi.mock("../wiki/wikiEnvironment", () => ({
     return { ok: true, value: state.result };
   },
 }));
-vi.mock("../wiki/useOpenWiki", () => ({
+vi.mock("../wiki/LegacyWikiTab", () => ({
   useOpenWikiTab: () => (tab: unknown) => state.opened.push(tab),
 }));
 vi.mock("~/rightPanelStore", () => ({

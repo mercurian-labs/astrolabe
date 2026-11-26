@@ -3737,6 +3737,62 @@ it.effect("reads files in a Git checkout as they stand, as a board on disk reads
   ),
 );
 
+it.effect("writes a pasted file into a Git checkout under a free name, uncommitted", () =>
+  withWikis((harness) =>
+    Effect.gen(function* () {
+      const wikis = yield* WikiService.WikiService;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const docs = yield* commitNotes(yield* harness.folder("docs-paste"));
+      const project = yield* projectOver({ id: "project-paste", workspaceRoot: docs });
+      const wikiId = rootIdOf(project.id, "docs-paste");
+      yield* write(docs, { "assets/shot.png": "taken" });
+      const bytes = Uint8Array.from([137, 80, 78, 71, 0, 255]);
+      const pasted = yield* wikis.autosave(
+        {
+          wikiId,
+          checkout: docs,
+          document: "assets/shot.png",
+          write: {
+            kind: "attachment",
+            file: "assets/shot.png",
+            base64: Buffer.from(bytes).toString("base64"),
+          },
+        },
+        WikiService.person,
+      );
+      assert.deepEqual(pasted, {
+        changeRequest: null,
+        commit: null,
+        attachment: "assets/shot 1.png",
+      });
+      assert.deepEqual(
+        [...(yield* fileSystem.readFile(`${docs}/assets/shot 1.png`).pipe(Effect.orDie))],
+        [...bytes],
+      );
+      // A board on disk finds it by its path, though HEAD doesn't hold it.
+      const read = yield* wikis.readFiles({ wikiId, checkout: docs, paths: ["assets/shot 1.png"] });
+      assert.deepEqual(
+        read.files.map(({ file, exists, size }) => ({ file, exists, size })),
+        [{ file: "assets/shot 1.png", exists: true, size: bytes.length }],
+      );
+      const changeRequests = yield* wikis.changeRequestsList({ wikiId });
+      assert.deepEqual(changeRequests.changeRequests, []);
+      const refused = yield* wikis
+        .autosave(
+          {
+            wikiId,
+            checkout: docs,
+            document: "Alpha.md",
+            write: { kind: "text", file: "Alpha.md", text: "# Alpha\n" },
+          },
+          WikiService.person,
+        )
+        .pipe(Effect.flip);
+      assert.strictEqual(refused.reason, "invalid");
+    }),
+  ),
+);
+
 it.effect("moves a note on disk with its links, in a folder without Git and in a worktree", () =>
   withWikis((harness) =>
     Effect.gen(function* () {

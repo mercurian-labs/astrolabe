@@ -95,12 +95,8 @@ export const escapeReturnsToCommand = (mode: SearchOverlayMode) =>
   mode !== "symbols" &&
   mode !== "interpreter";
 
-/** Astrolabe: what the add flow adds; a wiki shares a repository's folder, clone, and new steps. */
-export type CommandPaletteAddTarget = "repository" | "wiki";
-
 export type CommandPaletteOpenIntent =
-  | { readonly kind: "new-thread-in" | "change-theme" }
-  | { readonly kind: "add-project"; readonly target: CommandPaletteAddTarget }
+  | { readonly kind: "new-thread-in" | "change-theme" | "add-project" }
   | {
       readonly kind: "search";
       readonly query: string;
@@ -126,7 +122,7 @@ export type CommandPaletteUiAction =
       readonly query: string;
       readonly linkedThreads?: CommandPaletteLinkedThreads;
     }
-  | { readonly _tag: "OpenAddProject"; readonly target?: CommandPaletteAddTarget }
+  | { readonly _tag: "OpenAddProject" }
   | { readonly _tag: "OpenNewThreadIn" }
   | { readonly _tag: "OpenChangeTheme" }
   | {
@@ -181,7 +177,7 @@ export function reduceCommandPaletteUiState(
         ...(action.linkedThreads ? { linkedThreads: action.linkedThreads } : {}),
       });
     case "OpenAddProject":
-      return openWithIntent({ kind: "add-project", target: action.target ?? "repository" });
+      return openWithIntent({ kind: "add-project" });
     case "OpenNewThreadIn":
       return openWithIntent({ kind: "new-thread-in" });
     case "OpenChangeTheme":
@@ -605,8 +601,6 @@ export function filterCommandPaletteGroups(
     projectSearchItems: ReadonlyArray<CommandPaletteActionItem>;
     settingsSearchItems?: ReadonlyArray<CommandPaletteActionItem>;
     threadSearchItems: ReadonlyArray<CommandPaletteActionItem>;
-    /** Astrolabe: every wiki's documents, searched beside the threads. */
-    documentSearchItems?: ReadonlyArray<CommandPaletteActionItem>;
     /** Threads whose messages match, best first; threads already listed are skipped. */
     threadMessageItems?: ReadonlyArray<CommandPaletteActionItem>;
     now?: number;
@@ -662,13 +656,6 @@ export function filterCommandPaletteGroups(
         value: "threads-search",
         label: resolve(msg("Threads")),
         items: input.threadSearchItems,
-      });
-    }
-    if (input.documentSearchItems && input.documentSearchItems.length > 0) {
-      searchableGroups.push({
-        value: "documents-search",
-        label: resolve(msg("Documents")),
-        items: input.documentSearchItems,
       });
     }
     if (input.projectSearchItems.length > 0) {

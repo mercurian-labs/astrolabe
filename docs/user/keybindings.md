@@ -127,17 +127,16 @@ you need.
 | Key                     | Does                                                                                                                                                                                                                                                               |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `:`                     | Command Palette                                                                                                                                                                                                                                                    |
-| `/`                     | Search threads, wiki documents, projects, and settings                                                                                                                                                                                                             |
-| `n`                     | New thread, or new document on Wikis                                                                                                                                                                                                                               |
+| `/`                     | Search threads, projects, and settings                                                                                                                                                                                                                             |
+| `n`                     | New thread                                                                                                                                                                                                                                                         |
 | `f`                     | Find a file in the current project                                                                                                                                                                                                                                 |
 | Arrows, `h` `j` `k` `l` | [Move focus](#moving-focus) left, down, up, or right                                                                                                                                                                                                               |
 | `d` `u`                 | [Scroll](#scrolling) down or up half a page                                                                                                                                                                                                                        |
 | `z` `Z`                 | [Undo or redo](#undo-and-redo) in the code file or note you're in                                                                                                                                                                                                  |
-| `g`                     | Go to Agents, Wikis, Projects, Changes, Usage, or Settings                                                                                                                                                                                                         |
+| `g`                     | Go to Agents, Projects, Changes, Issues, Workflows, Usage, or Settings                                                                                                                                                                                             |
 | `t`                     | Tabs: next, previous, close, reopen, back, forward, link                                                                                                                                                                                                           |
 | `p`                     | Panes: split, close, maximize, full screen, move, size, right panel                                                                                                                                                                                                |
 | `s` `s`                 | Show or hide the sidebar                                                                                                                                                                                                                                           |
-| `w`                     | Open Wikis, or find or create a document                                                                                                                                                                                                                           |
 | `e`                     | [Find](#find-in-a-file-or-note), [go to a symbol](#go-to-a-symbol), [edit code](#edit-code), step through [changes](#changes-in-a-code-file) and pick their base, [problems](#problems-in-a-code-file), and [language features](#language-features-in-a-code-file) |
 | `r` `g`                 | Open the local graph of the project file in front                                                                                                                                                                                                                  |
 | `,`                     | Settings                                                                                                                                                                                                                                                           |
@@ -221,7 +220,7 @@ redo. In a note, undo takes back only your own changes, never an agent's. Change
 
 ### The sidebar's list
 
-With a row of the Agents, Wikis, or Changes sidebar focused (move there
+With a row of the Agents, Projects, or Changes sidebar focused (move there
 with `Ctrl+H`, or click a row), or a button of the icon rail:
 
 | Key                    | Does                                  |
@@ -249,9 +248,8 @@ command with its alias or menu keys and its shortcut, followed by the app's
 actions, such as changing the theme. Type to filter them by name.
 
 An alias runs its command directly: `q` closes the tab, `w` sends the draft or
-saves the note, `sp` and `vs` split the pane, `e name` opens or creates a wiki
-document, `b name` switches to a thread, and `noh` clears a Vim search
-highlight. An alias works by any abbreviation down to its shortest form, so `q`,
+saves the note, `sp` and `vs` split the pane, `e` finds a file, `b name`
+switches to a thread, and `noh` clears a Vim search highlight. An alias works by any abbreviation down to its shortest form, so `q`,
 `qu`, and `quit` all close the tab. From the composer or a note, other Vim
 commands such as `s/old/new/` run in that editor.
 
@@ -659,7 +657,7 @@ Each rule requires a `key` and a `command` ID. The key is one of three kinds:
 
 - a shortcut: `{ "key": "mod+k", "command": "whichKey.open" }`
 - menu keys, after the word `menu`, single keys spaced:
-  `{ "key": "menu g w", "command": "section.wikis" }`. A new group shows as `+`
+  `{ "key": "menu g p", "command": "section.pullRequests" }`. A new group shows as `+`
   and its number of entries.
 - an alias, after a colon, in Vim's notation with the bracketed tail optional:
   `{ "key": ":q[uit]", "command": "tab.close" }`

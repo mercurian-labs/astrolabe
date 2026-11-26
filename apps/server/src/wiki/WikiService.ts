@@ -2302,7 +2302,44 @@ const make = Effect.gen(function* () {
       : found;
   });
 
-  const autosave: WikiService["Service"]["autosave"] = (input, author) =>
+  /** A pasted file written into a checkout as it stands, uncommitted, under a free name. */
+  const attachOnDisk = (input: WikiAutosaveInput, checkout: string) =>
+    withAnyWiki(input.wikiId, (wiki) =>
+      Effect.gen(function* () {
+        const { write } = input;
+        if (write.kind !== "attachment" || !isAttachmentName(write.file)) {
+          return yield* new WikiError({
+            reason: "invalid",
+            message: "Only an attachment is written on disk this way.",
+          });
+        }
+        const folder = yield* checkoutFolder(wiki, checkout);
+        const directory = folderOf(write.file, "/");
+        // Under the lease: two pastes in one second ask for one name.
+        const file = yield* withWorkspaceLease(
+          folder,
+          Effect.gen(function* () {
+            const beside = yield* fileSystem
+              .readDirectory(path.join(folder, directory))
+              .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []));
+            const free = freePath(
+              write.file,
+              beside.map((name) => `${directory}${name}`),
+            );
+            const target = path.join(folder, free);
+            yield* fileSystem.makeDirectory(path.dirname(target), { recursive: true });
+            yield* fileSystem.writeFile(
+              target,
+              new Uint8Array(Buffer.from(write.base64, "base64")),
+            );
+            return free;
+          }),
+        ).pipe(Effect.mapError(ioError(`Could not write ${write.file} into the checkout.`)));
+        return { changeRequest: null, commit: null, attachment: file } satisfies WikiAutosaveResult;
+      }),
+    );
+
+  const autosaveDraft: WikiService["Service"]["autosave"] = (input, author) =>
     withWiki(
       input.wikiId,
       (wiki) =>
@@ -2378,6 +2415,11 @@ const make = Effect.gen(function* () {
         ),
       input.changeRequestId,
     );
+
+  const autosave: WikiService["Service"]["autosave"] = (input, author) =>
+    input.checkout !== undefined
+      ? attachOnDisk(input, input.checkout)
+      : autosaveDraft(input, author);
 
   const move: WikiService["Service"]["move"] = ({ folder, from, to, ...input }, author) =>
     withWiki(
@@ -4273,13 +4315,15 @@ const make = Effect.gen(function* () {
         const { file } = resolveLink(asked, input.from ?? null, links);
         const size = file === null ? undefined : sizes.get(file);
         if (file === null || size === undefined) {
-          return {
-            path: asked,
-            exists: false,
-            file: asked.replace(/^\/+/, ""),
-            size: 0,
-            text: null,
-          };
+          const exact = asked.replace(/^\/+/, "");
+          // A file added since HEAD, such as a pasted image, is found by its whole path alone.
+          const added = isAttachmentName(exact)
+            ? yield* fileSystem.stat(path.join(folder, exact)).pipe(
+                Effect.map((info) => (info.type === "File" ? Number(info.size) : null)),
+                Effect.orElseSucceed(() => null),
+              )
+            : null;
+          return { path: asked, exists: added !== null, file: exact, size: added ?? 0, text: null };
         }
         const text =
           size > READ_TEXT_BYTES || isMediaFile(file)

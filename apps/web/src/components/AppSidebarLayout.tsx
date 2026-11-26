@@ -49,12 +49,10 @@ import {
   isAppModalPage,
   isPullRequestsPath,
   isRepositoriesPath,
-  isWikisPath,
   useSectionPathname,
 } from "./sidebar/mainAppLocation";
 import type { SidebarRouteReveal } from "./sidebar/routeReveal";
 import { RepositorySidebar } from "./repositories/RepositorySidebar";
-import { WikiSidebar } from "./wiki/WikiSidebar";
 import { PullRequestsSidebar } from "./pullRequest/PullRequestsSidebar";
 import { KeyboardNavigation } from "../keyboardNav/KeyboardNavigation";
 import { WhichKey } from "../whichKey/WhichKey";
@@ -281,10 +279,7 @@ function registerThreadUndoCommands(
   const threadSidebarShown = () => {
     const { pathname } = router.state.location;
     return (
-      !isAppModalPage(pathname) &&
-      !isWikisPath(pathname) &&
-      !isRepositoriesPath(pathname) &&
-      !isPullRequestsPath(pathname)
+      !isAppModalPage(pathname) && !isRepositoriesPath(pathname) && !isPullRequestsPath(pathname)
     );
   };
   const unregister = registerCommands(
@@ -498,10 +493,9 @@ export function AppSidebarLayout({
   const pathname = useLocation({ select: (location) => location.pathname });
   const panelAnimationsSuppressed = usePanelNavigationSuppression(pathname);
   const routePanelAnimationsActive = panelAnimationsActive && !panelAnimationsSuppressed;
-  // Astrolabe: the section beside the threads (Wikis, Repositories, Changes), with its own
+  // Astrolabe: the section beside the threads (Projects, Changes), with its own
   // sidebar. Under Settings or Usage, the page the modal opened over.
   const sectionPathname = useSectionPathname();
-  const isOnWikis = isWikisPath(sectionPathname);
   const isOnRepositories = isRepositoriesPath(sectionPathname);
   const isOnPullRequests = isPullRequestsPath(sectionPathname);
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
@@ -579,13 +573,7 @@ export function AppSidebarLayout({
               {...sidebarArea}
               role="navigation"
               aria-label={
-                isOnWikis
-                  ? gt("Wikis")
-                  : isOnRepositories
-                    ? gt("Projects")
-                    : isOnPullRequests
-                      ? gt("Changes")
-                      : gt("Agents")
+                isOnRepositories ? gt("Projects") : isOnPullRequests ? gt("Changes") : gt("Agents")
               }
               resizable={{
                 collapseOnResize: true,
@@ -603,9 +591,7 @@ export function AppSidebarLayout({
               // open, through the title bar, as Obsidian's is; collapsed, the rail covers it.
               {...(hasIconRail ? { className: SIDEBAR_BESIDE_RAIL_CLASS } : {})}
             >
-              {isOnWikis ? (
-                <WikiSidebar />
-              ) : isOnRepositories ? (
+              {isOnRepositories ? (
                 <RepositorySidebar />
               ) : isOnPullRequests ? (
                 <PullRequestsSidebar />

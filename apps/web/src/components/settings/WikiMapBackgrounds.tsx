@@ -1,25 +1,42 @@
 /* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
-import type { EnvironmentId, WikiMapBackground, WikiSummary } from "@t3tools/contracts";
-import { useAtomValue } from "@effect/atom-react";
+import type { EnvironmentId, UnifiedSettings, WikiMapBackground } from "@t3tools/contracts";
 import { PlusIcon } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent, type ReactNode } from "react";
 
-import { wikiEnvironment } from "~/state/wiki";
+import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "~/hooks/useSettings";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import { Field } from "../wiki/WikiDialogs";
-import { useWikiCommand } from "../wiki/wikiEnvironment";
+import { Label } from "../ui/label";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
+
+const selectBackgrounds = (settings: UnifiedSettings) => settings.wikiMapBackgrounds;
+
+function Field({
+  label,
+  hint,
+  children,
+}: {
+  readonly label: string;
+  readonly hint?: string;
+  readonly children: (id: string) => ReactNode;
+}) {
+  const id = useId();
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      {children(id)}
+      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
+    </div>
+  );
+}
 
 function BackgroundForm({
   initial,
-  busy,
   onSave,
   onCancel,
 }: {
   readonly initial: WikiMapBackground | null;
-  readonly busy: boolean;
   readonly onSave: (background: WikiMapBackground) => void;
   readonly onCancel: () => void;
 }) {
@@ -48,7 +65,7 @@ function BackgroundForm({
       </Field>
       <Field
         label="Light mode"
-        hint="A style URL, or a tile URL with {z}, {x} and {y}. It can hold an access key: it stays on this server, out of the wiki's files and its mirror."
+        hint="A style URL, or a tile URL with {z}, {x} and {y}. It can hold an access key: it stays in this server's settings, out of every project's files."
       >
         {(id) => (
           <Input
@@ -75,11 +92,7 @@ function BackgroundForm({
         <Button size="xs" variant="ghost" onClick={onCancel}>
           Cancel
         </Button>
-        <Button
-          size="xs"
-          type="submit"
-          disabled={busy || name.trim() === "" || lightTiles.trim() === ""}
-        >
+        <Button size="xs" type="submit" disabled={name.trim() === "" || lightTiles.trim() === ""}>
           Save
         </Button>
       </div>
@@ -87,42 +100,32 @@ function BackgroundForm({
   );
 }
 
-/** The tiles a wiki's maps draw on. The first is the default; a map with several can switch. */
+/** The tiles every project's maps on a server draw on. The first is the default; a map can switch. */
 export function WikiMapBackgrounds({
   environmentId,
-  wiki,
+  serverLabel,
 }: {
   readonly environmentId: EnvironmentId;
-  readonly wiki: WikiSummary;
+  readonly serverLabel: string | null;
 }) {
-  const canSet = useAtomValue(wikiEnvironment.setMapBackgrounds.permissionAtom(environmentId));
-  const setBackgrounds = useWikiCommand(
-    wikiEnvironment.setMapBackgrounds,
-    "Couldn't change the map backgrounds",
-  );
-  const backgrounds = wiki.mapBackgrounds ?? [];
+  const backgrounds = useEnvironmentSettings(environmentId, selectBackgrounds);
+  const updateSettings = useUpdateEnvironmentSettings(environmentId);
   const [editing, setEditing] = useState<number | "new" | null>(null);
-  const [busy, setBusy] = useState(false);
 
-  const write = async (next: ReadonlyArray<WikiMapBackground>) => {
-    setBusy(true);
-    const outcome = await setBackgrounds({
-      environmentId,
-      input: { wikiId: wiki.wikiId, backgrounds: next },
-    });
-    setBusy(false);
-    if (outcome.ok) setEditing(null);
+  const write = (next: ReadonlyArray<WikiMapBackground>) => {
+    updateSettings({ wikiMapBackgrounds: next });
+    setEditing(null);
   };
   const others = (index: number) => backgrounds.filter((_, position) => position !== index);
 
   return (
     <SettingsSection
-      title="Map backgrounds"
+      title={serverLabel === null ? "Map backgrounds" : `Map backgrounds on ${serverLabel}`}
       headerAction={
         <Button
           size="xs"
           variant="outline"
-          disabled={!canSet || editing !== null}
+          disabled={editing !== null}
           onClick={() => setEditing("new")}
         >
           <PlusIcon />
@@ -133,7 +136,7 @@ export function WikiMapBackgrounds({
       {backgrounds.length === 0 && editing === null ? (
         <SettingsRow
           title="OpenFreeMap"
-          description="This wiki's maps use OpenFreeMap's free tiles until you add a background. A view that names its own tiles keeps them."
+          description="Maps in a base use OpenFreeMap's free tiles until you add a background. A view that names its own tiles keeps them."
         />
       ) : null}
       {backgrounds.map((background, index) =>
@@ -141,9 +144,8 @@ export function WikiMapBackgrounds({
           <SettingsRow key={background.name} title={`Edit ${background.name}`}>
             <BackgroundForm
               initial={background}
-              busy={busy}
               onSave={(edited) =>
-                void write(backgrounds.map((old, at) => (at === index ? edited : old)))
+                write(backgrounds.map((old, at) => (at === index ? edited : old)))
               }
               onCancel={() => setEditing(null)}
             />
@@ -159,26 +161,15 @@ export function WikiMapBackgrounds({
                   <Button
                     size="xs"
                     variant="outline"
-                    disabled={!canSet || busy}
-                    onClick={() => void write([background, ...others(index)])}
+                    onClick={() => write([background, ...others(index)])}
                   >
                     Make default
                   </Button>
                 ) : null}
-                <Button
-                  size="xs"
-                  variant="outline"
-                  disabled={!canSet || busy}
-                  onClick={() => setEditing(index)}
-                >
+                <Button size="xs" variant="outline" onClick={() => setEditing(index)}>
                   Edit
                 </Button>
-                <Button
-                  size="xs"
-                  variant="outline"
-                  disabled={!canSet || busy}
-                  onClick={() => void write(others(index))}
-                >
+                <Button size="xs" variant="outline" onClick={() => write(others(index))}>
                   Remove
                 </Button>
               </div>
@@ -190,8 +181,7 @@ export function WikiMapBackgrounds({
         <SettingsRow title="New background">
           <BackgroundForm
             initial={null}
-            busy={busy}
-            onSave={(added) => void write([...backgrounds, added])}
+            onSave={(added) => write([...backgrounds, added])}
             onCancel={() => setEditing(null)}
           />
         </SettingsRow>

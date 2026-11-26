@@ -38,7 +38,6 @@ export function ProjectDraftPill({
   draft,
   changeRequests,
   edits,
-  onOpenDraft,
   onOpenTab,
 }: {
   readonly environmentId: EnvironmentId;
@@ -46,8 +45,6 @@ export function ProjectDraftPill({
   readonly draft: WikiChangeRequest;
   readonly changeRequests: ReadonlyArray<WikiChangeRequest>;
   readonly edits: WikiDraftEdits;
-  /** Shows the draft's own tab, with its amendments and files. */
-  readonly onOpenDraft: () => void;
   readonly onOpenTab: (key: string) => void;
 }) {
   const gt = useGT();
@@ -75,7 +72,6 @@ export function ProjectDraftPill({
           >
             {gt("Open pull request…")}
           </MenuItem>
-          <MenuItem onClick={onOpenDraft}>{gt("Show draft")}</MenuItem>
           <MenuSeparator />
           <MenuItem disabled={!actions.canAct} variant="destructive" onClick={actions.discard}>
             {gt("Discard draft…")}

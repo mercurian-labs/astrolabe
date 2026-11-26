@@ -74,7 +74,7 @@ export function WikiCanvasSettings({
     <SettingsSection title={serverLabel === null ? "Canvases" : `Canvases on ${serverLabel}`}>
       <SettingsRow
         title="New canvases"
-        description="A new canvas goes at the top of the wiki, or in the folder you type before its name."
+        description="A new canvas goes at the top of its project folder, or in the folder you type before its name."
       />
       <SettingsRow
         title="Mouse wheel"

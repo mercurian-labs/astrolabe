@@ -54,13 +54,13 @@ describe("projectDocumentOwner", () => {
 });
 
 describe("opensAsProjectDocument", () => {
-  it("takes notes and bases; a canvas, a skill map and code stay files", () => {
-    expect(["a/Plan.md", "Open.base"].map(opensAsProjectDocument)).toEqual([true, true]);
-    expect(["Board.canvas", "a.skillmap.md", "src/a.ts"].map(opensAsProjectDocument)).toEqual([
-      false,
-      false,
-      false,
+  it("takes notes, canvases and bases; a skill map and code stay files", () => {
+    expect(["a/Plan.md", "Board.canvas", "Open.base"].map(opensAsProjectDocument)).toEqual([
+      true,
+      true,
+      true,
     ]);
+    expect(["a.skillmap.md", "src/a.ts"].map(opensAsProjectDocument)).toEqual([false, false]);
   });
 });
 

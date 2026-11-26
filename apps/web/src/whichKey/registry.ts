@@ -17,7 +17,6 @@ const GROUP_LABELS: Readonly<Record<string, string>> = {
   t: "Tabs",
   p: "Panes",
   s: "Sidebar",
-  w: "Wikis",
   e: "Editor",
   r: "Projects",
 };

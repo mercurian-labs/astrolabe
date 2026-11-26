@@ -59,7 +59,7 @@ export function wikiTerms(
 /** The comparison key the wiki uses for note names. */
 export const noteKey = (name: string): string => name.normalize("NFC").toLowerCase();
 
-export const noteNameOfFile = (file: string): string => file.replace(/\.md$/i, "");
+const noteNameOfFile = (file: string): string => file.replace(/\.md$/i, "");
 
 /** A document's path as a person reads it, for lists that hold both of two equal names. */
 export const documentPath = (file: string): string => file.replace(/\.(md|base|canvas)$/i, "");
@@ -514,40 +514,6 @@ export function wikiPullRequestHost(url: string): string | null {
   return /^https?:\/\/([^/]+)/i.exec(url)?.[1]?.toLowerCase() ?? null;
 }
 
-const hostedProjectKey = (projectId: string, number: number) => `project:${projectId}#${number}`;
-
-const hostedAddressKey = (host: string, repository: string, number: number) =>
-  `${host.toLowerCase()}/${repository.toLowerCase()}#${number}`;
-
-/**
- * The pull requests that are host wikis' own change requests, so a list showing those change
- * requests leaves their pull requests out and shows each change once. Each goes in twice, since
- * a list row from another checkout has another project and a host can spell its name two ways.
- */
-export function hostedPullRequestKeys(
-  wikis: ReadonlyArray<{
-    readonly projectId: string;
-    readonly changeRequests: ReadonlyArray<Pick<WikiChangeRequest, "pullRequest">>;
-  }>,
-): ReadonlySet<string> {
-  return new Set(
-    wikis.flatMap(({ projectId, changeRequests }) =>
-      changeRequests.flatMap(({ pullRequest }) =>
-        pullRequest == null
-          ? []
-          : [
-              hostedProjectKey(projectId, pullRequest.number),
-              hostedAddressKey(
-                wikiPullRequestHost(pullRequest.url) ?? "",
-                pullRequest.repository,
-                pullRequest.number,
-              ),
-            ],
-      ),
-    ),
-  );
-}
-
 /**
  * The merge a wiki's pull request starts on: the methods that keep its amendments one commit
  * each, best first; squashing joins them, so it comes only when nothing else is allowed.
@@ -556,33 +522,6 @@ export const wikiMergeMethod = <M extends string>(allowed: ReadonlyArray<M>): M 
   allowed.find((method) => method === "merge") ??
   allowed.find((method) => method === "rebase") ??
   allowed.find((method) => method === "squash");
-
-export const isHostedPullRequest = (
-  keys: ReadonlySet<string>,
-  entry: {
-    readonly projectId: string;
-    readonly host: string;
-    readonly repository: string;
-    readonly number: number;
-  },
-): boolean =>
-  keys.has(hostedProjectKey(entry.projectId, entry.number)) ||
-  keys.has(hostedAddressKey(entry.host, entry.repository, entry.number));
-
-/** The wikis on a host, as `hostedPullRequestKeys` reads them. */
-export const hostedWikis = <
-  T extends {
-    readonly wiki: { readonly host?: WikiHostStatus | null };
-    readonly changeRequests?: ReadonlyArray<Pick<WikiChangeRequest, "pullRequest">> | null;
-  },
->(
-  overviews: ReadonlyArray<T>,
-) =>
-  overviews.flatMap(({ wiki, changeRequests }) =>
-    wiki.host == null
-      ? []
-      : [{ projectId: wiki.host.projectId as string, changeRequests: changeRequests ?? [] }],
-  );
 
 /** The actor the server records for edits made from the app, as opposed to an agent's model. */
 export const PERSON_ACTOR = "You";

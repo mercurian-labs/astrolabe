@@ -28,9 +28,9 @@ import { parseRepositoryTabKey } from "~/components/repositories/repositoryTabs"
 import { Button } from "~/components/ui/button";
 import { ComboboxTrigger } from "~/components/ui/combobox";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
-import { closeAskingFirst } from "~/components/wiki/WikiTabView";
 import { useClosedViewStore } from "~/closedViewStore";
 import { isElectron } from "~/env";
+import { ensureLocalApi } from "~/localApi";
 import { useTheme } from "~/hooks/useTheme";
 import { resolveShortcutCommand } from "~/keybindings";
 import { focusActiveDrawerTerminal, isTerminalFocused } from "~/lib/terminalFocus";
@@ -53,6 +53,7 @@ import { primaryServerKeybindingsAtom } from "~/state/server";
 import { followedGraphFiles, linkMarkKeyOf, linkMarkOf } from "./linkMarks";
 import { focusedPane, isEmptyTab, newTab } from "./arrangement";
 import { getLayoutBehavior } from "./layoutBehavior";
+import { hasUnsavedEdits } from "./unsavedEdits";
 import type { PanelProps } from "./panesController";
 import type { PaneTabLabel, PaneTabLabelProps, PaneTabMenuItem, PaneTabs } from "./panesHost";
 import { keptFromPane } from "./linkedTabs";
@@ -281,6 +282,19 @@ function surfaceMenuItems(tabKey: string): PaneTabMenuItem[] {
       },
     },
   ];
+}
+
+/** Closes a tab with `close`, asking first when it holds unsaved edits. */
+function closeAskingFirst(tabKey: string, close: () => void) {
+  if (!hasUnsavedEdits(tabKey)) {
+    close();
+    return;
+  }
+  void ensureLocalApi()
+    .dialogs.confirm("Close this tab? Your unsaved edits will be lost.", { variant: "destructive" })
+    .then((confirmed) => {
+      if (confirmed) close();
+    });
 }
 
 /**

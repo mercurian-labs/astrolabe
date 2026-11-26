@@ -8,7 +8,6 @@ import { parseChangeGroupTabKey } from "~/components/changeRequests/groups/chang
 import { useUpdateChangeGroup } from "~/components/changeRequests/groups/useChangeGroupActions";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { parseRepositoryTabKey } from "~/components/repositories/repositoryTabs";
-import { parseWikiTabKey } from "~/components/wiki/wikiTabs";
 import { cn } from "~/lib/utils";
 import { readLocalApi } from "~/localApi";
 import { parseChatSurfaceKey, parseChatTabKey } from "~/sectionTabs/sectionTabs";
@@ -40,12 +39,10 @@ function tabGroupLookup(
   byBranch: ReadonlyMap<string, readonly EnvironmentChangeGroup[]>,
 ): TabGroupLookup {
   if (groups.length === 0) return () => NO_GROUPS;
-  const byMember = new Map<string, EnvironmentChangeGroup>();
   const byPullRequest = new Map<string, EnvironmentChangeGroup>();
   const byThread = new Map<string, EnvironmentChangeGroup[]>();
   for (const group of groups) {
     for (const member of group.members) {
-      byMember.set(member.key, group);
       if (member.ref.kind === "pull-request") {
         byPullRequest.set(`${member.ref.repository}#${member.ref.number}`, group);
       }
@@ -79,10 +76,6 @@ function tabGroupLookup(
       }
       const { environmentId, projectId, checkout } = repository;
       return byBranch.get(branchGroupKey(environmentId, projectId, checkout.branch)) ?? NO_GROUPS;
-    }
-    const wiki = parseWikiTabKey(tabKey);
-    if (wiki?.kind === "change-request") {
-      return one(byMember.get(`wiki:${wiki.wikiId}/${wiki.changeRequestId}`));
     }
     // A pull request's surface id ends with its repository and number, whatever names its
     // server and host before them (a thread's right panel leaves those out).

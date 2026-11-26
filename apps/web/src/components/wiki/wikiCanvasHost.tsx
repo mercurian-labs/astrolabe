@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import type { CanvasCodeReference } from "@mercurian/wiki/canvas";
 import {
   CanvasAssetView,
@@ -9,7 +10,15 @@ import { vimAtRest, vimInsertMode } from "@mercurian/editor/vim";
 import { canvasFileKind } from "@mercurian/wiki-editor/canvas-geometry";
 import { ambiguousLink } from "@mercurian/wiki-editor/incoming";
 import { assetUrlStateFromResult } from "@t3tools/client-runtime/state/assets";
-import type { EnvironmentId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
+import {
+  isAtomCommandInterrupted,
+  squashAtomCommandFailure,
+  type AtomCommandResult,
+} from "@t3tools/client-runtime/state/runtime";
+import type { WikiSaveOutcome } from "@t3tools/client-runtime/wikiAutosave";
+import { describeWikiFailure, wikiSaveFailure } from "@t3tools/client-runtime/wikiLogic";
+import type { EnvironmentId, WikiChangeRequestId, WikiId, WikiTransform } from "@t3tools/contracts";
+import type { WikiLinkLanding } from "@mercurian/wiki-editor/link-tools";
 import { lazy, Suspense, useState } from "react";
 
 import { useAssetUrlState } from "~/assets/assetUrls";
@@ -17,8 +26,10 @@ import { readLocalApi } from "~/localApi";
 import { draggedWikiFiles } from "~/panes/drag";
 import { assetEnvironment } from "~/state/assets";
 import { useProjects } from "~/state/entities";
+import { projectEnvironment } from "~/state/projects";
 import { useEnvironmentQuery } from "~/state/query";
 import { usePreparedConnection } from "~/state/session";
+import { useAtomCommand } from "~/state/use-atom-command";
 import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
 import { useStableCallback } from "~/hooks/useStableCallback";
 import { wikiEnvironment } from "~/state/wiki";
@@ -27,6 +38,7 @@ import { BrowserDocumentFrame } from "../files/BrowserDocumentFrame";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { repositoryTabKey } from "../repositories/repositoryTabs";
 import {
+  documentTitle,
   isDocumentFile,
   NO_NOTE_FROM_RELATIVE_LINK,
   resolveWikiLink,
@@ -63,27 +75,31 @@ const openUrl = (href: string) => {
   else window.open(href, "_blank", "noopener,noreferrer");
 };
 
-/** A wiki's file at the commit on screen, which holds what a change request adds, too. */
+/**
+ * A wiki's file at the commit on screen, which holds what a change request adds, too; with
+ * `checkout`, as it stands there on disk.
+ */
 export function WikiAsset({
   environmentId,
   wikiId,
   commit,
+  checkout,
   board,
   asset,
 }: {
   readonly environmentId: EnvironmentId;
   readonly wikiId: WikiId;
   readonly commit: string;
+  readonly checkout?: string | undefined;
   readonly board: string;
   readonly asset: CanvasAsset;
 }) {
-  const state = useAssetUrlState(environmentId, {
-    _tag: "wiki-file",
-    wikiId,
-    commit,
-    path: asset.path,
-    from: board,
-  });
+  const state = useAssetUrlState(
+    environmentId,
+    checkout === undefined
+      ? { _tag: "wiki-file", wikiId, commit, path: asset.path, from: board }
+      : { _tag: "draft-workspace-file", cwd: checkout, path: asset.path },
+  );
   // A commit that leaves an image alone doesn't blank it while its new address is found.
   const [url, setUrl] = useState<string | null>(null);
   if (state._tag === "Success" && state.url !== url) setUrl(state.url);
@@ -100,6 +116,44 @@ export function WikiAsset({
   );
 }
 
+/** What the server says of a transform that leaves the files as they were: nothing to save. */
+const NOTHING_CHANGED = "This amendment changes nothing.";
+
+/**
+ * Astrolabe: a board's writes into a folder on disk, uncommitted: canvas-aware transforms through
+ * the wiki, a note's whole text as a file.
+ */
+export function useCanvasDiskWrites(environmentId: EnvironmentId, wikiId: WikiId) {
+  const runTransform = useAtomCommand(wikiEnvironment.transform, { reportFailure: false });
+  const runWrite = useAtomCommand(projectEnvironment.writeFile, { reportFailure: false });
+  const outcome = (result: AtomCommandResult<unknown, unknown>): WikiSaveOutcome => {
+    if (result._tag === "Success") return { ok: true };
+    if (isAtomCommandInterrupted(result)) {
+      return { ok: false, message: "The save was cancelled.", retry: true };
+    }
+    const failure = squashAtomCommandFailure(result);
+    return describeWikiFailure(failure) === NOTHING_CHANGED
+      ? { ok: true }
+      : wikiSaveFailure(failure);
+  };
+  return {
+    transform: async (checkout: string, document: string, transform: WikiTransform) =>
+      outcome(
+        await runTransform({
+          environmentId,
+          input: { wikiId, checkout, message: `Edit ${documentTitle(document)}`, transform },
+        }),
+      ),
+    writeText: async (checkout: string, file: string, text: string) =>
+      outcome(
+        await runWrite({
+          environmentId,
+          input: { cwd: checkout, relativePath: file, contents: text },
+        }),
+      ),
+  };
+}
+
 /** Holds the draft a save landed in, for reads that run before React next renders. */
 function lastDraft() {
   let draft: WikiChangeRequestId | undefined;
@@ -111,7 +165,19 @@ function lastDraft() {
   };
 }
 
-/** What a board of a wiki's needs from the app, reading its cards at `commit`. */
+/**
+ * Astrolabe: a project's links in place of one root's: where a link on the board lands across the
+ * project's roots, and following one there.
+ */
+export interface CanvasProjectLinks {
+  readonly resolve: (target: string) => WikiLinkLanding;
+  readonly follow: (target: string, from: string) => void;
+}
+
+/**
+ * What a board of a wiki's needs from the app, reading its cards at `commit`. With `checkout`,
+ * its cards are read and every write lands in that folder on disk, uncommitted.
+ */
 export function useWikiCanvasHost({
   environmentId,
   wikiId,
@@ -124,9 +190,13 @@ export function useWikiCanvasHost({
   onOpenTab,
   savesTo,
   onOpenInNewTab,
+  checkout,
+  projectLinks,
 }: {
   readonly environmentId: EnvironmentId;
   readonly wikiId: WikiId;
+  readonly checkout?: string | undefined;
+  readonly projectLinks?: CanvasProjectLinks | undefined;
   /** The board's own file, which its text cards' links are written in. */
   readonly file: string;
   readonly changeRequestId: WikiChangeRequestId | undefined;
@@ -141,7 +211,12 @@ export function useWikiCanvasHost({
   readonly savesTo?: WikiChangeRequestId | undefined;
   readonly onOpenInNewTab?: ((name: string) => void) | undefined;
 }): CanvasBoardHost {
-  const scope = changeRequestId === undefined ? {} : { changeRequestId };
+  const scope =
+    checkout !== undefined
+      ? { checkout }
+      : changeRequestId === undefined
+        ? {}
+        : { changeRequestId };
   const index = useEnvironmentQuery(
     wikiEnvironment.index({ environmentId, input: { wikiId, ...scope } }),
   );
@@ -175,6 +250,7 @@ export function useWikiCanvasHost({
   // Follows a link; a file comes through as itself, its path being the first thing a link tries.
   const placement = useWikiPlacement(environmentId);
   const openNote = useStableCallback((target: string, from: string = boardFile) => {
+    if (projectLinks !== undefined) return projectLinks.follow(target, from);
     const file = wikiLinkOpens(index.data, target, from, placement);
     if (file !== null) onOpenNote(file);
     else toastManager.add({ type: "warning", title: NO_NOTE_FROM_RELATIVE_LINK });
@@ -182,7 +258,7 @@ export function useWikiCanvasHost({
   const openFile = useStableCallback((path: string) => onOpenFile?.(path));
   const readFiles = useStableCallback(async (paths: ReadonlyArray<string>) => {
     const read = async (
-      from: { commit: string } | { changeRequestId: WikiChangeRequestId },
+      from: { commit: string } | { changeRequestId: WikiChangeRequestId } | { checkout: string },
       wanted: ReadonlyArray<string>,
     ) => {
       const result = await runFiles({
@@ -191,6 +267,7 @@ export function useWikiCanvasHost({
       });
       return result._tag === "Success" ? result.value.files : [];
     };
+    if (checkout !== undefined) return read({ checkout }, paths);
     const found = await read({ commit }, paths);
     const missing = found.filter((file) => !file.exists).map((file) => file.file);
     const fallback = draftId ?? noteDraft.get();
@@ -208,6 +285,7 @@ export function useWikiCanvasHost({
   );
 
   const send = useWikiAutosaveCommand();
+  const disk = useCanvasDiskWrites(environmentId, wikiId);
   const runFileList = useAtomQueryRunner(wikiEnvironment.fileList, QUIET_READ);
   const mintUrl = useAtomQueryRunner(assetEnvironment.createUrl, QUIET_MINT);
   const connection = usePreparedConnection(environmentId);
@@ -218,6 +296,10 @@ export function useWikiCanvasHost({
     return result._tag === "Success" ? result.value.files.map(({ file }) => file) : [];
   });
   const writeNote = useStableCallback(async (file: string, text: string, readAt?: string) => {
+    if (checkout !== undefined) {
+      const written = await disk.writeText(checkout, file, text);
+      return written.ok ? null : written.message;
+    }
     const outcome = await send({
       environmentId,
       input: {
@@ -234,6 +316,7 @@ export function useWikiCanvasHost({
     environmentId,
     wikiId,
     savesTo,
+    checkout,
     source: boardFile,
     placement,
   });
@@ -242,6 +325,10 @@ export function useWikiCanvasHost({
   );
   const renameDocument = useStableCallback(async (file: string, to: string) => {
     const from = file.replace(/\.md$/i, "");
+    if (checkout !== undefined) {
+      const moved = await disk.transform(checkout, file, { kind: "rename", from, to });
+      return moved.ok ? null : moved.message;
+    }
     const outcome = await send({
       environmentId,
       input: {
@@ -256,13 +343,21 @@ export function useWikiCanvasHost({
   const assetUrl = useStableCallback(async (path: string) => {
     const result = await mintUrl({
       environmentId,
-      input: { resource: { _tag: "wiki-file", wikiId, commit, path, from: boardFile } },
+      input: {
+        resource:
+          checkout === undefined
+            ? { _tag: "wiki-file", wikiId, commit, path, from: boardFile }
+            : { _tag: "draft-workspace-file", cwd: checkout, path },
+      },
     });
     const state = assetUrlStateFromResult(result, httpBaseUrl);
     return state._tag === "Success" ? state.url : null;
   });
   const readFileText = useStableCallback(async (path: string) => {
-    const result = await runFiles({ environmentId, input: { wikiId, commit, paths: [path] } });
+    const result = await runFiles({
+      environmentId,
+      input: { wikiId, ...(checkout === undefined ? { commit } : { checkout }), paths: [path] },
+    });
     return result._tag === "Success" ? (result.value.files[0]?.text ?? null) : null;
   });
   const openInNewTab = useStableCallback((file: string) => onOpenInNewTab?.(file));
@@ -277,13 +372,20 @@ export function useWikiCanvasHost({
       if (!media && isDocumentFile(wikiLinkFile(index.data, name, boardFile))) openNote(name);
       else void readFiles([name]).then(([read]) => openFile(read?.file ?? name));
     },
-    isResolved: (name) =>
-      index.data === null || resolveWikiLink(index.data, name, boardFile).file !== null,
+    isResolved: (name) => {
+      if (projectLinks !== undefined) {
+        const found = projectLinks.resolve(name);
+        return found.file !== null || (found.ambiguous?.length ?? 0) > 0;
+      }
+      return index.data === null || resolveWikiLink(index.data, name, boardFile).file !== null;
+    },
     linkHover: (name, link) => {
       const said =
-        index.data === null
-          ? undefined
-          : ambiguousLink(resolveWikiLink(index.data, name, boardFile));
+        projectLinks !== undefined
+          ? ambiguousLink(projectLinks.resolve(name))
+          : index.data === null
+            ? undefined
+            : ambiguousLink(resolveWikiLink(index.data, name, boardFile));
       return said === undefined ? (
         link
       ) : (
@@ -300,6 +402,7 @@ export function useWikiCanvasHost({
         environmentId={environmentId}
         wikiId={wikiId}
         commit={commit}
+        checkout={checkout}
         board={boardFile}
         asset={asset}
       />
@@ -310,6 +413,8 @@ export function useWikiCanvasHost({
         environmentId={environmentId}
         wikiId={wikiId}
         changeRequestId={changeRequestId}
+        checkout={checkout}
+        revision={commit}
         from={{ base, note: boardFile }}
         view={view}
         onOpenNote={openNote}
@@ -324,6 +429,7 @@ export function useWikiCanvasHost({
           wikiId={wikiId}
           changeRequestId={changeRequestId}
           commit={commit}
+          checkout={checkout}
           boardFile={boardFile}
           onOpenNote={openNote}
         />

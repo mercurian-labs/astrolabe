@@ -68,10 +68,6 @@ vi.mock(import("~/components/repositories/RepositoryFinder"), async () => {
     ),
   };
 });
-vi.mock(import("~/components/wiki/wikiEnvironment"), async (original) => ({
-  ...(await original()),
-  useWikiOverviews: () => ({ overviews: [], loading: false }),
-}));
 // The thread's checkout, which a surface opened as its own tab reads.
 vi.mock(import("~/state/entities"), async (original) => ({
   ...(await original()),
@@ -322,7 +318,6 @@ describe("a pane's New tab", () => {
     expect(workspace.linked().owners[blank]).toBeUndefined();
     expect(launcherRows(linkedPane, "Open a tab")).toEqual([
       "New chatN",
-      "DocumentO",
       "Project fileR",
       "Project diffC",
       "Change groupK",

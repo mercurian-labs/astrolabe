@@ -13,8 +13,6 @@ export const THREAD_DETAILS_ITEMS = [
     label: msg("Changes", { $context: "thread details item: version control changes" }),
     defaultVisible: true,
   },
-  // Astrolabe: the project's linked wikis and this thread's change requests on them.
-  { id: "wikis", label: msg("Wikis"), defaultVisible: true },
   {
     id: "servers",
     label: msg("Servers", { $context: "thread details item: running dev servers" }),

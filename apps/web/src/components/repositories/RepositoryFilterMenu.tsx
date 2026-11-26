@@ -87,7 +87,7 @@ const worktreeValue = (key: string) => `worktree:${key}`;
 const worktreeName = (worktree: ProjectWorktree) => worktree.branch ?? worktree.alias;
 
 /** A worktree's mark in a filter row: its number, else a branch icon, or a plain folder's. */
-export function WorktreeFilterMark({ worktree }: { readonly worktree: ProjectWorktree }) {
+function WorktreeFilterMark({ worktree }: { readonly worktree: ProjectWorktree }) {
   const Icon = worktree.isRepository ? GitBranchIcon : FolderIcon;
   return worktree.number === null ? (
     <Icon className="size-4 shrink-0 text-muted-foreground" />
@@ -99,7 +99,7 @@ export function WorktreeFilterMark({ worktree }: { readonly worktree: ProjectWor
 }
 
 /** Folds or unfolds a filter row's worktrees; it never picks the row. */
-export function WorktreeFoldButton({
+function WorktreeFoldButton({
   open,
   ownerTitle,
   onToggle,
@@ -128,7 +128,7 @@ export function WorktreeFoldButton({
 }
 
 /** The filter's pill for worktrees it hides. */
-export function HiddenWorktreesPill({
+function HiddenWorktreesPill({
   names,
   onOpen,
   onRemove,

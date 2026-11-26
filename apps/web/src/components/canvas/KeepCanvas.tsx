@@ -27,7 +27,7 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
-import { useOpenWikiTab } from "../wiki/useOpenWiki";
+import { useOpenWikiTab } from "../wiki/LegacyWikiTab";
 import { useWikiCommand } from "../wiki/wikiEnvironment";
 
 interface KeptBoard {

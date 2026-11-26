@@ -6,10 +6,8 @@ import {
   describeIndexError,
   describeWikiFailure,
   hasUnpublishedWork,
-  hostedPullRequestKeys,
   wikiMergeMethod,
   wikiTerms,
-  isHostedPullRequest,
   isTurnRunning,
   latestAmendmentFor,
   mapTilesFor,
@@ -166,37 +164,6 @@ describe("host wiki change requests", () => {
     expect(wikiMergeMethod(["squash", "rebase"])).toBe("rebase");
     expect(wikiMergeMethod(["squash"])).toBe("squash");
     expect(wikiMergeMethod([])).toBeUndefined();
-  });
-
-  it("matches a row by its project or its address, however the host spells either", () => {
-    const keys = hostedPullRequestKeys([
-      {
-        projectId: "project-1",
-        changeRequests: [
-          {
-            pullRequest: {
-              repository: "Acme/Handbook",
-              number: 4,
-              url: "https://dev.azure.com/Acme/Handbook/pull/4",
-            },
-          },
-          { pullRequest: null },
-          {},
-        ],
-      },
-    ]);
-    const row = (projectId: string, host: string, number: number) => ({
-      projectId,
-      host,
-      repository: "acme/handbook",
-      number,
-    });
-    // The same project, on a host spelled differently from the pull request's link.
-    expect(isHostedPullRequest(keys, row("project-1", "acme.visualstudio.com", 4))).toBe(true);
-    // Another checkout of the same repository.
-    expect(isHostedPullRequest(keys, row("project-2", "dev.azure.com", 4))).toBe(true);
-    expect(isHostedPullRequest(keys, row("project-1", "dev.azure.com", 5))).toBe(false);
-    expect(isHostedPullRequest(keys, row("project-2", "gitlab.example.com", 4))).toBe(false);
   });
 
   it("reads the host from a pull request's link", () => {

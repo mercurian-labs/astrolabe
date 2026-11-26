@@ -6,7 +6,6 @@ import { useState } from "react";
 import type { ProjectFaviconProject } from "../ProjectFavicon";
 import { ProjectFilterIcon } from "../projects/ProjectFilterIcon";
 import {
-  projectFilterChoice,
   projectFilterOptions,
   projectFilterValue,
   searchProjectFilterOptions,
@@ -24,9 +23,6 @@ import {
   ComboboxTrigger,
   useComboboxFilter,
 } from "../ui/combobox";
-import { useWikiOverviews } from "../wiki/wikiEnvironment";
-import { changeRequestWikiScope } from "../wiki/wikiScope";
-import { changeRequestKindStore, useChangeRequestKind } from "./changeRequestKind";
 
 type Project = ProjectFaviconProject & {
   readonly id: ProjectId;
@@ -39,10 +35,9 @@ const projectKey = (project: { readonly environmentId: EnvironmentId; readonly i
   `${project.environmentId}:${project.id}`;
 
 /**
- * Astrolabe: the Change Requests sidebar's project filter, the list every section shares (see
- * `projectFilter`): All, every project's or one project's pull requests, every wiki's or one
- * wiki's change requests. The project picked is the list's own project scope, in the route; the
- * wiki picked is this section's own (`changeRequestWikiScope`).
+ * Astrolabe: the Changes sidebar's project filter, the list every section shares (see
+ * `projectFilter`): every project's pull requests, or one project's. The project picked is the
+ * list's own project scope, in the route.
  */
 export function ChangeRequestSourceFilter({
   projects,
@@ -55,9 +50,6 @@ export function ChangeRequestSourceFilter({
   readonly projectEnvironmentId: EnvironmentId | undefined;
   readonly onProject: (projectId: ProjectId | undefined, environmentId?: EnvironmentId) => void;
 }) {
-  const { overviews } = useWikiOverviews();
-  const [wikiScope, setWikiScope] = changeRequestWikiScope.useScope(overviews);
-  const kind = useChangeRequestKind();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const filter = useComboboxFilter();
@@ -67,7 +59,6 @@ export function ChangeRequestSourceFilter({
       label: project.title,
       repository: project,
     })),
-    wikis: overviews,
   });
   const filtered = searchProjectFilterOptions(options, query, (option, text) =>
     filter.contains(option, text, (item) => item.label),
@@ -78,34 +69,15 @@ export function ChangeRequestSourceFilter({
           kind: "repository",
           key: projectKey({ environmentId: projectEnvironmentId, id: projectId }),
         }
-      : kind === "wikis" && wikiScope !== null
-        ? { kind: "wiki", key: wikiScope }
-        : { kind };
+      : { kind: "all" };
   const selected =
     options.find((option) => option.value === projectFilterValue(current)) ?? options[0]!;
 
   const choose = (option: Option) => {
-    const choice = projectFilterChoice(option);
-    switch (choice.kind) {
-      case "all":
-      case "repositories":
-        changeRequestKindStore.set(choice.kind);
-        setWikiScope(null);
-        if (projectId !== undefined) onProject(undefined);
-        return;
-      case "repository": {
-        if (option.kind !== "repository") return;
-        changeRequestKindStore.set("repositories");
-        setWikiScope(null);
-        onProject(option.repository.id, option.repository.environmentId);
-        return;
-      }
-      case "wikis":
-      case "wiki":
-        changeRequestKindStore.set("wikis");
-        setWikiScope(choice.kind === "wiki" ? choice.key : null);
-        if (projectId !== undefined) onProject(undefined);
-        return;
+    if (option.kind === "repository") {
+      onProject(option.repository.id, option.repository.environmentId);
+    } else if (projectId !== undefined) {
+      onProject(undefined);
     }
   };
 

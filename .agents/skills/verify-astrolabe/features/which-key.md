@@ -27,32 +27,31 @@ same commands, and all three kinds of trigger (Shortcut, Menu keys, Alias) live 
   with nothing to act on here shows faint, **Not available here** (e.g. `g p` where
   Pull Requests is unsupported). Cmd+K shows it at once; the leader after ~300 ms,
   so a fast `Space g w` runs without it flashing.
-- **Top level** (defaults, twenty rows in this order): `:` Command palette, `/`
-  Search (always enabled), `n` New thread or document, `f` Find file (upstream's
+- **Top level** (defaults, nineteen rows in this order): `:` Command palette, `/`
+  Search (always enabled), `n` New thread, `f` Find file (upstream's
   file picker), `←`/`h`, `↓`/`j`, `↑`/`k`, `→`/`l` Focus left/down/up/right (rows
   read `← | h`; repeatable: a repeat window follows, see keyboard-nav.md), `d` Scroll
   down and `u` Scroll up (repeatable), `z` Undo and `Z` Redo (`edit.undo`/`edit.redo`), `g` Go to, `t` Tabs, `p` Panes, `s` Sidebar,
-  `w` Wikis, `e` Editor, `r` Projects, `,` Settings. `n`'s
-  label follows the section (on Wikis "New document", on Projects "Add a project", which opens
+  `e` Editor, `r` Projects, `,` Settings (no `w`: Wikis are gone). `n`'s
+  label follows the section (on Projects "Add a project", which opens
   the palette's add flow; where no section header is mounted, such as Changes, it is
   upstream's "New thread"). The popup is `aria-label="Keyboard commands"` (`[data-which-key]`),
   and Not bound / Not available here is a `role=status` note. After a command runs the
   popover fades out, so wait for `[data-which-key]` to detach before reading "closed".
   A prefix the user added with no built-in name shows as `+N` (its entry count).
-- **Groups** (defaults): `g` t Agents, w Wikis, r Projects, p Changes,
+- **Groups** (defaults): `g` t Agents, r Projects, p Changes, f Workflows,
   i Issues (`section.issues`, upstream's `/issues`), u Usage, s Settings. `t` `]` next tab, `[` previous, `c` close (all on the focused pane's
   tab), `k` the focused tab's link item (panes.md, Linked tabs): "Unlink tab", "Link to the file
   in front" for a pinned local graph, or a faint "Unlink tab" with nothing to link, `n` New linked tab for the focused chat (or the chat a
   focused linked tab belongs to; faint otherwise), `r` reopen closed (panel and
   browser tabs, not chats), `h` Back and `l` Forward on the focused pane's tab (upstream's
-  `navigation.back`/`forward` through their shortcuts: in Agents, Wikis, Projects
+  `navigation.back`/`forward` through their shortcuts: in Agents, Projects
   and Changes they walk the tab in front's history and are faint at either
   end; elsewhere the route history). On a chat tab or a thread's surface (`navigatesInPlace`)
   `h` and `l` are always faint and `mod+[`/`mod+]` do nothing: no route-history fallback. `p` `v` split right, `s` split down, `c` close pane, `m`
   maximize/restore, `f` Full screen pane / Exit full screen (panes.md), `r` Toggle
   right panel (parks or restores the front chat's linked tabs); the focus moves are root keys now, not in Panes.
-  `s` `s` toggle sidebar. `w` `w` open
-  Wikis, `f` find or create a document. `r` `g` Open local graph, faint unless a Projects file
+  `s` `s` toggle sidebar. `r` `g` Open local graph, faint unless a Projects file
   tab is focused. `e` Editor acts on the focused code file, note or results tab: `f` find,
   `n`/`p`/`t`/`a`/`r` next/previous/show/all/restore change, `b` compare with HEAD or since this
   turn, `o` go to symbol, `.`/`,` next/previous problem, `m`/`h`/`i` completions, hover,
@@ -71,11 +70,10 @@ same commands, and all three kinds of trigger (Shortcut, Menu keys, Alias) live 
 - **Search** (Cmd+/, the menu's `/`, Cmd+K again; the palette's plain mode, dialog
   name `Search`): empty, it lists
   Recent Threads only; upstream's Actions are the Command Palette's. A query finds
-  Projects, Settings, Threads and every wiki's Documents (a document opens as a
-  Wikis tab from anywhere). Typing `>` or `:` first switches to the Command Palette
+  Projects, Settings and Threads (documents are files: the file picker finds them). Typing `>` or `:` first switches to the Command Palette
   (the character is consumed). On a Mac, Ctrl+N/Ctrl+P in the field move the
   highlighted row as ArrowDown/ArrowUp do, in every dialog on the palette's field
-  (Search, the Command Palette, the file picker, content search, the wiki finder).
+  (Search, the Command Palette, the file picker, content search).
 - **Command Palette** (Cmd+P, the menu's `:`, Vim's `:`): a chevron
   (`ChevronRightIcon`) replaces the search icon and the field holds only what
   follows the query's internal colon; Backspace in the empty field goes back to
@@ -146,8 +144,8 @@ Command Palette. Rebind everything in Settings › Keybindings.
 ```
 preview_act press     key=k modifiers=["Meta"]                 # opens the menu
 preview_act press     g                                        # into Go to
-preview_act press     w                                        # runs: /wikis
-preview_act click     role=heading[name='Wikis']               # Wikis only (no composer); on a chat use Cmd+K h
+preview_act press     r                                        # runs: /repositories
+preview_act click     role=heading[name='Projects']            # Projects (no composer); on a chat use Cmd+K h
 preview_act press     Space                                    # leader (wait 300 ms+)
 ```
 
@@ -169,15 +167,13 @@ and copy the backup back when done. The server picks changes up live.
 ## Flows
 
 1. **Menu basics.** On a chat: Cmd+K → menu at the top right (the paint read above)
-   with the twenty top-level rows (Search's row shows only `/`), `Esc close` footer
+   with the nineteen top-level rows (Search's row shows only `/`), `Esc close` footer
    → Ctrl+N twice, Ctrl+P → `:` row highlighted → `g` (or click Go to) → heading
-   `Menu › Go to`, rows Agents, Wikis, Projects, Changes (a faint "Section: Changes"
+   `Menu › Go to`, rows Agents, Projects, Changes (a faint "Section: Changes"
    where pull requests are unsupported), Issues, Usage, Settings → click **Backspace back**
-   → heading `Menu` → `g` → `z` → "Not bound", still open → click Agents, or `w`,
-   or `r` (`/repositories`) → the URL changes, menu closed.
-2. **Leader across sections.** On Wikis, click the heading → Space → menu after the
-   delay, heading `Menu`, rows say "Search"/"New document" → `w` `f` →
-   the finder (`[data-testid=wiki-finder]`) open with focus in its field.
+   → heading `Menu` → `g` → `z` → "Not bound", still open → click Agents, or `r` (`/repositories`) → the URL changes, menu closed.
+2. **Leader across sections.** On Projects, click the heading → Space → menu after the
+   delay, heading `Menu`, rows say "Search"/"Add a project", and no `w` row.
 3. **Settings door.** Cmd+K `,` → `/settings/general`, with Settings / General in the
    title bar (Settings has no tabs).
 4. **Tabs.** With several tabs in the focused pane, focus off the composer, Cmd+K `t` `[` → the
@@ -188,10 +184,7 @@ and copy the backup back when done. The server picks changes up live.
 6. **Palette.** Cmd+K Cmd+K → Search, empty query, Recent Threads only; Escape,
    then Cmd+/ → Search again. On a Mac, Ctrl+N, Ctrl+N, Ctrl+P move the highlighted
    row (`[data-command-palette] [data-slot=command-item][data-active]`) down, down,
-   up, as the arrows do. Type a
-   document's name from Agents → a Documents row → move the highlight onto it (Threads
-   rows arriving late can take it; check `[data-active]`) → Enter → `/wikis` with it as a
-   tab. Cmd+K `:` → chevron, empty field, command rows; type `q` → one row,
+   up, as the arrows do. Cmd+K `:` → chevron, empty field, command rows; type `q` → one row,
    Close tab; Backspace twice → Search; type `>` → Command Palette again, field
    empty; Escape, then Cmd+P → Command Palette; Cmd+P again → closed. Cmd+K `f` →
    the file picker (`aria-label="File picker"`); Cmd+P there → Command Palette.
@@ -206,13 +199,13 @@ and copy the backup back when done. The server picks changes up live.
 9. **Keybindings table.** Settings › Keybindings, search `t ]` (field
    `aria-label="Search keybindings"`) → the Chat Tab: Next row
    (`[id='keybinding-chatTab.next']`), `t ]` in Menu keys and `–` (an en dash) in Shortcut (it
-   has no default shortcut; ⌘⇧] is Thread: Next's). Search `Section: Wikis` → one
-   row, Menu keys `g w | w w`, Alias `–` → `⋯` Remove g w → `g w` struck through and
-   `{"key":"menu g w","command":"-section.wikis"}` in the file → `⋯` Restore default
-   g w → the rule is gone → click `button "Edit menu keys for Section: Wikis: g w"` (the
-   field starts with `g w` and appends each key, so press Backspace twice), press `g` `x`,
+   has no default shortcut; ⌘⇧] is Thread: Next's). Search `Section: Settings` → one
+   row, Menu keys `g s | ,`, Alias `–` → `⋯` Remove g s → `g s` struck through and
+   `{"key":"menu g s","command":"-section.settings"}` in the file → `⋯` Restore default
+   g s → the rule is gone → click `button "Edit menu keys for Section: Settings: g s"` (the
+   field starts with `g s` and appends each key, so press Backspace twice), press `g` `x`,
    Save → the file holds both
-   `menu w w` and `menu g x` → hover the Alias cell, `+`, type `wk`, Save → the file
+   `menu ,` and `menu g x` → hover the Alias cell, `+`, type `wk`, Save → the file
    holds `:wk` → filter Aliases → only commands with aliases, one column → restore
    the file. Narrow the window until the table is under 44rem → each row stacks Shortcut / Menu keys /
    Alias lines.
@@ -234,8 +227,8 @@ of the root menu, a group and the Command Palette.
   Cmd+/ in a note opens Search, not a comment toggle. In a Projects code file Cmd+/ toggles
   a comment and Cmd+Shift+K deletes the line.
 - Cmd+K while the palette is open closes it.
-- The table shows menu keys alone (`g w`), whatever the leader key; the file says
-  `menu g w`. The Command Palette's list prefixes them with the leader's label.
+- The table shows menu keys alone (`g s`), whatever the leader key; the file says
+  `menu g s`. The Command Palette's list prefixes them with the leader's label.
 - A changed leader key or leftover rules outlive the flow: reset the leader and
   restore `keybindings.json` before the next feature.
 
@@ -248,8 +241,7 @@ the `useAppSections` handlers in `components/sidebar/AppIconRail.tsx`,
 `components/settings/KeybindingsDeviceSettings.tsx`, `KeybindingsTable.tsx`,
 `KeybindingsTable.logic.ts`, `KeybindingTriggerRows.tsx`,
 `KeybindingTriggerSettings.logic.ts`, the table's hooks in `KeybindingsSettings.tsx`, the palette hooks in `CommandPalette.tsx`,
-`CommandPalette.logic.ts` and `CommandPaletteContent.tsx`, `useDocumentSearchRows` in
-`components/wiki/WikiFinder.tsx`, `packages/shared/src/keybindingTriggers.ts`, the
+`CommandPalette.logic.ts` and `CommandPaletteContent.tsx`, `packages/shared/src/keybindingTriggers.ts`, the
 Astrolabe commands in `packages/contracts/src/keybindings.ts` and
 `packages/shared/src/keybindings.ts`, `leaderKey` in `packages/contracts/src/settings.ts`,
 `keybindingTriggers` in `packages/contracts/src/server.ts`, and the trigger

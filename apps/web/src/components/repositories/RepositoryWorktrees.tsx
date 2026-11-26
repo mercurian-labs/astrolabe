@@ -647,7 +647,7 @@ export function OpenBranchPicker({
  * Whether a branch opened from a picker gets a worktree of its own even when one is free, kept on
  * the device for every picker (and the set-aside rows' and tabs' Open).
  */
-export function NewWorktreeSwitch() {
+function NewWorktreeSwitch() {
   const id = useId();
   const choice = openInNewWorktree.useValue();
   return (

@@ -1,5 +1,5 @@
 /* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
-import { FileCode2, FileDiff, FileText, Layers, SquarePen, type LucideIcon } from "lucide-react";
+import { FileCode2, FileDiff, Layers, SquarePen, type LucideIcon } from "lucide-react";
 import {
   useEffect,
   useEffectEvent,
@@ -19,9 +19,6 @@ import {
 } from "~/components/RightPanelTabs";
 import { Kbd } from "~/components/ui/kbd";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
-import { useWikiOverviews } from "~/components/wiki/wikiEnvironment";
-import { WikiFinder } from "~/components/wiki/WikiFinder";
-import { wikiTabKey } from "~/components/wiki/wikiTabs";
 import { useHandleNewThread } from "~/hooks/useHandleNewThread";
 import { takesListKey } from "~/keyboardNav/placeLists";
 import { startNewThreadFromContext } from "~/lib/chatThreadActions";
@@ -31,7 +28,7 @@ import { useProjects } from "~/state/entities";
 import { focusedPane } from "./arrangement";
 import { workspace } from "./workspace";
 
-type Finder = "document" | "file" | "diff" | "group";
+type Finder = "file" | "diff" | "group";
 
 interface LaunchItem {
   readonly label: string;
@@ -44,7 +41,7 @@ interface LaunchItem {
 
 /**
  * Astrolabe: a New tab's launcher, as a browser's new tab page: the things that stand on their
- * own (a new chat, a document, a repository's file or changes, a change group). What is picked
+ * own (a new chat, a project's file or changes, a change group). What is picked
  * takes the New tab's place. Its letters answer only while its pane has focus, and differ from
  * the surface launcher's, which a linked New tab beside it may show.
  */
@@ -55,7 +52,6 @@ export function TabLauncher({ paneId, tabKey }: { paneId: string; tabKey: string
     workspace.store.subscribe,
     () => focusedPane(workspace.arrangement()).id === paneId,
   );
-  const { overviews, loading: wikisLoading } = useWikiOverviews();
   const repositories = useRepositories();
   const groups = useChangeGroups();
   const newChat = useNewChat();
@@ -73,14 +69,6 @@ export function TabLauncher({ paneId, tabKey }: { paneId: string; tabKey: string
       available: true,
       disabledReason: "",
       run: newChat,
-    },
-    {
-      label: "Document",
-      icon: FileText,
-      shortcut: "O",
-      available: overviews.length > 0 || wikisLoading,
-      disabledReason: "Add a wiki from the wiki filter in the sidebar first.",
-      run: () => setFinding("document"),
     },
     {
       label: "Project file",
@@ -204,18 +192,6 @@ export function TabLauncher({ paneId, tabKey }: { paneId: string; tabKey: string
           })}
         </div>
       </div>
-      {finding === "document" ? (
-        <WikiFinder
-          open
-          onOpenChange={(open) => {
-            if (!open) setFinding(null);
-          }}
-          overviews={overviews}
-          scope={null}
-          mode="find"
-          onPick={(tab) => fill(wikiTabKey(tab))}
-        />
-      ) : null}
       {finding === "file" || finding === "diff" ? (
         <RepositoryFinder mode={finding} onClose={() => setFinding(null)} onPick={fill} />
       ) : null}

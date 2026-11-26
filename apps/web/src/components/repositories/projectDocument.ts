@@ -27,12 +27,8 @@ export function projectDocumentOwner(
   return parseProjectRootId(owner.wikiId);
 }
 
-/**
- * Whether a file tab shows the file in the document editors: a note or a base. A canvas keeps the
- * code editor until its board can save on disk too.
- */
-export const opensAsProjectDocument = (path: string): boolean =>
-  isDocumentFile(path) && !/\.canvas$/i.test(path);
+/** Whether a file tab shows the file in the document editors: a note, a canvas or a base. */
+export const opensAsProjectDocument = (path: string): boolean => isDocumentFile(path);
 
 /** A document as its root holds it: which root, its path there, and the folder read and written. */
 export interface LocatedDocument {

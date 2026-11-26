@@ -20,7 +20,6 @@ import type { ResolvedSettingsScope } from "./settingsScope";
 
 export type SettingsPath =
   | "/settings/projects"
-  | "/settings/wikis"
   | "/settings/general"
   | "/settings/diagnostics"
   | "/settings/voice"
@@ -106,7 +105,6 @@ export interface SettingsSearchAvailability {
 export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/diagnostics": msg("Diagnostics"),
   "/settings/projects": msg("Projects"),
-  "/settings/wikis": msg("Wikis"),
   "/settings/general": msg("General"),
   "/settings/appearance": msg("Appearance"),
   "/settings/chat": msg("Chat"),
@@ -176,7 +174,6 @@ const ALL_SETTINGS_NAV_GROUPS: ReadonlyArray<SettingsNavGroup> = [
     heading: msg("Code"),
     paths: [
       "/settings/projects",
-      "/settings/wikis",
       "/settings/source-control",
       "/settings/change-requests",
       "/settings/worktrees",
@@ -1439,14 +1436,20 @@ export const SETTINGS_SEARCH_ITEMS = [
   {
     id: "wiki-canvases",
     title: msg("Canvases"),
-    to: "/settings/wikis",
+    to: "/settings/projects",
     searchTerms: [msg("canvas board snap grid objects mouse wheel card names zoom threshold")],
   },
   {
-    id: "wikis",
-    title: msg("Wikis"),
-    to: "/settings/wikis",
-    searchTerms: [msg("wiki notes link project mirror add remove plans research")],
+    id: "document-new-files",
+    title: msg("New files"),
+    to: "/settings/projects",
+    searchTerms: [msg("documents notes attachments new note folder wiki")],
+  },
+  {
+    id: "map-backgrounds",
+    title: msg("Map backgrounds"),
+    to: "/settings/projects",
+    searchTerms: [msg("base map tiles openfreemap style terrain satellite")],
   },
   {
     id: "worktree-branch-naming",
@@ -1762,7 +1765,6 @@ const SEARCH_ITEMS_BY_ID = new Map(SETTINGS_SEARCH_ITEMS.map((item) => [item.id,
 const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScope | null>> = {
   "/settings/diagnostics": "environment",
   "/settings/projects": "project",
-  "/settings/wikis": null,
   "/settings/general": null,
   "/settings/voice": null,
   "/settings/appearance": null,
@@ -1792,6 +1794,7 @@ const RENAMED_SETTINGS_PATHS: Readonly<Record<string, SettingsPath>> = {
   "/settings/integrations": "/settings/browser",
   "/settings/storage": "/settings/maintenance",
   "/settings/beta": "/settings/labs",
+  "/settings/wikis": "/settings/projects",
 };
 const SPLIT_SETTINGS_PATHS: ReadonlySet<string> = new Set([
   "/settings/general",

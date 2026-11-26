@@ -21,6 +21,7 @@ export default function WikiCanvasCardEditor({
   wikiId,
   changeRequestId,
   commit,
+  checkout,
   boardFile,
   onOpenNote,
 }: {
@@ -29,6 +30,8 @@ export default function WikiCanvasCardEditor({
   readonly wikiId: WikiId;
   readonly changeRequestId: WikiChangeRequestId | undefined;
   readonly commit: string;
+  /** Astrolabe: the folder the board is read in on disk. */
+  readonly checkout?: string | undefined;
   readonly boardFile: string;
   readonly onOpenNote: (name: string) => void;
 }) {
@@ -37,6 +40,7 @@ export default function WikiCanvasCardEditor({
     wikiId,
     commit,
     from: editor.file ?? boardFile,
+    checkout,
   });
   const session = useCanvasCardSession(editor);
   const frame = useRef<HTMLDivElement>(null);
@@ -45,7 +49,14 @@ export default function WikiCanvasCardEditor({
   const index = useEnvironmentQuery(
     wikiEnvironment.index({
       environmentId,
-      input: { wikiId, ...(changeRequestId === undefined ? {} : { changeRequestId }) },
+      input: {
+        wikiId,
+        ...(checkout !== undefined
+          ? { checkout }
+          : changeRequestId === undefined
+            ? {}
+            : { changeRequestId }),
+      },
     }),
   );
   const { showHidden } = useWikiTreeView();
@@ -64,6 +75,7 @@ export default function WikiCanvasCardEditor({
             environmentId={environmentId}
             wikiId={wikiId}
             changeRequestId={changeRequestId}
+            checkout={checkout}
             from={{ source, note: "" }}
             onOpenNote={onOpenNote}
           />
