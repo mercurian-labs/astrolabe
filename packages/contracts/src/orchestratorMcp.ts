@@ -183,10 +183,10 @@ export const OrchestratorMcpDelegateTaskInput = Schema.Struct({
     }),
   ),
   // A plain string: a description on a trimming schema never reaches the agent.
-  wiki: Schema.optional(
+  repository: Schema.optional(
     Schema.NonEmptyString.annotate({
       description:
-        "A linked wiki, by id or name: the child works in your checkout of it with its own file tools, and its edits join your pull request on it. Not with isolation 'worktree'.",
+        "A folder of this project, by its key: the child works in your checkout of it with its own file tools. Not with isolation 'worktree'.",
     }),
   ),
   mode: Schema.optional(

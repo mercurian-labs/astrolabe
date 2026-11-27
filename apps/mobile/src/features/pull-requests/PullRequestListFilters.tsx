@@ -55,10 +55,6 @@ const ROW_STYLE =
     ? { paddingHorizontal: 12, paddingTop: 12, paddingBottom: 8, gap: 8 }
     : { paddingHorizontal: 16, paddingTop: 2, paddingBottom: 10, gap: 8 };
 const id = (field: string, value: string) => JSON.stringify([field, value]);
-/** Astrolabe: a wiki's choice in the project menu, told apart from a project's. */
-const WIKI_CHOICE = "wiki:";
-/** Astrolabe: every project's pull requests, the project menu's Projects heading. */
-const REPOSITORIES_CHOICE = "kind:repositories";
 
 function choices(field: string, options: Readonly<Record<string, string>>, selected: string) {
   return Object.entries(options).map(([value, title]) => ({
@@ -142,21 +138,10 @@ export function usePullRequestListFilters(props: {
   readonly projects: readonly { id: string; title: string; environmentId: string }[];
   /** Opens a picker that searches the host, for a label or author no loaded row carries. */
   readonly onSearch: (kind: "labels" | "authors") => void;
-  /**
-   * Astrolabe: the project menu lists each project, then each wiki, with a Projects choice for
-   * every project when it lists both. `onSource` hears the pick: `"all"`, `"repositories"` (also
-   * for one project) or a wiki's value.
-   */
-  readonly wikis?: readonly { value: string; title: string }[];
-  readonly wikiValue?: string | null;
-  readonly repositoriesOnly?: boolean;
-  readonly onSource?: (value: string) => void;
 }) {
   const { value } = props;
   const m = useMessages();
   const projects = useProjectsInSidebarOrder(props.projects);
-  const listsBothKinds =
-    props.onSource !== undefined && projects.length > 0 && (props.wikis?.length ?? 0) > 0;
   const selectedLabels = value.filters.labels?.flat() ?? [];
   const selectedLabelSet = new Set(selectedLabels);
   const author = value.filters.author;
@@ -182,7 +167,6 @@ export function usePullRequestListFilters(props: {
           props.onEnvironmentChange(next);
         break;
       case "reset":
-        props.onSource?.("all");
         props.onChange(DEFAULT_PR_LIST_CONTROLS);
         // The Android header menu also holds the environment, so its reset clears that too.
         if (next === "environment") props.onEnvironmentChange(null);
@@ -197,19 +181,6 @@ export function usePullRequestListFilters(props: {
         props.onChange({ ...value, sort: next as PullRequestListControls["sort"] });
         break;
       case "project": {
-        if (next.startsWith(WIKI_CHOICE) || next === REPOSITORIES_CHOICE || next === "") {
-          props.onSource?.(
-            next.startsWith(WIKI_CHOICE)
-              ? next.slice(WIKI_CHOICE.length)
-              : next === ""
-                ? "all"
-                : "repositories",
-          );
-          if (value.projectId)
-            props.onChange({ ...value, projectId: undefined, projectEnvironmentId: undefined });
-          break;
-        }
-        props.onSource?.("repositories");
         const project = projects.find(
           (project) => JSON.stringify([project.environmentId, project.id]) === next,
         );
@@ -282,7 +253,7 @@ export function usePullRequestListFilters(props: {
     Number(Boolean(value.filters.draft)) +
     Number(Boolean(value.filters.review)) +
     Number(Boolean(value.filters.checks)) +
-    Number(Boolean(value.projectId || props.wikiValue || props.repositoriesOnly));
+    Number(Boolean(value.projectId));
   const more: MenuProps["actions"] = [
     {
       id: "drafts",
@@ -308,32 +279,20 @@ export function usePullRequestListFilters(props: {
     {
       id: "projects",
       title:
-        props.wikis?.find((wiki) => wiki.value === props.wikiValue)?.title ??
         projects.find(
           (project) =>
             project.id === value.projectId && project.environmentId === value.projectEnvironmentId,
-        )?.title ??
-        (props.repositoriesOnly
-          ? m(msg("Projects"))
-          : m(msg("Project"), { $context: "filter menu" })),
+        )?.title ?? m(msg("Project"), { $context: "filter menu" }),
       subactions: choices(
         "project",
         Object.fromEntries([
-          ["", listsBothKinds ? m(msg("All")) : m(msg("All projects"))],
-          ...(listsBothKinds ? [[REPOSITORIES_CHOICE, m(msg("Projects"))]] : []),
+          ["", m(msg("All projects"))],
           ...projects.map((project) => [
             JSON.stringify([project.environmentId, project.id]),
             project.title,
           ]),
-          ...(props.wikis ?? []).map((wiki) => [`${WIKI_CHOICE}${wiki.value}`, wiki.title]),
         ]),
-        props.wikiValue
-          ? `${WIKI_CHOICE}${props.wikiValue}`
-          : value.projectId
-            ? JSON.stringify([value.projectEnvironmentId, value.projectId])
-            : props.repositoriesOnly
-              ? REPOSITORIES_CHOICE
-              : "",
+        value.projectId ? JSON.stringify([value.projectEnvironmentId, value.projectId]) : "",
       ),
     },
     {

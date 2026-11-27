@@ -1,40 +1,24 @@
-import type {
-  EnvironmentId,
-  WikiChangeRequest,
-  WikiChangeRequestId,
-  WikiId,
-  WikiSummary,
-} from "@t3tools/contracts";
-import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";
+import type { EnvironmentId, WikiChangeRequestId, ProjectRootId } from "@t3tools/contracts";
 
-import {
-  changeRequestFiles,
-  documentFile,
-  documentPath,
-  draftDocuments,
-  isCanvasName,
-  noteKey,
-  wikiDraft,
-} from "./wiki.logic";
+import { documentFile } from "./wiki.logic";
 
 /**
- * What a tab in the Wikis area shows: a note, read from main or inside a change request, or a
- * change request itself. Tabs from every server and wiki share one arrangement, so each names
- * its server and wiki.
+ * A tab the Wikis section used to open, kept for one release so saved layouts and old links still
+ * land: a document opens as its Projects file tab (`LegacyWikiTab`); a change request is dropped.
  */
 export type WikiTab =
   | {
       readonly kind: "note";
       readonly environmentId: EnvironmentId;
-      readonly wikiId: WikiId;
-      /** Its path from the wiki's root: what it is, as a title is only the last part. */
+      readonly wikiId: ProjectRootId;
+      /** Its path from the wiki's root. */
       readonly file: string;
       readonly changeRequestId: WikiChangeRequestId | undefined;
     }
   | {
       readonly kind: "change-request";
       readonly environmentId: EnvironmentId;
-      readonly wikiId: WikiId;
+      readonly wikiId: ProjectRootId;
       readonly changeRequestId: WikiChangeRequestId;
     };
 
@@ -69,7 +53,7 @@ export function parseWikiTabKey(key: string): WikiTab | null {
     return {
       kind: "note",
       environmentId: environmentId as EnvironmentId,
-      wikiId: wikiId as WikiId,
+      wikiId: wikiId as ProjectRootId,
       // A layout saved before wikis had folders holds a note's bare name.
       file: documentFile(name),
       changeRequestId: changeRequestId ? (changeRequestId as WikiChangeRequestId) : undefined,
@@ -82,226 +66,9 @@ export function parseWikiTabKey(key: string): WikiTab | null {
     return {
       kind: "change-request",
       environmentId: environmentId as EnvironmentId,
-      wikiId: wikiId as WikiId,
+      wikiId: wikiId as ProjectRootId,
       changeRequestId: changeRequestId as WikiChangeRequestId,
     };
   }
   return null;
-}
-
-/** Whether a document tab shows a base. */
-export const isBaseTab = (tab: WikiTab): boolean =>
-  tab.kind === "note" && tab.file.endsWith(".base");
-
-/** Whether a document tab shows a canvas. */
-export const isCanvasTab = (tab: WikiTab): boolean => tab.kind === "note" && isCanvasName(tab.file);
-
-/** Whether two tabs show the same thing; paths compare as the wiki compares them. */
-export function sameWikiTab(a: WikiTab, b: WikiTab): boolean {
-  if (a.environmentId !== b.environmentId || a.wikiId !== b.wikiId) return false;
-  if (a.kind === "note" && b.kind === "note") {
-    return a.changeRequestId === b.changeRequestId && noteKey(a.file) === noteKey(b.file);
-  }
-  return a.kind === b.kind && a.changeRequestId === b.changeRequestId;
-}
-
-/** Whether a tab shows `document`, read from anywhere: a sidebar row stays lit for either. */
-export function tabShowsDocument(
-  tab: WikiTab | null,
-  document: {
-    readonly environmentId: EnvironmentId;
-    readonly wikiId: WikiId;
-    readonly file: string;
-  },
-): boolean {
-  return (
-    tab?.kind === "note" &&
-    tab.environmentId === document.environmentId &&
-    tab.wikiId === document.wikiId &&
-    noteKey(tab.file) === noteKey(document.file)
-  );
-}
-
-/** One document in the sidebar: a note on a wiki's main line. */
-export interface WikiDocumentItem {
-  readonly key: string;
-  readonly environmentId: EnvironmentId;
-  readonly wiki: WikiSummary;
-  /** What a search looks through: the path, without a note's `.md`. */
-  readonly name: string;
-  /** What lists show: the whole path, until they group by folder. */
-  readonly title: string;
-  /** What it opens by. */
-  readonly file: string;
-  /** A `.base` file, which lists mark with a table icon. */
-  readonly base: boolean;
-  /** A `.canvas` file, which lists mark with their own icon. */
-  readonly canvas: boolean;
-  readonly links: number;
-  readonly backlinks: number;
-  /** When the note last changed on main; null when the wiki doesn't say. */
-  readonly editedAt: string | null;
-  /** Open change requests that change the note, most recently updated first. */
-  readonly changes: ReadonlyArray<WikiChangeRequest>;
-}
-
-/** One open change request in the sidebar. */
-export interface WikiChangeItem {
-  readonly key: string;
-  readonly environmentId: EnvironmentId;
-  readonly wiki: WikiSummary;
-  readonly changeRequest: WikiChangeRequest;
-  /** The documents its amendments touch. */
-  readonly files: ReadonlyArray<string>;
-}
-
-/** The branch a change request's worktree holds. */
-export const changeRequestBranch = (changeRequestId: WikiChangeRequestId) =>
-  `cr/${changeRequestId}`;
-
-/** The scope a wiki filter picks: one wiki on one server. */
-export const wikiScopeKey = (environmentId: EnvironmentId, wikiId: WikiId) =>
-  `${environmentId}:${wikiId}`;
-
-const newestFirst = (a: string | null, b: string | null) => (b ?? "").localeCompare(a ?? "");
-
-/**
- * The sidebar's lists, as the thread list is one list across projects: every open change
- * request, then every document, then the merged and closed change requests (the shelf a
- * closed one is reopened from), each newest first, across every wiki in `overviews` (or only
- * the one `scope` names).
- */
-export function wikiSidebarItems(
-  overviews: ReadonlyArray<WikiOverview>,
-  scope: string | null,
-): {
-  /** The person's drafts, apart from the change requests. */
-  readonly drafts: ReadonlyArray<WikiChangeItem>;
-  readonly changes: ReadonlyArray<WikiChangeItem>;
-  readonly documents: ReadonlyArray<WikiDocumentItem>;
-  readonly settled: ReadonlyArray<WikiChangeItem>;
-} {
-  const drafts: WikiChangeItem[] = [];
-  const changes: WikiChangeItem[] = [];
-  const documents: WikiDocumentItem[] = [];
-  const settled: WikiChangeItem[] = [];
-  for (const overview of overviews) {
-    const { environmentId, wiki } = overview;
-    if (scope !== null && wikiScopeKey(environmentId, wiki.wikiId) !== scope) continue;
-    const open = (overview.changeRequests ?? [])
-      .filter((changeRequest) => changeRequest.status === "open" && !changeRequest.draft)
-      .toSorted((a, b) => newestFirst(a.updatedAt, b.updatedAt));
-    const item = (changeRequest: WikiChangeRequest): WikiChangeItem => ({
-      key: wikiTabKey({
-        kind: "change-request",
-        environmentId,
-        wikiId: wiki.wikiId,
-        changeRequestId: changeRequest.changeRequestId,
-      }),
-      environmentId,
-      wiki,
-      changeRequest,
-      files: changeRequestFiles(changeRequest),
-    });
-    for (const changeRequest of overview.changeRequests ?? []) {
-      if (changeRequest.status !== "open") settled.push(item(changeRequest));
-    }
-    const openItems = open.map(item);
-    changes.push(...openItems);
-    const draft = wikiDraft(overview.changeRequests);
-    const draftItem = draft === null ? null : item(draft);
-    if (draftItem !== null) drafts.push(draftItem);
-    const changing = draftItem === null ? openItems : [draftItem, ...openItems];
-    // A base and a canvas are documents too, opened by their file names.
-    const bases = (overview.index?.bases ?? []).map((base) => ({
-      name: base.file,
-      file: base.file,
-      outgoing: 0,
-      incoming: 0,
-      editedAt: base.editedAt,
-    }));
-    const canvases = (overview.index?.canvases ?? []).map((canvas) => ({
-      ...canvas,
-      name: canvas.file,
-    }));
-    const listed = draftDocuments(
-      [...(overview.index?.notes ?? []), ...bases, ...canvases],
-      draft,
-      (file, name) => ({ name, file, outgoing: 0, incoming: 0, editedAt: draft?.updatedAt }),
-    );
-    for (const note of listed) {
-      documents.push({
-        key: wikiTabKey({
-          kind: "note",
-          environmentId,
-          wikiId: wiki.wikiId,
-          file: note.file,
-          changeRequestId: undefined,
-        }),
-        environmentId,
-        wiki,
-        name: note.name,
-        title: documentPath(note.name),
-        file: note.file,
-        base: note.file.endsWith(".base"),
-        canvas: isCanvasName(note.file),
-        links: note.outgoing,
-        backlinks: note.incoming,
-        editedAt: note.editedAt ?? null,
-        changes: changing
-          .filter((change) => change.files.includes(note.file))
-          .map((change) => change.changeRequest),
-      });
-    }
-  }
-  changes.sort((a, b) => newestFirst(a.changeRequest.updatedAt, b.changeRequest.updatedAt));
-  settled.sort((a, b) => newestFirst(a.changeRequest.updatedAt, b.changeRequest.updatedAt));
-  documents.sort((a, b) => newestFirst(a.editedAt, b.editedAt) || a.name.localeCompare(b.name));
-  return { drafts, changes, documents, settled };
-}
-
-/** One row of the sidebar's search results: a document or a change request. */
-export type WikiSidebarEntry =
-  | { readonly kind: "document"; readonly item: WikiDocumentItem }
-  | { readonly kind: "change"; readonly item: WikiChangeItem };
-
-/**
- * The sidebar's search, filtering its lists in place: the documents whose name and the change
- * requests whose title holds `query`, matched as note names are, in the lists' order (open
- * changes, documents, then merged and closed). Nothing for a blank query.
- */
-export function searchWikiSidebarItems(
-  lists: ReturnType<typeof wikiSidebarItems>,
-  query: string,
-): ReadonlyArray<WikiSidebarEntry> {
-  const needle = noteKey(query.trim());
-  if (needle === "") return [];
-  const change = (item: WikiChangeItem): WikiSidebarEntry[] =>
-    noteKey(item.changeRequest.title).includes(needle) ? [{ kind: "change", item }] : [];
-  return [
-    ...lists.drafts.flatMap(change),
-    ...lists.changes.flatMap(change),
-    ...lists.documents.flatMap((item): WikiSidebarEntry[] =>
-      noteKey(item.name).includes(needle) ? [{ kind: "document", item }] : [],
-    ),
-    ...lists.settled.flatMap(change),
-  ];
-}
-
-/** The tab a sidebar row opens: a document from main, or the change request itself. */
-export function wikiSidebarEntryTab(entry: WikiSidebarEntry): WikiTab {
-  return entry.kind === "document"
-    ? {
-        kind: "note",
-        environmentId: entry.item.environmentId,
-        wikiId: entry.item.wiki.wikiId,
-        file: entry.item.file,
-        changeRequestId: undefined,
-      }
-    : {
-        kind: "change-request",
-        environmentId: entry.item.environmentId,
-        wikiId: entry.item.wiki.wikiId,
-        changeRequestId: entry.item.changeRequest.changeRequestId,
-      };
 }

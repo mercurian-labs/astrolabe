@@ -5,12 +5,20 @@ import type {
   EnvironmentId,
   WikiChangeRequest,
   WikiChangeRequestId,
-  WikiId,
+  ProjectRootId,
   WikiIndexResult,
 } from "@t3tools/contracts";
 import { useBlocker } from "@tanstack/react-router";
 import { TriangleAlertIcon } from "lucide-react";
-import { lazy, Suspense, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 
 import { ensureLocalApi } from "~/localApi";
 import { useEnvironmentQuery } from "~/state/query";
@@ -41,6 +49,8 @@ import {
 import {
   namesAttachment,
   WikiLinkPreview,
+  type WikiLinkLanding,
+  type WikiLinkOption,
   type WikiLinkPeek,
   type WikiLinkScope,
 } from "@mercurian/wiki-editor/link-tools";
@@ -64,6 +74,23 @@ import { WikiPart } from "./WikiParts";
 
 const NO_LINK_TYPES: ReadonlyArray<string> = [];
 
+/**
+ * Astrolabe: a project's links in place of one wiki's: every root's documents to complete to and
+ * land on, and what links here from any of them.
+ */
+export interface ProjectNoteLinks {
+  readonly options: ReadonlyArray<WikiLinkOption>;
+  readonly resolve: (target: string) => WikiLinkLanding;
+  readonly incoming: ReadonlyArray<{
+    readonly key: string;
+    readonly title: string;
+    readonly open: () => void;
+  }>;
+  readonly renderPreview: (link: WikiLinkPeek) => ReactNode;
+  /** What an outgoing link that fits several documents says beside its name. */
+  readonly ambiguousMeta: ReactNode;
+}
+
 /** What a document gives its draft's pill: acting on the draft acts on what's still unsaved. */
 export interface WikiDraftEdits {
   readonly flush: () => Promise<boolean>;
@@ -84,7 +111,7 @@ function LinkPreview({
   onOpen,
 }: {
   readonly environmentId: EnvironmentId;
-  readonly wikiId: WikiId;
+  readonly wikiId: ProjectRootId;
   readonly changeRequestId: WikiChangeRequestId | undefined;
   readonly draft: WikiChangeRequest | null;
   readonly index: WikiIndexResult | null;
@@ -134,10 +161,27 @@ export function WikiNoteView({
   renderDraftPill,
   onOpenNote,
   registerUnsaved,
+  checkout,
+  saveText,
+  projectLinks,
+  notWritten,
+  canWrite,
+  diskRevision,
 }: {
   readonly environmentId: EnvironmentId;
-  readonly wikiId: WikiId;
+  readonly wikiId: ProjectRootId;
   readonly file: string;
+  /** Astrolabe: a project root's folder read on disk; its edits go through `saveText`. */
+  readonly checkout?: string | undefined;
+  /** Writes the note's whole text where `checkout` reads it. */
+  readonly saveText?: ((file: string, text: string) => Promise<WikiSaveOutcome>) | undefined;
+  readonly projectLinks?: ProjectNoteLinks | undefined;
+  /** What an unwritten note says about where writing it goes; the person's draft without it. */
+  readonly notWritten?: string | undefined;
+  /** Whether this person can write where the note saves; the draft's permission without it. */
+  readonly canWrite?: boolean | undefined;
+  /** Changes when the checkout's files change on disk, which reads the note again. */
+  readonly diskRevision?: string | undefined;
   /** The change request the note reads from; none reads main. */
   readonly changeRequestId: WikiChangeRequestId | undefined;
   /** The change request the tab is in; none saves to the draft. */
@@ -152,7 +196,12 @@ export function WikiNoteView({
   /** Lets whoever shows the note ask whether its edits are unsaved, as closing its tab does. */
   readonly registerUnsaved?: (isUnsaved: () => boolean, save: () => Promise<boolean>) => () => void;
 }) {
-  const scope = changeRequestId === undefined ? {} : { changeRequestId };
+  const scope =
+    checkout !== undefined
+      ? { checkout }
+      : changeRequestId === undefined
+        ? {}
+        : { changeRequestId };
   const note = useEnvironmentQuery(
     wikiEnvironment.note({
       environmentId,
@@ -162,6 +211,16 @@ export function WikiNoteView({
   const index = useEnvironmentQuery(
     wikiEnvironment.index({ environmentId, input: { wikiId, ...scope } }),
   );
+  const refreshIndex = index.refresh;
+  const refreshNote = note.refresh;
+  const readRevision = useRef(diskRevision);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- edits on disk (an agent, an editor, git) reach a checkout's note only through its folder's watch
+  useEffect(() => {
+    if (readRevision.current === diskRevision) return;
+    readRevision.current = diskRevision;
+    refreshNote();
+    refreshIndex();
+  }, [diskRevision, refreshNote, refreshIndex]);
   const viewingChange = changeRequests.find(
     (changeRequest) => changeRequest.changeRequestId === changeRequestId,
   );
@@ -202,6 +261,15 @@ export function WikiNoteView({
   /** Lands `text`, which agreed with `readAt` when typed. */
   const land = async (text: string, readAt: string | null): Promise<WikiSaveOutcome> => {
     if (file === null) return { ok: true };
+    if (saveText !== undefined) {
+      const written = await saveText(file, text);
+      if (written.ok) {
+        buffer.markSaved(text);
+        // What it links can change what every link here lands on.
+        refreshIndex();
+      }
+      return written;
+    }
     const outcome = await send({
       environmentId,
       input: {
@@ -254,7 +322,8 @@ export function WikiNoteView({
     },
   });
 
-  const canEdit = useAtomValue(wikiEnvironment.autosave.permissionAtom(environmentId));
+  const canAutosave = useAtomValue(wikiEnvironment.autosave.permissionAtom(environmentId));
+  const canEdit = canWrite ?? canAutosave;
   const { showHidden } = useWikiTreeView();
   const placement = useWikiPlacement(environmentId);
   const { resolveEmbed, landedAt } = useWikiEmbeds({
@@ -262,6 +331,7 @@ export function WikiNoteView({
     wikiId,
     commit: data?.commit ?? "",
     from: tabFile,
+    checkout,
   });
   const { embed } = useWikiAttachments({
     environmentId,
@@ -271,7 +341,8 @@ export function WikiNoteView({
     placement,
     onLanded: landedAt,
   });
-  const linkOptions = index.data === null ? [] : wikiLinkOptions(index.data, showHidden);
+  const linkOptions =
+    projectLinks?.options ?? (index.data === null ? [] : wikiLinkOptions(index.data, showHidden));
   const draft = wikiDraft(changeRequests);
   const outsideDraft = changeRequestId === undefined ? draft : null;
   const files =
@@ -280,7 +351,12 @@ export function WikiNoteView({
       : outsideDraft === null
         ? wikiLinkFiles(index.data)
         : linkFiles(wikiDocumentFilesWithDraft(index.data, outsideDraft));
-  const linkScope = files === null || file === null ? null : { files, from: file };
+  const linkScope: WikiLinkScope | null =
+    files === null || file === null
+      ? null
+      : projectLinks === undefined
+        ? { files, from: file }
+        : { files, from: file, resolve: projectLinks.resolve };
 
   if (data === null) {
     return note.error !== null ? (
@@ -343,7 +419,8 @@ export function WikiNoteView({
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-6 pt-6 pb-12">
           {data.exists ? null : (
             <WikiPart.Muted>
-              {`No note is called ${title} yet. Write it here, and it saves to your draft.`}
+              {notWritten ??
+                `No note is called ${title} yet. Write it here, and it saves to your draft.`}
             </WikiPart.Muted>
           )}
           {snapshot.session ? (
@@ -355,26 +432,30 @@ export function WikiNoteView({
               linkTypes={index.data?.linkTypes ?? NO_LINK_TYPES}
               linkOptions={linkOptions}
               linkScope={linkScope}
-              onAttach={embed}
+              {...(saveText === undefined ? { onAttach: embed } : {})}
               resolveEmbed={resolveEmbed}
-              renderLinkPreview={(link) => (
-                <LinkPreview
-                  environmentId={environmentId}
-                  wikiId={wikiId}
-                  changeRequestId={changeRequestId}
-                  draft={draft}
-                  index={index.data}
-                  linkScope={linkScope}
-                  from={data.file}
-                  link={link}
-                  onOpen={() => onOpenNote(link.name)}
-                />
-              )}
+              renderLinkPreview={(link) =>
+                projectLinks?.renderPreview(link) ?? (
+                  <LinkPreview
+                    environmentId={environmentId}
+                    wikiId={wikiId}
+                    changeRequestId={changeRequestId}
+                    draft={draft}
+                    index={index.data}
+                    linkScope={linkScope}
+                    from={data.file}
+                    link={link}
+                    onOpen={() => onOpenNote(link.name)}
+                  />
+                )
+              }
               renderBase={(source) => (
                 <WikiBase
                   environmentId={environmentId}
                   wikiId={wikiId}
                   changeRequestId={changeRequestId}
+                  checkout={checkout}
+                  revision={diskRevision}
                   from={{ source, note: data.name }}
                   onOpenNote={onOpenNote}
                 />
@@ -386,6 +467,8 @@ export function WikiNoteView({
                     environmentId={environmentId}
                     wikiId={wikiId}
                     changeRequestId={changeRequestId}
+                    checkout={checkout}
+                    revision={diskRevision}
                     from={{ base: base.trim(), note: data.name }}
                     view={view?.trim() || undefined}
                     onOpenNote={onOpenNote}
@@ -398,6 +481,7 @@ export function WikiNoteView({
                     environmentId={environmentId}
                     wikiId={wikiId}
                     changeRequestId={changeRequestId}
+                    checkout={checkout}
                     target={target}
                     from={data.file}
                     onOpen={(link) => onOpenNote(link, data.file)}
@@ -413,7 +497,15 @@ export function WikiNoteView({
           ) : null}
           <div className="grid gap-6 border-t border-border pt-4 sm:grid-cols-2">
             <WikiPart.Section title="Links here">
-              {data.incoming.length === 0 ? (
+              {projectLinks !== undefined ? (
+                projectLinks.incoming.length === 0 ? (
+                  <WikiPart.Muted>No note links here yet.</WikiPart.Muted>
+                ) : (
+                  projectLinks.incoming.map((source) => (
+                    <WikiPart.Row key={source.key} title={source.title} onClick={source.open} />
+                  ))
+                )
+              ) : data.incoming.length === 0 ? (
                 <WikiPart.Muted>No note links here yet.</WikiPart.Muted>
               ) : (
                 data.incoming.map((source) => (
@@ -429,20 +521,25 @@ export function WikiNoteView({
               {data.outgoing.length === 0 ? (
                 <WikiPart.Muted>This note links nowhere yet.</WikiPart.Muted>
               ) : (
-                data.outgoing.map((target) => (
-                  <WikiPart.Row
-                    key={target}
-                    title={target}
-                    tone={
-                      linkScope === null ||
-                      namesAttachment(target) ||
-                      resolveLink(target, data.file, linkScope.files).file !== null
-                        ? "default"
-                        : "missing"
-                    }
-                    onClick={() => onOpenNote(target)}
-                  />
-                ))
+                data.outgoing.map((target) => {
+                  const landed: WikiLinkLanding | null =
+                    linkScope === null || namesAttachment(target)
+                      ? null
+                      : (linkScope.resolve?.(target) ??
+                        resolveLink(target, data.file, linkScope.files));
+                  const ambiguous = (landed?.ambiguous?.length ?? 0) > 0;
+                  return (
+                    <WikiPart.Row
+                      key={target}
+                      title={target}
+                      tone={
+                        landed === null || landed.file !== null || ambiguous ? "default" : "missing"
+                      }
+                      {...(ambiguous ? { meta: projectLinks?.ambiguousMeta } : {})}
+                      onClick={() => onOpenNote(target)}
+                    />
+                  );
+                })
               )}
             </WikiPart.Section>
           </div>

@@ -289,8 +289,8 @@ worktrees and checkpoints, so switching branches only reads the files that chang
 Select a project and open **Settings → Projects** to turn **Index this project** off or on,
 see its progress, or rebuild it. Ignored files, `node_modules`, vendored and generated code, and
 files over 512 KB are never indexed; add other paths under **Skipped paths**, one gitignore-style
-pattern per line. A wiki's own repository is indexed only when it is also a project, which is how
-that wiki's bases read its code (see [Code in a base](wikis.md#code-in-a-base)).
+pattern per line. The index is also what a base reads about code files (see
+[Code in a base](project-docs.md#code-in-a-base)).
 
 Indexing runs as background activity: it waits while **Settings → Maintenance → Background
 activity** pauses background work, including when no app is connected, and uses fewer workers

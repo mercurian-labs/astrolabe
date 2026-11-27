@@ -1,5 +1,11 @@
 import type { CanvasData, CanvasMarks } from "@mercurian/wiki/canvas";
-import { linkFiles, type WikiLinkFiles } from "@mercurian/wiki/resolve-link";
+import {
+  linkFiles,
+  projectLinkFiles,
+  resolveProjectLink,
+  type ProjectFile,
+  type WikiLinkFiles,
+} from "@mercurian/wiki/resolve-link";
 
 import type { CanvasBoardHandle, CanvasBoardSettings } from "./CanvasBoard";
 import type { WikiLinkScope } from "./linkTools";
@@ -55,6 +61,38 @@ export interface WikiEditorPageState {
   /** The `@` types the wiki uses, which the editor suggests. */
   readonly linkTypes: ReadonlyArray<string>;
   readonly linkScope: WikiLinkScope | null;
+}
+
+/**
+ * What a note's links search. In a project, a bare link its own folder misses reaches the others,
+ * and one several of them match is ambiguous; a file in another folder is named `root:path`.
+ */
+function linkScopeOf(
+  command: Extract<WikiEditorCommand, { type: "linkTypes" }>,
+  documents: ReadonlyArray<string>,
+): WikiLinkScope {
+  const from = command.from ?? null;
+  const files = linkFiles(documents);
+  const { root, roots } = command;
+  if (root === undefined || roots === undefined) return { files, from };
+  const project = projectLinkFiles([
+    [root, documents],
+    ...roots.filter((each) => each.root !== root).map((each) => [each.root, each.files] as const),
+  ]);
+  const label = (file: ProjectFile) =>
+    file.root === root ? file.file : `${file.root}:${file.file}`;
+  return {
+    files,
+    from,
+    resolve: (target) => {
+      const found = resolveProjectLink(target, { root, file: from }, project);
+      return {
+        file: found.file === null ? null : label(found.file),
+        others: found.others.map(label),
+        ambiguous: found.ambiguous.map(label),
+      };
+    },
+  };
 }
 
 /**
@@ -312,10 +350,7 @@ export function createWikiEditorPage(post: (event: WikiEditorEvent) => void) {
       case "linkTypes":
         setState({
           linkTypes: command.types,
-          linkScope:
-            command.files === undefined
-              ? null
-              : { files: linkFiles(command.files), from: command.from ?? null },
+          linkScope: command.files === undefined ? null : linkScopeOf(command, command.files),
         });
         return;
       case "noteRead":

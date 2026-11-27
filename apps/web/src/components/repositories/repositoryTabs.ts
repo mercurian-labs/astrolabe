@@ -2,7 +2,7 @@ import {
   EnvironmentId,
   LanguageServerId,
   ProjectId,
-  WikiId,
+  ProjectRootId,
   type ProjectWorktreeOwner,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
@@ -324,7 +324,7 @@ export function parseRepositoryTabKey(key: string): RepositoryTab | null {
     return {
       kind: "file",
       environmentId: EnvironmentId.make(environmentId),
-      wikiId: WikiId.make(wikiId),
+      wikiId: ProjectRootId.make(wikiId),
       checkout,
       path,
     };

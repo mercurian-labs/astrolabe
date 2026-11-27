@@ -435,7 +435,7 @@ function formatComposerContextProviderPayload(record: KnownComposerContextRecord
         `threadId: ${record.threadId}`,
         `itemId: ${record.itemId}`,
         ...(record.comment === undefined ? [] : [`comment: ${record.comment}`]),
-        "The user means this board, drawn in that thread by astrolabe_canvas_show. The comment is theirs. To save it into a wiki, call astrolabe_canvas_keep with these ids; never redraw it by hand.",
+        "The user means this board, drawn in that thread by astrolabe_canvas_show. The comment is theirs. To save it in the project, call astrolabe_canvas_keep with these ids; never redraw it by hand.",
       ].join("\n");
     case "change-group":
       return [

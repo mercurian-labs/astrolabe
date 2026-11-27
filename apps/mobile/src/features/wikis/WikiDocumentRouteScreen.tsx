@@ -18,18 +18,14 @@ import {
   isTurnRunning,
   wikiDocumentScope,
   wikiDraft,
-  NO_NOTE_FROM_RELATIVE_LINK,
   wikiDocumentFilesWithDraft,
-  wikiLinkOpens,
   wikiTerms,
 } from "@t3tools/client-runtime/wikiLogic";
-import { linkFiles } from "@mercurian/wiki/resolve-link";
-import type { EnvironmentId, ThreadId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
+import { linkFiles, resolveLink, unwrittenFile } from "@mercurian/wiki/resolve-link";
+import { projectRootId, RootKey, type EnvironmentId, type ThreadId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
-import * as Dialog from "../../components/ui/Dialog";
-import { useWikiPlacement } from "./wikiPreferences";
 import { Linking, View } from "react-native";
 
 import { LoadingScreen } from "../../components/LoadingScreen";
@@ -38,6 +34,7 @@ import { Toolbar } from "../../components/ui/Toolbar";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { assetEnvironment } from "../../state/assets";
 import { useThreadShell } from "../../state/entities";
+import { projectEnvironment } from "../../state/projects";
 import { useEnvironmentQuery } from "../../state/query";
 import { usePreparedConnection } from "../../state/session";
 import { useAtomQueryRunner } from "../../state/use-atom-query-runner";
@@ -45,22 +42,37 @@ import { wikiEnvironment } from "../../state/wiki";
 import {
   isSkillMapFile,
   isWikiBaseFile,
+  otherLinkRoots,
+  projectLinkOpens,
+  projectResolvedLink,
   wikiDocumentAuthor,
   wikiDocumentSubtitle,
 } from "./document/wikiDocument.logic";
+import { openProjectLink } from "./document/openProjectLink";
+import {
+  useProjectDocument,
+  useProjectLinkRoots,
+  type ProjectDocument,
+} from "./document/useProjectDocument";
 import { useEditorTheme } from "./document/useEditorTheme";
 import {
   WikiBaseQueries,
   WikiFileReads,
   WikiNoteReads,
   type WikiBaseAnswer,
+  type WikiNoteLocation,
   type WikiNoteReadsProps,
 } from "./document/WikiBaseQueries";
 import { WikiDraftBar } from "./document/WikiDraftBar";
 import { WikiEditorWebView, type WikiEditorHandle } from "./document/WikiEditorWebView";
 import { WikiBelowHeader } from "./document/WikiBelowHeader";
 import { WikiNotice } from "./document/WikiNotice";
-import { useWikiAutosave, useWikiAutosaveCommand, wikiSaveLabel } from "./document/useWikiAutosave";
+import {
+  useWikiAutosave,
+  useWikiAutosaveCommand,
+  useWikiDiskCommands,
+  wikiSaveLabel,
+} from "./document/useWikiAutosave";
 import { WikiBaseScreen } from "./WikiBaseScreen";
 import { WikiCanvasScreen } from "./WikiCanvasScreen";
 import type { WikiDocumentParams } from "./wikiRoutes";
@@ -76,39 +88,53 @@ function useChangeRequestTurn(environmentId: EnvironmentId, threadId: ThreadId |
   return { running, runId: running ? (shell?.latestRun?.runId ?? null) : null };
 }
 
-/** A wiki document: a note, or a `.base` or `.canvas` file opened by its file name, as on web. */
+/**
+ * A document in one of a project's folders: a note, or a `.base` or `.canvas` file opened by its
+ * file name, as on web. It waits to know where edits go: a draft reads differently from disk.
+ */
 export function WikiDocumentRouteScreen({ route }: StaticScreenProps<WikiDocumentParams>) {
-  // A link from before wikis had folders holds a note's bare name.
   const params = { ...route.params, name: documentFile(route.params.name) };
-  if (isCanvasName(params.name)) return <WikiCanvasScreen params={params} />;
+  const doc = useProjectDocument(params);
+  if (doc.target.kind === "pending") {
+    return (
+      <View className="flex-1 bg-screen">
+        <NativeStackScreenOptions options={{ title: documentTitle(params.name) }} />
+        <LoadingScreen message="Opening the document…" />
+      </View>
+    );
+  }
+  if (isCanvasName(params.name)) return <WikiCanvasScreen params={params} doc={doc} />;
   return isWikiBaseFile(params.name) ? (
-    <WikiBaseScreen params={params} />
+    <WikiBaseScreen params={params} doc={doc} />
   ) : (
-    <WikiNoteScreen params={params} />
+    <WikiNoteScreen params={params} doc={doc} />
   );
 }
 
 /**
- * One wiki note, read first; Edit turns the page into the editor. Edits save by themselves, to the
- * change request the route names, else the person's draft. Inside a change request, an agent's
- * amendments land live beside what hasn't saved yet, and saves wait for its turn to end. Links open
- * the next document on top, read from the same place.
+ * One note, read first; Edit turns the page into the editor. Edits save by themselves: to the
+ * change request the route names, the person's draft, or the folder on disk. In a change request,
+ * an agent's amendments land live and saves wait for its turn. Links open in whichever folder.
  */
-function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
+function WikiNoteScreen({
+  params,
+  doc,
+}: {
+  readonly params: WikiDocumentParams;
+  readonly doc: ProjectDocument;
+}) {
   const navigation = useNavigation();
-  const environmentId = params.environmentId as EnvironmentId;
-  const wikiId = params.wikiId as WikiId;
+  const { environmentId, wikiId, routeChangeRequestId, disk, placement } = doc;
   const requested = params.name;
   const title = documentTitle(requested);
-  const routeChangeRequestId = params.changeRequestId as WikiChangeRequestId | undefined;
+  const onDisk = disk === null ? {} : { checkout: disk };
 
   const wikis = useEnvironmentQuery(wikiEnvironment.list({ environmentId, input: {} }));
   const changeRequests = useEnvironmentQuery(
-    wikiEnvironment.changeRequests({ environmentId, input: { wikiId } }),
+    disk === null ? wikiEnvironment.changeRequests({ environmentId, input: { wikiId } }) : null,
   );
   const all = changeRequests.data?.changeRequests;
   const draft = wikiDraft(all);
-  const placement = useWikiPlacement(environmentId);
   const movedTo = routeChangeRequestId === undefined ? draftMovedTo(draft, requested) : undefined;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a move landed elsewhere reaches the native route from here
   useEffect(() => {
@@ -122,18 +148,26 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
   const scope = changeRequestId === undefined ? {} : { changeRequestId };
   // Waits for the list to say whether a draft holds this, or a draft's document would first draw
   // from main and then seem to change.
-  const located = changeRequests.data !== null || changeRequests.error !== null;
+  const located = disk !== null || changeRequests.data !== null || changeRequests.error !== null;
   const note = useEnvironmentQuery(
     located
       ? wikiEnvironment.note({
           environmentId,
-          input: { wikiId, name: exactWikiPath(requested), ...scope },
+          input: { wikiId, name: exactWikiPath(requested), ...scope, ...onDisk },
         })
       : null,
   );
   const index = useEnvironmentQuery(
-    wikiEnvironment.index({ environmentId, input: { wikiId, ...scope } }),
+    wikiEnvironment.index({ environmentId, input: { wikiId, ...scope, ...onDisk } }),
   );
+  const linkRoots = useProjectLinkRoots({
+    environmentId,
+    projectId: doc.projectId,
+    roots: doc.roots,
+    rootKey: doc.rootKey,
+    ownIndex: index.data,
+    disk: disk !== null,
+  });
   const wiki = wikis.data?.wikis.find((entry) => entry.wikiId === wikiId) ?? null;
   const viewing = all?.find((changeRequest) => changeRequest.changeRequestId === changeRequestId);
   const settled = isSettledChangeRequest(viewing);
@@ -146,7 +180,9 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
   if (note.data !== null && note.data !== lastNote) setLastNote(note.data);
   const data = note.data ?? lastNote;
   const file = data?.file ?? null;
-  const canEdit = useAtomValue(wikiEnvironment.autosave.permissionAtom(environmentId));
+  const canDraft = useAtomValue(wikiEnvironment.autosave.permissionAtom(environmentId));
+  const canWriteDisk = useAtomValue(projectEnvironment.writeFile.permissionAtom(environmentId));
+  const canEdit = disk === null ? canDraft : canWriteDisk;
   const readOnly = (file !== null && isSkillMapFile(file)) || settled || !canEdit;
   const unwritten = data !== null && !data.exists && !readOnly;
 
@@ -228,22 +264,64 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
 
   const linkTypes = index.data?.linkTypes;
   const outsideDraft = changeRequestId === undefined ? draft : null;
-  const documents = useMemo(
+  const ownDocuments = useMemo(
     () => (index.data ? wikiDocumentFilesWithDraft(index.data, outsideDraft) : null),
     [index.data, outsideDraft],
   );
-  const linkedFiles = useMemo(() => (documents ? linkFiles(documents) : null), [documents]);
+  const linkedFiles = useMemo(
+    () => (ownDocuments ? linkFiles(ownDocuments) : null),
+    [ownDocuments],
+  );
+  const otherRoots = useMemo(
+    () => (linkRoots === null ? null : otherLinkRoots(linkRoots, doc.rootKey)),
+    [linkRoots, doc.rootKey],
+  );
   const linkingFile = data?.file ?? null;
+  /** Where a link's preview reads: this folder as the page does, another as its own main line. */
+  const locate = (name: string): WikiNoteLocation => {
+    const from = linkingFile ?? requested;
+    const across = projectResolvedLink(linkRoots, doc.rootKey, name, from);
+    const opens =
+      linkRoots === null
+        ? null
+        : projectLinkOpens({ roots: linkRoots, root: doc.rootKey, target: name, from, placement });
+    const elsewhere = opens?.kind === "open" && opens.root !== doc.rootKey ? opens : null;
+    if (elsewhere !== null && across !== null) {
+      const other = doc.roots?.find((root) => root.key === elsewhere.root);
+      return {
+        input: {
+          wikiId: projectRootId(doc.projectId, RootKey.make(elsewhere.root)),
+          name: exactWikiPath(elsewhere.file),
+          ...(disk !== null && other !== undefined ? { checkout: other.path } : {}),
+        },
+        link: across,
+      };
+    }
+    const { file: landed, others } =
+      linkedFiles === null ? { file: null, others: [] } : resolveLink(name, from, linkedFiles);
+    const file = landed ?? unwrittenFile(name, from);
+    const readsFrom = wikiDocumentScope({ tabChangeRequestId: changeRequestId, draft, file });
+    return {
+      input: {
+        wikiId,
+        name: exactWikiPath(file),
+        ...(readsFrom === undefined ? {} : { changeRequestId: readsFrom }),
+        ...onDisk,
+      },
+      link: across ?? { file: landed, others },
+    };
+  };
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the wiki's types cross into the editor's web view, outside React
   useEffect(() => {
-    if (!linkTypes || documents === null) return;
+    if (!linkTypes || ownDocuments === null) return;
     editor.current?.send({
       type: "linkTypes",
       types: linkTypes,
-      files: documents,
+      files: ownDocuments,
       ...(linkingFile === null ? {} : { from: linkingFile }),
+      ...(otherRoots === null ? {} : { root: doc.rootKey, roots: otherRoots }),
     });
-  }, [linkTypes, documents, linkingFile]);
+  }, [linkTypes, ownDocuments, linkingFile, otherRoots, doc.rootKey]);
 
   // The notes the page's link previews show, read here, as the blocks are.
   const [previewNames, setPreviewNames] = useState<ReadonlyArray<string>>([]);
@@ -310,29 +388,16 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
       case "edited":
         autosave.edited();
         return;
-      case "openNote": {
-        const name = wikiLinkOpens(
-          index.data,
-          event.name,
-          event.from ?? file ?? requested,
+      case "openNote":
+        openProjectLink({
+          roots: linkRoots,
+          params,
+          target: event.name,
+          from: event.from ?? file ?? requested,
           placement,
-        );
-        if (name === null) {
-          Dialog.alert("No note made", NO_NOTE_FROM_RELATIVE_LINK);
-          return;
-        }
-        navigation.dispatch(
-          StackActions.push("WikiDocument", {
-            environmentId: params.environmentId,
-            wikiId: params.wikiId,
-            name,
-            ...(routeChangeRequestId === undefined
-              ? {}
-              : { changeRequestId: routeChangeRequestId }),
-          }),
-        );
+          open: (next) => navigation.dispatch(StackActions.push("ProjectDocument", next)),
+        });
         return;
-      }
       case "openUrl":
         void Linking.openURL(event.href).catch(() => undefined);
         return;
@@ -350,11 +415,21 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
   };
 
   const send = useWikiAutosaveCommand();
+  const writeDisk = useWikiDiskCommands();
   const { autosave, status } = useWikiAutosave({
     subject: title,
     save: async () => {
       if (file === null) return { ok: true };
       const { text, commit } = await requestText();
+      if (disk !== null) {
+        const written = await writeDisk.writeText({
+          environmentId,
+          input: { cwd: disk, relativePath: file, contents: text },
+        });
+        if (!written.ok) return written;
+        editor.current?.send({ type: "markSaved", text });
+        return { ok: true };
+      }
       const outcome = await send({
         environmentId,
         input: {
@@ -382,10 +457,11 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
   useEffect(() => autosave.setHeld(viewingTurn.running), [autosave, viewingTurn.running]);
 
   const subtitle = wikiDocumentSubtitle({
-    wikiName: wiki?.name ?? null,
+    wikiName: doc.root?.name ?? wiki?.name ?? null,
     file: requested,
     changeRequest: viewing ?? null,
     readsChangeRequest: changeRequestId !== undefined,
+    onDisk: disk !== null,
     noun: wikiTerms(wiki).singular,
     agentWorking: viewingTurn.running,
     saving: wikiSaveLabel(status),
@@ -436,7 +512,6 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
             <WikiDraftBar
               environmentId={environmentId}
               draft={draft}
-              changeRequests={all ?? []}
               flush={autosave.flush}
               drop={autosave.cancel}
               onLanded={(id, files) => {
@@ -476,17 +551,14 @@ function WikiNoteScreen({ params }: { readonly params: WikiDocumentParams }) {
         environmentId={environmentId}
         wikiId={wikiId}
         changeRequestId={changeRequestId}
+        checkout={disk}
         note={data.name}
         onAnswer={onBaseAnswer}
       />
       <WikiNoteReads
         names={previewNames}
         environmentId={environmentId}
-        wikiId={wikiId}
-        changeRequestId={changeRequestId}
-        draft={draft}
-        files={linkedFiles}
-        from={data.file}
+        locate={locate}
         onRead={onNoteRead}
       />
       <WikiFileReads

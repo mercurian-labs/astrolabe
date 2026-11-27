@@ -115,7 +115,7 @@ function context(
     section: null,
     chatTabs: null,
     panes: null,
-    sections: ["threads", "wikis", "pull-requests", "usage", "settings"].map((id) => ({
+    sections: ["threads", "repositories", "pull-requests", "usage", "settings"].map((id) => ({
       id,
       label: id,
       open: note(`open ${id}`),
@@ -125,7 +125,6 @@ function context(
     openSearch: note("search"),
     openFilePicker: note("file picker"),
     openCommandLine: note("command line"),
-    findDocument: note("find document"),
     ...overrides,
   };
   const root = whichKeyRoot(triggers, (id: KeybindingCommand) => appCommand(id, value));
@@ -195,7 +194,6 @@ describe("the keyboard menu built from the menu rules", () => {
       ["t", "Tabs"],
       ["p", "Panes"],
       ["s", "Sidebar"],
-      ["w", "Wikis"],
       ["e", "Editor"],
       ["r", "Projects"],
       [",", "settings"],
@@ -251,7 +249,10 @@ describe("the keyboard menu built from the menu rules", () => {
 
   it("makes a key that leads on a group, over a shorter sequence ending on it", () => {
     using _cleanup = cleanup();
-    const { root } = context({}, [menuKeys("chat.new", "g"), menuKeys("section.wikis", "g", "w")]);
+    const { root } = context({}, [
+      menuKeys("chat.new", "g"),
+      menuKeys("section.repositories", "g", "r"),
+    ]);
     expect(root.items.find((item) => item.keys[0] === "g")?.group?.items).toHaveLength(1);
     // Without a rule for Search, the chord still opens it, and shows on its row.
     expect(root.items.at(-1)?.keys).toEqual([CHORD]);
@@ -282,23 +283,22 @@ describe("the keyboard menu built from the menu rules", () => {
     expect(pressed).toEqual(["sidebar.toggle"]);
   });
 
-  it("goes to each section as the icon rail opens it, and opens Wikis' finder", () => {
+  it("goes to each section as the icon rail opens it, with no Wikis left to go to", () => {
     using _cleanup = cleanup();
     const { root, ran } = context();
-    for (const key of ["t", "w", "p", "u", "s"]) press(root, ["g", key]);
+    for (const key of ["t", "r", "p", "u", "s"]) press(root, ["g", key]);
     press(root, [","]);
-    press(root, ["w", "w"]);
-    press(root, ["w", "f"]);
     expect(ran).toEqual([
       "open threads",
-      "open wikis",
+      "open repositories",
       "open pull-requests",
       "open usage",
       "open settings",
       "open settings",
-      "open wikis",
-      "find document",
     ]);
+    expect(root.items.some((item) => item.keys[0] === "w")).toBe(false);
+    const goTo = root.items.find((item) => item.keys[0] === "g")?.group;
+    expect(goTo?.items.some((item) => item.keys[0] === "w")).toBe(false);
   });
 
   it("adds through the sidebar section's title row while one is mounted", () => {
@@ -826,7 +826,7 @@ describe("full screen for the focused pane", () => {
     });
   });
 
-  it("is maximizing the pane in the Wikis area, with nothing to do for a lone pane", () => {
+  it("is maximizing the pane in the Projects area, with nothing to do for a lone pane", () => {
     using _cleanup = cleanup();
     expect(fullScreenState({ alone: false, paneMaximized: false, panelMaximized: null })).toEqual({
       full: false,

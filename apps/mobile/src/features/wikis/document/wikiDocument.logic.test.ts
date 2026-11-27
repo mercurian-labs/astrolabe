@@ -1,9 +1,16 @@
-import type { WikiChangeRequest } from "@t3tools/contracts";
+import {
+  DEFAULT_WIKI_LOCATION_SETTINGS,
+  type WikiChangeRequest,
+  type WikiIndexResult,
+} from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   isSkillMapFile,
   isWikiBaseFile,
+  otherLinkRoots,
+  projectLinkOpens,
+  projectResolvedLink,
   wikiDocumentAuthor,
   wikiDocumentSubtitle,
 } from "./wikiDocument.logic";
@@ -107,5 +114,121 @@ describe("wiki base files", () => {
     expect(isWikiBaseFile("Projects.base")).toBe(true);
     expect(isWikiBaseFile("Projects")).toBe(false);
     expect(isWikiBaseFile("Database notes")).toBe(false);
+  });
+});
+
+describe("wikiDocumentSubtitle on disk", () => {
+  it("says the document is read on disk", () => {
+    expect(
+      wikiDocumentSubtitle({
+        wikiName: "app",
+        file: "docs/Plan.md",
+        changeRequest: null,
+        readsChangeRequest: false,
+        onDisk: true,
+        noun: "pull request",
+        agentWorking: false,
+      }),
+    ).toBe("app · docs · On disk");
+  });
+});
+
+describe("projectLinkOpens", () => {
+  const index = (...files: string[]) =>
+    ({
+      notes: files.map((file) => ({ file })),
+      canvases: [],
+      bases: [],
+      maps: [],
+    }) as unknown as WikiIndexResult;
+  const roots = new Map([
+    ["app", index("docs/Plan.md", "Readme.md")],
+    ["api", index("Plan.md", "Design.md")],
+    ["web", index("Design.md")],
+  ]);
+  const opens = (target: string, root = "app", from: string | null = "Readme.md") =>
+    projectLinkOpens({ roots, root, target, from, placement: DEFAULT_WIKI_LOCATION_SETTINGS });
+
+  it("finds a bare link in its own folder first", () => {
+    expect(opens("Plan")).toEqual({ kind: "open", root: "app", file: "docs/Plan.md" });
+  });
+
+  it("opens the one match in another folder, and a qualified link there", () => {
+    expect(opens("Readme", "web")).toEqual({ kind: "open", root: "app", file: "Readme.md" });
+    expect(opens("api:Design")).toEqual({ kind: "open", root: "api", file: "Design.md" });
+  });
+
+  it("never picks among several other folders", () => {
+    expect(opens("Design")).toEqual({
+      kind: "ambiguous",
+      candidates: [
+        { root: "api", file: "Design.md" },
+        { root: "web", file: "Design.md" },
+      ],
+    });
+  });
+
+  it("makes a missing note in its own folder, or the one a qualified link names", () => {
+    expect(opens("Ideas")).toMatchObject({ kind: "open", root: "app" });
+    expect(opens("api:Ideas")).toEqual({ kind: "open", root: "api", file: "Ideas.md" });
+    expect(opens("./Ideas", "app", "docs/Plan.md")).toEqual({ kind: "none" });
+  });
+
+  it("reads as its own folder alone until that folder's index is here", () => {
+    expect(
+      projectLinkOpens({
+        roots: null,
+        root: "app",
+        target: "Plan",
+        from: null,
+        placement: DEFAULT_WIKI_LOCATION_SETTINGS,
+      }),
+    ).toMatchObject({ kind: "open", root: "app" });
+  });
+});
+
+describe("otherLinkRoots", () => {
+  it("hands the editor page every other folder's documents, so a bare link can reach them", () => {
+    const index = (...files: string[]) =>
+      ({
+        notes: files.map((file) => ({ file })),
+        canvases: [{ file: "Board.canvas" }],
+        bases: [],
+        maps: [],
+      }) as unknown as WikiIndexResult;
+    const roots = new Map([
+      ["app", index("docs/Plan.md")],
+      ["api", index("Release train.md")],
+      ["web", index("notes/Release train.md")],
+    ]);
+    expect(otherLinkRoots(roots, "app")).toEqual([
+      { root: "api", files: ["Release train.md", "Board.canvas"] },
+      { root: "web", files: ["notes/Release train.md", "Board.canvas"] },
+    ]);
+  });
+});
+
+describe("projectResolvedLink", () => {
+  it("names a file in another folder with its folder, and every ambiguous match", () => {
+    const index = (...files: string[]) =>
+      ({
+        notes: files.map((file) => ({ file })),
+        canvases: [],
+        bases: [],
+        maps: [],
+      }) as unknown as WikiIndexResult;
+    const roots = new Map([
+      ["app", index("Readme.md")],
+      ["api", index("Plan.md", "Design.md")],
+      ["web", index("Design.md")],
+    ]);
+    expect(projectResolvedLink(roots, "app", "Plan", null)).toEqual({
+      file: "api:Plan.md",
+      others: [],
+    });
+    expect(projectResolvedLink(roots, "app", "Design", null)).toEqual({
+      file: null,
+      others: ["api:Design.md", "web:Design.md"],
+    });
   });
 });

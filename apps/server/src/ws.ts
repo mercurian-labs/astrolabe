@@ -1,4 +1,6 @@
 import { GitCommandError, OrchestrationDispatchCommandError } from "@t3tools/contracts";
+// Astrolabe
+import { projectRootId, ProjectRootsError } from "@t3tools/contracts";
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- A synchronous digest inside the pure provider mapping.
 import * as NodeCrypto from "node:crypto";
 import * as FeatureFlags from "@t3tools/shared/FeatureFlags";
@@ -231,6 +233,8 @@ import { deletePendingAttachment, issueAttachmentUploadUrl } from "./assets/Atta
 import * as PortScanner from "./preview/PortScanner.ts";
 import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 import * as WorkspaceFolders from "./workspace/WorkspaceFolders.ts";
+// Astrolabe
+import * as ProjectRoots from "./workspace/ProjectRoots.ts";
 import * as LayoutCommandApprovalWrites from "./workspace/LayoutCommandApprovalWrites.ts";
 import * as TaskFolders from "./workspace/TaskFolders.ts";
 import * as KnownWorkspaces from "./workspace/KnownWorkspaces.ts";
@@ -1490,6 +1494,7 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
     const documents = yield* Documents.Documents;
     const codeIndex = yield* CodeIndex.CodeIndex;
     const languageServers = yield* LanguageServers.LanguageServers;
+    const projectRoots = yield* ProjectRoots.ProjectRoots;
     return ServerWsAstrolabeRpcGroup.of({
       [WS_METHODS.worktreesList]: (input) => worktrees.list(input),
       [WS_METHODS.worktreesOpen]: (input) => worktrees.open(input),
@@ -1514,42 +1519,48 @@ const layerWsAstrolabeRpc = ServerWsAstrolabeRpcGroup.toLayer(
       [WS_METHODS.serverUpsertVimMapping]: (input) => vimrc.upsertMapping(input),
       [WS_METHODS.serverRemoveVimMapping]: (input) => vimrc.removeMapping(input),
       [WS_METHODS.serverSetVimOption]: (input) => vimrc.setOption(input),
+      [WS_METHODS.projectRootsList]: (input) =>
+        projectRoots
+          .forThread({ projectId: input.projectId, worktreePath: input.worktreePath ?? null })
+          .pipe(Effect.map((roots) => ({ roots }))),
+      [WS_METHODS.projectRootsDocPaths]: (input) =>
+        wikis
+          .docPaths({
+            wikiId: projectRootId(input.projectId, input.rootKey),
+            ...(input.checkout === undefined ? {} : { checkout: input.checkout }),
+          })
+          .pipe(
+            Effect.map((paths) => ({ paths })),
+            Effect.mapError(
+              (error) => new ProjectRootsError({ operation: "docPaths", detail: error.message }),
+            ),
+          ),
       [WS_METHODS.wikiList]: (_input) => wikis.list,
       [WS_METHODS.wikiSubscribe]: (_input) => wikis.subscribe,
-      [WS_METHODS.wikiRegister]: (input) => wikis.register(input),
-      [WS_METHODS.wikiCreate]: (input) => wikis.create(input),
-      [WS_METHODS.wikiRemove]: (input) => wikis.remove(input).pipe(Effect.as({})),
       [WS_METHODS.wikiIndex]: (input) => wikis.index(input),
       [WS_METHODS.wikiReadNote]: (input) => wikis.readNote(input),
       [WS_METHODS.wikiQuery]: (input) => wikis.query(input),
       [WS_METHODS.wikiReadFiles]: (input) => wikis.readFiles(input),
       [WS_METHODS.wikiListFiles]: (input) => wikis.listFiles(input),
       [WS_METHODS.wikiCodeStatus]: (input) => wikis.codeStatus(input),
+      // A pull request merged or closed on the host's site is followed when a client next looks.
       [WS_METHODS.wikiChangeRequestsList]: (input) =>
-        wikis.changeRequestsList(input, WikiService.person),
+        wikiHosts
+          .followHost(input.wikiId)
+          .pipe(
+            Effect.ignore,
+            Effect.forkDetach,
+            Effect.andThen(wikis.changeRequestsList(input, WikiService.person)),
+          ),
       [WS_METHODS.wikiChangeRequestsGet]: (input) => wikis.changeRequestsGet(input),
-      [WS_METHODS.wikiChangeRequestsOpen]: (input) =>
-        wikis.changeRequestsOpen(input, WikiService.person),
-      [WS_METHODS.wikiAmend]: (input) => wikis.amend(input, WikiService.person),
-      [WS_METHODS.wikiTransform]: (input) => wikis.transform(input, WikiService.person),
-      [WS_METHODS.wikiKeepCanvas]: (input) =>
-        canvasKeep.keep(input, { actor: WikiService.person.actor, threadId: input.threadId }),
+      [WS_METHODS.wikiTransform]: (input) => wikis.transformCheckout(input, WikiService.person),
+      [WS_METHODS.wikiKeepCanvas]: (input) => canvasKeep.keep(input, WikiService.person),
       [WS_METHODS.wikiAutosave]: (input) => wikis.autosave(input, WikiService.person),
       [WS_METHODS.wikiDraftPromote]: (input) => wikis.draftPromote(input, WikiService.person),
       [WS_METHODS.wikiDraftMove]: (input) => wikis.draftMove(input, WikiService.person),
-      [WS_METHODS.wikiMove]: (input) => wikis.move(input, WikiService.person),
+      [WS_METHODS.wikiMove]: (input) => wikis.personMove(input),
       [WS_METHODS.wikiRevertAmendment]: (input) => wikis.revertAmendment(input, WikiService.person),
-      [WS_METHODS.wikiSaveWorktree]: (input) => wikis.saveWorktree(input, WikiService.person),
-      // A host wiki merges on its pull request's own screen, like any repository's.
-      [WS_METHODS.wikiMerge]: (input) => wikis.merge(input),
       [WS_METHODS.wikiSetChangeRequestStatus]: (input) => wikiHosts.setChangeRequestStatus(input),
-      [WS_METHODS.wikiSetMirror]: (input) => wikis.setMirror(input),
-      [WS_METHODS.wikiSetMapBackgrounds]: (input) => wikis.setMapBackgrounds(input),
-      [WS_METHODS.wikiSetProjectLink]: (input) => wikis.setProjectLink(input),
-      [WS_METHODS.wikiPushMirror]: (input) => wikis.pushMirror(input),
-      [WS_METHODS.wikiConnectHost]: (input) => wikiHosts.connect(input),
-      [WS_METHODS.wikiDisconnectHost]: (input) => wikiHosts.disconnect(input),
-      [WS_METHODS.wikiSyncHost]: (input) => wikiHosts.sync(input),
       [WS_METHODS.wikiPublishChangeRequest]: (input) => wikiHosts.publish(input),
       [WS_METHODS.wikiResolveConflicts]: (input) => wikiHosts.resolveConflicts(input),
       [WS_METHODS.documentsSubscribe]: (input) => documents.subscribe(input),

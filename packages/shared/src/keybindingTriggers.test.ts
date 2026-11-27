@@ -86,22 +86,22 @@ describe("trigger parsing", () => {
 
   it("reports malformed menu and alias rules, and leaves plain shortcuts to upstream", () => {
     expect(keybindingRuleIssue({ key: "mod+k", command: "whichKey.open" })).toBeUndefined();
-    expect(keybindingRuleIssue({ key: "menu g w", command: "section.wikis" })).toBeNull();
+    expect(keybindingRuleIssue({ key: "menu g w", command: "section.settings" })).toBeNull();
     expect(keybindingRuleIssue({ key: ":q[uit]", command: "tab.close" })).toBeNull();
     expect(keybindingRuleIssue({ key: "-mod+n", command: "-chat.new" })).toMatch(/shortcut/);
     expect(keybindingRuleIssue({ key: "mod+n", command: "-chat.new" })).toBeNull();
-    expect(keybindingRuleIssue({ key: "menu gw", command: "section.wikis" })).toBe(
+    expect(keybindingRuleIssue({ key: "menu gw", command: "section.settings" })).toBe(
       'Invalid menu keys "menu gw": write "menu" and then single keys, spaced (menu g w)',
     );
-    expect(keybindingRuleIssue({ key: "menu", command: "section.wikis" })).toMatch(
+    expect(keybindingRuleIssue({ key: "menu", command: "section.settings" })).toMatch(
       /^Invalid menu keys/,
     );
     expect(keybindingRuleIssue({ key: ":q1", command: "tab.close" })).toMatch(/^Invalid alias/);
     expect(
-      keybindingRuleIssue({ key: "menu g w", command: "section.wikis", when: "editorFocus" }),
+      keybindingRuleIssue({ key: "menu g w", command: "section.settings", when: "editorFocus" }),
     ).toBe("Menu keys and aliases take no `when`");
     // `leader …` is no kind of its own: it is left to upstream's shortcut check, which rejects it.
-    expect(keybindingRuleIssue({ key: "leader g w", command: "section.wikis" })).toBeUndefined();
+    expect(keybindingRuleIssue({ key: "leader g w", command: "section.settings" })).toBeUndefined();
   });
 });
 
@@ -126,21 +126,21 @@ describe("resolveKeybindingRules", () => {
   });
 
   it("a menu rule replaces only that command's default menu keys", () => {
-    const rules: KeybindingRule[] = [{ key: "menu x", command: "section.wikis" }];
-    expect(triggersOf(rules, "section.wikis")).toEqual([
-      { kind: "menu", command: "section.wikis", sequence: ["x"] },
+    const rules: KeybindingRule[] = [{ key: "menu x", command: "section.settings" }];
+    expect(triggersOf(rules, "section.settings")).toEqual([
+      { kind: "menu", command: "section.settings", sequence: ["x"] },
     ]);
     // Its other commands' defaults, and the default shortcut kinds, stay.
-    expect(triggersOf(rules, "wiki.findDocument")).toHaveLength(1);
+    expect(triggersOf(rules, "section.threads")).toHaveLength(1);
     expect(triggersOf([{ key: ":wq", command: "draft.write" }], "draft.write")).toEqual([
       { kind: "alias", command: "draft.write", name: "wq", shortest: 2 },
     ]);
   });
 
   it("removes a default menu sequence with a -command rule, keeping its siblings", () => {
-    const rules: KeybindingRule[] = [{ key: "menu g w", command: "-section.wikis" }];
-    expect(triggersOf(rules, "section.wikis")).toEqual([
-      { kind: "menu", command: "section.wikis", sequence: ["w", "w"] },
+    const rules: KeybindingRule[] = [{ key: "menu g s", command: "-section.settings" }];
+    expect(triggersOf(rules, "section.settings")).toEqual([
+      { kind: "menu", command: "section.settings", sequence: [","] },
     ]);
   });
 

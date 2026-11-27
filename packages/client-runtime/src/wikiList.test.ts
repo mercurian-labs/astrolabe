@@ -2,7 +2,7 @@ import type {
   EnvironmentId,
   WikiChangeRequest,
   WikiChangeRequestId,
-  WikiId,
+  ProjectRootId,
   WikiIndexResult,
   WikiSummary,
 } from "@t3tools/contracts";
@@ -15,10 +15,9 @@ const environmentId = "env-1" as EnvironmentId;
 
 const wiki = (id: string, name: string): WikiSummary =>
   ({
-    wikiId: id as WikiId,
+    wikiId: id as ProjectRootId,
     name,
     root: `/w/${id}`,
-    projectIds: [] as WikiSummary["projectIds"],
   }) as WikiSummary;
 
 const index = (notes: Array<{ name: string; editedAt?: string }>): WikiIndexResult =>
@@ -102,7 +101,7 @@ describe("wikiListEntries", () => {
   it("keeps to the filtered wiki", () => {
     const { changes, documents } = wikiListEntries(
       overviews,
-      wikiScopeKey(environmentId, "b" as WikiId),
+      wikiScopeKey(environmentId, "b" as ProjectRootId),
     );
     expect(documents.map((document) => document.name)).toEqual(["Middle"]);
     expect(changes).toEqual([]);

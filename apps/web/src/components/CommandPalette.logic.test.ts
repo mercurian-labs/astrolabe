@@ -104,13 +104,8 @@ describe("reduceCommandPaletteUiState", () => {
     state = reduceCommandPaletteUiState(state, { _tag: "OpenAddProject" });
     expect(state).toMatchObject({
       mode: "command",
-      openIntent: { kind: "add-project", target: "repository" },
+      openIntent: { kind: "add-project" },
       session: 2,
-    });
-    state = reduceCommandPaletteUiState(state, { _tag: "OpenAddProject", target: "wiki" });
-    expect(state).toMatchObject({
-      openIntent: { kind: "add-project", target: "wiki" },
-      session: 3,
     });
   });
 });
@@ -514,32 +509,6 @@ describe("buildThreadActionItems", () => {
       now,
     });
     expect(groups.map((group) => group.label)).toEqual(["Actions", "Threads"]);
-  });
-
-  it("finds wiki documents beside threads, only for a search that is not actions-only", () => {
-    const document = (name: string) => ({
-      kind: "action" as const,
-      value: `wiki-finder:${name}`,
-      searchTerms: [name],
-      title: name,
-      icon: null,
-      run: async () => undefined,
-    });
-    const search = (query: string) =>
-      filterCommandPaletteGroups({
-        activeGroups: [],
-        query,
-        isInSubmenu: false,
-        projectSearchItems: [],
-        threadSearchItems: [],
-        documentSearchItems: [document("Release notes"), document("Roadmap")],
-      });
-
-    expect(
-      search("road").map((group) => [group.label, group.items.map((item) => item.value)]),
-    ).toEqual([["Documents", ["wiki-finder:Roadmap"]]]);
-    expect(search("")).toEqual([]);
-    expect(search(">road")).toEqual([]);
   });
 
   it("ranks an order-independent setting title match above a split context match", () => {

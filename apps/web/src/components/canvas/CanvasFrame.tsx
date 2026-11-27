@@ -1,16 +1,26 @@
 /* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
-import { canvasBounds, type CanvasCodeReference } from "@mercurian/wiki/canvas";
+import { canvasBounds, type CanvasCodeReference, type CanvasData } from "@mercurian/wiki/canvas";
 import type { CanvasView } from "@t3tools/client-runtime/canvasViews";
 import type { ScopedThreadRef, ThreadId, TurnItemId } from "@t3tools/contracts";
 import { SquareArrowOutUpRightIcon } from "lucide-react";
 import { lazy, Suspense } from "react";
 
+import { useGT } from "gt-react";
+
 import { readLocalApi } from "~/localApi";
+import { workspace } from "~/panes/workspace";
 import { useRightPanelStore } from "~/rightPanelStore";
+import { useThreadShell } from "~/state/entities";
+import { projectRootsEnvironment } from "~/state/projectRoots";
+import { useEnvironmentQuery } from "~/state/query";
+import { repositoryFileReveal } from "../repositories/repositoryFileReveal";
+import { repositoryTabKey } from "../repositories/repositoryTabs";
+import { toastManager } from "../ui/toast";
 
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useCanvasMenuItems } from "./canvasMenuItems";
+import { codeCardTarget } from "./codeCardTarget";
 import { useKeepCanvas } from "./KeepCanvas";
 import { showThreadCanvas } from "./threadCanvasStore";
 import { useThreadCanvasDocument } from "./useThreadCanvasDocument";
@@ -28,16 +38,59 @@ const openUrl = (href: string) => {
   else window.open(href, "_blank", "noopener,noreferrer");
 };
 
-/** What a canvas's cards can reach from a thread; a guest page has no thread to open files in. */
-export const canvasHost = (threadRef: ScopedThreadRef | null) => ({
-  onOpenUrl: openUrl,
-  ...(threadRef === null
-    ? {}
-    : {
-        onOpenCode: (code: CanvasCodeReference) =>
-          useRightPanelStore.getState().openFile(threadRef, code.path, code.lines?.[0]),
-      }),
-});
+const namesFolder = (data: CanvasData) =>
+  data.nodes.some((node) => node.type === "link" && node.astrolabe?.code?.root !== undefined);
+
+/**
+ * What a canvas's cards can reach from a thread; a guest page has no thread to open files in. A
+ * card naming another of the project's folders opens that folder's file, as the thread has it.
+ */
+export function useCanvasHost(threadRef: ScopedThreadRef | null, data: CanvasData) {
+  const gt = useGT();
+  const shell = useThreadShell(threadRef);
+  const listed = useEnvironmentQuery(
+    threadRef === null || shell === null || !namesFolder(data)
+      ? null
+      : projectRootsEnvironment.list({
+          environmentId: threadRef.environmentId,
+          input: { projectId: shell.projectId, worktreePath: shell.worktreePath },
+        }),
+  );
+  const roots = listed.data?.roots ?? null;
+  if (threadRef === null) return { onOpenUrl: openUrl };
+  const onOpenCode = (code: CanvasCodeReference) => {
+    const line = code.lines?.[0];
+    // The thread's own folder needs nothing read: its cards open in the thread's file panel.
+    const target =
+      code.root === undefined
+        ? ({ kind: "panel", path: code.path } as const)
+        : shell === null
+          ? null
+          : codeCardTarget({
+              environmentId: threadRef.environmentId,
+              projectId: shell.projectId,
+              roots,
+              code,
+            });
+    if (target === null) {
+      toastManager.add({
+        type: "warning",
+        title: gt("Couldn't find {place} in this project", {
+          place: `${code.root ?? ""}:${code.path}`,
+        }),
+      });
+      return;
+    }
+    if (target.kind === "panel") {
+      useRightPanelStore.getState().openFile(threadRef, target.path, line);
+      return;
+    }
+    const key = repositoryTabKey(target.tab);
+    workspace.show(key);
+    if (line !== undefined) repositoryFileReveal.request(key, line);
+  };
+  return { onOpenUrl: openUrl, onOpenCode };
+}
 
 /**
  * A canvas in a thread, live: the whole board, sized by its own shape so the row never shifts when
@@ -56,6 +109,7 @@ export function CanvasFrame({
   readonly source: { readonly threadId: ThreadId; readonly itemId: TurnItemId };
 }) {
   const { width, height } = canvasBounds(view.data);
+  const host = useCanvasHost(threadRef, view.data);
   const canvas = useThreadCanvasDocument(
     view,
     threadRef === null ? null : { environmentId: threadRef.environmentId, ...source },
@@ -102,7 +156,7 @@ export function CanvasFrame({
             data={view.data}
             mode="free"
             wheelOnceFocused
-            host={canvasHost(threadRef)}
+            host={host}
             label={view.title}
             menuItems={menuItems}
             {...(canvas === null || threadRef === null

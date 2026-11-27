@@ -44,6 +44,7 @@ import {
   setAllDirectoriesExpanded,
   writeExpandedDirectories,
 } from "./fileTreeExpansion";
+import { keptTreePaths } from "./fileTreeFilter";
 import { buildFileTreePathUpdates, shouldRebuildFileTree } from "./fileTreePathReconciliation";
 import { loadFileAncestors } from "./loadFileAncestors";
 import { useDirectoryEntries } from "./useDirectoryEntries";
@@ -70,6 +71,11 @@ interface FileBrowserPanelProps {
   fileMenuActions?: ReadonlyArray<FileMenuAction>;
   /** Astrolabe: leaves out anything starting with a dot, as a wiki's document tree does. */
   hideDotFiles?: boolean;
+  /**
+   * Astrolabe: shows only these files (the Projects tree's Docs), the folders holding them and the
+   * selected file; null while they are being read.
+   */
+  onlyPaths?: ReadonlyArray<string> | null;
   answersPanelFind?: boolean;
 }
 
@@ -88,7 +94,9 @@ const SIDEBAR_TREE_STYLE: CSSProperties = {
 export interface FileMenuAction {
   readonly id: string;
   readonly label: string;
-  readonly run: (relativePath: string) => void;
+  readonly run: (relativePath: string, isDirectory: boolean) => void;
+  /** The rows it is offered on; files alone when absent. */
+  readonly appliesTo?: (relativePath: string, isDirectory: boolean) => boolean;
 }
 
 const NO_FILE_MENU_ACTIONS: ReadonlyArray<FileMenuAction> = [];
@@ -206,6 +214,7 @@ export default function FileBrowserPanel({
   sidebar,
   fileMenuActions = NO_FILE_MENU_ACTIONS,
   hideDotFiles = false,
+  onlyPaths,
   answersPanelFind = false,
 }: FileBrowserPanelProps) {
   const panelPath = (relativePath: string) =>
@@ -219,14 +228,17 @@ export default function FileBrowserPanel({
     entries: directoryEntries,
     load,
     refresh,
-    ready,
+    ready: listed,
     error,
     isPending,
     loadingDirectories,
   } = useDirectoryEntries(environmentId, cwd);
-  const listedEntries = hideDotFiles
-    ? directoryEntries.filter((entry) => !isHidden(entry.path))
-    : directoryEntries;
+  const ready = listed && onlyPaths !== null;
+  const kept = onlyPaths == null ? null : keptTreePaths(onlyPaths, selectedPath);
+  const keeps = (entry: ProjectEntry) =>
+    (!hideDotFiles || !isHidden(entry.path)) && (kept === null || kept.has(entry.path));
+  const listedEntries =
+    hideDotFiles || kept !== null ? directoryEntries.filter(keeps) : directoryEntries;
   const [query, setQuery] = useState("");
   const [expandAll, setExpandAll] = useState(false);
   const pathSearch = useProjectPathSearch(
@@ -236,7 +248,12 @@ export default function FileBrowserPanel({
     messages,
   );
   const { entries, entryKinds, treePaths, directoryPaths, expandableDirectoryPaths } =
-    buildTreeEntries(listedEntries, pathSearch.entries, pathSearch.isPending, query);
+    buildTreeEntries(
+      listedEntries,
+      kept === null ? pathSearch.entries : pathSearch.entries.filter(keeps),
+      pathSearch.isPending,
+      query,
+    );
   const entryKindsRef = useRef(entryKinds);
   const previousTreePathsRef = useRef<readonly string[] | null>(null);
   const syncingSelectionRef = useRef(false);
@@ -262,7 +279,10 @@ export default function FileBrowserPanel({
         return;
       }
       const relativePath = item.path.replace(/\/$/, "");
-      const extraActions = item.path.endsWith("/") ? [] : fileMenuActions;
+      const isDirectory = item.path.endsWith("/");
+      const extraActions = fileMenuActions.filter((action) =>
+        action.appliesTo === undefined ? !isDirectory : action.appliesTo(relativePath, isDirectory),
+      );
       const mention = serializeComposerFileLink(panelPath(relativePath));
       const pointer = contextMenuPointerRef.current;
       const pointerIsFresh = pointer !== null && performance.now() - pointer.at < 1000;
@@ -293,7 +313,7 @@ export default function FileBrowserPanel({
         if (clicked === null) return;
         const extra = extraActions.find((action) => action.id === clicked);
         if (extra !== undefined) {
-          extra.run(relativePath);
+          extra.run(relativePath, isDirectory);
           return;
         }
         // Open-with submenu ids are absent from the top-level item list.
@@ -707,6 +727,11 @@ export default function FileBrowserPanel({
           <T>Loading files…</T>
         </div>
       )}
+      {kept !== null && ready && !isPending && entries.length === 0 && !error ? (
+        <div role="status" className="px-3 py-4 text-xs text-muted-foreground">
+          <T>No docs here.</T>
+        </div>
+      ) : null}
       {hasNoSearchMatches ? (
         ready && !isPending && !pathSearch.isPending && !error && !pathSearch.error ? (
           <div role="status" className="px-3 py-4 text-xs text-muted-foreground">

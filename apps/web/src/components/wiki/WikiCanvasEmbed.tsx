@@ -1,7 +1,7 @@
 /* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { parseCanvas } from "@mercurian/wiki/canvas";
 import { CanvasMinimap, canvasFigureView } from "@mercurian/wiki-editor/canvas-minimap";
-import type { EnvironmentId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
+import type { EnvironmentId, WikiChangeRequestId, ProjectRootId } from "@t3tools/contracts";
 
 import { useEnvironmentQuery } from "~/state/query";
 import { wikiEnvironment } from "~/state/wiki";
@@ -22,13 +22,16 @@ export default function WikiCanvasEmbed({
   environmentId,
   wikiId,
   changeRequestId,
+  checkout,
   target,
   from,
   onOpen,
 }: {
   readonly environmentId: EnvironmentId;
-  readonly wikiId: WikiId;
+  readonly wikiId: ProjectRootId;
   readonly changeRequestId: WikiChangeRequestId | undefined;
+  /** Astrolabe: the folder the note is read in on disk, where the canvas is read too. */
+  readonly checkout?: string | undefined;
   /** The canvas as the embed writes it, with its `#Group`. */
   readonly target: string;
   /** The note the embed is in. */
@@ -37,7 +40,12 @@ export default function WikiCanvasEmbed({
   readonly onOpen: (link: string) => void;
 }) {
   const { file, frame } = canvasEmbedTarget(target);
-  const scope = changeRequestId === undefined ? {} : { changeRequestId };
+  const scope =
+    checkout !== undefined
+      ? { checkout }
+      : changeRequestId === undefined
+        ? {}
+        : { changeRequestId };
   const { data } = useEnvironmentQuery(
     wikiEnvironment.files({ environmentId, input: { wikiId, ...scope, from, paths: [file] } }),
   );

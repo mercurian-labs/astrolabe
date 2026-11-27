@@ -834,7 +834,7 @@ describe("WorkspaceView under the chat routes", () => {
     const routeTree = root.addChildren([
       layout.addChildren([
         createRoute({ getParentRoute: () => layout, path: "/", component: blank }),
-        createRoute({ getParentRoute: () => layout, path: "wikis", component: blank }),
+        createRoute({ getParentRoute: () => layout, path: "repositories", component: blank }),
         createRoute({
           getParentRoute: () => layout,
           path: "$environmentId/$threadId",
@@ -871,7 +871,7 @@ describe("WorkspaceView under the chat routes", () => {
         to: "/$environmentId/$threadId",
         params: { environmentId: env, threadId: "A" },
       });
-    for (const go of [toThread, () => router.navigate({ to: "/wikis" }), toThread]) {
+    for (const go of [toThread, () => router.navigate({ to: "/repositories" }), toThread]) {
       await act(go);
       expect(panes().filter((pane, index) => pane !== panesBefore[index])).toEqual([]);
       expect(chatNode("A")).toBe(nodeA);

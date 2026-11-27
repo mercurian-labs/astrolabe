@@ -1,5 +1,5 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { DEFAULT_WIKI_LOCATION_SETTINGS, type EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { type EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
@@ -43,17 +43,12 @@ const context = (overrides: Partial<ExLineContext> = {}): ExLineContext => {
         openSearch: () => {},
         openFilePicker: () => {},
         openCommandLine: () => {},
-        findDocument: () => {},
       }),
     leaderLabel: "Space",
     actionItems: [],
     setLine: () => {},
     threadItems: [],
     chatTabThreadIds: [],
-    overviews: [],
-    showHidden: false,
-    placement: DEFAULT_WIKI_LOCATION_SETTINGS,
-    showWikis: () => {},
     ...overrides,
   };
 };

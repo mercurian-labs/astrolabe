@@ -6,18 +6,14 @@ import {
   describeIndexError,
   describeWikiFailure,
   hasUnpublishedWork,
-  hostedPullRequestKeys,
   wikiMergeMethod,
   wikiTerms,
-  isHostedPullRequest,
   isTurnRunning,
   latestAmendmentFor,
   mapTilesFor,
   mergeBlockedReason,
   mergeConflictAdvice,
   parseWikiSearch,
-  summarizeHost,
-  summarizeMirror,
   wikiPullRequestHost,
 } from "./wiki.logic";
 
@@ -103,35 +99,6 @@ describe("describeWikiFailure", () => {
   });
 });
 
-describe("summarizeHost", () => {
-  const ago = () => "now";
-  const host = {
-    projectId: "project-1" as never,
-    remote: "origin",
-    lastSyncedAt: "2026-10-02T00:00:00.000Z",
-    lastSyncedCommit: "abc",
-    relation: "up-to-date" as const,
-    lastError: null,
-  };
-  it("puts what needs a person first", () => {
-    expect(summarizeHost(null, ago).tone).toBe("none");
-    expect(summarizeHost(undefined, ago).tone).toBe("none");
-    expect(summarizeHost({ ...host, lastSyncedAt: null, relation: null }, ago).tone).toBe(
-      "pending",
-    );
-    expect(summarizeHost(host, ago)).toEqual({ tone: "ok", label: "Synced now" });
-    expect(summarizeHost({ ...host, relation: "ahead" }, ago).tone).toBe("warning");
-    expect(summarizeHost({ ...host, relation: "behind", lastError: "edits" }, ago)).toEqual({
-      tone: "warning",
-      label: "Main is behind the host",
-    });
-    expect(summarizeHost({ ...host, relation: "diverged" }, ago).tone).toBe("error");
-    expect(summarizeHost({ ...host, lastError: "boom", relation: "ahead" }, ago).label).toBe(
-      "Sync failed",
-    );
-  });
-});
-
 describe("wikiTerms", () => {
   it("says what the wiki's host says, and pull request with no host", () => {
     expect(wikiTerms({ host: { kind: SourceControlProviderKind.make("gitlab") } }).Plural).toBe(
@@ -168,65 +135,9 @@ describe("host wiki change requests", () => {
     expect(wikiMergeMethod([])).toBeUndefined();
   });
 
-  it("matches a row by its project or its address, however the host spells either", () => {
-    const keys = hostedPullRequestKeys([
-      {
-        projectId: "project-1",
-        changeRequests: [
-          {
-            pullRequest: {
-              repository: "Acme/Handbook",
-              number: 4,
-              url: "https://dev.azure.com/Acme/Handbook/pull/4",
-            },
-          },
-          { pullRequest: null },
-          {},
-        ],
-      },
-    ]);
-    const row = (projectId: string, host: string, number: number) => ({
-      projectId,
-      host,
-      repository: "acme/handbook",
-      number,
-    });
-    // The same project, on a host spelled differently from the pull request's link.
-    expect(isHostedPullRequest(keys, row("project-1", "acme.visualstudio.com", 4))).toBe(true);
-    // Another checkout of the same repository.
-    expect(isHostedPullRequest(keys, row("project-2", "dev.azure.com", 4))).toBe(true);
-    expect(isHostedPullRequest(keys, row("project-1", "dev.azure.com", 5))).toBe(false);
-    expect(isHostedPullRequest(keys, row("project-2", "gitlab.example.com", 4))).toBe(false);
-  });
-
   it("reads the host from a pull request's link", () => {
     expect(wikiPullRequestHost("https://GitHub.com/acme/handbook/pull/4")).toBe("github.com");
     expect(wikiPullRequestHost("not a link")).toBeNull();
-  });
-});
-
-describe("summarizeMirror", () => {
-  const ago = () => "now";
-  const mirror = {
-    url: "git@example.com:wiki.git",
-    lastPushedAt: "2026-10-02T00:00:00.000Z",
-    lastPushedCommit: "abc",
-    lastError: null,
-    overwroteRemoteAt: null,
-  };
-  it("reports the mirror's state", () => {
-    expect(summarizeMirror(null, ago).tone).toBe("none");
-    expect(summarizeMirror(mirror, ago)).toEqual({ tone: "ok", label: "Mirrored now" });
-    expect(summarizeMirror({ ...mirror, lastError: "denied" }, ago).tone).toBe("error");
-    expect(summarizeMirror({ ...mirror, lastPushedAt: null }, ago).tone).toBe("pending");
-  });
-  it("warns while the latest push is the one that overwrote the mirror", () => {
-    expect(summarizeMirror({ ...mirror, overwroteRemoteAt: mirror.lastPushedAt }, ago).tone).toBe(
-      "warning",
-    );
-    expect(
-      summarizeMirror({ ...mirror, overwroteRemoteAt: "2026-10-01T00:00:00.000Z" }, ago).tone,
-    ).toBe("ok");
   });
 });
 

@@ -79,6 +79,14 @@ describe("summarizeT3ToolCalls", () => {
     );
   });
 
+  it("calls a project's docs project docs, read or changed", () => {
+    const read = completed({ name: "Plan" }, {});
+    expect(summarizeT3ToolCalls("wiki-read", [read, read]).label).toBe("Read project docs 2 times");
+    expect(
+      summarizeT3ToolCalls("wiki-amend", [completed({ transform: { kind: "rename" } }, {})]).label,
+    ).toBe("Changed project docs 1 time");
+  });
+
   it("counts the checks a CI rerun restarted, and the ones the host refused", () => {
     const rerun = (...outcomes: boolean[]) =>
       completed(

@@ -33,7 +33,7 @@ export interface TurnCanvasEntry {
 
 /**
  * Astrolabe: the canvases a turn drew, at its foot beside its changed files, whether or not the
- * reply embedded them. Each opens live in place or in a linked tab, and can be kept in a wiki. One
+ * reply embedded them. Each opens live in place or in a linked tab, and can be kept in the project. One
  * the reply never showed draws as a picture here, so it is never lost.
  */
 export function TurnCanvases({
@@ -121,14 +121,14 @@ function TurnCanvasRow({
                   type="button"
                   size="icon-xs"
                   variant="ghost-muted"
-                  aria-label={`Keep ${view.title} in a wiki`}
+                  aria-label={`Keep ${view.title} in the project`}
                   onClick={keep.item.run}
                 />
               }
             >
               <BookmarkPlusIcon className="size-3" />
             </TooltipTrigger>
-            <TooltipPopup side="top">Keep in a wiki</TooltipPopup>
+            <TooltipPopup side="top">Keep in the project</TooltipPopup>
           </Tooltip>
         )}
       </div>

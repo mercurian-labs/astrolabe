@@ -15,6 +15,18 @@ export const WorkspaceFolder = Schema.Struct({
 });
 export type WorkspaceFolder = typeof WorkspaceFolder.Type;
 
+/** How a provider session's file tools reach a folder outside its working directory. */
+export const FolderReach = Schema.Literals(["edit", "shell", "none"]);
+export type FolderReach = typeof FolderReach.Type;
+
+/**
+ * Probed per provider: Cursor's sandbox refuses its edit tool in extra folders, but lets a shell
+ * command write there; Antigravity's file tools refuse any path outside the working folder.
+ * `sandboxed` is whether the session's filesystem sandbox is on, as Cursor decides it.
+ */
+export const folderReach = (driver: string, sandboxed: boolean): FolderReach =>
+  driver === "antigravity" ? "none" : driver === "cursor" && sandboxed ? "shell" : "edit";
+
 export const WorkspaceListFoldersInput = Schema.Struct({
   projectId: ProjectId,
 });

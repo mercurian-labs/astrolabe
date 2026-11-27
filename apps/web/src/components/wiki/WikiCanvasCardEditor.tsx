@@ -1,6 +1,6 @@
 import type { CanvasCardEditor } from "@mercurian/wiki-editor/canvas-board";
 import { focusCardEditor, useCanvasCardSession } from "@mercurian/wiki-editor/canvas-card-session";
-import type { EnvironmentId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
+import type { EnvironmentId, WikiChangeRequestId, ProjectRootId } from "@t3tools/contracts";
 import { useEffect, useRef } from "react";
 
 import { useEnvironmentQuery } from "~/state/query";
@@ -21,14 +21,17 @@ export default function WikiCanvasCardEditor({
   wikiId,
   changeRequestId,
   commit,
+  checkout,
   boardFile,
   onOpenNote,
 }: {
   readonly editor: CanvasCardEditor;
   readonly environmentId: EnvironmentId;
-  readonly wikiId: WikiId;
+  readonly wikiId: ProjectRootId;
   readonly changeRequestId: WikiChangeRequestId | undefined;
   readonly commit: string;
+  /** Astrolabe: the folder the board is read in on disk. */
+  readonly checkout?: string | undefined;
   readonly boardFile: string;
   readonly onOpenNote: (name: string) => void;
 }) {
@@ -37,6 +40,7 @@ export default function WikiCanvasCardEditor({
     wikiId,
     commit,
     from: editor.file ?? boardFile,
+    checkout,
   });
   const session = useCanvasCardSession(editor);
   const frame = useRef<HTMLDivElement>(null);
@@ -45,7 +49,14 @@ export default function WikiCanvasCardEditor({
   const index = useEnvironmentQuery(
     wikiEnvironment.index({
       environmentId,
-      input: { wikiId, ...(changeRequestId === undefined ? {} : { changeRequestId }) },
+      input: {
+        wikiId,
+        ...(checkout !== undefined
+          ? { checkout }
+          : changeRequestId === undefined
+            ? {}
+            : { changeRequestId }),
+      },
     }),
   );
   const { showHidden } = useWikiTreeView();
@@ -64,6 +75,7 @@ export default function WikiCanvasCardEditor({
             environmentId={environmentId}
             wikiId={wikiId}
             changeRequestId={changeRequestId}
+            checkout={checkout}
             from={{ source, note: "" }}
             onOpenNote={onOpenNote}
           />

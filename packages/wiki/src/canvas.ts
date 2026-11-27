@@ -75,6 +75,8 @@ export interface CanvasTextNode extends CanvasNodeBase {
 
 /** Code a link card cites. Kept beside `url` so the card still works away from the product. */
 export interface CanvasCodeReference {
+  /** On a thread's board, the project folder `path` is in, by key; absent for the project's own. */
+  readonly root?: string;
   readonly path: string;
   readonly lines?: readonly [number, number];
   readonly repository?: string;
@@ -379,9 +381,11 @@ function codeReference(astrolabe: unknown): CanvasCodeReference | undefined {
   const value = isRecord(astrolabe.code) ? astrolabe.code : astrolabe;
   if (typeof value.path !== "string") return undefined;
   const { lines } = value;
+  const root = text(value.root);
   const repository = text(value.repository);
   const commit = text(value.commit);
   return {
+    ...(root === undefined ? {} : { root }),
     path: value.path,
     ...(Array.isArray(lines) && typeof lines[0] === "number" && typeof lines[1] === "number"
       ? { lines: [lines[0], lines[1]] as const }

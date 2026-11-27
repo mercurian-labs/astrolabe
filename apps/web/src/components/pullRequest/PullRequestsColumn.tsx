@@ -3,9 +3,7 @@ import { useGT } from "gt-react";
 import { useEffect, useRef, type ReactNode, type RefObject, type ComponentProps } from "react";
 import { Button } from "../ui/button";
 import { RefreshIcon } from "../ui/refresh-icon";
-import { useChangeRequestKind } from "../changeRequests/changeRequestKind";
 import { ChangeRequestSourceFilter } from "../changeRequests/ChangeRequestSourceFilter";
-import { WikiChangesGroup } from "../changeRequests/WikiChangesGroup";
 import { ChangeGroupsSection } from "../changeRequests/groups/ChangeGroupsSection";
 
 /**
@@ -13,13 +11,11 @@ import { ChangeGroupsSection } from "../changeRequests/groups/ChangeGroupsSectio
  * search, sort and filters, then the rows, scrolling on their own.
  */
 /**
- * Astrolabe: the Change Requests sidebar's controls and list. The project filter narrows to the
- * repositories' pull requests (all, or one's) or to the wikis' change requests (all, or one's;
- * see `ChangeRequestSourceFilter`); with the wikis picked, the pull requests' sort and filters
- * step aside. One host, from Filters, lists only its pull requests.
+ * Astrolabe: the Changes sidebar's controls and list: the change groups, then the pull requests
+ * of every project or the one the project filter picks (`ChangeRequestSourceFilter`). One host,
+ * from Filters, lists only its pull requests (`listBody`).
  */
 export function PullRequestsSidebarList({
-  host,
   searchQuery,
   projects,
   projectId,
@@ -33,7 +29,6 @@ export function PullRequestsSidebarList({
   searchFocusPending,
   onSearchFocused,
 }: {
-  host: string | undefined;
   searchQuery: string;
   projects: ComponentProps<typeof ChangeRequestSourceFilter>["projects"];
   projectId: ProjectId | undefined;
@@ -48,8 +43,6 @@ export function PullRequestsSidebarList({
   searchFocusPending: boolean;
   onSearchFocused: () => void;
 }) {
-  const kind = useChangeRequestKind();
-  const wikisOnly = kind === "wikis";
   const controlsRef = useRef<HTMLDivElement | null>(null);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- focuses the search input DOM node when a shortcut asks for it
   useEffect(() => {
@@ -71,8 +64,8 @@ export function PullRequestsSidebarList({
             projectEnvironmentId={projectEnvironmentId}
             onProject={onProject}
           />
-          {wikisOnly ? null : sortMenu}
-          {wikisOnly ? null : filtersMenu}
+          {sortMenu}
+          {filtersMenu}
         </div>
       </div>
       <div ref={scrollRef} className="@container/pr-list min-h-0 flex-1 overflow-y-auto px-2 pb-4">
@@ -81,10 +74,7 @@ export function PullRequestsSidebarList({
           projectId={projectId}
           projectEnvironmentId={projectEnvironmentId}
         />
-        {wikisOnly || (kind === "all" && host === undefined && projectId === undefined) ? (
-          <WikiChangesGroup query={searchQuery} alone={wikisOnly} />
-        ) : null}
-        {wikisOnly ? null : listBody}
+        {listBody}
       </div>
     </>
   );

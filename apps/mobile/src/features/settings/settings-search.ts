@@ -126,7 +126,7 @@ const SETTINGS_SEARCH_TERMS = {
     "pull requests",
     "change groups",
     "grouping",
-    "wiki changes",
+    "docs",
     "documentation",
   ],
   SettingsFollowUp: [

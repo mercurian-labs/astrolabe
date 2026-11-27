@@ -121,8 +121,8 @@ Astrolabe's own feature modules rarely conflict. These upstream files carry its 
 - `apps/web/src/components/KeybindingsUpdateToast.tsx`: the vimrc toasts.
 - `apps/mobile/src/features/layout/workspace/workspace-tabs-state.ts`, `navigation-tab-order.ts`,
   `WorkspaceTabsContext.tsx` and the native `T3SidebarTabBarView.swift`: upstream's configurable
-  tab model, with Astrolabe's Wikis, Projects and Changes tabs added to it. Changes stays pinned;
-  Issues is an overflow tab like Wikis and Projects.
+  tab model, with Astrolabe's Projects and Changes tabs added to it. Changes stays pinned;
+  Issues is an overflow tab like Projects.
 - `apps/web/src/components/sidebar/AppIconRail.tsx` and `mainAppLocation.ts`: the icon rail holds
   the sections (Issues right after Changes). Upstream links a section from the sidebar footer
   (`SidebarChrome.tsx`); drop that link and add the section to the rail and the which-key Go-to
@@ -131,13 +131,11 @@ Astrolabe's own feature modules rarely conflict. These upstream files carry its 
   one past the larger of the two.
 - `apps/server/src/orchestration-v2/Orchestrator.ts`: Astrolabe's canvas and edited-file deciders
   live in `AstrolabeDeciders.ts`; only the wiring stays in the orchestrator.
-- `apps/server/src/mcp/toolkits/{canvas,changeGroups,code,wiki}/tools.ts`: tools whose handlers act
+- `apps/server/src/mcp/toolkits/{canvas,changeGroups,code,projectDocs}/tools.ts`: tools whose handlers act
   as the calling thread (`readsAsCaller`, `actsAsCaller`) must carry
   `McpSchema.EnabledWhen: hiddenFromOutsideClients`, or `McpToolAccess.toLayer` dies at startup.
 - `apps/server/src/mcp/toolkits/toolSearch/tools.ts`: the description names Astrolabe's tool
   prefixes so a search for one stays under the result cap.
-- `apps/server/src/mcp/toolkits/pullRequests/handlers.ts`: `pull_request_merge` and
-  `pull_request_update` refuse a host wiki's change request, which merges through the wiki.
 - `packages/client-runtime/src/relay/mercurianAccountSource.ts`: the cloud account service waits
   for a `client` with an id before it trusts a sign-out (Clerk's offline guard), so the Mercurian
   source sends one whenever its session is loaded.
@@ -152,7 +150,7 @@ Astrolabe's own feature modules rarely conflict. These upstream files carry its 
   the sanitizer in `markdownHast.ts` allows the `t3-canvas:` scheme. Mobile still uses
   `remarkCanvasLinks`.
 - Workflows: the icon rail lists them after Issues while some server offers them, `/workflows` is
-  a section (`isWorkflowsPath`), and the Go-to menu takes `g f` (`g w` is Wikis). Mobile keeps
+  a section (`isWorkflowsPath`), and the Go-to menu takes `g f`. Mobile keeps
   upstream's unlisted `workflows` tab.
 - Side threads: upstream's thread surfaces live in the shared panes as linked tabs. `openSideThread`
   shows a thread's own chat tab when one is open rather than hosting it twice, and the tab menu has

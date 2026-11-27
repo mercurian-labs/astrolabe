@@ -74,7 +74,6 @@ export function useThreadsFilter<Group extends ProjectGroup>({
       label: group.displayName,
       repository: group,
     })),
-    wikis: [],
   });
   const statusItems: ReadonlyArray<ThreadsFilterItem<Group>> = THREAD_STATUS_FILTERS.map(
     (status) => ({

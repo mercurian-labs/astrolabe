@@ -78,7 +78,7 @@ its pull request and **Draft** for an unsent message. Hover a row for its full c
 
 ## Tabs and splits
 
-Agents, Wikis, Projects and Changes share one set of tabs on this device: chats, files,
+Agents, Projects and Changes share one set of tabs on this device: chats, files,
 changes, documents, pull requests and a thread's terminals and browsers can stand side by side,
 and every tab splits. Switching sections from the icon rail, the keyboard menu or the Command
 Palette changes what the sidebar lists, not the tabs or which one has focus. In Agents, the thread
@@ -356,10 +356,9 @@ The linked pull request participates in automatic settlement.
 ## Find and reference work
 
 The filter at the top of the thread list picks **All projects** or one or several projects.
-**Changes** and **Projects** use the same list, Changes with your wikis after the projects, and
-each section remembers its own choice. A thread you open that the filter hides still shows in the
-list, marked **hidden**, until you move on; the filter stays as you set it. Wikis and Projects do
-the same for the document or file in front.
+**Changes** and **Projects** use the same list, and each section remembers its own choice. A thread you open that the filter hides still shows in the
+list, marked **hidden**, until you move on; the filter stays as you set it. Projects does
+the same for the file in front.
 
 On web and desktop, open the command palette with `Cmd/Ctrl+K` twice to search threads
 across connected environments by title, branch, pull request, or project.

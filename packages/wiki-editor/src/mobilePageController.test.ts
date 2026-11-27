@@ -125,6 +125,36 @@ describe("the wiki editor page", () => {
     expect(editor.getState().linkTypes).toEqual(["blocks"]);
   });
 
+  it("reaches a project's other folders, never choosing among several for a bare link", () => {
+    const { page: editor } = page();
+    const roots = [
+      { root: "api", files: ["Release train.md", "Design.md"] },
+      { root: "web", files: ["notes/Release train.md"] },
+    ];
+    const command = parseWikiEditorCommand({
+      type: "linkTypes",
+      types: [],
+      files: ["docs/Plan.md", "Design.md"],
+      from: "docs/Plan.md",
+      root: "app",
+      roots: [...roots, { root: "bad" }],
+    });
+    expect(command).toMatchObject({ root: "app", roots });
+    editor.handle(command!);
+    const resolve = editor.getState().linkScope!.resolve!;
+    expect(resolve("Release train")).toEqual({
+      file: null,
+      others: [],
+      ambiguous: ["api:Release train.md", "web:notes/Release train.md"],
+    });
+    expect(resolve("Design")).toEqual({ file: "Design.md", others: [], ambiguous: [] });
+    expect(resolve("web:Release train")).toMatchObject({ file: "web:notes/Release train.md" });
+    expect(resolve("Unwritten")).toEqual({ file: null, others: [], ambiguous: [] });
+
+    editor.handle({ type: "linkTypes", types: [], files: ["Design.md"] });
+    expect(editor.getState().linkScope!.resolve).toBeUndefined();
+  });
+
   it("shows a base file alone once told to, and drops a malformed show", () => {
     const { page: editor } = page();
     expect(editor.getState().base).toBeNull();

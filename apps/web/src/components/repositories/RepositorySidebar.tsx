@@ -1,6 +1,10 @@
 /* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
-import type { ProjectWorktree, ProjectWorktreeListResult } from "@t3tools/contracts";
+import {
+  projectRootKeys,
+  type ProjectWorktree,
+  type ProjectWorktreeListResult,
+} from "@t3tools/contracts";
 import { ArchiveXIcon, ArrowRightIcon, FileDiffIcon, FileIcon, FolderPlusIcon } from "lucide-react";
 import {
   Fragment,
@@ -21,6 +25,7 @@ import { useTheme } from "~/hooks/useTheme";
 import { useStableCallback } from "~/hooks/useStableCallback";
 import { cn, isMacPlatform } from "~/lib/utils";
 import { endDrag, startDrag } from "~/panes/drag";
+import { projectRootsEnvironment } from "~/state/projectRoots";
 import { useEnvironmentQuery } from "~/state/query";
 import { useProjectPathSearch } from "~/state/queries";
 import { reviewEnvironment } from "~/state/review";
@@ -80,12 +85,20 @@ import {
   parseRepositoryTabKey,
   repositoryTabKey,
   type RepositoryCheckout,
+  type RepositoryTab,
   type ProjectFileTab,
 } from "./repositoryTabs";
 import { useRepositories } from "./useRepositories";
+import { ProjectRootSections } from "./ProjectRootSections";
 
 const repositoryKey = (project: Pick<EnvironmentProject, "environmentId" | "id">) =>
   `${project.environmentId}:${project.id}`;
+
+/** The project folder's root, as Docs reads it: its worktrees are checkouts of this root. */
+const workspaceRootOf = (project: EnvironmentProject) => ({
+  projectId: project.id,
+  rootKey: projectRootKeys(project.workspaceRoot, [])[0]!,
+});
 
 /**
  * The Projects sidebar: title row (search, open a branch, the filter, Add), then the repositories the
@@ -237,7 +250,22 @@ export function RepositorySidebar() {
     50,
   );
   const searching = searchQuery.trim().length > 0;
-  const results = searched && searching ? search.entries : [];
+  // Docs finds documents too; the search's own limit still applies before it.
+  const searchedDocs = useEnvironmentQuery(
+    filter.docs && searching && searched && searchedIn
+      ? projectRootsEnvironment.docPaths({
+          environmentId: searched.environmentId,
+          input: { ...workspaceRootOf(searched), checkout: searchedIn.path },
+        })
+      : null,
+  ).data;
+  const docPaths = filter.docs && searchedDocs ? new Set(searchedDocs.paths) : null;
+  const results =
+    searched && searching
+      ? docPaths === null
+        ? search.entries
+        : search.entries.filter((entry) => docPaths.has(entry.path))
+      : [];
   const clearSearch = () => {
     setSearchQuery("");
     setActiveIndex(0);
@@ -278,6 +306,8 @@ export function RepositorySidebar() {
       selectedPath={(worktree) =>
         worktree.path === focused?.path && focusedTab?.kind === "file" ? focusedTab.path : null
       }
+      docs={filter.docs}
+      focusedTab={focusedTab}
     />
   );
 
@@ -443,6 +473,8 @@ function WorktreeSections({
   filesShown,
   selectedPath,
   focusedPath,
+  docs,
+  focusedTab,
 }: {
   readonly repository: EnvironmentProject;
   /** Whether its main checkout carries the archived mark, with no project header above it. */
@@ -465,6 +497,9 @@ function WorktreeSections({
   readonly selectedPath: (worktree: ProjectWorktree) => string | null;
   /** The worktree of the focused tab, which opens on its own. */
   readonly focusedPath: string | null;
+  /** The filter's Docs: each file tree shows its documents and what they link. */
+  readonly docs: boolean;
+  readonly focusedTab: RepositoryTab | null;
 }) {
   const owner = projectWorktrees(repository);
   const [now] = useState(() => Date.now());
@@ -553,6 +588,7 @@ function WorktreeSections({
             projectName={`${repository.title} · ${worktree.alias}`}
             selectedPath={selectedPath(worktree)}
             onOpenFile={(path) => workspace.show(fileKey(repository, checkoutOf(worktree), path))}
+            docsOf={docs ? workspaceRootOf(repository) : null}
             {...(worktree.isRepository
               ? {
                   fileMenuActions: [
@@ -578,6 +614,7 @@ function WorktreeSections({
         rest={rest}
         renderEntry={(entry) => worktreeSection(entry, true)}
       />
+      <ProjectRootSections repository={repository} docs={docs} focusedTab={focusedTab} />
       {setAside ? (
         <ul role="presentation" className="flex flex-col gap-px">
           <SetAsideRows repository={owner} setAside={setAside} />

@@ -135,15 +135,6 @@ export interface RowClick {
   readonly shiftKey: boolean;
 }
 
-/** A click asking for a new tab, as a row's "Open in new tab" stands for. */
-export const NEW_TAB_CLICK: RowClick = {
-  button: 0,
-  altKey: true,
-  metaKey: false,
-  ctrlKey: false,
-  shiftKey: false,
-};
-
 export function rowClickIntent(event: RowClick, mac: boolean): RowClickIntent {
   if (event.button === 1 || event.altKey) return "new-tab";
   if (mac ? event.metaKey : event.ctrlKey) return "mod";

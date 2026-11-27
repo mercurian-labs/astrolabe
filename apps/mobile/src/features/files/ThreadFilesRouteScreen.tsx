@@ -10,10 +10,18 @@ import {
   type StaticScreenProps,
 } from "@react-navigation/native";
 import { useGT, useMessages } from "gt-react-native";
-import { type ComponentProps, type ReactNode, useId, useState } from "react";
+import { type ComponentProps, type ReactNode, useId, useMemo, useState } from "react";
 import { Platform, View } from "react-native";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
-import { EnvironmentId, type ProjectReadFileResult, ThreadId } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  ProjectId,
+  type ProjectEntry,
+  type ProjectReadFileResult,
+  RootKey,
+  ThreadId,
+} from "@t3tools/contracts";
+import { locateProjectRoot } from "@t3tools/client-runtime/projectDocEditTarget";
 import { videoMimeType } from "@t3tools/shared/video";
 import {
   isWorkspaceBrowserPreviewPath,
@@ -41,6 +49,7 @@ import { useSelectedThreadWorktree } from "../../state/use-selected-thread-workt
 import { useEnvironmentQuery } from "../../state/query";
 import { useEnvironmentPresentation } from "../../state/presentation";
 import { projectEnvironment } from "../../state/projects";
+import { projectRootsEnvironment } from "../../state/projectRoots";
 import type { AssetUrlFailureReason } from "../../state/asset-url-state";
 import {
   Inspector,
@@ -52,6 +61,7 @@ import { ThreadRouteScreen } from "../threads/ThreadRouteScreen";
 import { FilePreviewLoading, FilePreviewNotice } from "./FilePreviewFeedback";
 import { FileMarkdownPreview } from "./FileMarkdownPreview";
 import { FileTreeBrowser } from "./FileTreeBrowser";
+import { docsFilterButton, docsTreeEntries, projectDocumentParams } from "./fileTreeDocs";
 import { useFileTreeEntries } from "./useFileTreeEntries";
 import { preloadWorkspaceFileContents } from "./preload-workspace-file";
 import { SourceFileSurface } from "./SourceFileSurface";
@@ -83,8 +93,11 @@ function FilesBrowserHeader(props: {
   readonly onSearchQueryChange: (query: string) => void;
   readonly onRefresh: () => void;
   readonly onBack: () => void;
+  /** Astrolabe: the Docs / All filter, where the folder is one of a project's. */
+  readonly docs?: { readonly only: boolean; readonly onChange: (only: boolean) => void };
 }) {
   const gt = useGT();
+  const { docs } = props;
   return (
     <AppBar
       title={gt("Files", { $context: "screen title, workspace files" })}
@@ -92,6 +105,34 @@ function FilesBrowserHeader(props: {
       onBack={props.onBack}
       hideBottomBorder
       matchSearchSurface
+      {...(docs === undefined
+        ? {}
+        : {
+            menus: [
+              {
+                ...docsFilterButton(docs.only, {
+                  off: gt("Show"),
+                  on: gt("Showing docs", {
+                    $context: "file tree filter is on: notes, canvases and bases",
+                  }),
+                }),
+                items: [
+                  {
+                    id: "all",
+                    title: gt("All files"),
+                    selected: !docs.only,
+                    onPress: () => docs.onChange(false),
+                  },
+                  {
+                    id: "docs",
+                    title: gt("Docs", { $context: "file tree filter: notes, canvases and bases" }),
+                    selected: docs.only,
+                    onPress: () => docs.onChange(true),
+                  },
+                ],
+              },
+            ],
+          })}
       search={{
         value: props.searchQuery,
         onChangeText: props.onSearchQueryChange,
@@ -372,6 +413,8 @@ type ThreadFilesRouteScreenProps = StaticScreenProps<{
   readonly threadId?: string;
   readonly cwd?: string;
   readonly projectName?: string;
+  /** Astrolabe: the project a repository's tree is of, for its documents and the Docs filter. */
+  readonly projectId?: string;
 }>;
 
 type ThreadFileRouteScreenProps = StaticScreenProps<{
@@ -381,6 +424,7 @@ type ThreadFileRouteScreenProps = StaticScreenProps<{
   readonly line?: string;
   readonly cwd?: string;
   readonly projectName?: string;
+  readonly projectId?: string;
 }>;
 
 function useThreadFilesWorkspace(params: {
@@ -388,8 +432,10 @@ function useThreadFilesWorkspace(params: {
   readonly threadId?: string | string[];
   readonly cwd?: string | string[];
   readonly projectName?: string | string[];
+  readonly projectId?: string | string[];
   readonly path?: string | string[];
 }) {
+  const routeProjectId = firstRouteParam(params.projectId);
   const routeEnvironmentId = firstRouteParam(params.environmentId);
   const routeThreadId = firstRouteParam(params.threadId);
   const routeCwd = firstRouteParam(params.cwd);
@@ -406,15 +452,23 @@ function useThreadFilesWorkspace(params: {
     readonly workspaceRoot?: string;
   } | null;
 
+  const threadProjectId = threadId !== null ? (selectedThread?.projectId ?? null) : null;
   return {
     cwd: routeCwd ?? selectedThreadCwd ?? project?.workspaceRoot ?? null,
     environmentId,
+    // Astrolabe: whose roots the tree's documents belong to, and the thread's worktree of them.
+    projectId: routeProjectId ?? threadProjectId,
+    worktreePath: threadId !== null ? (selectedThread?.worktreePath ?? null) : null,
     projectName: routeProjectName ?? project?.title ?? "Files",
     relativePath: normalizeRoutePath(params.path),
     selectedThread,
     threadId,
   };
 }
+
+const NO_ENTRIES: ReadonlyArray<ProjectEntry> = [];
+const NO_PATHS: ReadonlySet<string> = new Set();
+const ignoreDirectory = () => undefined;
 
 function FilesUnavailable({
   title,
@@ -481,10 +535,36 @@ export function ThreadFilesTreeScreen(props: ThreadFilesRouteScreenProps) {
   const { fileInspector } = useWorkspacePaneState();
   const [searchQuery, setSearchQuery] = useState("");
   const { themeAppearance: highlightTheme } = useAppearancePreferences();
-  const { cwd, environmentId, projectName, selectedThread, threadId } = useThreadFilesWorkspace(
-    props.route.params,
-  );
+  const { cwd, environmentId, projectName, projectId, worktreePath, selectedThread, threadId } =
+    useThreadFilesWorkspace(props.route.params);
   const hasFileInspector = fileInspector.supported && threadId !== null;
+  // Astrolabe: the project's roots, which say where a document opens and what Docs keeps.
+  const rootsList = useEnvironmentQuery(
+    environmentId !== null && projectId !== null
+      ? projectRootsEnvironment.list({
+          environmentId,
+          input: {
+            projectId: ProjectId.make(projectId),
+            ...(worktreePath === null ? {} : { worktreePath }),
+          },
+        })
+      : null,
+  );
+  const roots = rootsList.data?.roots ?? null;
+  const treeRoot = roots === null || cwd === null ? null : locateProjectRoot(roots, cwd);
+  const [docsOnly, setDocsOnly] = useState(false);
+  const docPaths = useEnvironmentQuery(
+    docsOnly && environmentId !== null && projectId !== null && treeRoot !== null
+      ? projectRootsEnvironment.docPaths({
+          environmentId,
+          input: {
+            projectId: ProjectId.make(projectId),
+            rootKey: RootKey.make(treeRoot.root.key),
+            ...(treeRoot.folder === treeRoot.root.path ? {} : { checkout: treeRoot.folder }),
+          },
+        })
+      : null,
+  );
   const messages = useMessages();
   const fileAccessSession = useEnvironmentQuery(
     environmentId !== null ? environmentSession.sessionStateAtom(environmentId) : null,
@@ -520,13 +600,37 @@ export function ThreadFilesTreeScreen(props: ThreadFilesRouteScreenProps) {
     }
   };
 
+  // A tree opened inside a root lists from there; the root's paths drop that folder.
+  const docEntries = useMemo(() => {
+    if (docPaths.data === null || treeRoot === null) return null;
+    const inside = treeRoot.path === "" ? "" : `${treeRoot.path}/`;
+    const paths = docPaths.data.paths.flatMap((path) =>
+      path.startsWith(inside) ? [path.slice(inside.length)] : [],
+    );
+    return docsTreeEntries(paths, entriesQuery.selectedPath);
+  }, [docPaths.data, treeRoot, entriesQuery.selectedPath]);
   const handleSelectFile = (path: string) => {
     if (environmentId === null || cwd === null) {
+      return;
+    }
+    // Astrolabe: a note, canvas or base opens as a document of its root, in this folder.
+    const document =
+      roots === null || projectId === null
+        ? null
+        : projectDocumentParams({
+            environmentId: String(environmentId),
+            projectId,
+            roots,
+            absolutePath: resolveWorkspaceFilePath(cwd, path),
+          });
+    if (document !== null) {
+      navigation.dispatch(StackActions.push("ProjectDocument", document));
       return;
     }
     const params = {
       environmentId: String(environmentId),
       ...(threadId === null ? { cwd, projectName } : { threadId: String(threadId) }),
+      ...(threadId === null && projectId !== null ? { projectId } : {}),
       path: path.split("/").filter((segment) => segment.length > 0),
     };
     if (threadId === null) {
@@ -612,8 +716,9 @@ export function ThreadFilesTreeScreen(props: ThreadFilesRouteScreenProps) {
         projectName={projectName}
         searchQuery={searchQuery}
         onSearchQueryChange={setSearchQuery}
-        onRefresh={entriesQuery.refresh}
+        onRefresh={docsOnly ? docPaths.refresh : entriesQuery.refresh}
         onBack={handleReturnToThread}
+        {...(treeRoot === null ? {} : { docs: { only: docsOnly, onChange: setDocsOnly } })}
       />
       <ScreenContent>
         <FileTreeBrowser
@@ -621,11 +726,12 @@ export function ThreadFilesTreeScreen(props: ThreadFilesRouteScreenProps) {
           revealSelection={entriesQuery.revealSelection}
           expandedPaths={entriesQuery.expandedPaths}
           setExpandedPaths={entriesQuery.setExpandedPaths}
-          entries={entriesQuery.entries}
-          loadingDirectories={entriesQuery.loadingDirectories}
-          onLoadDirectory={entriesQuery.loadDirectory}
-          error={entriesQuery.error}
-          isPending={entriesQuery.isPending}
+          entries={docsOnly ? (docEntries ?? NO_ENTRIES) : entriesQuery.entries}
+          loadingDirectories={docsOnly ? NO_PATHS : entriesQuery.loadingDirectories}
+          // Docs knows every folder it shows, so it lists none.
+          onLoadDirectory={docsOnly ? ignoreDirectory : entriesQuery.loadDirectory}
+          error={docsOnly ? docPaths.error : entriesQuery.error}
+          isPending={docsOnly ? docEntries === null : entriesQuery.isPending}
           isRefreshing={entriesQuery.isRefreshing}
           searchQuery={searchQuery}
           searchResultPaths={entriesQuery.searchResultPaths}

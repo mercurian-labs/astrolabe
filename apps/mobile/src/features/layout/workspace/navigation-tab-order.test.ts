@@ -24,19 +24,30 @@ describe("navigation tab order", () => {
   it("fills missing sections and drops removed placeholders, duplicates, and Settings", () => {
     expect(
       resolveNavigationTabOrder(["usage", "home", "inbox", "settings", "usage", null]),
-    ).toEqual(["usage", "threads", "pullRequests", "wikis", "repositories", "issues"]);
+    ).toEqual(["usage", "threads", "pullRequests", "repositories", "issues"]);
     expect(resolveNavigationTabOrder()).toEqual(NAVIGATION_TAB_ORDER);
   });
 
-  it("keeps Changes beside Agents and starts Issues in the overflow", () => {
+  it("keeps Changes beside Agents and starts Usage in the overflow", () => {
     expect(visibleNavigationTabs()).toContain("pullRequests");
-    expect(overflowNavigationTabs()).toEqual(["issues", "usage"]);
+    expect(overflowNavigationTabs()).toEqual(["usage"]);
     expect(visibleNavigationTabs(moveNavigationTab(undefined, "issues", 1))).toEqual([
       "threads",
       "issues",
       "pullRequests",
-      "wikis",
+      "repositories",
     ]);
+  });
+
+  it("drops a saved Wikis section, which Projects replaced", () => {
+    expect(resolveNavigationTabOrder(["wikis", "repositories", "threads"])).toEqual([
+      "repositories",
+      "threads",
+      "pullRequests",
+      "issues",
+      "usage",
+    ]);
+    expect(enabledNavigationTabs(undefined, ["wikis"])).toEqual(NAVIGATION_TAB_ORDER);
   });
 
   it("moves a section without changing the relative order of the others", () => {
@@ -52,12 +63,12 @@ describe("navigation tab order", () => {
   });
 
   it("overflows Usage into Settings by default and keeps Settings selected during editing", () => {
-    expect(visibleNavigationTabs()).toEqual(["threads", "pullRequests", "wikis", "repositories"]);
-    expect(overflowNavigationTabs()).toEqual(["issues", "usage"]);
+    expect(visibleNavigationTabs()).toEqual(["threads", "pullRequests", "repositories", "issues"]);
+    expect(overflowNavigationTabs()).toEqual(["usage"]);
     expect(selectedNavigationTab(undefined, "threads", true)).toBe("settings");
     expect(selectedNavigationTab(undefined, "usage", false)).toBe("settings");
-    expect(selectedNavigationTab(undefined, "wikis", false)).toBe("wikis");
-    expect(selectedNavigationTab(undefined, "wikis", false, [], 2)).toBe("settings");
+    expect(selectedNavigationTab(undefined, "repositories", false)).toBe("repositories");
+    expect(selectedNavigationTab(undefined, "repositories", false, [], 2)).toBe("settings");
   });
 
   it("removes hidden sections from navigation and restores their saved positions", () => {
@@ -66,7 +77,6 @@ describe("navigation tab order", () => {
     expect(enabledNavigationTabs(order, hidden)).toEqual([
       "threads",
       "pullRequests",
-      "wikis",
       "repositories",
       "issues",
     ]);

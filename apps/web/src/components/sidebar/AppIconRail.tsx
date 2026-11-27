@@ -2,7 +2,6 @@ import { useGT } from "gt-react";
 import { useAtomValue } from "@effect/atom-react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import {
-  BookOpenIcon,
   ChartNoAxesColumnIcon,
   FolderGit2Icon,
   MessagesSquare,
@@ -40,7 +39,6 @@ import {
   isIssuesPath,
   isPullRequestsPath,
   isRepositoriesPath,
-  isWikisPath,
   isWorkflowsPath,
   useNavigateToAgents,
   useSectionPathname,
@@ -51,7 +49,6 @@ import { SidebarUpdatePill } from "./SidebarUpdatePill";
 interface AppSection {
   readonly id:
     | "threads"
-    | "wikis"
     | "repositories"
     | "pull-requests"
     | "issues"
@@ -67,9 +64,8 @@ interface AppSection {
 }
 
 /**
- * The app's sections: Agents and Wikis, then Change Requests (where a server supports pull
- * requests; it lists the wikis' change requests beside them) and
- * Usage, and Settings. Each opens as the rail's button does.
+ * The app's sections: Agents and Projects, then Changes (where a server supports pull requests),
+ * Issues, Workflows, Usage, and Settings. Each opens as the rail's button does.
  */
 export function useAppSections(): readonly AppSection[] {
   const gt = useGT();
@@ -85,7 +81,6 @@ export function useAppSections(): readonly AppSection[] {
   const onSettings = pathname === "/settings" || pathname.startsWith("/settings/");
   const onUsage = pathname === "/usage";
   const onPullRequests = isPullRequestsPath(sectionPathname);
-  const onWikis = isWikisPath(sectionPathname);
   const onRepositories = isRepositoriesPath(sectionPathname);
   const onIssues = isIssuesPath(sectionPathname);
   const onWorkflows = isWorkflowsPath(sectionPathname);
@@ -93,7 +88,6 @@ export function useAppSections(): readonly AppSection[] {
     !onPullRequests &&
     !onIssues &&
     !onWorkflows &&
-    !onWikis &&
     !onRepositories &&
     !sectionPathname.startsWith("/projects/");
 
@@ -104,14 +98,6 @@ export function useAppSections(): readonly AppSection[] {
       icon: <MessagesSquare />,
       active: onThreads,
       open: () => void navigateToAgents(),
-      foot: false,
-    },
-    {
-      id: "wikis",
-      label: gt("Wikis"),
-      icon: <BookOpenIcon />,
-      active: onWikis,
-      open: () => void navigate({ to: "/wikis" }),
       foot: false,
     },
     {

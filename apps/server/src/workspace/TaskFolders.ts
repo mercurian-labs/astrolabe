@@ -178,7 +178,8 @@ export class TaskFolders extends Context.Service<
     }) => Effect.Effect<TaskFolderRemoval, TaskFolderError>;
     /**
      * Removes the task folder `path` is the root or the project folder of, for good. False when
-     * it is neither, and a failure naming what could not be removed.
+     * `path` is outside every task folder, and a failure naming what could not be removed. A
+     * checkout inside one is refused: a child thread can work there, and the folder owns it.
      */
     readonly removeIfTaskFolder: (input: {
       readonly path: string;
@@ -1532,8 +1533,13 @@ const make = Effect.gen(function* () {
   )(function* (input) {
     const taskFolder = yield* store.findContaining(input.path);
     const target = path.resolve(input.path);
-    if (taskFolder === null || (target !== taskFolder.root && target !== taskFolder.projectPath))
-      return false;
+    if (taskFolder === null) return false;
+    if (target !== taskFolder.root && target !== taskFolder.projectPath) {
+      return yield* new TaskFolderError({
+        operation: "remove",
+        detail: `${input.path} is part of the task folder ${taskFolder.root}, which goes with the thread that owns it.`,
+      });
+    }
     const { kept } = yield* removeLocked(taskFolder, {
       force: input.force,
       forget: true,

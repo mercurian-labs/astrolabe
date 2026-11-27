@@ -8,7 +8,7 @@ import {
   ProjectId,
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
-import { WikiId } from "./wiki.ts";
+import { ProjectRootId } from "./projectRoots.ts";
 
 /**
  * Astrolabe: a repository's worktrees as buckets. A branch is what a person or an agent works on;
@@ -75,16 +75,18 @@ export const ProjectWorktreeSetAside = Schema.Struct({
 export type ProjectWorktreeSetAside = typeof ProjectWorktreeSetAside.Type;
 
 /**
- * Whose repository the worktrees are in: a project's, or a wiki's own folder (a wiki is no
- * project). Exactly one is given.
+ * Whose repository the worktrees are in: a project's, or one of a project's roots (a tracked
+ * folder's repository) by its root id. Exactly one is given.
  */
 const OwnerFields = {
   projectId: Schema.optionalKey(ProjectId),
-  wikiId: Schema.optionalKey(WikiId),
+  wikiId: Schema.optionalKey(ProjectRootId),
 };
 
 /** The owner as clients name it, with exactly one of the two. */
-export type ProjectWorktreeOwner = { readonly projectId: ProjectId } | { readonly wikiId: WikiId };
+export type ProjectWorktreeOwner =
+  | { readonly projectId: ProjectId }
+  | { readonly wikiId: ProjectRootId };
 
 export const ProjectWorktreeListInput = Schema.Struct(OwnerFields);
 export type ProjectWorktreeListInput = typeof ProjectWorktreeListInput.Type;

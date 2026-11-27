@@ -1,4 +1,9 @@
-import type { EnvironmentId, WikiChangeRequest, WikiId, WikiSummary } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  WikiChangeRequest,
+  ProjectRootId,
+  WikiSummary,
+} from "@t3tools/contracts";
 
 import type { WikiOverview } from "./state/wiki.ts";
 import {
@@ -60,7 +65,7 @@ export interface WikiListEntries {
 }
 
 /** The scope a wiki filter picks: one wiki on one server. */
-export const wikiScopeKey = (environmentId: EnvironmentId, wikiId: WikiId) =>
+export const wikiScopeKey = (environmentId: EnvironmentId, wikiId: ProjectRootId) =>
   `${environmentId}:${wikiId}`;
 
 const newestFirst = (a: string | null, b: string | null) => (b ?? "").localeCompare(a ?? "");

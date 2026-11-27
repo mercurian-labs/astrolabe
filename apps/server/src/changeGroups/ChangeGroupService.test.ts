@@ -1,27 +1,33 @@
 import {
+  ChangeGroupGroupingSettings,
   DEFAULT_CHANGE_GROUP_GROUPING_SETTINGS,
   type ChangeGroupDecisions,
   type ThreadPullRequestLink,
 } from "@t3tools/contracts";
 import { deriveChangeGroups, type ChangeGroupThread } from "@t3tools/shared/changeGroups";
+import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   applyChangeGroupChange,
+  ChangeGroupStoreJson,
   describeChangeGroup,
   foldThreadBranches,
+  migrateWikiMembers,
+  withoutWikiMembers,
 } from "./ChangeGroupService.ts";
 
 const empty: ChangeGroupDecisions = {
   groupId: "thread-1",
   title: null,
-  armed: null,
   added: [],
   removed: [],
   dismissed: [],
   pending: [],
   updatedAt: "2026-10-19T00:00:00Z",
 };
+const decodeStoredChangeGroups = Schema.decodeSync(ChangeGroupStoreJson);
+const decodeGroupingSettings = Schema.decodeUnknownSync(ChangeGroupGroupingSettings);
 const pr = { kind: "pull-request" as const, host: "github.com", repository: "acme/app", number: 7 };
 const at = "2026-10-19T01:00:00Z";
 
@@ -77,11 +83,19 @@ describe("a change group's decisions", () => {
     ).toBe(dismissed);
   });
 
-  it("arm and name the group", () => {
-    const armed = applyChangeGroupChange(empty, { type: "arm", armed: false }, at);
-    expect(armed.armed).toBe(false);
-    expect(applyChangeGroupChange(armed, { type: "title", title: "Search" }, at).title).toBe(
+  it("name the group", () => {
+    expect(applyChangeGroupChange(empty, { type: "title", title: "Search" }, at).title).toBe(
       "Search",
+    );
+  });
+
+  it("still read a file that remembers merging with the code", () => {
+    const stored = decodeStoredChangeGroups(
+      JSON.stringify({ version: 1, decisions: [{ ...empty, armed: true }] }),
+    );
+    expect(stored.decisions).toEqual([empty]);
+    expect(decodeGroupingSettings({ armByDefault: false })).toEqual(
+      DEFAULT_CHANGE_GROUP_GROUPING_SETTINGS,
     );
   });
 });
@@ -145,7 +159,6 @@ describe("one group in full", () => {
     ];
     const [group] = deriveChangeGroups({
       threads,
-      wikiChanges: [],
       decisions: [],
       settings: DEFAULT_CHANGE_GROUP_GROUPING_SETTINGS,
     });
@@ -160,5 +173,71 @@ describe("one group in full", () => {
       ["root", "feature-1"],
     ]);
     expect(detail.agentRuns).toBe(1);
+  });
+});
+
+describe("a group's wiki change requests after wikis become project roots", () => {
+  const wikiMember = (wikiId: string, changeRequestId: string) => ({
+    kind: "wiki-change-request" as const,
+    wikiId,
+    changeRequestId,
+  });
+  const thread = { kind: "thread" as const, threadId: "thread-2" };
+  const pullRequests = new Map([["wiki:w1/cr-open", pr]]);
+
+  it("become their pull requests, and leave without one", () => {
+    const { decisions, dropped } = migrateWikiMembers(
+      {
+        ...empty,
+        added: [
+          { member: wikiMember("w1", "cr-open"), reason: "manual", note: "The docs" },
+          { member: wikiMember("w1", "cr-local"), reason: "manual", note: "" },
+          { member: thread, reason: "manual", note: "" },
+        ],
+        pending: [{ member: wikiMember("w1", "cr-draft"), note: "Same plan" }],
+      },
+      pullRequests,
+    );
+    expect(decisions.added).toEqual([
+      { member: pr, reason: "manual", note: "The docs" },
+      { member: thread, reason: "manual", note: "" },
+    ]);
+    expect(decisions.pending).toEqual([]);
+    expect(dropped).toEqual(["wiki:w1/cr-local", "wiki:w1/cr-draft"]);
+  });
+
+  it("rewrite the keys taken out or dismissed, and drop those of no pull request", () => {
+    const { decisions, dropped } = migrateWikiMembers(
+      {
+        ...empty,
+        removed: ["wiki:w1/cr-open", "pr:github.com/acme/app#7", "wiki:w1/cr-local"],
+        dismissed: ["wiki:other/cr-1", "thread:thread-3"],
+      },
+      pullRequests,
+    );
+    expect(decisions.removed).toEqual(["pr:github.com/acme/app#7"]);
+    expect(decisions.dismissed).toEqual(["thread:thread-3"]);
+    expect(dropped).toEqual([]);
+  });
+
+  it("still read from a stored file, which loads without them", () => {
+    const stored = decodeStoredChangeGroups(
+      JSON.stringify({
+        version: 1,
+        decisions: [
+          {
+            ...empty,
+            added: [
+              { member: wikiMember("w1", "cr-local"), reason: "manual", note: "" },
+              { member: pr, reason: "manual", note: "" },
+            ],
+            removed: ["wiki:w1/cr-gone"],
+          },
+        ],
+      }),
+    );
+    const [decisions] = withoutWikiMembers(stored).decisions;
+    expect(decisions?.added).toEqual([{ member: pr, reason: "manual", note: "" }]);
+    expect(decisions?.removed).toEqual([]);
   });
 });

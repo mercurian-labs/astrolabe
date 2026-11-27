@@ -1,6 +1,6 @@
 # Vim mode
 
-The composer, wiki notes, Projects file tabs and the Projects results and problems tabs
+The composer, notes, Projects file tabs and the Projects results and problems tabs
 (`repositories/multibuffer/MultibufferView.tsx`) can edit with Vim, behind one
 device setting that is off by default. Turning it on asks you to type `:q` first, to
 show you know the way out. In Vim's normal mode `:` opens the Command Palette (see
@@ -22,15 +22,15 @@ show you know the way out. In Vim's normal mode `:` opens the Command Palette (s
 - **Composer**: a new or cleared draft is in insert mode, and a send returns it there
   (a draft restored after a reload can open in normal mode). Insert mode
   keeps every composer key (Enter sends, Shift+Enter, ArrowUp history, and every menu
-  trigger: `/`, `@`, `$`, `#` and `[[`, whose "Wiki notes" menu opens only when a wiki exists, so
-  add a scratch wiki before walking it). Escape closes an open menu first,
+  trigger: `/`, `@`, `$`, `#` and `[[`, whose "Documents" menu opens only in a project with a note
+  that matches, so walk it in a project that has notes). Escape closes an open menu first,
   then enters normal mode with focus kept in the composer; normal mode opens no menus. In an
   empty draft the insert caret shows at the left edge (`.cm-cursorLayer:not(.cm-vimCursorLayer)
   .cm-cursor`, `margin-left: 0`, inside `.cm-scroller`), only while the composer has focus. Outside insert mode the draft switches to the code font (the
   mode's only marker) and every key is Vim's: Enter and the arrows move, they never
   send or add a line. Mod+Enter still sends. One Vim change (`cw` plus the typed
   text, a whole insert session) is one undo step.
-- **Notes**: wiki notes start in normal mode, with no mode panel: like the composer,
+- **Notes**: notes start in normal mode, with no mode panel: like the composer,
   the text reads in the code font (`--font-mono`, the Monospace font setting)
   outside insert mode.
 - **Project files**: a Projects file tab ([repositories.md](repositories.md)) starts
@@ -144,7 +144,7 @@ Walk these end to end; each crosses into another feature.
    row reads Save now) → type `s/hello/bye/` → first row **Run in the
    editor** → Enter → palette gone, draft "bye world", mode `normal`, focus in the
    composer.
-4. **Note.** Open a wiki document (wikis.md) → click into it → mode `normal`, code
+4. **Note.** Open a note from Projects (Docs filter) → click into it → mode `normal`, code
    font, no `--NORMAL--` panel → `v` `e` → a selection drawn → Escape → `:w` Enter → "No edits to save" → `A`, `x`, Escape, `:w` Enter →
    the header reads Saving…, then Saved, with no dialog.
 5. **Vim configuration.** Settings › Keybindings › Vim → **Add** → Mode Insert, Keys

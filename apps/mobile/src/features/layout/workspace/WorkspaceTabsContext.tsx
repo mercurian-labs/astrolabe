@@ -22,9 +22,6 @@ export const WorkspaceTabsContext = createContext<{
   readonly settingsOpen: boolean;
   readonly getScrollOffset: (tab: WorkspaceSearchTab) => number;
   readonly recordScrollOffset: (tab: WorkspaceSearchTab, offset: number) => void;
-  /** The wiki the Wikis list is filtered to, as `wikiScopeKey` names it; null for all. */
-  readonly wikiScope: string | null;
-  readonly setWikiScope: (scope: string | null) => void;
   /** Leaves search and returns the list to where it was when search began. */
   readonly cancelSearch: (tab: WorkspaceSearchTab) => void;
 } | null>(null);
@@ -56,7 +53,6 @@ function createWorkspaceTabsModel(selectedTab?: WorkspaceTab) {
   const scrollOffsets: Record<WorkspaceSearchTab, number> = {
     threads: 0,
     pullRequests: 0,
-    wikis: 0,
     repositories: 0,
     issues: 0,
     workflows: 0,
@@ -83,8 +79,6 @@ export function WorkspaceTabsProvider(props: {
   const registry = use(RegistryContext);
   const [model] = useState(() => createWorkspaceTabsModel(props.initialTab));
   const state = useAtomValue(model.resolved);
-  // Astrolabe: the wiki filter, one value shared by Wikis and Change requests.
-  const [wikiScope, setWikiScope] = useState<string | null>(null);
   const dispatch = (action: WorkspaceTabsAction) =>
     registry.set(model.stored, workspaceTabsReducer(registry.get(model.resolved), action));
   const context = {
@@ -95,8 +89,6 @@ export function WorkspaceTabsProvider(props: {
     settingsOpen: props.settingsOpen ?? false,
     getScrollOffset: model.getScrollOffset,
     recordScrollOffset: model.recordScrollOffset,
-    wikiScope,
-    setWikiScope,
     cancelSearch: (tab: WorkspaceSearchTab) => {
       model.recordScrollOffset(tab, registry.get(model.resolved).tabs[tab].searchEntryOffset);
       dispatch({ type: "cancel", tab });

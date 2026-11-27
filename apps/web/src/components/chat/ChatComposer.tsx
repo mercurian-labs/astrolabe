@@ -203,7 +203,6 @@ import {
   terminalContextReference,
   terminalContextRecord,
   threadContextReference,
-  wikiNoteContextRecord,
   wikiContextReference,
   environmentContextRecord,
   environmentContextReference,
@@ -212,8 +211,6 @@ import { rememberCopiedComposerAttachments } from "~/lib/copiedComposerAttachmen
 import { useThreadContextDrop, threadContextDropTargetProps } from "./threadContextDrag";
 import { droppedThreadContextRecord } from "./threadContextDrop.logic";
 import { readThreadShell } from "~/state/entities";
-import { wikiEnvironment } from "~/state/wiki";
-import { useWikiCommand } from "../wiki/wikiEnvironment";
 import { useLinkedEnvironments } from "~/state/peerLinks";
 import { encodeComposerContextFragment } from "@t3tools/shared/composerContextClipboard";
 import type {
@@ -1275,7 +1272,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     modelMentions: { instanceEntries: providerInstanceEntries, modelOptionsByInstance },
   });
 
-  // `[[` stays text without wikis, and its menu stays shut while no note matches.
+  // `[[` stays text outside a project with folders, and its menu stays shut while no note matches.
   const composerTrigger =
     detectedComposerTrigger?.kind === "wiki-note" &&
     (!wikiNotesAvailable || pendingUserInputs.length > 0)
@@ -1436,10 +1433,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const setComposerDraftThreadContexts = useComposerDraftStore((store) => store.setThreadContexts);
   const addComposerDraftWikiContexts = useComposerDraftStore((store) => store.addWikiContexts);
   const setComposerDraftWikiContexts = useComposerDraftStore((store) => store.setWikiContexts);
-  const setWikiProjectLink = useWikiCommand(
-    wikiEnvironment.setProjectLink,
-    "Couldn't link the wiki",
-  );
   const addComposerDraftEnvironmentContexts = useComposerDraftStore(
     (store) => store.addEnvironmentContexts,
   );
@@ -2279,10 +2272,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       }
       return;
     }
+    // Astrolabe: a document is one of the project's files, so `[[` mentions it as `@` does.
     if (item.type === "wiki-note") {
       if (trigger.kind !== "wiki-note") return;
-      const record = wikiNoteContextRecord(item);
-      const replacement = `${formatInlineContextReference(wikiContextReference(record))} `;
+      const replacement = `${serializeComposerFileLink(item.path)} `;
       const replacementRangeEnd = extendReplacementRangeForTrailingSpace(
         snapshot.value,
         trigger.rangeEnd,
@@ -2291,10 +2284,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       const applied = applyPromptReplacement(trigger.rangeStart, replacementRangeEnd, replacement, {
         expectedText: snapshot.value.slice(trigger.rangeStart, replacementRangeEnd),
       });
-      if (applied) {
-        addComposerDraftWikiContexts(composerDraftTarget, [record]);
-        setComposerHighlightedItemId(null);
-      }
+      if (applied) setComposerHighlightedItemId(null);
       return;
     }
     // Mentioning a group names it for the agent; the thread does not join it.
@@ -2350,14 +2340,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         });
         setComposerHighlightedItemId(null);
       }
-      return;
-    }
-    if (item.type === "wiki-link") {
-      setComposerHighlightedItemId(null);
-      void setWikiProjectLink({
-        environmentId: item.environmentId,
-        input: { wikiId: item.wikiId, projectId: item.projectId, linked: true },
-      });
       return;
     }
   };
@@ -4011,7 +3993,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     ? composerTriggerKind === "pull-request"
                       ? gt("Finding pull request...")
                       : composerTriggerKind === "wiki-note"
-                        ? gt("Loading wiki notes...")
+                        ? gt("Loading documents...")
                         : composerTriggerKind === "skill" || composerTriggerKind === "slash-command"
                           ? gt("Searching workspace skills...")
                           : gt("Searching workspace files...")

@@ -19,13 +19,13 @@ const rowOf = (rules: KeybindingRule[], command: string, key: string) =>
 
 describe("the Keybindings table's menu keys and aliases", () => {
   it("shows defaults, user rules, and defaults a removal took away", () => {
-    expect(rowOf([], "section.wikis", "menu g w")?.source).toBe("Default");
+    expect(rowOf([], "section.settings", "menu g s")?.source).toBe("Default");
     expect(rowOf([], "tab.close", ":q[uit]")?.source).toBe("Default");
     const rules: KeybindingRule[] = [
-      { key: "menu g w", command: "-section.wikis" },
+      { key: "menu g s", command: "-section.settings" },
       { key: "menu x", command: "chat.new" },
     ];
-    expect(rowOf(rules, "section.wikis", "menu g w")?.source).toBe("Removed");
+    expect(rowOf(rules, "section.settings", "menu g s")?.source).toBe("Removed");
     expect(rowOf(rules, "chat.new", "menu x")?.source).toBe("Custom");
     // An overridden default is not shown as removed.
     expect(
@@ -53,10 +53,10 @@ describe("the Keybindings table's menu keys and aliases", () => {
   });
 
   it("writes an edited default with the command's other defaults of its kind", () => {
-    const row = rowOf([], "section.wikis", "menu g w")!;
+    const row = rowOf([], "section.settings", "menu g s")!;
     expect(triggerEditInputs(row, "menu g x")).toEqual([
-      { command: "section.wikis", key: "menu w w" },
-      { command: "section.wikis", key: "menu g x" },
+      { command: "section.settings", key: "menu ," },
+      { command: "section.settings", key: "menu g x" },
     ]);
     const custom = rowOf([{ key: "menu x", command: "chat.new" }], "chat.new", "menu x")!;
     expect(triggerEditInputs(custom, "menu y")).toEqual([
@@ -65,24 +65,24 @@ describe("the Keybindings table's menu keys and aliases", () => {
   });
 
   it("adds a trigger beside the command's defaults, or beside its user rules alone", () => {
-    expect(triggerAddInputs(rowsFor([]), "section.wikis", "menu x")).toEqual([
-      { command: "section.wikis", key: "menu g w" },
-      { command: "section.wikis", key: "menu w w" },
-      { command: "section.wikis", key: "menu x" },
+    expect(triggerAddInputs(rowsFor([]), "section.settings", "menu x")).toEqual([
+      { command: "section.settings", key: "menu g s" },
+      { command: "section.settings", key: "menu ," },
+      { command: "section.settings", key: "menu x" },
     ]);
     // Only defaults of the new rule's kind: the command's alias defaults stay in code.
     expect(triggerAddInputs(rowsFor([]), "tab.close", "menu x")).toEqual([
       { command: "tab.close", key: "menu x" },
     ]);
-    const custom = rowsFor([{ key: "menu x", command: "section.wikis" }]);
-    expect(triggerAddInputs(custom, "section.wikis", "menu y")).toEqual([
-      { command: "section.wikis", key: "menu y" },
+    const custom = rowsFor([{ key: "menu x", command: "section.settings" }]);
+    expect(triggerAddInputs(custom, "section.settings", "menu y")).toEqual([
+      { command: "section.settings", key: "menu y" },
     ]);
     // A removed default stays removed.
-    const removed = rowsFor([{ key: "menu g w", command: "-section.wikis" }]);
-    expect(triggerAddInputs(removed, "section.wikis", "menu y")).toEqual([
-      { command: "section.wikis", key: "menu w w" },
-      { command: "section.wikis", key: "menu y" },
+    const removed = rowsFor([{ key: "menu g s", command: "-section.settings" }]);
+    expect(triggerAddInputs(removed, "section.settings", "menu y")).toEqual([
+      { command: "section.settings", key: "menu ," },
+      { command: "section.settings", key: "menu y" },
     ]);
   });
 
@@ -106,23 +106,23 @@ describe("the Keybindings table's menu keys and aliases", () => {
   });
 
   it("resets an edited default along with the copies the edit wrote beside it", () => {
-    // Editing `g w` to `g x` writes `w w` too, so that it survives the user rule.
-    const rules = triggerEditInputs(rowOf([], "section.wikis", "menu g w")!, "menu g x");
-    const edited = rowOf([...rules], "section.wikis", "menu g x")!;
+    // Editing `g s` to `g x` writes `,` too, so that it survives the user rule.
+    const rules = triggerEditInputs(rowOf([], "section.settings", "menu g s")!, "menu g x");
+    const edited = rowOf([...rules], "section.settings", "menu g x")!;
     expect(triggerRowActions(edited)).toEqual([
       {
         label: "Reset g x to default",
         change: {
           type: "remove",
-          target: { command: "section.wikis", key: "menu g x" },
-          also: [{ command: "section.wikis", key: "menu w w" }],
+          target: { command: "section.settings", key: "menu g x" },
+          also: [{ command: "section.settings", key: "menu ," }],
         },
       },
     ]);
   });
 
   it("checks a draft key against its kind", () => {
-    expect(triggerDraftIssue("menu", "menu g w")).toBeNull();
+    expect(triggerDraftIssue("menu", "menu g s")).toBeNull();
     expect(triggerDraftIssue("alias", ":wq")).toBeNull();
     expect(triggerDraftIssue("alias", "menu g")).toBe("Not this kind of key");
     expect(triggerDraftIssue("alias", ":w1")).toMatch(/^Invalid alias/);

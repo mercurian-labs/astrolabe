@@ -30,11 +30,11 @@ const rowFor = (rows: ReturnType<typeof table>, command: string) =>
 describe("the Keybindings table's rows", () => {
   it("gives each command one row, its bindings of each kind in their own cell", () => {
     const rows = table();
-    expect(rows.filter((row) => row.command === "section.wikis")).toHaveLength(1);
-    const wikis = rowFor(rows, "section.wikis")!;
-    expect(wikis.shortcuts).toEqual([]);
-    expect(wikis.menu.map((row) => row.label)).toEqual(["g w", "w w"]);
-    expect(wikis.alias).toEqual([]);
+    expect(rows.filter((row) => row.command === "section.settings")).toHaveLength(1);
+    const settings = rowFor(rows, "section.settings")!;
+    expect(settings.shortcuts).toEqual([]);
+    expect(settings.menu.map((row) => row.label)).toEqual(["g s", ","]);
+    expect(settings.alias).toEqual([]);
     const close = rowFor(rows, "tab.close")!;
     expect(close.alias.map((row) => row.label)).toEqual(["q[uit]"]);
     // Upstream's commands with only shortcuts still have their row.
@@ -47,13 +47,13 @@ describe("the Keybindings table's rows", () => {
   });
 
   it("keeps a removed default in its cell, and marks the row custom", () => {
-    const rows = table([{ key: "menu g w", command: "-section.wikis" }]);
-    const wikis = rowFor(rows, "section.wikis")!;
-    expect(wikis.menu.map((row) => [row.label, row.source])).toEqual([
-      ["w w", "Default"],
-      ["g w", "Removed"],
+    const rows = table([{ key: "menu g s", command: "-section.settings" }]);
+    const settings = rowFor(rows, "section.settings")!;
+    expect(settings.menu.map((row) => [row.label, row.source])).toEqual([
+      [",", "Default"],
+      ["g s", "Removed"],
     ]);
-    expect(wikis.badge).toBe("Custom");
+    expect(settings.badge).toBe("Custom");
     expect(rowFor(rows, "section.threads")?.badge).toBeNull();
   });
 
@@ -71,7 +71,7 @@ describe("the Keybindings table's rows", () => {
     const aliases = table([], "", "alias");
     expect(aliases.every((row) => row.alias.length > 0)).toBe(true);
     expect(aliases.map((row) => row.command)).toContain("tab.close");
-    expect(rowFor(aliases, "section.wikis")).toBeUndefined();
+    expect(rowFor(aliases, "section.settings")).toBeUndefined();
     expect(table([], "t ]", "shortcut").map((row) => row.command)).not.toContain("chatTab.next");
     expect(visibleKinds("all")).toEqual(["shortcut", "menu", "alias"]);
     expect(visibleKinds("menu")).toEqual(["menu"]);
@@ -91,14 +91,14 @@ describe("the Keybindings table's rows", () => {
 
   it("lists each binding's actions in the row's menu, for the kinds shown", () => {
     const rows = table([
-      { key: "menu g w", command: "-section.wikis" },
+      { key: "menu g s", command: "-section.settings" },
       { key: "mod+shift+w", command: "tab.close" },
     ]);
     const labels = (command: string, filter: KeybindingKindFilter = "all") =>
       commandRowActions(rowFor(rows, command)!, visibleKinds(filter), "MacIntel").map(
         (action) => action.label,
       );
-    expect(labels("section.wikis")).toEqual(["Remove w w", "Restore default g w"]);
+    expect(labels("section.settings")).toEqual(["Remove ,", "Restore default g s"]);
     // A user's own shortcut can be removed; upstream's defaults are unassigned instead.
     expect(labels("tab.close")).toEqual(["Remove ⇧⌘W", "Remove q[uit]"]);
     expect(labels("tab.close", "alias")).toEqual(["Remove q[uit]"]);

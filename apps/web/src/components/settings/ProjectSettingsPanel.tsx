@@ -55,7 +55,7 @@ import {
 import { CodeIndexProjectSettings } from "./CodeIndexSettings";
 import { LanguageServerProjectSettings } from "./LanguageServerSettings";
 import { ProjectActionsSettings } from "./ProjectActionsSettings";
-import { ProjectWikiLinks } from "../wiki/WikiLinks";
+import { ProjectDocumentSettings } from "./ProjectDocumentSettings";
 import { ProjectDefaultsSettings } from "./ProjectDefaultsSettings";
 import { ProjectRepositoriesSettings } from "./ProjectRepositoriesSettings";
 import { ProjectWorktreeLayoutSettings } from "./ProjectWorktreeLayoutSettings";
@@ -696,9 +696,9 @@ function ProjectDetail({
             </>
           ) : null}
         </SettingsSection>
-        <ProjectWikiLinks checkouts={group.memberProjects} />
         <ProjectDefaultsSettings category="project" />
         <CodeIndexProjectSettings members={group.memberProjects} />
+        <ProjectDocumentSettings members={group.memberProjects} />
         <LanguageServerProjectSettings members={group.memberProjects} />
         <ProjectActionsSettings />
         <ProjectRepositoriesSettings members={group.memberProjects} />

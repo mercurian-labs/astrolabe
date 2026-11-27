@@ -73,6 +73,12 @@ export function ambiguousLink(link: {
   return `Goes to ${pathOf(link.file)}. Also fits ${shown}${more > 0 ? ` and ${more} more` : ""}.`;
 }
 
+/** What a link that fits documents in several folders, and opens none of them, says of them. */
+export function linkFitsSeveral(places: ReadonlyArray<string>): string {
+  const shown = places.map(pathOf);
+  return `Fits ${shown.join(", ")}. Put a folder's name first, as ${shown[0] ?? ""}, to choose one.`;
+}
+
 /**
  * What a fresh read (`incoming`) does to a buffer loaded from `baseline` and now holding `buffer`:
  * `keep` (nothing changed underneath), `adopt` (our own save landed; it becomes the baseline), `reload`

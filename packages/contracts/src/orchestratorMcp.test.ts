@@ -12,6 +12,15 @@ const decodeDelegateTaskResult = Schema.decodeUnknownSync(OrchestratorMcpDelegat
 const decodeThreadWaitResult = Schema.decodeUnknownSync(OrchestratorMcpThreadWaitResult);
 
 describe("orchestrator MCP contracts", () => {
+  it("decodes a delegation naming a repository, and one from before repositories replaced wikis", () => {
+    expect(decodeDelegateTaskInput({ task: "Fix the docs.", repository: "api" }).repository).toBe(
+      "api",
+    );
+    const older = decodeDelegateTaskInput({ task: "Fix the docs.", wiki: "Plans" });
+    expect(older.task).toBe("Fix the docs.");
+    expect(older).not.toHaveProperty("wiki");
+  });
+
   it("decodes cross-provider delegated task requests and durable results", () => {
     const request = decodeDelegateTaskInput({
       task: "Inspect the workspace and report the result.",

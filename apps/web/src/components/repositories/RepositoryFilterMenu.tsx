@@ -2,8 +2,11 @@
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import type { ProjectWorktree } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
+import { useGT } from "gt-react";
 import {
+  BookTextIcon,
   ChevronRightIcon,
+  FilesIcon,
   EyeOffIcon,
   FilePenLineIcon,
   FolderGit2Icon,
@@ -74,6 +77,8 @@ export interface RepositoryWorktreeGroup {
 }
 
 const CHANGED_VALUE = "changed";
+const DOCS_VALUE = "docs";
+const ALL_FILES_VALUE = "all-files";
 const ALL_VALUE = "all";
 const CHANGED_LABEL = "Has changes";
 const repositoryValue = (key: string) => `repository:${key}`;
@@ -82,7 +87,7 @@ const worktreeValue = (key: string) => `worktree:${key}`;
 const worktreeName = (worktree: ProjectWorktree) => worktree.branch ?? worktree.alias;
 
 /** A worktree's mark in a filter row: its number, else a branch icon, or a plain folder's. */
-export function WorktreeFilterMark({ worktree }: { readonly worktree: ProjectWorktree }) {
+function WorktreeFilterMark({ worktree }: { readonly worktree: ProjectWorktree }) {
   const Icon = worktree.isRepository ? GitBranchIcon : FolderIcon;
   return worktree.number === null ? (
     <Icon className="size-4 shrink-0 text-muted-foreground" />
@@ -94,7 +99,7 @@ export function WorktreeFilterMark({ worktree }: { readonly worktree: ProjectWor
 }
 
 /** Folds or unfolds a filter row's worktrees; it never picks the row. */
-export function WorktreeFoldButton({
+function WorktreeFoldButton({
   open,
   ownerTitle,
   onToggle,
@@ -123,7 +128,7 @@ export function WorktreeFoldButton({
 }
 
 /** The filter's pill for worktrees it hides. */
-export function HiddenWorktreesPill({
+function HiddenWorktreesPill({
   names,
   onOpen,
   onRemove,
@@ -142,6 +147,16 @@ export function HiddenWorktreesPill({
     </FilterPill>
   );
 }
+
+function DocsIcon({ className }: { readonly className?: string }) {
+  return (
+    <BookTextIcon aria-hidden className={cn("size-4 shrink-0 text-muted-foreground", className)} />
+  );
+}
+
+/** Docs as one tap away from All files, and back. */
+const toggleDocs = (filter: RepositoryFilter) =>
+  storeRepositoryFilter({ ...filter, docs: !filter.docs });
 
 function ChangedIcon({ className }: { readonly className?: string }) {
   return (
@@ -183,6 +198,7 @@ export function RepositoryFilterMenu({
   readonly menu: SidebarProjectScopeMenuState;
   readonly dispatchMenu: (action: SidebarProjectScopeMenuAction) => void;
 }) {
+  const gt = useGT();
   const { isMobile, open: sidebarOpen, setOpenMobile } = useSidebar();
   const navigate = useNavigate();
   const comboboxFilter = useComboboxFilter();
@@ -213,6 +229,8 @@ export function RepositoryFilterMenu({
   );
   const labelOf = (value: string) => {
     if (value === CHANGED_VALUE) return CHANGED_LABEL;
+    if (value === DOCS_VALUE) return gt("Docs", { $context: "filter: show only documents" });
+    if (value === ALL_FILES_VALUE) return gt("All files", { $context: "filter: show every file" });
     if (value === ALL_VALUE) return "All projects";
     const repository = repositoryByValue.get(value);
     if (repository) return repository.title;
@@ -225,6 +243,10 @@ export function RepositoryFilterMenu({
   };
   const groups = [
     { label: "Status", values: [CHANGED_VALUE] },
+    {
+      label: gt("Show", { $context: "filter group: which files the trees show" }),
+      values: [DOCS_VALUE, ALL_FILES_VALUE],
+    },
     {
       label: "Projects",
       values: [
@@ -267,6 +289,8 @@ export function RepositoryFilterMenu({
   // With no repository picked every one is in, so each shows ticked.
   const checked = (value: string) => {
     if (value === CHANGED_VALUE) return filter.changed;
+    if (value === DOCS_VALUE) return filter.docs;
+    if (value === ALL_FILES_VALUE) return !filter.docs;
     if (value === ALL_VALUE) return kept === null;
     if (value.startsWith("repository:")) {
       return kept === null || kept.has(value.slice("repository:".length));
@@ -276,6 +300,8 @@ export function RepositoryFilterMenu({
   const selected = values.filter(checked);
   const toggle = (value: string) => {
     if (value === CHANGED_VALUE) storeRepositoryFilter({ ...filter, changed: !filter.changed });
+    else if (value === DOCS_VALUE) toggleDocs(filter);
+    else if (value === ALL_FILES_VALUE) storeRepositoryFilter({ ...filter, docs: false });
     else if (value === ALL_VALUE) {
       storeRepositoryFilter(toggleFilterAllRepositories(filter, repositoryKeys));
     } else if (value.startsWith("repository:")) {
@@ -287,7 +313,7 @@ export function RepositoryFilterMenu({
       storeRepositoryFilter(setWorktreeHidden(filter, key, !filter.hidden.includes(key)));
     }
   };
-  const active = kept !== null || filter.changed || filter.hidden.length > 0;
+  const active = kept !== null || filter.changed || filter.docs || filter.hidden.length > 0;
   const closeAnd = (then: () => void) => {
     dispatchMenu({ type: "open-changed", open: false });
     then();
@@ -354,6 +380,10 @@ export function RepositoryFilterMenu({
                       <ThreadsFilterCheckbox checked={checked(value)} />
                       {value === CHANGED_VALUE ? (
                         <ChangedIcon />
+                      ) : value === DOCS_VALUE ? (
+                        <DocsIcon />
+                      ) : value === ALL_FILES_VALUE ? (
+                        <FilesIcon className="size-4 shrink-0 text-muted-foreground" />
                       ) : repository ? (
                         <ProjectFavicon project={repository} className="size-4 shrink-0" />
                       ) : worktree ? (
@@ -431,6 +461,7 @@ export function RepositoryFilterPills({
   readonly changedCount: number | null;
   readonly onOpen: () => void;
 }) {
+  const gt = useGT();
   const picked =
     kept === null
       ? []
@@ -440,7 +471,11 @@ export function RepositoryFilterPills({
   const hidden = hiddenWorktrees(filter, worktreeGroups);
   // Counting every worktree runs git status in each, so Has changes shows only while it is on.
   const showChanged = filter.changed;
-  const count = (filter.changed ? 1 : 0) + (kept !== null ? 1 : 0) + (hidden.length > 0 ? 1 : 0);
+  const count =
+    (filter.changed ? 1 : 0) +
+    (filter.docs ? 1 : 0) +
+    (kept !== null ? 1 : 0) +
+    (hidden.length > 0 ? 1 : 0);
   if (!showChanged && count === 0) return null;
   return (
     <FilterPills
@@ -455,6 +490,15 @@ export function RepositoryFilterPills({
           count={changedCount}
           icon={<ChangedIcon className="size-3.5" />}
           onToggle={() => storeRepositoryFilter({ ...filter, changed: !filter.changed })}
+        />
+      ) : null}
+      {filter.docs ? (
+        <OneTapFilterPill
+          on
+          label={gt("Docs", { $context: "filter: show only documents" })}
+          count={null}
+          icon={<DocsIcon className="size-3.5" />}
+          onToggle={() => toggleDocs(filter)}
         />
       ) : null}
       {kept !== null ? (

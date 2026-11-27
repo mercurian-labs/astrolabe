@@ -11,7 +11,7 @@ sidebar colour. There is no sidebar artwork: the identification setting offers
 the version pill or none, and a stored "artwork" shows the pill.
 
 Below it, the sidebar opens on its **section title**, as ChatGPT's does: a large
-"Agents" (or "Wikis", "Projects", "Changes"; see [wikis.md](wikis.md)) heading with the section's
+"Agents" (or "Projects", "Changes") heading with the section's
 actions at its right end.
 
 ## Sub-features
@@ -29,7 +29,7 @@ actions at its right end.
   popup has a `Search filters` field (placeholder `Filter...`; "No matching filters." when
   nothing matches), then a **Status** group (Needs you, Working, Errored, each with the count
   of visible threads in the picked projects) and a **Projects** group: All projects, then each
-  project (wikis are not projects, so none is listed); All projects drops out while the field
+  project; All projects drops out while the field
   holds a query. Under the list, `button "New project"` is a plain button, not an option.
   Every option is a checkbox and picking keeps the popup open. Values in one group widen, the
   two groups narrow. With no project picked, All projects and every project show ticked;
@@ -70,7 +70,7 @@ actions at its right end.
 - **Rail mark**: the small monogram on a bordered rounded tile (`[data-app-rail-mark]`) is the rail's first item, above Agents, on web and desktop alike. The cap above the rail (`[data-app-rail-cap]`) is an empty, aria-hidden cell. The sidebar toggle is a separate fixed element drawn over it (`[data-app-rail-toggle]`, centred, x ≈ 6), not a child of the cap: locate it by `[data-app-rail-toggle]` or `role=button[name='Toggle main sidebar']`, never scoped under the cap. In the macOS desktop app (not fullscreen), whose window buttons take that corner, the toggle sits just after them (`--rail-toggle-left`, 90px, outside the cap's 44px) and the header row's content starts after the toggle.
 - **Icon rail** (`nav[aria-label='Sections']`, at wide widths on web and desktop; absent in a
   narrow window, 700px for one): the sections on top
-  (Agents, Wikis, Projects, Changes when the server supports pull requests, Issues when it
+  (Agents, Projects, Changes when the server supports pull requests, Issues when it
   supports issues), the current one marked with a bar and `aria-current="page"`. **Issues**
   opens upstream's `/issues` page (`routes/_chat.issues.tsx`) in place of the panes: the rail
   lights Issues (never Agents), the sidebar keeps the Agents list with no row lit, and the
@@ -97,8 +97,8 @@ actions at its right end.
   update notices on desktop. On narrow windows (sheet sidebar) the rail, and with it the
   monogram, is absent; the header row carries no brand at any width, and below 768px it starts
   with the sheet's own Toggle main sidebar (`md:hidden`). The footer keeps Settings (or the
-  account menu), Wikis, Projects, Changes (when the server supports pull requests) and
-  Usage; while on Wikis, Projects or Changes, that section's button reads Agents
+  account menu), Projects, Changes (when the server supports pull requests) and
+  Usage; while on Projects or Changes, that section's button reads Agents
   instead. Only legacy `/projects/…` pages show Back there (beside the account menu when
   there is one); Settings and Usage keep the footer of the section underneath, and their modal
   covers the sheet.
@@ -179,7 +179,7 @@ and again after dragging `Resize Sidebar` narrower. Thread rows: a `sidebar-row-
 - The order of the title row's actions is a design decision still open (search,
   filter, new today). Assert presence, not order, unless the change is about order.
 - Scope locators: `navigation "Agents"` (the sidebar), the rail's `button "Agents"`
-  and `heading "Agents"` share the name, and so do Projects', Wikis' and Changes'. A diff
+  and `heading "Agents"` share the name, and so do Projects' and Changes'. A diff
   tab's header breadcrumb also renders `nav[aria-label="Changes"]`. Scope to
   `nav[aria-label="Sections"]` for the rail and to the sidebar for a section's lists. The
   sidebar is `div[role=navigation][aria-label=Agents]` (or the section's name), so

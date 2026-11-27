@@ -26,7 +26,7 @@ const ROWS: ReadonlyArray<{
   {
     key: "sameThread",
     label: "Same thread",
-    subtitle: "A thread's pull requests and its wiki changes form one group.",
+    subtitle: "A thread's pull requests form one group.",
   },
   {
     key: "coordinator",
@@ -58,16 +58,11 @@ const ROWS: ReadonlyArray<{
     label: "Offer drafts for missing documentation",
     subtitle: "Start a thread to draft docs the code lacks.",
   },
-  {
-    key: "armByDefault",
-    label: "Merge new groups with the code",
-    subtitle: "Docs merge the moment their code has.",
-  },
 ];
 
 /**
  * Astrolabe: Settings › Change requests › Grouping on the phone, as on web: the rules that add
- * change requests to a group, what a group offers, and whether new groups merge together. Kept
+ * change requests to a group, and what a group offers. Kept
  * by each selected environment.
  */
 export function SettingsChangeRequestsRouteScreen() {

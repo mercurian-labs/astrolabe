@@ -8,7 +8,7 @@ import { TabHeader } from "~/panes/TabHeader";
 
 import { canvasViewsAtom, canvasViewsKey } from "~/state/canvasViews";
 
-import { canvasHost, LazyCanvasBoard } from "./CanvasFrame";
+import { LazyCanvasBoard, useCanvasHost } from "./CanvasFrame";
 import { useCanvasMenuItems } from "./canvasMenuItems";
 import { useKeepCanvas } from "./KeepCanvas";
 import { useThreadCanvasStore } from "./threadCanvasStore";
@@ -38,6 +38,7 @@ function CanvasPanelBoard({
   readonly threadRef: ScopedThreadRef;
 }) {
   const itemId = TurnItemId.make(view.id);
+  const host = useCanvasHost(threadRef, view.data);
   const canvas = useThreadCanvasDocument(view, {
     environmentId: threadRef.environmentId,
     threadId: threadRef.threadId,
@@ -66,7 +67,7 @@ function CanvasPanelBoard({
           <LazyCanvasBoard
             data={view.data}
             mode="free"
-            host={canvasHost(threadRef)}
+            host={host}
             label={view.title}
             focus={asked?.id === view.id ? asked : null}
             menuItems={menuItems}

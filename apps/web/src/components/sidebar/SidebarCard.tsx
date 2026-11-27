@@ -31,11 +31,6 @@ export const SIDEBAR_CARD_ITEM_CLASS =
   // Matches the h-18 content box; the py-px padding is added on top.
   "py-px [content-visibility:auto] [contain-intrinsic-size:auto_74px]";
 
-/** The list item. */
-export function SidebarCardItem({ className, ...props }: ComponentProps<"li">) {
-  return <li className={cn("list-none", SIDEBAR_CARD_ITEM_CLASS, className)} {...props} />;
-}
-
 export function SidebarCardContent({ className, ...props }: ComponentProps<"div">) {
   return (
     <div

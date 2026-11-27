@@ -2,9 +2,7 @@
 import {
   changeRequestFiles,
   describeWikiFailure,
-  documentPath,
   draftLabel,
-  draftMoveTargets,
   mergeBlockedReason,
   wikiTerms,
 } from "@t3tools/client-runtime/wikiLogic";
@@ -30,12 +28,11 @@ import { wikiEnvironment } from "../../../state/wiki";
 interface DraftActions {
   readonly environmentId: EnvironmentId;
   readonly draft: WikiChangeRequest;
-  readonly changeRequests: ReadonlyArray<WikiChangeRequest>;
   /** Lands what's still unsaved first; false if it couldn't. */
   readonly flush?: () => Promise<boolean>;
   /** Forgets what's still unsaved, as discarding the draft it would land in does. */
   readonly drop?: () => void;
-  /** The change request the draft's documents went to. */
+  /** The change request the draft became, once its pull request is open. */
   readonly onLanded?: (changeRequestId: WikiChangeRequestId, files: ReadonlyArray<string>) => void;
 }
 
@@ -62,8 +59,11 @@ export function WikiDraftBar(props: DraftActions) {
   );
 }
 
-/** Make it a change request, Move to another one, or Discard. */
-export function WikiDraftSheet(props: DraftActions & { readonly onClose: () => void }) {
+/**
+ * Open pull request, or Discard. The draft stays a draft, on this server only, until the person
+ * opens its pull request: that names it and pushes it to the host in one go.
+ */
+function WikiDraftSheet(props: DraftActions & { readonly onClose: () => void }) {
   const { environmentId, draft, onClose } = props;
   const target = { wikiId: draft.wikiId, changeRequestId: draft.changeRequestId };
   const canAct = useAtomValue(wikiEnvironment.promoteDraft.permissionAtom(environmentId));
@@ -73,15 +73,12 @@ export function WikiDraftSheet(props: DraftActions & { readonly onClose: () => v
   const wikis = useEnvironmentQuery(wikiEnvironment.list({ environmentId, input: {} }));
   const terms = wikiTerms(wikis.data?.wikis.find((entry) => entry.wikiId === draft.wikiId));
   const promote = useAtomCommand(wikiEnvironment.promoteDraft, { reportFailure: false });
-  const move = useAtomCommand(wikiEnvironment.moveDraft, { reportFailure: false });
+  const publish = useAtomCommand(wikiEnvironment.publishChangeRequest, { reportFailure: false });
   const setStatus = useAtomCommand(wikiEnvironment.setChangeRequestStatus, {
     reportFailure: false,
   });
   const files = changeRequestFiles(draft);
-  const targets = draftMoveTargets(props.changeRequests);
   const [title, setTitle] = useState(draft.title);
-  const [moveTo, setMoveTo] = useState<WikiChangeRequestId | null>(null);
-  const [picked, setPicked] = useState<ReadonlySet<string>>(() => new Set(files));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const conflict =
@@ -89,24 +86,33 @@ export function WikiDraftSheet(props: DraftActions & { readonly onClose: () => v
       ? mergeBlockedReason({ canWrite: true, preview: detail.data.mergePreview })
       : null;
 
-  const run = async <A, E>(
-    action: () => Promise<AtomCommandResult<A, E>>,
-    landed?: (value: A) => void,
-  ) => {
+  const failed = (result: AtomCommandResult<unknown, unknown>) =>
+    result._tag === "Success"
+      ? ""
+      : isAtomCommandInterrupted(result)
+        ? "That was cancelled."
+        : describeWikiFailure(squashAtomCommandFailure(result));
+
+  const openPullRequest = async () => {
     setBusy(true);
     setError(null);
-    const result = await action();
-    setBusy(false);
-    if (result._tag !== "Success") {
-      setError(
-        isAtomCommandInterrupted(result)
-          ? "That was cancelled."
-          : describeWikiFailure(squashAtomCommandFailure(result)),
-      );
+    const promoted = await promote({ environmentId, input: { ...target, title: title.trim() } });
+    if (promoted._tag !== "Success") {
+      setBusy(false);
+      setError(failed(promoted));
       return;
     }
+    // No longer a draft, the bar and this sheet can go before the host answers.
+    const published = await publish({ environmentId, input: target });
+    setBusy(false);
     onClose();
-    landed?.(result.value);
+    props.onLanded?.(promoted.value.changeRequestId, files);
+    if (published._tag !== "Success") {
+      Dialog.alert(
+        `The ${terms.singular} isn't open yet`,
+        `Your edits are kept as “${title.trim()}”. ${failed(published)}`,
+      );
+    }
   };
 
   return (
@@ -117,7 +123,7 @@ export function WikiDraftSheet(props: DraftActions & { readonly onClose: () => v
         keyboardShouldPersistTaps="handled"
       >
         <Text className="text-sm text-foreground-muted">
-          {`Your edits save here by themselves. Main changes only when a ${terms.singular} merges.`}
+          {`Your edits save to this draft by themselves, and stay here until you open a ${terms.singular}. The repository changes only when it merges.`}
         </Text>
         {conflict ? <Text className="text-sm text-foreground-muted">{conflict}</Text> : null}
 
@@ -132,88 +138,13 @@ export function WikiDraftSheet(props: DraftActions & { readonly onClose: () => v
           />
         </View>
         <Button
-          label={`Make it a ${terms.singular}`}
+          label={`Open ${terms.singular}`}
           tone="primary"
           fullWidth
           loading={busy}
           disabled={!canAct || busy || title.trim().length === 0}
-          onPress={() =>
-            void run(
-              () => promote({ environmentId, input: { ...target, title: title.trim() } }),
-              (changeRequest) => props.onLanded?.(changeRequest.changeRequestId, files),
-            )
-          }
+          onPress={() => void openPullRequest()}
         />
-
-        {targets.length > 0 ? (
-          <>
-            <Text className="px-4 text-xs text-foreground-muted">Move to another one</Text>
-            <View className="overflow-hidden rounded-[20px] bg-grouped-card">
-              {targets.map((choice, index) => (
-                <Pressable
-                  key={choice.changeRequestId}
-                  accessibilityRole="radio"
-                  accessibilityState={{ checked: moveTo === choice.changeRequestId }}
-                  onPress={() => setMoveTo(choice.changeRequestId)}
-                  className={`flex-row items-center gap-3 px-4 py-3 active:opacity-70 ${index > 0 ? "border-t border-border-subtle" : ""}`}
-                >
-                  <Text className="flex-1 text-base text-foreground" numberOfLines={2}>
-                    {choice.title}
-                  </Text>
-                  {moveTo === choice.changeRequestId ? (
-                    <SymbolView name="checkmark" size={16} tintColorClassName="accent-primary" />
-                  ) : null}
-                </Pressable>
-              ))}
-            </View>
-            <View className="overflow-hidden rounded-[20px] bg-grouped-card">
-              {files.map((file, index) => (
-                <Pressable
-                  key={file}
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: picked.has(file) }}
-                  onPress={() =>
-                    setPicked((current) => {
-                      const next = new Set(current);
-                      if (!next.delete(file)) next.add(file);
-                      return next;
-                    })
-                  }
-                  className={`flex-row items-center gap-3 px-4 py-3 active:opacity-70 ${index > 0 ? "border-t border-border-subtle" : ""}`}
-                >
-                  <Text className="flex-1 text-base text-foreground" numberOfLines={1}>
-                    {documentPath(file)}
-                  </Text>
-                  {picked.has(file) ? (
-                    <SymbolView name="checkmark" size={16} tintColorClassName="accent-primary" />
-                  ) : null}
-                </Pressable>
-              ))}
-            </View>
-            <Button
-              label="Move"
-              fullWidth
-              loading={busy}
-              disabled={!canAct || busy || moveTo === null || picked.size === 0}
-              onPress={() => {
-                if (moveTo === null) return;
-                const moving = [...picked];
-                void run(
-                  () =>
-                    move({
-                      environmentId,
-                      input: {
-                        ...target,
-                        to: moveTo,
-                        ...(picked.size === files.length ? {} : { files: moving }),
-                      },
-                    }),
-                  () => props.onLanded?.(moveTo, moving),
-                );
-              }}
-            />
-          </>
-        ) : null}
 
         <Button
           label="Discard"
@@ -223,22 +154,30 @@ export function WikiDraftSheet(props: DraftActions & { readonly onClose: () => v
           onPress={() =>
             Dialog.confirm({
               title: "Discard this draft?",
-              message: "Its edits leave your documents. You can reopen it from Changes.",
+              message: "Its edits leave your documents.",
               cancelText: "Keep it",
               confirmText: "Discard",
               destructive: true,
               onConfirm: () => {
                 props.drop?.();
-                void run(() =>
-                  setStatus({ environmentId, input: { ...target, status: "closed" } }),
-                );
+                void (async () => {
+                  setBusy(true);
+                  setError(null);
+                  const result = await setStatus({
+                    environmentId,
+                    input: { ...target, status: "closed" },
+                  });
+                  setBusy(false);
+                  if (result._tag === "Success") onClose();
+                  else setError(failed(result));
+                })();
               },
             })
           }
         />
         {!canAct ? (
           <Text className="text-sm text-danger">
-            You don't have permission to change this wiki.
+            You don't have permission to change this repository's documents.
           </Text>
         ) : null}
         {error ? <Text className="text-sm text-danger">{error}</Text> : null}

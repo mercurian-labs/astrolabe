@@ -61,12 +61,12 @@ import {
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeftIcon,
-  BookOpenIcon,
   BugIcon,
   ChartNoAxesColumnIcon,
   CheckIcon,
   ChevronRightIcon,
   CornerLeftUpIcon,
+  FilePenLineIcon,
   FileSearchIcon,
   FolderGit2Icon,
   FolderIcon,
@@ -85,7 +85,6 @@ import {
   TextSearchIcon,
   UserPlusIcon,
   WaypointsIcon,
-  FilePenLineIcon,
   WorkflowIcon,
 } from "lucide-react";
 import { openThreadFind } from "./chat/threadFindStore";
@@ -129,7 +128,6 @@ import { desktopLocalBackendId } from "../connection/desktopLocal";
 import { filesystemEnvironment, useFilesystemReadAccess } from "../state/filesystem";
 import { projectEnvironment } from "../state/projects";
 import { useEnvironmentQuery } from "../state/query";
-import { wikiEnvironment } from "../state/wiki";
 import { serverEnvironment } from "../state/server";
 import { threadEnvironment } from "../state/threads";
 import { readEnvironmentScope, useEnvironmentScope } from "~/state/session";
@@ -231,7 +229,6 @@ import {
   ITEM_ICON_CLASS,
   RECENT_THREAD_LIMIT,
   createCommandPaletteSearchState,
-  type CommandPaletteAddTarget,
   type CommandPaletteGroup,
   resolveAddProjectEntry,
   type AddProjectCloneFlow,
@@ -282,6 +279,12 @@ import { LocationPicker, locationPickerEditor } from "./outline/LocationPicker";
 import { OutlinePicker, outlinePickerEditor } from "./outline/OutlinePicker";
 import { ProjectSymbolPicker } from "./outline/ProjectSymbolPicker";
 import { InterpreterPicker } from "./repositories/InterpreterPicker";
+import {
+  movesWithLinks,
+  ProjectMoveDialog,
+  requestProjectMove,
+} from "./repositories/ProjectMoveDialog";
+import { parseRepositoryTabKey } from "./repositories/repositoryTabs";
 import { openLinkPullRequestDialog } from "./pullRequest/LinkPullRequestDialog";
 import { canShareWithGuestAtom } from "./chat/guestShareAvailability";
 import { openGuestShareDialog } from "./chat/guestShareDialogState";
@@ -311,32 +314,15 @@ import { readIssueListPreferences } from "~/components/issue/issueListPreference
 import { IssueGlyph } from "~/components/issue/issuePresentation";
 import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
 import { threadRecentUse } from "@t3tools/shared/paletteSearch";
-// Astrolabe: the palette as Vim's ex line, and Search finding wiki documents.
-import { showChangeRequestTab } from "~/components/pullRequest/pullRequestWorkspace";
-import { wikiDraft } from "~/components/wiki/wiki.logic";
+// Astrolabe: the palette as Vim's ex line, and the canvas in front's commands.
 import type { CanvasBoardCommand } from "@mercurian/wiki-editor/canvas-board";
 import { wikiCanvasBoard } from "~/components/wiki/wikiCanvasBoards";
-import { useDocumentSearchRows } from "~/components/wiki/WikiFinder";
-import { requestWikiMove, WikiMoveDialog } from "~/components/wiki/WikiMoveDialog";
-import { useFocusedWikiTab } from "~/components/wiki/wikiPanes";
-import { isCanvasTab, wikiTabKey } from "~/components/wiki/wikiTabs";
-import { appCommandsSlot } from "~/whichKey/handles";
-import { useAddWiki } from "~/components/wiki/useAddWiki";
-import {
-  useWikiLinkStep,
-  WIKI_LINK_GROUP,
-  type WikiLinkStep,
-} from "~/components/wiki/wikiLinkStep";
+import { useWorkspaceFocusedKey } from "~/panes/workspace";
 import { commandLineField, queryForField } from "~/whichKey/exCommands";
 import { useExLine } from "~/whichKey/exPalette";
 
 const EMPTY_BROWSE_ENTRIES: FilesystemBrowseResult["entries"] = [];
 const ADD_PROJECT_ENTRY_GROUP = "add-project";
-/** Astrolabe: the step after adding a project or a wiki, which offers to link it to the other. */
-const WIKI_LINK_VIEW: CommandPaletteView = {
-  addonIcon: <LinkIcon className={ADDON_ICON_CLASS} />,
-  groups: [{ value: WIKI_LINK_GROUP, label: "", items: [] }],
-};
 const NEW_THREAD_IN_GROUP = "projects";
 
 /** The submenu an open intent starts in; its groups resolve while rendering. */
@@ -404,7 +390,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
           openChildSearch={openChildSearch}
           initialContext={state.restoredSearch}
         />
-        <WikiMoveDialog />
+        <ProjectMoveDialog />
       </CommandDialog>
     </ComposerHandleContext>
   );
@@ -564,9 +550,6 @@ function OpenCommandPaletteDialog(props: {
     reportFailure: false,
     reportDefect: false,
   });
-  const cloneRepository = useAtomCommand(sourceControlEnvironment.cloneRepository, {
-    reportFailure: false,
-  });
   const startProjectClone = useAtomCommand(sourceControlEnvironment.startProjectClone, {
     reportFailure: false,
   });
@@ -640,16 +623,7 @@ function OpenCommandPaletteDialog(props: {
     query: deferredQuery,
   });
   const currentView = viewStack.at(-1)?.view ?? null;
-  const focusedWikiTab = useFocusedWikiTab();
-  const focusedWikiChanges = useEnvironmentQuery(
-    focusedWikiTab === null
-      ? null
-      : wikiEnvironment.changeRequests({
-          environmentId: focusedWikiTab.environmentId,
-          input: { wikiId: focusedWikiTab.wikiId },
-        }),
-  );
-  const focusedWikiDraft = wikiDraft(focusedWikiChanges.data?.changeRequests);
+  const focusedTabKey = useWorkspaceFocusedKey();
   const threadSearchQuery = currentView === null && !isActionsOnly ? deferredQuery : "";
   const [browseGeneration, setBrowseGeneration] = useState(0);
   const [browseNavigation] = useState(createBrowseNavigationCoordinator);
@@ -662,15 +636,6 @@ function OpenCommandPaletteDialog(props: {
     readonly environmentId: EnvironmentId;
     readonly sourcesEnvironmentId: EnvironmentId | null;
   } | null>(null);
-  // Astrolabe: the add flow adds a wiki the same way; only its last step differs.
-  const [addTarget, setAddTarget] = useState<CommandPaletteAddTarget>(() =>
-    props.openIntent?.kind === "add-project" ? props.openIntent.target : "repository",
-  );
-  const addsWiki = addTarget === "wiki";
-  const addNoun = addsWiki ? "wiki" : "project";
-  const addWiki = useAddWiki();
-  const [linkStep, setLinkStep] = useState<WikiLinkStep | null>(null);
-  const wikiLinkStep = useWikiLinkStep();
   const [newProjectPublishes, setNewProjectPublishes] = useState(false);
   const [newProjectPublishKind, setNewProjectPublishKind] =
     useState<SourceControlProviderKind | null>(null);
@@ -765,10 +730,7 @@ function OpenCommandPaletteDialog(props: {
         : false;
     }) ?? null;
   const browseEnvironmentId = addProjectEnvironmentId ?? defaultAddProjectEnvironmentId;
-  const canCreateProject = useEnvironmentScope(
-    browseEnvironmentId,
-    addsWiki ? AuthSourceControlWriteScope : AuthOrchestrationOperateScope,
-  );
+  const canCreateProject = useEnvironmentScope(browseEnvironmentId, AuthOrchestrationOperateScope);
   const browseEnvironment =
     environments.find((environment) => environment.environmentId === browseEnvironmentId) ?? null;
   const browseEnvironmentIsDesktopLocal =
@@ -1215,15 +1177,13 @@ function OpenCommandPaletteDialog(props: {
       },
     ];
 
-    if (addsWiki || newProjectsRootFor(environmentId) !== null) {
+    if (newProjectsRootFor(environmentId) !== null) {
       sourceItems.unshift({
         kind: "action",
         value: `action:add-project:${environmentId}:new`,
-        searchTerms: [`new ${addNoun}`, "create", "empty", "repository", "git init"],
-        title: addsWiki ? gt("New wiki") : gt("New project"),
-        description: addsWiki
-          ? gt("Start an empty wiki")
-          : gt("Start a new Git repository from a name"),
+        searchTerms: ["new project", "create", "empty", "repository", "git init"],
+        title: gt("New project"),
+        description: gt("Start a new Git repository from a name"),
         icon: <FolderGit2Icon className={ITEM_ICON_CLASS} />,
         keepOpen: true,
         run: async () => {
@@ -1366,10 +1326,7 @@ function OpenCommandPaletteDialog(props: {
   const projectNewEnvironmentOptions = addProjectEnvironmentOptions.filter(
     (option) => option.isConnected && newProjectsRootFor(option.environmentId) !== null,
   );
-  // The server picks a new wiki's folder, so any connected environment can start one.
-  const newProjectEnvironmentOptions = addsWiki
-    ? addProjectEnvironmentOptions.filter((option) => option.isConnected)
-    : projectNewEnvironmentOptions;
+  const newProjectEnvironmentOptions = projectNewEnvironmentOptions;
 
   const addProjectEnvironmentGroups = [
     {
@@ -1445,79 +1402,30 @@ function OpenCommandPaletteDialog(props: {
     }
   };
 
-  /** Astrolabe: after adding a project or a wiki, offers to link it to the other, else closes. */
-  const finishAdd = (step: WikiLinkStep) => {
-    if (!wikiLinkStep.offers(step)) {
-      setOpen(false);
-      return;
-    }
-    browseNavigation.invalidate();
-    setAddProjectCloneFlow(null);
-    setNewProjectFlow(null);
-    setAddProjectEnvironmentId(null);
-    setLinkStep(step);
-    dispatchSearch({ type: "reset", query: "" });
-    pushPaletteView(WIKI_LINK_VIEW);
-  };
-
   const openNewProjectFlow = () => {
     const firstOption = projectNewEnvironmentOptions[0];
-    setAddTarget("repository");
     if (firstOption) startNewProject(firstOption.environmentId, null);
-  };
-  const firstConnectedEnvironment = addProjectEnvironmentOptions.find(
-    (option) => option.isConnected,
-  );
-  const openNewWikiFlow = () => {
-    setAddTarget("wiki");
-    if (firstConnectedEnvironment) startNewProject(firstConnectedEnvironment.environmentId, null);
   };
 
   const actionItems: Array<CommandPaletteActionItem | CommandPaletteSubmenuItem> = [];
 
-  // Astrolabe: a canvas's own command, while one is in front.
-  const canvasBoard =
-    focusedWikiTab !== null && isCanvasTab(focusedWikiTab)
-      ? wikiCanvasBoard(wikiTabKey(focusedWikiTab))
-      : undefined;
-  // Astrolabe: the document in front moves from here, as a tree row does by drag.
-  if (focusedWikiTab?.kind === "note") {
-    const { environmentId, wikiId, file } = focusedWikiTab;
+  // Astrolabe: the project document in front moves from here, as its tree row's menu moves it.
+  const focusedFile = parseRepositoryTabKey(focusedTabKey);
+  if (focusedFile?.kind === "file" && movesWithLinks(focusedFile.path, false)) {
     actionItems.push({
       kind: "action",
-      value: "action:wiki-move-document",
-      searchTerms: ["move document", "rename document", "folder"],
-      title: gt("Wiki: Move or rename this document"),
+      value: "action:project-move-document",
+      searchTerms: ["move document", "rename document", "rename note", "folder", "links"],
+      title: gt("Move or rename this document"),
       icon: <FilePenLineIcon className={ITEM_ICON_CLASS} />,
       run: async () => {
-        requestWikiMove({ environmentId, wikiId, from: file, folder: false, name: "the wiki" });
+        requestProjectMove({ tab: focusedFile, folder: false });
       },
     });
   }
-  // Astrolabe: the way to the draft of the wiki in front, whose tab holds its ways out.
-  if (focusedWikiDraft !== null && focusedWikiTab !== null) {
-    const draftTab = wikiTabKey({
-      kind: "change-request",
-      environmentId: focusedWikiTab.environmentId,
-      wikiId: focusedWikiTab.wikiId,
-      changeRequestId: focusedWikiDraft.changeRequestId,
-    });
-    actionItems.push({
-      kind: "action",
-      value: "action:wiki-open-draft",
-      searchTerms: [
-        "draft",
-        "open draft",
-        "make pull request",
-        "make merge request",
-        "move draft",
-        "discard draft",
-      ],
-      title: gt("Wiki: Open your draft"),
-      icon: <FilePenLineIcon className={ITEM_ICON_CLASS} />,
-      run: async () => showChangeRequestTab(draftTab, "new-tab"),
-    });
-  }
+
+  // Astrolabe: a canvas's own command, while one is in front.
+  const canvasBoard = wikiCanvasBoard(focusedTabKey);
   if (canvasBoard !== undefined && canvasBoard.groups.length > 0) {
     actionItems.push({
       kind: "submenu",
@@ -1559,8 +1467,8 @@ function OpenCommandPaletteDialog(props: {
     canvasAction("help", "Help", ["keys", "shortcuts"]);
     if (canvasBoard.editable) {
       canvasAction("add-card", "Add card", ["new card", "text"]);
-      canvasAction("add-note", "Add note from wiki", ["note", "file"]);
-      canvasAction("add-media", "Add media from wiki", ["image", "media"]);
+      canvasAction("add-note", "Add note", ["note", "file", "document"]);
+      canvasAction("add-media", "Add media", ["image", "media"]);
       canvasAction("add-web-page", "Add web page", ["link", "url"]);
       canvasAction("create-group", "Create section", ["section", "group"]);
       canvasAction("convert-to-file", "Convert to file", ["convert", "note"]);
@@ -1870,28 +1778,6 @@ function OpenCommandPaletteDialog(props: {
     });
   }
 
-  if (firstConnectedEnvironment) {
-    actionItems.push({
-      kind: "action",
-      value: "action:new-canvas",
-      searchTerms: ["new canvas", "canvas", "board", "whiteboard", "document"],
-      title: gt("New canvas"),
-      icon: <WaypointsIcon className={ITEM_ICON_CLASS} />,
-      run: async () => appCommandsSlot.get()?.command("wiki.findDocument", null).run(),
-    });
-    actionItems.push({
-      kind: "action",
-      value: "action:new-wiki",
-      searchTerms: ["new wiki", "new project", "create", "empty", "notes"],
-      title: gt("New wiki"),
-      icon: <BookOpenIcon className={ITEM_ICON_CLASS} />,
-      keepOpen: true,
-      run: async () => {
-        openNewWikiFlow();
-      },
-    });
-  }
-
   const addProjectAction: CommandPaletteActionItem = {
     kind: "action",
     value: "action:add-project",
@@ -1918,24 +1804,10 @@ function OpenCommandPaletteDialog(props: {
     icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
     keepOpen: true,
     run: async () => {
-      setAddTarget("repository");
       openAddProjectFlow();
     },
   };
   actionItems.push(addProjectAction);
-
-  actionItems.push({
-    kind: "action",
-    value: "action:add-wiki",
-    searchTerms: ["add wiki", "new wiki", "wiki", "notes", "folder", "clone", "repository"],
-    title: gt("Add wiki"),
-    icon: <BookOpenIcon className={ITEM_ICON_CLASS} />,
-    keepOpen: true,
-    run: async () => {
-      setAddTarget("wiki");
-      openAddProjectFlow();
-    },
-  });
 
   if (wslAddProjectEnvironmentOption) {
     actionItems.push({
@@ -1947,7 +1819,6 @@ function OpenCommandPaletteDialog(props: {
       icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
       keepOpen: true,
       run: async () => {
-        setAddTarget("repository");
         await startAddProjectBrowse(wslAddProjectEnvironmentOption.environmentId);
       },
     });
@@ -2011,36 +1882,6 @@ function OpenCommandPaletteDialog(props: {
     icon: <FolderGit2Icon className={ITEM_ICON_CLASS} />,
     run: async () => {
       await navigate({ to: "/repositories" });
-    },
-  });
-
-  actionItems.push({
-    kind: "action",
-    value: "action:wikis",
-    searchTerms: [
-      "wikis",
-      "wiki",
-      "notes",
-      "knowledge",
-      "skill map",
-      "pull requests",
-      "merge requests",
-    ],
-    title: gt("Open wikis"),
-    icon: <BookOpenIcon className={ITEM_ICON_CLASS} />,
-    run: async () => {
-      await navigate({ to: "/wikis" });
-    },
-  });
-
-  actionItems.push({
-    kind: "action",
-    value: "action:wiki-settings",
-    searchTerms: ["wiki settings", "link wiki", "link project", "mirror", "wikis"],
-    title: gt("Wiki settings"),
-    icon: <BookOpenIcon className={ITEM_ICON_CLASS} />,
-    run: async () => {
-      await navigate({ to: "/settings/wikis" });
     },
   });
 
@@ -2222,29 +2063,25 @@ function OpenCommandPaletteDialog(props: {
           addProjectEnvironmentId,
           buildPaletteRemoteSourceReadiness(sourceControlDiscovery.data, messages),
         )
-      : currentView?.groups[0]?.value === WIKI_LINK_GROUP && linkStep !== null
-        ? [wikiLinkStep.group(linkStep)]
-        : currentView?.groups[0]?.value === ADD_PROJECT_ENTRY_GROUP
-          ? addProjectEntryGroups()
-          : currentView?.groups[0]?.value === NEW_THREAD_IN_GROUP
-            ? [
-                {
-                  value: NEW_THREAD_IN_GROUP,
-                  label: gt("Projects"),
-                  // Every project archived and no "No project" home leaves only adding one.
-                  items: projectThreadItems.length > 0 ? projectThreadItems : [addProjectAction],
-                },
-              ]
-            : currentView?.groups[0]?.value.startsWith(PORT_FORWARD_GROUP_PREFIX) && portForwardItem
-              ? portForwardItem.groups
-              : currentView?.groups[0]?.value === "themes"
-                ? changeThemeItem.groups
-                : currentView?.groups[0]?.value === "appearance"
-                  ? changeAppearanceItem.groups
-                  : (currentView?.groups ?? searchRootGroups);
+      : currentView?.groups[0]?.value === ADD_PROJECT_ENTRY_GROUP
+        ? addProjectEntryGroups()
+        : currentView?.groups[0]?.value === NEW_THREAD_IN_GROUP
+          ? [
+              {
+                value: NEW_THREAD_IN_GROUP,
+                label: gt("Projects"),
+                // Every project archived and no "No project" home leaves only adding one.
+                items: projectThreadItems.length > 0 ? projectThreadItems : [addProjectAction],
+              },
+            ]
+          : currentView?.groups[0]?.value.startsWith(PORT_FORWARD_GROUP_PREFIX) && portForwardItem
+            ? portForwardItem.groups
+            : currentView?.groups[0]?.value === "themes"
+              ? changeThemeItem.groups
+              : currentView?.groups[0]?.value === "appearance"
+                ? changeAppearanceItem.groups
+                : (currentView?.groups ?? searchRootGroups);
 
-  // Astrolabe: Search finds every wiki's documents too.
-  const documentSearchItems = useDocumentSearchRows(currentView === null);
   const isLinkedThreadSearch =
     linkedThreadSearch?.linkedThreads !== undefined && deferredQuery === linkedThreadSearch.query;
   const searchedGroups = filterCommandPaletteGroups(
@@ -2262,7 +2099,6 @@ function OpenCommandPaletteDialog(props: {
         : {}),
       projectSearchItems: projectSearchItems,
       settingsSearchItems,
-      documentSearchItems,
       threadSearchItems:
         isLinkedThreadSearch && linkedThreadSearch?.linkedThreads
           ? buildLinkedThreadActionItems(
@@ -2335,7 +2171,7 @@ function OpenCommandPaletteDialog(props: {
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: addsWiki ? gt("Failed to add wiki") : gt("Failed to add project"),
+          title: gt("Failed to add project"),
           description: gt("Windows-style paths are only supported on Windows."),
         }),
       );
@@ -2346,7 +2182,7 @@ function OpenCommandPaletteDialog(props: {
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: addsWiki ? gt("Failed to add wiki") : gt("Failed to add project"),
+          title: gt("Failed to add project"),
           description: gt("Relative paths require an active project."),
         }),
       );
@@ -2355,19 +2191,6 @@ function OpenCommandPaletteDialog(props: {
 
     const cwd = resolveProjectPathForDispatch(rawCwd, input.currentProjectCwd);
     if (cwd.length === 0) return;
-
-    if (addsWiki) {
-      const added = await addWiki.register(input.environmentId, cwd);
-      if (added) {
-        finishAdd({
-          kind: "wiki",
-          environmentId: input.environmentId,
-          wikiId: added.wikiId,
-          name: added.name,
-        });
-      }
-      return;
-    }
 
     const existing = findProjectByPath(
       projects.filter((project) => project.environmentId === input.environmentId),
@@ -2462,12 +2285,7 @@ function OpenCommandPaletteDialog(props: {
       );
       return;
     }
-    finishAdd({
-      kind: "repository",
-      environmentId: input.environmentId,
-      projectId,
-      title: inferProjectTitleFromPath(cwd),
-    });
+    setOpen(false);
   };
 
   const handleAddProject = async (rawCwd: string) => {
@@ -2504,20 +2322,6 @@ function OpenCommandPaletteDialog(props: {
     }
     newProjectSubmittingRef.current = true;
     setIsCreatingNewProject(true);
-    if (addsWiki) {
-      const added = await addWiki.create(newProjectFlow.environmentId, newProjectName);
-      newProjectSubmittingRef.current = false;
-      setIsCreatingNewProject(false);
-      if (added) {
-        finishAdd({
-          kind: "wiki",
-          environmentId: newProjectFlow.environmentId,
-          wikiId: added.wikiId,
-          name: added.name,
-        });
-      }
-      return;
-    }
     const created = await settlePromise(() =>
       createNewProject({
         environmentId: newProjectFlow.environmentId,
@@ -2528,14 +2332,7 @@ function OpenCommandPaletteDialog(props: {
     newProjectSubmittingRef.current = false;
     setIsCreatingNewProject(false);
     if (created._tag === "Failure") throw squashAtomCommandFailure(created);
-    if (created.value !== null) {
-      finishAdd({
-        kind: "repository",
-        environmentId: newProjectFlow.environmentId,
-        projectId: created.value,
-        title: newProjectName,
-      });
-    }
+    if (created.value !== null) setOpen(false);
   }
 
   function getDefaultCloneDestination(
@@ -2661,16 +2458,15 @@ function OpenCommandPaletteDialog(props: {
     const rawDestination = (destinationPathInput ?? query).trim();
     if (
       !readEnvironmentScope(addProjectCloneFlow.environmentId, AuthSourceControlWriteScope) ||
-      (!addsWiki &&
-        !readEnvironmentScope(addProjectCloneFlow.environmentId, AuthOrchestrationOperateScope))
+      !readEnvironmentScope(addProjectCloneFlow.environmentId, AuthOrchestrationOperateScope)
     ) {
       toastManager.add(
         stackedThreadToast({
           type: "error",
           title: gt("Clone unavailable"),
-          description: addsWiki
-            ? gt("This connection needs permission to write source control.")
-            : gt("This connection needs permission to write source control and add projects."),
+          description: gt(
+            "This connection needs permission to write source control and add projects.",
+          ),
         }),
       );
       return;
@@ -2707,32 +2503,6 @@ function OpenCommandPaletteDialog(props: {
       return;
     }
 
-    // A wiki is registered once its clone is on disk, so it waits for the blocking clone.
-    if (addsWiki) {
-      setIsRemoteProjectCloning(true);
-      const cloneResult = await cloneRepository({
-        environmentId: addProjectCloneFlow.environmentId,
-        input: {
-          remoteUrl: addProjectCloneFlow.remoteUrl,
-          destinationPath,
-        },
-      });
-      setIsRemoteProjectCloning(false);
-      if (cloneResult._tag === "Failure") {
-        if (!isAtomCommandInterrupted(cloneResult)) {
-          toastManager.add(
-            stackedThreadToast({
-              type: "error",
-              title: gt("Clone failed"),
-              description: errorMessage(squashAtomCommandFailure(cloneResult)),
-            }),
-          );
-        }
-        return;
-      }
-      await handleAddProject(cloneResult.value.cwd);
-      return;
-    }
     setIsRemoteProjectCloning(true);
     const startResult = await startProjectClone({
       environmentId: addProjectCloneFlow.environmentId,
@@ -2906,7 +2676,7 @@ function OpenCommandPaletteDialog(props: {
               kind: "action",
               value: "new-project:existing",
               searchTerms: [],
-              title: addsWiki ? gt("Add existing wiki") : gt("Add existing project"),
+              title: gt("Add existing project"),
               description: gt("Open a folder or clone a repository"),
               icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
               titleTrailingContent: (
@@ -2920,7 +2690,7 @@ function OpenCommandPaletteDialog(props: {
           ],
         };
   const newProjectOptionGroups: CommandPaletteView["groups"] =
-    addsWiki || newProjectPublishTarget === null || newProjectPathPreview === null
+    newProjectPublishTarget === null || newProjectPathPreview === null
       ? []
       : [
           {
@@ -3000,9 +2770,7 @@ function OpenCommandPaletteDialog(props: {
 
   const inputPlaceholder =
     newProjectFlow !== null
-      ? addsWiki
-        ? gt("Wiki name")
-        : gt("Repository name")
+      ? gt("Repository name")
       : field.commandLine
         ? gt("Run a command…")
         : (remoteProjectInputPlaceholder(addProjectCloneFlow, messages) ??
@@ -3017,7 +2785,7 @@ function OpenCommandPaletteDialog(props: {
     addProjectCloneFlow?.environmentId ?? null,
     AuthOrchestrationOperateScope,
   );
-  const canCloneProject = canWriteSourceControl && (addsWiki || canCreateClonedProject);
+  const canCloneProject = canWriteSourceControl && canCreateClonedProject;
   const isCloneDestinationStep = addProjectCloneFlow?.step === "confirm";
   const canSubmitBrowsePath =
     isBrowsing &&
@@ -3025,10 +2793,8 @@ function OpenCommandPaletteDialog(props: {
     canCreateProject &&
     (!isCloneDestinationStep || canCloneProject) &&
     canCreateProjectInEnvironment(browseEnvironment?.connection.phase);
-  // A wiki is an existing repository, so only a clone destination may be a new folder.
   const willCreateProjectPath =
     canSubmitBrowsePath &&
-    (isCloneDestinationStep || !addsWiki) &&
     !isBrowsePending &&
     browseAccessError === null &&
     query.trim().length > 0 &&
@@ -3432,14 +3198,10 @@ function OpenCommandPaletteDialog(props: {
   const submitButtonId = useId();
   const browseSubmitLabel =
     isCloneDestinationStep && !canCloneProject
-      ? addsWiki
-        ? gt("This connection needs permission to write source control.")
-        : gt("This connection needs permission to write source control and add projects.")
+      ? gt("This connection needs permission to write source control and add projects.")
       : canCreateProject
         ? `${submitActionLabel} (${addShortcutLabel})`
-        : addsWiki
-          ? gt("This connection cannot add wikis.")
-          : gt("This connection cannot add projects.");
+        : gt("This connection cannot add projects.");
   const inputAccessory =
     newProjectFlow !== null ? (
       <CommandPaletteSubmitButton
@@ -3588,13 +3350,7 @@ function OpenCommandPaletteDialog(props: {
       showBackHint={isSubmenu}
       value={field.text}
     >
-      {newProjectFlow !== null && addsWiki ? (
-        <NewProjectSummary
-          title={newProjectName.length > 0 ? newProjectName : gt("New wiki")}
-          description={gt("Creates an empty wiki")}
-          environmentLabel={newProjectEnvironmentLabel}
-        />
-      ) : newProjectPathPreview !== null ? (
+      {newProjectPathPreview !== null ? (
         <NewProjectSummary
           title={newProjectName.length > 0 ? newProjectName : gt("New project")}
           description={

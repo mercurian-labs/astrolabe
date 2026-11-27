@@ -1,6 +1,5 @@
 import {
   ArrowLeftIcon,
-  BookOpenIcon,
   FolderGit2Icon,
   ChartNoAxesColumnIcon,
   MessagesSquare,
@@ -38,7 +37,6 @@ import {
   isPullRequestsPath,
   isSidebarUtilityPage,
   isRepositoriesPath,
-  isWikisPath,
   useNavigateToAgents,
   useSectionPathname,
 } from "./mainAppLocation";
@@ -160,7 +158,6 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   // Settings and Usage open over a section, which keeps its footer.
   const sectionPathname = useSectionPathname();
   const isOnUtilityPage = isSidebarUtilityPage(sectionPathname);
-  const isOnWikis = isWikisPath(sectionPathname);
   const isOnRepositories = isRepositoriesPath(sectionPathname);
   const isOnPullRequests = isPullRequestsPath(sectionPathname);
   const pullRequestsSupported = usePullRequestsSupported();
@@ -179,10 +176,6 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   const handleSettingsClick = () => {
     closeMobileSidebar();
     void navigate({ to: "/settings" });
-  };
-  const handleWikisClick = () => {
-    closeMobileSidebar();
-    void navigate({ to: "/wikis" });
   };
   const handleRepositoriesClick = () => {
     closeMobileSidebar();
@@ -240,19 +233,6 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
               icon={<SettingsIcon />}
               label={gt("Settings")}
               onClick={handleSettingsClick}
-            />
-          )}
-          {isOnWikis ? (
-            <SidebarUtilityItem
-              icon={<MessagesSquare />}
-              label={gt("Agents")}
-              onClick={handleBackClick}
-            />
-          ) : (
-            <SidebarUtilityItem
-              icon={<BookOpenIcon />}
-              label={gt("Wikis")}
-              onClick={handleWikisClick}
             />
           )}
           {isOnRepositories ? (

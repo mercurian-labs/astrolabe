@@ -1,56 +1,57 @@
 /**
- * What the wiki service keeps on disk: the registry (`<stateDir>/wikis.json`) and change request
- * metadata, a commit under `refs/wiki/change-requests/<id>` holding `change-request.json` with one
- * child commit per update. Everything else (amendments, files, indexes) derives from the repo.
- *
- * @module wikiStorage
+ * What the wiki service keeps: where registered wikis went (`wiki-migration.json`), and change
+ * request metadata, a commit under `refs/wiki/change-requests/<id>` holding `change-request.json`
+ * with one child commit per update. Everything else derives from the repo.
  */
 import { builtInSourceControlDefinitions } from "@t3tools/source-control-definitions/registry";
 import { parseAmendmentTrailers, type WikiMove } from "@mercurian/wiki";
 import {
   IsoDateTime,
   ProjectId,
+  type ProjectRootId,
+  RootKey,
   ThreadId,
   TrimmedNonEmptyString,
   type WikiAmendmentSummary,
   WikiChangeRequestId,
   WikiChangeRequestStatus,
-  WikiId,
-  WikiMapBackground,
-  WikiHostStatus,
-  WikiMirrorStatus,
+  type WikiHostStatus,
+  type WikiMapBackground,
   WikiPullRequestLink,
 } from "@t3tools/contracts";
 import { fromJsonStringPretty } from "@t3tools/shared/schemaJson";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-export const WikiRecord = Schema.Struct({
-  wikiId: WikiId,
-  name: TrimmedNonEmptyString,
-  root: TrimmedNonEmptyString,
-  mainBranch: TrimmedNonEmptyString,
-  projectIds: Schema.Array(ProjectId).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
-  /** When each link was made, so a running conversation hears of it once. Older links have none. */
-  projectLinkedAt: Schema.Record(ProjectId, IsoDateTime).pipe(
-    Schema.withDecodingDefault(Effect.succeed({})),
-  ),
-  mirror: Schema.NullOr(WikiMirrorStatus),
-  host: Schema.NullOr(WikiHostStatus).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
-  mapBackgrounds: Schema.Array(WikiMapBackground).pipe(
-    Schema.withDecodingDefault(Effect.succeed([])),
-  ),
-  createdAt: IsoDateTime,
-});
-export type WikiRecord = typeof WikiRecord.Type;
+/** A project root as the wiki service works on it; never stored, since the project and repo say it all. */
+export interface WikiRecord {
+  readonly wikiId: ProjectRootId;
+  readonly projectId: ProjectId;
+  readonly rootKey: RootKey;
+  readonly name: string;
+  readonly root: string;
+  readonly mainBranch: string;
+  readonly host: WikiHostStatus | null;
+  readonly mapBackgrounds: ReadonlyArray<WikiMapBackground>;
+  readonly createdAt: IsoDateTime;
+  /** A folder without Git, read on disk. Its `mainBranch` names nothing. */
+  readonly plain?: true;
+}
 
-export const WikiRegistry = Schema.Struct({
+export const WIKI_MIGRATION_FILE = "wiki-migration.json";
+
+/** Where each registered wiki went, so its old id keeps resolving, and the mirrors that stopped. */
+export const WikiMigration = Schema.Struct({
   version: Schema.Literal(1),
-  wikis: Schema.Array(WikiRecord),
+  /** By the wiki's old id. */
+  wikis: Schema.Record(Schema.String, Schema.Struct({ projectId: ProjectId, rootKey: RootKey })),
+  droppedMirrors: Schema.Array(
+    Schema.Struct({ wikiId: Schema.String, name: Schema.String, url: Schema.String }),
+  ),
 });
-export type WikiRegistry = typeof WikiRegistry.Type;
+export type WikiMigration = typeof WikiMigration.Type;
 
-export const WikiRegistryJson = fromJsonStringPretty(WikiRegistry);
+export const WikiMigrationJson = fromJsonStringPretty(WikiMigration);
 
 export const ChangeRequestRecord = Schema.Struct({
   version: Schema.Literal(1),
@@ -87,9 +88,6 @@ export const PendingCheckoutAmendmentJson = fromJsonStringPretty(
   }),
 );
 export type PendingCheckoutAmendment = typeof PendingCheckoutAmendmentJson.Type;
-
-/** The state folder's folder of thread checkouts: `<threadId>/<wikiId>` below it. */
-export const THREAD_CHECKOUTS_FOLDER = "wiki-checkouts";
 
 /** What a wiki's reviews are called: its host's name for them, else "pull request". */
 export const wikiTerms = (wiki: { readonly host?: { readonly kind?: string } | null }) =>

@@ -5,7 +5,7 @@ The code graph over a project's code index, drawn the way Obsidian draws its gra
 files the thread changed) and the Projects local graph (around one file, see the Projects
 section in repositories.md; opened from the file header, a file's right-click menu (**Open Local
 Graph**; the header and sidebar menus say **Open local graph**), a sidebar row's menu or `menu r g`
-(Cmd+K or the leader first); a project's files only, not a wiki's; its **Following** toggle keeps it on the file in front). Both render `CodeGraphView`. Agents show pictures and stories in the Graph tab
+(Cmd+K or the leader first); a project's files only; its **Following** toggle keeps it on the file in front). Both render `CodeGraphView`. Agents show pictures and stories in the Graph tab
 with `astrolabe_code_graph_show`. User guide: `docs/user/code-graph.md`.
 
 ## Sub-features

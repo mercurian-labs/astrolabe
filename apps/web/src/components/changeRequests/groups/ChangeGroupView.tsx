@@ -52,7 +52,6 @@ import {
   ComboboxTrigger,
   useComboboxFilter,
 } from "../../ui/combobox";
-import { Switch } from "../../ui/switch";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import {
   CHANGE_GROUP_MEMBER_STATE_LABELS,
@@ -69,7 +68,7 @@ import {
 
 /**
  * A change group's tab: its code and documentation members and the threads working on it (each
- * with why it is there), its state, Merge with the code, agents' suggestions, and threads to
+ * with why it is there), its state, agents' suggestions, and threads to
  * start or point at it, some with a first message for stale or missing documentation. Each
  * member is reviewed and merged in its own tab.
  */
@@ -264,21 +263,6 @@ function GroupDetails({
                 : ` ${group.threads.length} ${group.threads.length === 1 ? "thread works" : "threads work"} on it.`
             }`}
           </p>
-
-          <label className="flex items-start gap-3 rounded-lg border border-border px-3 py-2.5">
-            <Switch
-              checked={group.armed}
-              onCheckedChange={(armed) => void update(group, { type: "arm", armed })}
-              aria-label="Merge with the code"
-            />
-            <span className="flex min-w-0 flex-col">
-              <span className="text-sm font-medium">Merge with the code</span>
-              <span className="text-xs text-muted-foreground">
-                The documentation merges the moment the code has. A merge the wiki refuses stays
-                open for you to finish.
-              </span>
-            </span>
-          </label>
 
           {pending.length > 0 || pendingThreads.length > 0 ? (
             <section className="flex flex-col gap-1">

@@ -18,13 +18,13 @@ import * as ProjectEnrichment from "../project/ProjectEnrichmentService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as PullRequestService from "../pullRequest/PullRequestService.ts";
 import * as VcsStatusBroadcaster from "../vcs/VcsStatusBroadcaster.ts";
-import * as ThreadWikiCheckouts from "../wiki/ThreadWikiCheckouts.ts";
+import * as TurnDocsCheck from "../wiki/TurnDocsCheck.ts";
 import * as WorkspaceEntries from "../workspace/WorkspaceEntries.ts";
 import * as CheckpointCapture from "./CheckpointCaptureService.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ThreadManagementService from "./ThreadManagementService.ts";
 
-/** The follow-up a run gets when it leaves a base broken; a run it starts gets none. */
+/** The follow-up a run gets when it leaves a document broken; a run it starts gets none. */
 const BASE_CHECK_PREFIX = "wiki-base-check:";
 
 const REPOSITORY_REFRESH_CONCURRENCY = 4;
@@ -82,32 +82,32 @@ const make = Effect.gen(function* () {
   const observer = yield* RunFinalizationObserver;
   const refreshes = yield* FiberSet.make<void>();
 
-  const wikiCheckouts = yield* Effect.serviceOption(ThreadWikiCheckouts.ThreadWikiCheckouts);
+  const docsCheck = yield* Effect.serviceOption(TurnDocsCheck.TurnDocsCheck);
   const threads = yield* ThreadManagementService.ThreadManagementService;
 
   /**
-   * Astrolabe: the turn's edits in the thread's wiki checkouts land as one amendment each. Bases
-   * it left broken get one message back to this thread asking for a fix, unless this run is
-   * that fix: its bases' warnings then stay in the base view and the change request.
+   * Astrolabe: documents the turn left broken (bases, ambiguous links) get one message back to
+   * this thread asking for a fix, unless this run is that fix: their warnings then stay in the
+   * base view.
    */
-  const saveWikiEdits = Effect.fn("RunFinalizationService.saveWikiEdits")(function* (
+  const checkDocs = Effect.fn("RunFinalizationService.checkDocs")(function* (
     threadId: ThreadId,
     runId: RunId,
   ) {
-    if (Option.isNone(wikiCheckouts)) return;
+    if (Option.isNone(docsCheck)) return;
+    const changed = yield* projections.getRunCheckpointFiles(threadId, runId);
+    if (changed.length === 0) return;
     const thread = yield* projections.getThreadShell(threadId);
     if (thread === null) return;
-    const broken = yield* wikiCheckouts.value.saveTurn({
-      threadId,
+    const problems = yield* docsCheck.value.check({
       projectId: thread.projectId,
       worktreePath: thread.worktreePath,
-      title: thread.title,
-      author: { actor: thread.modelSelection.model, threadId },
+      changed,
     });
-    if (broken.length === 0) return;
+    if (problems.bases.length === 0 && problems.links.length === 0) return;
     const { runs } = yield* projections.getThreadRecords(threadId, ["runs"], { runIds: [runId] });
     if (runs[0] === undefined || runs[0].userMessageId.startsWith(BASE_CHECK_PREFIX)) return;
-    const text = ThreadWikiCheckouts.brokenBasesMessage(broken);
+    const text = TurnDocsCheck.turnDocsMessage(problems);
     yield* threads
       .dispatch({
         type: "message.dispatch",
@@ -118,8 +118,7 @@ const make = Effect.gen(function* () {
         notification: {
           source: { kind: "system" },
           outcome: "updated",
-          summary:
-            broken.length === 1 ? "A base needs fixing" : `${broken.length} bases need fixing`,
+          summary: TurnDocsCheck.turnDocsSummary(problems),
           detail: text,
         },
         attachments: [],
@@ -145,9 +144,9 @@ const make = Effect.gen(function* () {
           (cause) => new RunFinalizationError({ ...input, operation: "capture-checkpoint", cause }),
         ),
       );
-    yield* saveWikiEdits(input.threadId, input.runId).pipe(
+    yield* checkDocs(input.threadId, input.runId).pipe(
       Effect.catch((cause) =>
-        Effect.logWarning("Failed to save a turn's wiki edits", { ...input, cause }),
+        Effect.logWarning("Failed to check a turn's documents", { ...input, cause }),
       ),
     );
     const projection = yield* projections

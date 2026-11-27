@@ -4,14 +4,19 @@ import { canvasFile } from "@mercurian/wiki/placement";
 import { keepCanvasName } from "@t3tools/client-runtime/wikiLogic";
 import {
   type EnvironmentId,
+  type ProjectId,
+  type ProjectRootCheckout,
+  projectRootId,
   type ThreadId,
   type TurnItemId,
   type WikiKeepCanvasResult,
-  type WikiSummary,
 } from "@t3tools/contracts";
 import { TriangleAlertIcon } from "lucide-react";
 import { useId, useState } from "react";
 
+import { useRightPanelStore } from "~/rightPanelStore";
+import { useQuietThreadShell } from "~/state/entities";
+import { projectRootsEnvironment } from "~/state/projectRoots";
 import { useEnvironmentQuery } from "~/state/query";
 import { wikiEnvironment } from "~/state/wiki";
 import { Alert, AlertDescription } from "../ui/alert";
@@ -21,7 +26,7 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
-import { useOpenWikiTab } from "../wiki/useOpenWiki";
+import { useOpenWikiTab } from "../wiki/LegacyWikiTab";
 import { useWikiCommand } from "../wiki/wikiEnvironment";
 
 interface KeptBoard {
@@ -33,39 +38,43 @@ interface KeptBoard {
 
 function PlaceForm({
   board,
-  wikis,
+  projectId,
+  roots,
   onClose,
   onKept,
 }: {
   readonly board: KeptBoard;
-  readonly wikis: ReadonlyArray<WikiSummary>;
+  readonly projectId: ProjectId;
+  /** The folders a person can write, the project folder first. */
+  readonly roots: ReadonlyArray<ProjectRootCheckout>;
   readonly onClose: () => void;
-  readonly onKept: (wikiId: WikiSummary["wikiId"], result: WikiKeepCanvasResult) => void;
+  readonly onKept: (result: WikiKeepCanvasResult) => void;
 }) {
   const id = useId();
-  const [wikiId, setWikiId] = useState(wikis[0]?.wikiId);
+  const [rootKey, setRootKey] = useState(roots[0]?.key);
   const [name, setName] = useState(() => keepCanvasName(board.title));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const keep = useWikiCommand(wikiEnvironment.keepCanvas);
   const placeable = canvasFile(name) !== null;
-  const canSubmit = wikiId !== undefined && placeable && !busy;
+  const canSubmit = rootKey !== undefined && placeable && !busy;
 
   const submit = async () => {
-    if (!canSubmit || wikiId === undefined) return;
+    if (!canSubmit || rootKey === undefined) return;
     setBusy(true);
     setError(null);
     const outcome = await keep({
       environmentId: board.environmentId,
       input: {
-        wikiId,
+        projectId,
+        repository: rootKey,
         threadId: board.threadId,
         itemId: board.itemId,
         name: name.trim(),
       },
     });
     setBusy(false);
-    if (outcome.ok) onKept(wikiId, outcome.value);
+    if (outcome.ok) onKept(outcome.value);
     else setError(outcome.message ?? "The canvas wasn't kept.");
   };
 
@@ -78,30 +87,33 @@ function PlaceForm({
       }}
     >
       <p className="text-xs text-muted-foreground">
-        It goes to a wiki for review. Main changes only when someone merges it.
+        It's saved as a file in the project. In a hosted repository's main checkout it goes in your
+        draft, for a pull request when you open one; anywhere else it's written for you to commit.
       </p>
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor={`${id}-wiki`}>Wiki</Label>
-        <Select
-          {...(wikiId === undefined ? {} : { value: wikiId })}
-          items={Object.fromEntries(wikis.map((wiki) => [wiki.wikiId, wiki.name]))}
-          onValueChange={(value) => {
-            const picked = wikis.find((wiki) => wiki.wikiId === value);
-            if (picked !== undefined) setWikiId(picked.wikiId);
-          }}
-        >
-          <SelectTrigger id={`${id}-wiki`}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectPopup>
-            {wikis.map((wiki) => (
-              <SelectItem key={wiki.wikiId} value={wiki.wikiId}>
-                {wiki.name}
-              </SelectItem>
-            ))}
-          </SelectPopup>
-        </Select>
-      </div>
+      {roots.length < 2 ? null : (
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor={`${id}-folder`}>Folder</Label>
+          <Select
+            {...(rootKey === undefined ? {} : { value: rootKey })}
+            items={Object.fromEntries(roots.map((root) => [root.key, root.name]))}
+            onValueChange={(value) => {
+              const picked = roots.find((root) => root.key === value);
+              if (picked !== undefined) setRootKey(picked.key);
+            }}
+          >
+            <SelectTrigger id={`${id}-folder`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectPopup>
+              {roots.map((root) => (
+                <SelectItem key={root.key} value={root.key}>
+                  {root.name}
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </Select>
+        </div>
+      )}
       <div className="flex flex-col gap-1.5">
         <Label htmlFor={`${id}-name`}>Name</Label>
         <Input
@@ -113,8 +125,8 @@ function PlaceForm({
         />
         <p id={`${id}-name-hint`} className="text-xs text-muted-foreground">
           {!placeable && name.trim() !== ""
-            ? "A wiki can't hold a canvas at this path."
-            : "It lands at the top of the wiki. Type a folder to file it there: ops/Board."}
+            ? "A folder can't hold a canvas at this path."
+            : "It lands at the top of the folder. Type a folder to file it there: ops/Board."}
         </p>
       </div>
       {error === null ? null : (
@@ -136,8 +148,75 @@ function PlaceForm({
   );
 }
 
+/** What became of a kept board, and the way to it. */
+function Kept({
+  board,
+  projectId,
+  root,
+  result,
+  onClose,
+}: {
+  readonly board: KeptBoard;
+  readonly projectId: ProjectId;
+  readonly root: ProjectRootCheckout | undefined;
+  readonly result: WikiKeepCanvasResult;
+  readonly onClose: () => void;
+}) {
+  const openTab = useOpenWikiTab();
+  const { changeRequest, file, notes } = result;
+  const folder = root?.name ?? result.rootKey;
+  // A file on disk opens in the thread's files, which hold only the project folder.
+  const open =
+    changeRequest !== null
+      ? () =>
+          openTab({
+            kind: "note",
+            environmentId: board.environmentId,
+            wikiId: projectRootId(projectId, result.rootKey),
+            file,
+            changeRequestId: changeRequest.changeRequestId,
+          })
+      : root?.kind === "workspace"
+        ? () =>
+            useRightPanelStore
+              .getState()
+              .openFile({ environmentId: board.environmentId, threadId: board.threadId }, file)
+        : null;
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-xs text-muted-foreground">
+        {changeRequest === null
+          ? `${file} is written in ${folder}, uncommitted: commit it with your other changes. The canvas stays in this thread either way.`
+          : `${file} is in your draft in ${folder}. Open a pull request from the draft's menu when you're ready. The canvas stays in this thread either way.`}
+      </p>
+      {notes.length === 0 ? null : (
+        <Alert variant="warning">
+          <TriangleAlertIcon />
+          <AlertDescription>{notes.join(" ")}</AlertDescription>
+        </Alert>
+      )}
+      <div className="flex items-center justify-end gap-2">
+        <Button variant="outline" size="xs" onClick={onClose}>
+          Done
+        </Button>
+        {open === null ? null : (
+          <Button
+            size="xs"
+            onClick={() => {
+              open();
+              onClose();
+            }}
+          >
+            Open it
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** Where the board goes when it's placed by hand: the person picks, and no agent turn runs. */
-function PlaceInWiki({
+function PlaceInProject({
   board,
   onClose,
 }: {
@@ -145,71 +224,65 @@ function PlaceInWiki({
   readonly onClose: () => void;
 }) {
   const { environmentId } = board;
-  const list = useEnvironmentQuery(wikiEnvironment.list({ environmentId, input: {} }));
-  const openTab = useOpenWikiTab();
-  const [kept, setKept] = useState<{
-    readonly wikiId: WikiSummary["wikiId"];
-    readonly result: WikiKeepCanvasResult;
-  } | null>(null);
+  const shell = useQuietThreadShell({ environmentId, threadId: board.threadId });
+  const projectId = shell?.projectId ?? null;
+  // A person's choice is any folder on disk; the server writes the thread's checkout of it.
+  const list = useEnvironmentQuery(
+    projectId === null
+      ? null
+      : projectRootsEnvironment.list({ environmentId, input: { projectId } }),
+  );
+  const [kept, setKept] = useState<WikiKeepCanvasResult | null>(null);
 
-  if (kept !== null) {
-    const { changeRequest, file, notes } = kept.result;
+  if (projectId === null) {
     return (
-      <div className="flex flex-col gap-3">
-        <p className="text-xs text-muted-foreground">
-          {`${file} is in “${changeRequest.title}”. Merge it to put it on the wiki, or close it to discard it. The canvas stays in this thread either way.`}
-        </p>
-        {notes.length === 0 ? null : (
-          <Alert variant="warning">
-            <TriangleAlertIcon />
-            <AlertDescription>{notes.join(" ")}</AlertDescription>
-          </Alert>
-        )}
-        <div className="flex items-center justify-end gap-2">
-          <Button variant="outline" size="xs" onClick={onClose}>
-            Done
-          </Button>
-          <Button
-            size="xs"
-            onClick={() => {
-              openTab({
-                kind: "note",
-                environmentId,
-                wikiId: kept.wikiId,
-                file,
-                changeRequestId: changeRequest.changeRequestId,
-              });
-              onClose();
-            }}
-          >
-            Open it
-          </Button>
-        </div>
-      </div>
+      <p className="text-xs text-muted-foreground">
+        A canvas is kept in its thread's project, and this thread has none.
+      </p>
+    );
+  }
+  const roots = (list.data?.roots ?? []).filter((root) => root.writable);
+  if (kept !== null) {
+    return (
+      <Kept
+        board={board}
+        projectId={projectId}
+        root={roots.find((root) => root.key === kept.rootKey)}
+        result={kept}
+        onClose={onClose}
+      />
+    );
+  }
+  if (list.error !== null) {
+    return (
+      <Alert variant="error">
+        <TriangleAlertIcon />
+        <AlertDescription>{`Couldn't read the project's folders. ${list.error}`}</AlertDescription>
+      </Alert>
     );
   }
   if (list.data === null) return <Spinner size="md" tone="muted" />;
-  if (list.data.wikis.length === 0) {
+  if (roots.length === 0) {
     return (
       <p className="text-xs text-muted-foreground">
-        A canvas is kept in a wiki, and this server has none yet. Add one from the Wikis section,
-        then keep it.
+        None of this project's folders is on disk, so there's nowhere to keep it.
       </p>
     );
   }
   return (
     <PlaceForm
       board={board}
-      wikis={list.data.wikis}
+      projectId={projectId}
+      roots={roots}
       onClose={onClose}
-      onKept={(wikiId, result) => setKept({ wikiId, result })}
+      onKept={setKept}
     />
   );
 }
 
 /**
- * Keeping a board in a wiki the person picks, with its cards fixed by `CanvasKeep`: the board menu's
- * item, while this person can place one, and the dialog it opens.
+ * Keeping a board in a folder of its project the person picks, with its cards fixed by
+ * `CanvasKeep`: the board menu's item, while this person can place one, and the dialog it opens.
  */
 export function useKeepCanvas(board: KeptBoard | null) {
   const [open, setOpen] = useState(false);
@@ -218,7 +291,7 @@ export function useKeepCanvas(board: KeptBoard | null) {
   );
   if (board === null || !canPlace) return { item: undefined, dialog: null };
   return {
-    item: { label: "Keep in a wiki…", run: () => setOpen(true) },
+    item: { label: "Keep in the project…", run: () => setOpen(true) },
     dialog: (
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogPopup className="max-w-md" aria-label={`Keep ${board.title}`}>
@@ -226,7 +299,7 @@ export function useKeepCanvas(board: KeptBoard | null) {
             <DialogTitle>{`Keep ${board.title}`}</DialogTitle>
           </DialogHeader>
           <DialogPanel>
-            <PlaceInWiki board={board} onClose={() => setOpen(false)} />
+            <PlaceInProject board={board} onClose={() => setOpen(false)} />
           </DialogPanel>
         </DialogPopup>
       </Dialog>

@@ -185,6 +185,7 @@ function layerProjectionStore(
       getPendingNativeUserInputs: () => Effect.die("unused getPendingNativeUserInputs"),
       getProviderControlContext,
       getCheckpointContext: () => Effect.die("not used"),
+      getRunCheckpointFiles: () => Effect.die("not used"),
       getCheckpointRollbackContext: () => Effect.die("unused rollback context"),
       getCheckpointCaptureContext: () => Effect.die("not used"),
       getRunMessage: () => Effect.die("not used"),

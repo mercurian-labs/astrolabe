@@ -173,6 +173,7 @@ import * as LanguageServers from "./languageServers/LanguageServers.ts";
 import * as Vimrc from "./vimrc.ts";
 import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 import * as WorkspaceFolders from "./workspace/WorkspaceFolders.ts";
+import * as ProjectRoots from "./workspace/ProjectRoots.ts";
 import * as LayoutCommandApprovalWrites from "./workspace/LayoutCommandApprovalWrites.ts";
 import * as TaskFolders from "./workspace/TaskFolders.ts";
 import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
@@ -939,6 +940,7 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(LanguageServers.LanguageServers)({}),
   Layer.mock(WorkspaceEntries.WorkspaceEntries)({}),
   Layer.mock(WorkspaceFolders.WorkspaceFolders)({}),
+  Layer.mock(ProjectRoots.ProjectRoots)({}),
   Layer.mock(TaskFolders.TaskFolders)({}),
   Layer.mock(LayoutCommandApprovalWrites.LayoutCommandApprovalWrites)({}),
   Layer.mock(WorkspaceFileSystem.WorkspaceFileSystem)({}),

@@ -19,7 +19,6 @@ export const WORKSPACE_TAB_LABELS = NAVIGATION_TAB_LABELS;
 export const NAVIGATION_TAB_ICONS = {
   threads: "text.bubble",
   pullRequests: PullRequestGlyph.pullRequest,
-  wikis: "book",
   repositories: "folder",
   issues: "git.issue",
   workflows: "point.3.connected.trianglepath.dotted",

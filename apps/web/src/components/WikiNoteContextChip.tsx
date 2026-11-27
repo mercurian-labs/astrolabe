@@ -1,19 +1,16 @@
 /* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import type { EnvironmentId, WikiNoteContextRecord } from "@t3tools/contracts";
-import { useNavigate } from "@tanstack/react-router";
 import { FileTextIcon } from "lucide-react";
-import { useContext } from "react";
 
-import { activateTab } from "~/panes/arrangement";
-import { openNear } from "~/panes/placement";
-import { PanesHostContext } from "~/panes/panesHost";
-import { leafWithTab } from "~/panes/tree";
 import { ContextChip, ContextChipLabel } from "./ContextChip";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+import { useOpenWikiTab } from "./wiki/LegacyWikiTab";
 import { documentFile } from "./wiki/wiki.logic";
-import { wikiTabKey } from "./wiki/wikiTabs";
 
-/** Astrolabe: a referenced wiki note; it opens beside the chat as its own tab, or in Wikis. */
+/**
+ * Astrolabe: a wiki note a message referenced before Projects took wikis in; it opens as its
+ * Projects file tab beside the chat.
+ */
 export function WikiNoteContextChip(props: {
   record: Pick<WikiNoteContextRecord, "wikiId" | "wikiName" | "name">;
   environmentId: EnvironmentId | null;
@@ -21,29 +18,15 @@ export function WikiNoteContextChip(props: {
 }) {
   const { wikiId, wikiName, name } = props.record;
   const { environmentId } = props;
-  const panes = useContext(PanesHostContext);
-  const navigate = useNavigate();
+  const openWikiTab = useOpenWikiTab();
   const open = () => {
     if (environmentId === null) return;
-    if (panes !== null) {
-      const key = wikiTabKey({
-        kind: "note",
-        environmentId,
-        wikiId,
-        file: documentFile(name),
-        changeRequestId: undefined,
-      });
-      panes.controller.update((arrangement) =>
-        leafWithTab(arrangement.root, key)
-          ? activateTab(arrangement, key)
-          : openNear(arrangement, key, arrangement.focused),
-      );
-      return;
-    }
-    void navigate({
-      to: "/wikis/$wikiId",
-      params: { wikiId },
-      search: { environmentId, note: name },
+    openWikiTab({
+      kind: "note",
+      environmentId,
+      wikiId,
+      file: documentFile(name),
+      changeRequestId: undefined,
     });
   };
   return (
@@ -53,7 +36,7 @@ export function WikiNoteContextChip(props: {
           <ContextChip
             kind="wiki-note"
             render={<button type="button" disabled={environmentId === null} />}
-            aria-label={`Wiki note, ${name} in ${wikiName}`}
+            aria-label={`Document, ${name} in ${wikiName}`}
             data-markdown-copy={props.copyMarkdown}
             onClick={open}
           >

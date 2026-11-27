@@ -1,6 +1,5 @@
 /* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { useAtomValue } from "@effect/atom-react";
-import { useLocation, useNavigate } from "@tanstack/react-router";
 import { resolveLeaderKey, type KeybindingCommand } from "@t3tools/contracts";
 import { isMacPlatform } from "@t3tools/shared/keybindings";
 import { vimConfiguration } from "@mercurian/editor/vim";
@@ -17,12 +16,9 @@ import {
 
 import { isCommandPaletteOpen, openCommandPalette } from "~/commandPaletteBus";
 import { useAppSections } from "~/components/sidebar/AppIconRail";
-import { isWikisPath } from "~/components/sidebar/mainAppLocation";
 import { Kbd, KbdGroup } from "~/components/ui/kbd";
 import { Popover, PopoverPopup } from "~/components/ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
-import { useWikiOverviews } from "~/components/wiki/wikiEnvironment";
-import { WikiFinder } from "~/components/wiki/WikiFinder";
 import { useClientSettings } from "~/hooks/useSettings";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "~/keybindings";
 import { isEditableFocused } from "~/lib/editableFocus";
@@ -124,9 +120,6 @@ export function WhichKey() {
   const armed = useSyncExternalStore(menu.subscribe, menu.isArmed);
   const vimrc = useAtomValue(primaryServerVimrcAtom);
   const sections = useAppSections();
-  const navigate = useNavigate();
-  const onWikis = useLocation({ select: (location) => isWikisPath(location.pathname) });
-  const [finding, setFinding] = useState(false);
   const popup = useRef<HTMLDivElement>(null);
   const chordLabel = shortcutLabelForCommand(keybindings, "whichKey.open") ?? "⌘K";
   const [mac] = useState(() => isMacPlatform(navigator.platform));
@@ -142,10 +135,6 @@ export function WhichKey() {
     openSearch: () => openCommandPalette(),
     openFilePicker: () => openCommandPalette({ open: "files" }),
     openCommandLine: (text) => openExLine(origin, text),
-    findDocument: () => {
-      if (!onWikis) void navigate({ to: "/wikis" });
-      setFinding(true);
-    },
   });
   const command = (origin: KeyOrigin | null) => (id: KeybindingCommand) =>
     appCommand(id, context(origin));
@@ -287,129 +276,108 @@ export function WhichKey() {
   const trail = view && rootGroup ? menuTrail(rootGroup, view.path) : [];
 
   return (
-    <>
-      <Popover
-        open={state?.shown === true}
-        onOpenChange={(next) => {
-          if (!next) menu.close();
-        }}
-      >
-        <PopoverPopup
-          ref={popup}
-          anchor={anchor}
-          side="bottom"
-          align="end"
-          sideOffset={0}
-          padding="compact"
-          width="sm"
-          initialFocus={false}
-          finalFocus={false}
-          aria-label="Keyboard commands"
-          data-which-key=""
-        >
-          {view && group ? (
-            <div className="flex flex-col gap-2 text-sm">
-              {shortTrail(trail).length < trail.length ? (
-                // A folded trail shows the whole of it on hover.
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <p className="truncate px-1 text-xs font-medium text-muted-foreground" />
-                    }
-                  >
-                    {shortTrail(trail).join(" › ")}
-                  </TooltipTrigger>
-                  <TooltipPopup side="top">{trail.join(" › ")}</TooltipPopup>
-                </Tooltip>
-              ) : (
-                <p className="truncate px-1 text-xs font-medium text-muted-foreground">
-                  {trail.join(" › ")}
-                </p>
-              )}
-              {/* One grid for every row, so labels line up past a row with several keys. */}
-              <ul className="grid grid-cols-[auto_minmax(0,1fr)_auto] gap-y-0.5">
-                {group.items.map((item, index) => (
-                  <li
-                    key={item.keys[0]}
-                    data-highlighted={view.cursor === index ? "" : undefined}
-                    className={
-                      item.disabled
-                        ? "col-span-3 grid cursor-default grid-cols-subgrid items-center gap-x-2 rounded px-1 py-0.5 text-muted-foreground opacity-60 data-highlighted:bg-accent"
-                        : "col-span-3 grid cursor-default grid-cols-subgrid items-center gap-x-2 rounded px-1 py-0.5 data-highlighted:bg-accent data-highlighted:text-accent-foreground"
-                    }
-                    // Pointing moves the cursor; a click chooses the row without taking focus.
-                    onPointerMove={() => menu.point(index)}
-                    onPointerDown={(event) => event.preventDefault()}
-                    onClick={() => {
-                      menu.point(index);
-                      menu.press(root(), "Enter")?.();
-                    }}
-                  >
-                    <KbdGroup>
-                      {keyLabels(item, chordLabel).map((label, at) => (
-                        <Fragment key={label}>
-                          {at > 0 ? <span className="text-muted-foreground">|</span> : null}
-                          <Kbd>{label}</Kbd>
-                        </Fragment>
-                      ))}
-                    </KbdGroup>
-                    <span className="min-w-0 truncate">{item.label}</span>
-                    <span aria-hidden className="text-muted-foreground">
-                      {item.group ? "›" : null}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              {view.note !== null ? (
-                <p role="status" className="px-1 text-muted-foreground">
-                  {view.note}
-                </p>
-              ) : null}
-              {/* The footer's hints do what they say when clicked, without taking focus. */}
-              <p className="flex gap-1 px-1 text-xs text-muted-foreground">
-                {view.path.length > 0 ? (
-                  <>
-                    <button
-                      type="button"
-                      className="cursor-default hover:text-foreground"
-                      onPointerDown={(event) => event.preventDefault()}
-                      onClick={() => menu.press(root(), "Backspace")}
-                    >
-                      Backspace back
-                    </button>
-                    <span aria-hidden>·</span>
-                  </>
-                ) : null}
-                <button
-                  type="button"
-                  className="cursor-default hover:text-foreground"
-                  onPointerDown={(event) => event.preventDefault()}
-                  onClick={() => menu.press(root(), "Escape")}
-                >
-                  Esc close
-                </button>
-              </p>
-            </div>
-          ) : null}
-        </PopoverPopup>
-      </Popover>
-      {finding ? <WikiDocumentFinder onClose={() => setFinding(false)} /> : null}
-    </>
-  );
-}
-
-/** The Wikis finder, for the menu's `w f`; mounted only while open, so wikis load only then. */
-function WikiDocumentFinder({ onClose }: { readonly onClose: () => void }) {
-  const { overviews } = useWikiOverviews();
-  return (
-    <WikiFinder
-      open
+    <Popover
+      open={state?.shown === true}
       onOpenChange={(next) => {
-        if (!next) onClose();
+        if (!next) menu.close();
       }}
-      overviews={overviews}
-      scope={null}
-      mode="find"
-    />
+    >
+      <PopoverPopup
+        ref={popup}
+        anchor={anchor}
+        side="bottom"
+        align="end"
+        sideOffset={0}
+        padding="compact"
+        width="sm"
+        initialFocus={false}
+        finalFocus={false}
+        aria-label="Keyboard commands"
+        data-which-key=""
+      >
+        {view && group ? (
+          <div className="flex flex-col gap-2 text-sm">
+            {shortTrail(trail).length < trail.length ? (
+              // A folded trail shows the whole of it on hover.
+              <Tooltip>
+                <TooltipTrigger
+                  render={<p className="truncate px-1 text-xs font-medium text-muted-foreground" />}
+                >
+                  {shortTrail(trail).join(" › ")}
+                </TooltipTrigger>
+                <TooltipPopup side="top">{trail.join(" › ")}</TooltipPopup>
+              </Tooltip>
+            ) : (
+              <p className="truncate px-1 text-xs font-medium text-muted-foreground">
+                {trail.join(" › ")}
+              </p>
+            )}
+            {/* One grid for every row, so labels line up past a row with several keys. */}
+            <ul className="grid grid-cols-[auto_minmax(0,1fr)_auto] gap-y-0.5">
+              {group.items.map((item, index) => (
+                <li
+                  key={item.keys[0]}
+                  data-highlighted={view.cursor === index ? "" : undefined}
+                  className={
+                    item.disabled
+                      ? "col-span-3 grid cursor-default grid-cols-subgrid items-center gap-x-2 rounded px-1 py-0.5 text-muted-foreground opacity-60 data-highlighted:bg-accent"
+                      : "col-span-3 grid cursor-default grid-cols-subgrid items-center gap-x-2 rounded px-1 py-0.5 data-highlighted:bg-accent data-highlighted:text-accent-foreground"
+                  }
+                  // Pointing moves the cursor; a click chooses the row without taking focus.
+                  onPointerMove={() => menu.point(index)}
+                  onPointerDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    menu.point(index);
+                    menu.press(root(), "Enter")?.();
+                  }}
+                >
+                  <KbdGroup>
+                    {keyLabels(item, chordLabel).map((label, at) => (
+                      <Fragment key={label}>
+                        {at > 0 ? <span className="text-muted-foreground">|</span> : null}
+                        <Kbd>{label}</Kbd>
+                      </Fragment>
+                    ))}
+                  </KbdGroup>
+                  <span className="min-w-0 truncate">{item.label}</span>
+                  <span aria-hidden className="text-muted-foreground">
+                    {item.group ? "›" : null}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {view.note !== null ? (
+              <p role="status" className="px-1 text-muted-foreground">
+                {view.note}
+              </p>
+            ) : null}
+            {/* The footer's hints do what they say when clicked, without taking focus. */}
+            <p className="flex gap-1 px-1 text-xs text-muted-foreground">
+              {view.path.length > 0 ? (
+                <>
+                  <button
+                    type="button"
+                    className="cursor-default hover:text-foreground"
+                    onPointerDown={(event) => event.preventDefault()}
+                    onClick={() => menu.press(root(), "Backspace")}
+                  >
+                    Backspace back
+                  </button>
+                  <span aria-hidden>·</span>
+                </>
+              ) : null}
+              <button
+                type="button"
+                className="cursor-default hover:text-foreground"
+                onPointerDown={(event) => event.preventDefault()}
+                onClick={() => menu.press(root(), "Escape")}
+              >
+                Esc close
+              </button>
+            </p>
+          </div>
+        ) : null}
+      </PopoverPopup>
+    </Popover>
   );
 }

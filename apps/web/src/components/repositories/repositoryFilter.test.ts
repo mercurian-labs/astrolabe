@@ -60,7 +60,15 @@ describe("the repositories filter", () => {
       repositories: ["env:shop"],
       hidden: [],
       changed: true,
+      docs: false,
     });
     expect(parseRepositoryFilter("not json")).toBeNull();
+  });
+
+  it("keeps Docs with the rest of the filter, and a filter stored before it shows all files", () => {
+    const docs = { ...setWorktreeHidden(EMPTY_REPOSITORY_FILTER, "env:/t3-2", true), docs: true };
+    expect(parseRepositoryFilter(JSON.stringify(docs))).toEqual(docs);
+    expect(parseRepositoryFilter('{"hidden":["env:/t3-2"]}')?.docs).toBe(false);
+    expect(EMPTY_REPOSITORY_FILTER.docs).toBe(false);
   });
 });

@@ -29,6 +29,11 @@ export interface BaseDoc {
   readonly ctime: number | undefined;
   /** A code file's facts from the code index; absent on every other file. */
   readonly code?: CodeFile | undefined;
+  /**
+   * Astrolabe: in a base over a project's roots, the root it is in and its path there; `file` is
+   * `root:path` for a root other than the base's own.
+   */
+  readonly root?: { readonly key: string; readonly file: string } | undefined;
 }
 
 /**

@@ -1,22 +1,28 @@
 import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";
-import type { EnvironmentId, ProjectId, WikiId } from "@t3tools/contracts";
+import type { EnvironmentId, ProjectId, ProjectRootId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { composerWikiNoteItems } from "./composerWikiNoteItems";
 
 const environmentId = "env-1" as EnvironmentId;
 const projectId = "project-1" as ProjectId;
-const project = { id: projectId, title: "Checkout" };
 
 const overview = (
-  wikiId: string,
-  name: string,
+  rootKey: string,
+  root: string,
   notes: ReadonlyArray<string>,
-  projectIds: ReadonlyArray<ProjectId> = [],
+  owner: ProjectId = projectId,
 ): WikiOverview =>
   ({
     environmentId,
-    wiki: { wikiId: wikiId as WikiId, name, projectIds },
+    wiki: {
+      wikiId: `${owner}:${rootKey}` as ProjectRootId,
+      name: rootKey,
+      root,
+      projectIds: [],
+      projectId: owner,
+      rootKey,
+    },
     index: {
       notes: notes.map((note) => ({ name: note, file: `${note}.md`, outgoing: 0, incoming: 0 })),
     },
@@ -27,87 +33,45 @@ const labels = (items: ReadonlyArray<{ readonly label: string }>) =>
   items.map((item) => item.label);
 
 describe("composerWikiNoteItems", () => {
-  it("lists linked wikis' notes first, then other wikis', each naming its wiki", () => {
+  it("lists the project's documents across its folders, linked as files", () => {
     const items = composerWikiNoteItems({
       overviews: [
-        overview("research", "Research", ["Pricing"]),
-        overview("plans", "Plans", ["Login flow"], [projectId]),
+        overview("app", "/work/app", ["docs/Login flow"]),
+        overview("notes", "/work/notes", ["Pricing"]),
+        overview("other", "/work/other", ["Elsewhere"], "project-2" as ProjectId),
       ],
-      project,
+      projectId,
+      cwd: "/work/app",
       query: "",
-      canLink: true,
     });
-    expect(items.map((item) => [item.label, item.description])).toEqual([
-      ["Login flow", "Plans"],
-      ["Pricing", "Research"],
+    expect(items.map((item) => [item.label, item.description, item.path])).toEqual([
+      ["docs/Login flow", "app", "docs/Login flow.md"],
+      ["Pricing", "notes", "/work/notes/Pricing.md"],
     ]);
   });
 
-  it("narrows by the query, names that start with it first within each rank", () => {
+  it("narrows by the query, names that start with it first", () => {
     const items = composerWikiNoteItems({
-      overviews: [
-        overview("research", "Research", ["Login research", "Old login"]),
-        overview("plans", "Plans", ["Fix login", "Login flow", "Pricing"], [projectId]),
-      ],
-      project,
+      overviews: [overview("app", "/work/app", ["Fix login", "Login flow", "Pricing"])],
+      projectId,
+      cwd: null,
       query: "login",
-      canLink: true,
     });
-    expect(labels(items)).toEqual(["Login flow", "Fix login", "Login research", "Old login"]);
+    expect(labels(items)).toEqual(["Login flow", "Fix login"]);
+    expect(items[0]?.path).toBe("/work/app/Login flow.md");
   });
 
-  it("offers to link each wiki while the project has none linked and nothing is typed", () => {
-    const overviews = [
-      overview("plans", "Plans", ["Login flow"]),
-      overview("research", "Research", []),
-    ];
-    const items = composerWikiNoteItems({ overviews, project, query: "", canLink: true });
-    expect(items.map((item) => [item.type, item.label])).toEqual([
-      ["wiki-link", "Link Plans to Checkout"],
-      ["wiki-link", "Link Research to Checkout"],
-      ["wiki-note", "Login flow"],
-    ]);
-    expect(
-      composerWikiNoteItems({ overviews, project, query: "lo", canLink: true }).map(
-        (item) => item.type,
-      ),
-    ).toEqual(["wiki-note"]);
-    expect(
-      composerWikiNoteItems({ overviews, project, query: "", canLink: false }).map(
-        (item) => item.type,
-      ),
-    ).toEqual(["wiki-note"]);
-    expect(
-      composerWikiNoteItems({ overviews, project: null, query: "", canLink: true }).map(
-        (item) => item.type,
-      ),
-    ).toEqual(["wiki-note"]);
-  });
-
-  it("stops offering links once one wiki is linked", () => {
-    const items = composerWikiNoteItems({
-      overviews: [
-        overview("plans", "Plans", [], [projectId]),
-        overview("research", "Research", ["Pricing"]),
-      ],
-      project,
-      query: "",
-      canLink: true,
-    });
-    expect(items.map((item) => item.type)).toEqual(["wiki-note"]);
-  });
-
-  it("offers notes only, never a wiki's .base files", () => {
-    const plans = overview("plans", "Plans", ["Tasks"], [projectId]);
+  it("offers notes only, never a .base file", () => {
+    const app = overview("app", "/work/app", ["Tasks"]);
     const withBase = {
-      ...plans,
-      index: { ...plans.index, bases: [{ file: "Tasks.base" }] },
+      ...app,
+      index: { ...app.index, bases: [{ file: "Tasks.base" }] },
     } as unknown as WikiOverview;
     const items = composerWikiNoteItems({
       overviews: [withBase],
-      project,
+      projectId,
+      cwd: "/work/app",
       query: "tasks",
-      canLink: true,
     });
     expect(labels(items)).toEqual(["Tasks"]);
   });

@@ -1,5 +1,7 @@
 import * as Schema from "effect/Schema";
 
+import { RootKey } from "./projectRoots.ts";
+
 /** Astrolabe: what an agent sends to draw a canvas in its thread. It never sends coordinates. */
 
 export const CANVAS_SHOW_TOOL_NAME = "astrolabe_canvas_show";
@@ -42,7 +44,8 @@ export const CanvasShowCard = Schema.Struct({
   url: Schema.optional(Schema.NonEmptyString.annotate({ description: "Makes this a link card." })),
   path: Schema.optional(
     Schema.NonEmptyString.annotate({
-      description: "Makes this a code card: a file, relative to the repository root.",
+      description:
+        "Makes this a code card: a file's path from the project folder, or folder:path for one in another of the project's folders.",
     }),
   ),
   line: Schema.optional(Schema.Int.annotate({ description: "First line of `path` it cites." })),
@@ -298,6 +301,9 @@ export const CanvasShowResult = Schema.Struct({
   file: Schema.optional(Schema.String),
   /** Ready to write into the reply: the whole board, then each named group. */
   embeds: Schema.optional(Schema.Array(Schema.String)),
+  /** The project folder's entry in `codes`, for turn items and clients from before `codes`. */
   code: Schema.optional(CanvasShowCode),
+  /** Astrolabe: each folder its code cards cite, by key. */
+  codes: Schema.optional(Schema.Record(RootKey, CanvasShowCode)),
 });
 export type CanvasShowResult = typeof CanvasShowResult.Type;

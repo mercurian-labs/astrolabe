@@ -12,7 +12,6 @@ import { Pressable, ScrollView, View } from "react-native";
 
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { AppText as Text } from "../../components/ui/AppText";
-import { ThemedSwitch } from "../../components/ui/ThemedSwitch";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { changeGroupEnvironment, useChangeGroups } from "../../state/changeGroups";
 import { useThreadShells } from "../../state/entities";
@@ -23,7 +22,7 @@ import { changeGroupColorClass, changeGroupReasonLabel } from "./changeGroupPres
 type Props = StaticScreenProps<{ readonly environmentId: string; readonly groupId: string }>;
 
 /**
- * Astrolabe: a change group on the phone: its state, Merge with the code, its members by side
+ * Astrolabe: a change group on the phone: its state, its members by side
  * and the threads working on it, each with why it is there; a tap opens a member's own screen,
  * where it is reviewed and merged, or a thread. Taking one out is one tap. Adding members or
  * threads and asking agents stay on web for now.
@@ -65,16 +64,6 @@ export function ChangeGroupRouteScreen(props: Props) {
 
   const openMember = (member: ChangeGroupMember) => {
     const { ref } = member;
-    if (ref.kind === "wiki-change-request") {
-      navigation.dispatch(
-        StackActions.push("WikiChangeRequest", {
-          environmentId: String(environmentId),
-          wikiId: String(ref.wikiId),
-          changeRequestId: String(ref.changeRequestId),
-        }),
-      );
-      return;
-    }
     const thread = threads.find(
       (candidate) => candidate.environmentId === environmentId && candidate.id === member.threadId,
     );
@@ -101,19 +90,6 @@ export function ChangeGroupRouteScreen(props: Props) {
           <Text className="text-sm text-foreground-muted">
             {CHANGE_GROUP_STATE_LABELS[group.state]}
           </Text>
-        </View>
-        <View className="flex-row items-center gap-3 rounded-xl bg-subtle px-3 py-3">
-          <View className="flex-1">
-            <Text className="text-[15px] font-t3-medium text-foreground">Merge with the code</Text>
-            <Text className="text-xs text-foreground-muted">
-              The documentation merges the moment the code has.
-            </Text>
-          </View>
-          <ThemedSwitch
-            accessibilityLabel="Merge with the code"
-            value={group.armed}
-            onValueChange={(armed) => void decide({ type: "arm", armed })}
-          />
         </View>
         {sides.map((side) =>
           side.members.length === 0 ? null : (

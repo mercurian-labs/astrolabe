@@ -44,8 +44,8 @@ import { advertisedJsonSchema } from "../../apps/server/src/mcp/advertisedJsonSc
 import * as Contracts from "@t3tools/contracts";
 import {
   EnvironmentId,
-  linkedWikiAgentNote,
   ORCHESTRATOR_MCP_RUNNING_TASK_NEXT,
+  projectRootKeys,
   PullRequestState,
   ThreadId,
 } from "@t3tools/contracts";
@@ -53,7 +53,10 @@ import { projectComposerContextForProvider } from "@t3tools/shared/composerConte
 import { THEME_GUIDE } from "@t3tools/shared/themeCss";
 import { formatThreadLink } from "@t3tools/shared/threadLinks";
 import { buildCodexAdditionalContext } from "../../apps/server/src/provider/CodexDeveloperInstructions.ts";
-import { PULL_REQUEST_LINKING_INSTRUCTIONS } from "@t3tools/provider-core/server/runtimeInstructions";
+import {
+  buildWorkspaceInstructions,
+  PULL_REQUEST_LINKING_INSTRUCTIONS,
+} from "@t3tools/provider-core/server/runtimeInstructions";
 import { makeSideChatContext } from "../../apps/server/src/orchestration-v2/ContextHandoffService.ts";
 import { withInlineContext } from "../../apps/server/src/orchestration-v2/ContextHandoffDelivery.ts";
 import { AttachmentToolkit } from "../../apps/server/src/mcp/toolkits/attachment/tools.ts";
@@ -93,8 +96,8 @@ import {
 } from "../../apps/server/src/mcp/toolkits/pullRequests/tools.ts";
 import { ThemeToolkit } from "../../apps/server/src/mcp/toolkits/theme/tools.ts";
 import { ThreadToolkit } from "../../apps/server/src/mcp/toolkits/thread/tools.ts";
-import { WikiToolkit } from "../../apps/server/src/mcp/toolkits/wiki/tools.ts";
-import { brokenBasesMessage } from "../../apps/server/src/wiki/ThreadWikiCheckouts.ts";
+import { ProjectDocsToolkit } from "../../apps/server/src/mcp/toolkits/projectDocs/tools.ts";
+import { turnDocsMessage } from "../../apps/server/src/wiki/TurnDocsCheck.ts";
 import { WorktreeToolkit } from "../../apps/server/src/mcp/toolkits/worktree/tools.ts";
 import {
   CLAUDE_PROVIDER,
@@ -395,30 +398,44 @@ export const McpToolUseCase = Schema.Struct({
       Schema.Array(Schema.Struct({ match: Schema.String, output: Schema.String })),
     ),
     /**
-     * Wikis linked to the thread's repository. T3 appends their note to `prompt`. `folder` is the
-     * thread's checkout of it: the repository itself for a project wiki. `reach` is how the
-     * session's file tools reach it, as `wikiCheckoutReach` decides per provider; default `edit`.
+     * The folders of the thread's project, its working folder first; Git repositories unless `git`
+     * is false. With several, T3's list of them follows `prompt`. `reach` is how the session's file
+     * tools reach a folder, as `folderReach` decides per provider; default `edit`. The list says
+     * what to do in a folder they can't edit.
      */
-    linkedWikis: Schema.optional(
+    projectRoots: Schema.optional(
       Schema.Array(
         Schema.Struct({
           name: Schema.String,
           folder: Schema.String,
+          git: Schema.optional(Schema.Boolean),
           reach: Schema.optional(Schema.Literals(["edit", "shell", "none"])),
         }),
       ),
     ),
     /**
-     * The turn is T3's follow-up to one that left these bases broken: T3's message is what the
-     * agent gets, and `prompt` only tells the shell simulator what happened.
+     * The turn is T3's follow-up to one that left these bases broken, or these links ambiguous:
+     * T3's message is what the agent gets, and `prompt` only tells the shell simulator what
+     * happened.
      */
     brokenBases: Schema.optional(
       Schema.Array(
         Schema.Struct({
-          wiki: Schema.String,
+          root: Schema.String,
           file: Schema.String,
           path: Schema.String,
           problems: Schema.Array(Schema.String),
+        }),
+      ),
+    ),
+    ambiguousLinks: Schema.optional(
+      Schema.Array(
+        Schema.Struct({
+          root: Schema.String,
+          file: Schema.String,
+          path: Schema.String,
+          target: Schema.String,
+          matches: Schema.Array(Schema.String),
         }),
       ),
     ),
@@ -556,7 +573,7 @@ const t3SourceTools: ReadonlyArray<Tool.Any> = [
   DeviceToolkit,
   HtmlToolkit,
   CodeToolkit,
-  WikiToolkit,
+  ProjectDocsToolkit,
   CanvasToolkit,
   ChangeGroupToolkit,
   MessageToolkit,
@@ -1305,17 +1322,32 @@ export const buildMessages = (sample: Sample) => {
     }
     if (turn.text) push(turn.role, text(turn.text));
   }
-  const brokenBases = testCase.setup.brokenBases;
+  const { brokenBases, ambiguousLinks } = testCase.setup;
   const composed =
-    brokenBases !== undefined
-      ? brokenBasesMessage(brokenBases)
+    brokenBases !== undefined || ambiguousLinks !== undefined
+      ? turnDocsMessage({ bases: brokenBases ?? [], links: ambiguousLinks ?? [] })
       : testCase.promptContext === undefined
         ? testCase.prompt
         : projectComposerContextForProvider({ text: testCase.prompt, ...testCase.promptContext });
-  const wikiNote = linkedWikiAgentNote(
-    (testCase.setup.linkedWikis ?? []).map((wiki) => ({ ...wiki, reach: wiki.reach ?? "edit" })),
-  );
-  const userText = wikiNote === null ? composed : `${composed}\n\n${wikiNote}`;
+  const roots = testCase.setup.projectRoots ?? [];
+  const keys = roots.length === 0 ? [] : projectRootKeys(roots[0]!.folder, roots.slice(1));
+  const folderNote =
+    roots.length < 2
+      ? ""
+      : buildWorkspaceInstructions({
+          cwd: roots[0]!.folder,
+          workspace: {
+            folders: roots.map((root, index) => ({
+              name: root.name,
+              path: root.folder,
+              isGitRepository: root.git ?? true,
+              key: keys[index]!,
+              ...(root.reach === undefined ? {} : { reach: root.reach }),
+            })),
+            extraRoots: [],
+          },
+        });
+  const userText = folderNote === "" ? composed : `${composed}\n\n${folderNote}`;
   const prompt =
     sideChatContext === undefined ? userText : withInlineContext(sideChatContext, userText);
   const childPrompt = () => taskPrompt({ task: prompt, role: delegateRole });

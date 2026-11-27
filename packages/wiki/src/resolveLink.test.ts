@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { isWikiPath, linkFiles, resolveLink, unwrittenFile } from "./index.ts";
+import {
+  isWikiPath,
+  linkFiles,
+  projectLinkFiles,
+  resolveLink,
+  resolveProjectLink,
+  unwrittenFile,
+  unwrittenProjectFile,
+  writtenProjectLink,
+} from "./index.ts";
 
 const VAULT = linkFiles([
   "Name.md",
@@ -251,4 +260,154 @@ describe("isWikiPath", () => {
     "a/Pl\nan.md",
     "a/Pl\0an.md",
   ])("refuses %j", (file) => expect(isWikiPath(file)).toBe(false));
+});
+
+const PROJECT = projectLinkFiles([
+  ["web", ["Plan.md", "a/Shared.md", "Note: subtitle.md", "x/L.md"]],
+  ["app", ["docs/Plan.md", "Spec.md", "z/Spec.md", "a/Shared.md", "b/Shared.md", "Only.md"]],
+  ["lib", ["Spec.md", "Lib.md", "lib/Plan.md"]],
+]);
+const WEB = { root: "web", file: "x/L.md" } as const;
+
+/** The link, its linker's root, and where it lands as `root:file`; null is red, `?` ambiguous. */
+const PROJECT_LINKS: ReadonlyArray<readonly [string, string, string | null]> = [
+  ["Plan", "web", "web:Plan.md"],
+  ["Plan", "app", "app:docs/Plan.md"],
+  ["Plan", "lib", "lib:lib/Plan.md"],
+  ["Lib", "web", "lib:Lib.md"],
+  ["Only", "lib", "app:Only.md"],
+  ["Spec", "web", "?"],
+  ["Spec", "app", "app:Spec.md"],
+  ["Shared", "lib", "?"],
+  ["Missing", "web", null],
+  ["Lib#Heading|shown @depends", "web", "lib:Lib.md"],
+  ["app:Plan", "web", "app:docs/Plan.md"],
+  ["app:docs/Plan", "lib", "app:docs/Plan.md"],
+  ["app:Spec#Heading|shown @type", "web", "app:Spec.md"],
+  ["app:z/Spec\\|shown", "web", "app:z/Spec.md"],
+  ["lib:/Spec", "web", "lib:Spec.md"],
+  ["lib:Plan", "web", "lib:lib/Plan.md"],
+  ["web:Plan", "web", "web:Plan.md"],
+  ["web:./L", "web", "web:x/L.md"],
+  ["app:Lib", "web", null],
+  ["app:Missing", "web", null],
+  ["Note: subtitle", "web", "web:Note: subtitle.md"],
+  ["Note: subtitle", "app", "web:Note: subtitle.md"],
+  ["nope:Plan", "web", null],
+  ["APP:Plan", "web", null],
+  ["/Lib", "web", null],
+  ["./Lib", "web", null],
+  ["../Lib", "web", null],
+];
+
+describe("resolveProjectLink", () => {
+  it.each(PROJECT_LINKS)("[[%s]] from %s lands on %s", (link, root, to) => {
+    const found = resolveProjectLink(
+      link,
+      { root, file: root === "web" ? "x/L.md" : null },
+      PROJECT,
+    );
+    const landed =
+      found.ambiguous.length > 0
+        ? "?"
+        : found.file === null
+          ? null
+          : `${found.file.root}:${found.file.file}`;
+    expect(landed).toBe(to);
+  });
+
+  it("names every match an ambiguous link chooses between, root by root, and picks none", () => {
+    expect(resolveProjectLink("Spec", WEB, PROJECT).ambiguous).toEqual([
+      { root: "app", file: "Spec.md" },
+      { root: "lib", file: "Spec.md" },
+    ]);
+    expect(resolveProjectLink("Shared", { root: "lib", file: null }, PROJECT)).toEqual({
+      file: null,
+      others: [],
+      ambiguous: [
+        { root: "web", file: "a/Shared.md" },
+        { root: "app", file: "a/Shared.md" },
+        { root: "app", file: "b/Shared.md" },
+      ],
+    });
+  });
+
+  it("keeps a root's own search as it was, and names what else matched in that root", () => {
+    for (const [link, from] of [
+      ["Spec", "Spec.md"],
+      ["Shared", null],
+      ["Plan", "a/L.md"],
+    ] as const) {
+      const alone = resolveLink(link, from, PROJECT.get("app") ?? linkFiles([]));
+      const found = resolveProjectLink(link, { root: "app", file: from }, PROJECT);
+      expect(found.file?.file ?? null).toBe(alone.file);
+      expect(found.others.map(({ file }) => file)).toEqual(alone.others);
+    }
+    expect(resolveProjectLink("Plan", { root: "lib", file: null }, PROJECT).others).toEqual([]);
+  });
+
+  it("never lets a new root retarget a link that landed in its own root", () => {
+    const before = projectLinkFiles([
+      ["web", ["Plan.md", "design: notes.md"]],
+      ["app", ["Lib.md"]],
+    ]);
+    const after = projectLinkFiles([
+      ["web", ["Plan.md", "design: notes.md"]],
+      ["app", ["Lib.md", "Plan.md"]],
+      ["design", ["notes.md", " notes.md", "Plan.md"]],
+    ]);
+    for (const link of ["Plan", "design: notes", "design:Plan"]) {
+      const from = { root: "web", file: null };
+      const first = resolveProjectLink(link, from, before).file;
+      if (first !== null) expect(resolveProjectLink(link, from, after).file).toEqual(first);
+    }
+    expect(resolveProjectLink("design:Plan", WEB, after).file).toEqual({
+      root: "design",
+      file: "Plan.md",
+    });
+    // A bare link that only another root carried can become ambiguous, never silently move.
+    expect(resolveProjectLink("Lib", WEB, before).file).toEqual({ root: "app", file: "Lib.md" });
+    const third = new Map([...before, ["lib", linkFiles(["Lib.md"])]]);
+    expect(resolveProjectLink("Lib", WEB, third).ambiguous).toHaveLength(2);
+  });
+});
+
+describe("writtenProjectLink", () => {
+  it.each([
+    ["web", "Plan.md", "web", "Plan"],
+    ["web", "a/Shared.md", "web", "Shared"],
+    ["app", "docs/Plan.md", "web", "app:Plan|Plan"],
+    ["app", "Spec.md", "web", "app:Spec|Spec"],
+    ["app", "z/Spec.md", "web", "app:z/Spec|Spec"],
+    ["app", "z/Spec.md", "app", "z/Spec|Spec"],
+    ["lib", "lib/Plan.md", "app", "lib:Plan|Plan"],
+    ["web", "Note: subtitle.md", "app", "web:Note: subtitle|Note: subtitle"],
+  ])("%s:%s from %s writes %s", (root, file, fromRoot, text) => {
+    expect(writtenProjectLink({ root, file }, fromRoot, PROJECT)).toBe(text);
+  });
+
+  it("writes a link that lands back on its file from any root", () => {
+    for (const [root, rootFiles] of PROJECT) {
+      for (const [file] of rootFiles.byPath.values()) {
+        if (file === undefined) continue;
+        for (const fromRoot of PROJECT.keys()) {
+          const written = writtenProjectLink({ root, file }, fromRoot, PROJECT);
+          const landed = resolveProjectLink(written, { root: fromRoot, file: null }, PROJECT);
+          expect(landed.file).toEqual({ root, file });
+        }
+      }
+    }
+  });
+});
+
+describe("unwrittenProjectFile", () => {
+  it.each([
+    ["New", "web", "x/New.md"],
+    ["app:New", "app", "New.md"],
+    ["app:d/New#H|shown", "app", "d/New.md"],
+    ["web:New", "web", "x/New.md"],
+    ["nope:New", "web", "x/nope:New.md"],
+  ])("[[%s]] from web:x/L.md lands in %s at %s", (link, root, file) => {
+    expect(unwrittenProjectFile(link, WEB, PROJECT)).toEqual({ root, file });
+  });
 });

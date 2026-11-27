@@ -98,7 +98,7 @@ import { runKeybindingCommand, shortcutForCommand } from "./keybindingCommands";
  * their shortcut handlers (`runKeybindingCommand`), so they need a shortcut.
  */
 export interface AppCommandContext {
-  /** The sidebar section's title row, while one is mounted (Agents, Wikis): its new button. */
+  /** The sidebar section's title row, while one is mounted (Agents, Projects): its new button. */
   readonly section: SidebarSectionHandle | null;
   readonly chatTabs: ChatTabsHandle | null;
   readonly panes: PanesHandle | null;
@@ -119,8 +119,6 @@ export interface AppCommandContext {
   readonly openFilePicker: () => void;
   /** The Command Palette: the palette as Vim's ex line, `text` after its colon. */
   readonly openCommandLine: (text?: string) => void;
-  /** The Wikis area, with its finder open to find or create a document. */
-  readonly findDocument: () => void;
 }
 
 export interface AppCommand {
@@ -156,7 +154,6 @@ const UPSTREAM_LABELS: Partial<Record<KeybindingCommand, string>> = {
 
 const SECTION_IDS: Partial<Record<AstrolabeKeybindingCommand, string>> = {
   "section.threads": "threads",
-  "section.wikis": "wikis",
   "section.repositories": "repositories",
   "section.pullRequests": "pull-requests",
   "section.issues": "issues",
@@ -175,8 +172,8 @@ export function cycleKey(keys: readonly string[], active: string | null, step: 1
 }
 
 /**
- * What `:q` closes: the focused pane's tab where focus is in the panes on screen (the Wikis area
- * has only panes), else the chat tab in front.
+ * What `:q` closes: the focused pane's tab where focus is in the panes on screen (the Projects
+ * area has only panes), else the chat tab in front.
  */
 function closeTarget(context: AppCommandContext): (() => void) | null {
   const { panes, chatTabs } = context;
@@ -423,7 +420,6 @@ function astrolabeCommand(
       }
       return upstreamCommand("chat.new", context);
     case "section.threads":
-    case "section.wikis":
     case "section.repositories":
     case "section.pullRequests":
     case "section.issues":
@@ -523,8 +519,6 @@ function astrolabeCommand(
       return repeatableEntry("Scroll down", scrollFrom("down", context.origin));
     case "scroll.up":
       return repeatableEntry("Scroll up", scrollFrom("up", context.origin));
-    case "wiki.findDocument":
-      return entry("Find or create a document", context.findDocument);
     case "tab.close":
       return entry("Close tab", closeTarget(context));
     case "draft.write": {
@@ -534,7 +528,7 @@ function astrolabeCommand(
     case "buffer.open":
       return entry("Switch to a thread", () => context.openCommandLine("b "));
     case "document.open":
-      return entry("Open a document", () => context.openCommandLine("e "));
+      return entry("Find file", context.openFilePicker);
     case "search.clearHighlight":
       return entry(
         context.origin?.view ? "Clear search highlight" : "Nothing highlighted here",
@@ -728,8 +722,8 @@ function astrolabeCommand(
 /**
  * Full screen for the focused pane: once maximized or alone it fills the content area, and in a
  * thread's right panel (`panelMaximized` not null) the panel maximizes over the chat column too;
- * pressed again it restores both. `change` is null with nothing to do (a lone pane in the Wikis or
- * Pull Requests area already fills it).
+ * pressed again it restores both. `change` is null with nothing to do (a lone pane in the Projects
+ * or Changes area already fills it).
  */
 export function fullScreenState(pane: {
   readonly alone: boolean;

@@ -16,7 +16,7 @@ const GROUPING_ROWS: ReadonlyArray<{
   {
     key: "sameThread",
     title: "Same thread",
-    description: "A thread's pull requests and the wiki pull requests it opened form one group.",
+    description: "A thread's pull requests form one group.",
   },
   {
     key: "coordinator",
@@ -49,18 +49,12 @@ const GROUPING_ROWS: ReadonlyArray<{
     title: "Offer drafts for missing documentation",
     description: "A group whose code has no documentation offers a new thread to draft some.",
   },
-  {
-    key: "armByDefault",
-    title: "Merge new groups with the code",
-    description:
-      "A new group's documentation merges the moment its code has, until you turn it off.",
-  },
 ];
 
 /**
  * Astrolabe: Settings › Change Requests. Grouping: the rules that add change requests to a
- * change group on their own, what a group offers, and whether new groups merge together. Kept by
- * the environment, where groups are derived and merged. Turning a rule off stops new members
+ * change group on their own, and what a group offers. Kept by the environment, where groups are
+ * derived. Turning a rule off stops new members
  * joining by it; members already in a group stay until taken out by hand.
  */
 export function ChangeRequestSettingsPanel() {

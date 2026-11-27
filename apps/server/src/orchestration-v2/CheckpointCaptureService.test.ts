@@ -1895,6 +1895,18 @@ it.layer(layerProjectionStoreTest)("CheckpointCaptureServiceV2", (it) => {
             missingRoot(2, true),
           ],
         );
+        // What the turn-end docs check reads: each file the run changed, from its checkout.
+        assert.sameDeepMembers(
+          [
+            ...(yield* ProjectionStore.ProjectionStoreV2.use((store) =>
+              store.getRunCheckpointFiles(thread.threadId, RunId.make("run:capture-wrapper:2")),
+            )),
+          ],
+          [
+            { cwd: `${root}/api`, file: "src/main.ts" },
+            { cwd: `${root}/docs`, file: "README.md" },
+          ],
+        );
         const context = yield* ProjectionStore.ProjectionStoreV2.use((store) =>
           store.getCheckpointContext(thread.threadId),
         );

@@ -74,6 +74,20 @@ function folderLabel(name: string): string {
 const folderPath = (value: string) =>
   value.replaceAll(LINE_BREAKING, "?").replaceAll("<", "‹").replaceAll(">", "›");
 
+type WorkspaceFolder = NonNullable<ProviderAdapterV2RuntimePolicy["workspace"]>["folders"][number];
+
+/** Probed per provider: what a session does in a folder its own file tools can't edit. */
+function reachClause(folder: WorkspaceFolder): string {
+  switch (folder.reach) {
+    case "shell":
+      return ". Your sandbox refuses your edit tool here: write with a shell command that changes only the lines it needs, without rewriting the whole file or adding blank lines.";
+    case "none":
+      return `. Your file tools can't reach it: hand any read or edit here to delegate_task with repository "${folderLabel(folder.key ?? folder.name)}", and the child works in this folder.`;
+    default:
+      return "";
+  }
+}
+
 /** Lists a multi-folder thread's folders. Empty for single-folder threads, so their text is unchanged. */
 export function buildWorkspaceInstructions(
   runtimePolicy: Pick<ProviderAdapterV2RuntimePolicy, "cwd" | "workspace">,
@@ -90,7 +104,7 @@ export function buildWorkspaceInstructions(
   const tail = ["</workspace_folders>"];
   const entries = workspace.folders.map(
     (folder) =>
-      `- ${folderLabel(folder.name)} (${folder.isGitRepository ? "Git repository" : "folder"}): ${folderPath(folder.path)}`,
+      `- ${folderLabel(folder.name)} (${folder.isGitRepository ? "Git repository" : "folder"}): ${folderPath(folder.path)}${reachClause(folder)}`,
   );
   // Reserve room for the line that counts folders left out.
   let budget = WORKSPACE_INSTRUCTIONS_MAX_BYTES - byteLength([...head, ...tail].join("\n")) - 32;

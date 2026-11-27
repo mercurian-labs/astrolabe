@@ -181,7 +181,7 @@ describe("code files", () => {
       file: "packages/contracts/src/wiki.ts",
       size: 120,
       code: facts(
-        { package: "@t3tools/contracts", exports: ["WikiId"] },
+        { package: "@t3tools/contracts", exports: ["ProjectRootId"] },
         { "packages/contracts/src/base.ts": ["imports"], "apps/server/src/leak.ts": ["imports"] },
       ),
     },

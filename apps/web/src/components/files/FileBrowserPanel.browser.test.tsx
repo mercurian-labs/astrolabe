@@ -432,4 +432,66 @@ describe("FileBrowserPanel", () => {
       expect(scroller.scrollTop).toBe(0);
     });
   });
+
+  describe("under Docs", () => {
+    const listing: readonly ProjectEntry[] = [
+      { path: "docs", kind: "directory" },
+      { path: "docs/Plan.md", kind: "file" },
+      { path: "docs/logo.png", kind: "file" },
+      { path: "docs/raw.json", kind: "file" },
+      { path: "src", kind: "directory" },
+      { path: "src/main.ts", kind: "file" },
+      { path: "src/util.ts", kind: "file" },
+      { path: "README.md", kind: "file" },
+      { path: "package.json", kind: "file" },
+    ];
+    const cwd = "/repo-docs";
+    const renderPanel = (onlyPaths?: ReadonlyArray<string> | null) => (
+      <FileBrowserPanel
+        environmentId={EnvironmentId.make("env-files")}
+        cwd={cwd}
+        projectName="repo"
+        selectedPath="src/main.ts"
+        selectedPathRevealId={0}
+        onOpenFile={() => {}}
+        workspaceMutationId={null}
+        {...(onlyPaths === undefined ? {} : { onlyPaths })}
+      />
+    );
+
+    it("keeps documents, what they link, their folders and the open file, and All brings back the rest", async () => {
+      writeExpandedDirectories(`env-files:${cwd}`, ["docs/"]);
+      using _listing = withDirectoryListing(listing);
+      await using screen = await render(
+        renderPanel(["README.md", "docs/Plan.md", "docs/logo.png"]),
+        { container: sizedContainer() },
+      );
+
+      await vi.waitFor(() => expect(findTreeRow("docs/Plan.md")).not.toBeNull());
+      for (const path of ["README.md", "docs/", "docs/logo.png", "src/", "src/main.ts"]) {
+        expect(findTreeRow(path), path).not.toBeNull();
+      }
+      for (const path of ["package.json", "docs/raw.json", "src/util.ts"]) {
+        expect(findTreeRow(path), path).toBeNull();
+      }
+      expect(findTreeRow("src/main.ts")!.getAttribute("aria-selected")).toBe("true");
+
+      await screen.rerender(renderPanel());
+      await vi.waitFor(() => expect(findTreeRow("package.json")).not.toBeNull());
+      expect(findTreeRow("docs/raw.json")).not.toBeNull();
+      expect(findTreeRow("src/main.ts")!.getAttribute("aria-selected")).toBe("true");
+    });
+
+    it("shows nothing until the documents are read, and says when there are none", async () => {
+      using _listing = withDirectoryListing(
+        listing.filter((entry) => !entry.path.startsWith("src")),
+      );
+      await using screen = await render(renderPanel(null));
+      await expect.element(page.getByText("Loading files…")).toBeVisible();
+      expect(findTreeRow("README.md")).toBeNull();
+
+      await screen.rerender(renderPanel([]));
+      await expect.element(page.getByText("No docs here.")).toBeVisible();
+    });
+  });
 });

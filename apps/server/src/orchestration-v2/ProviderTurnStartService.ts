@@ -22,7 +22,8 @@ import {
   RunAttemptId,
   NodeId,
   ThreadId,
-  wikiCheckoutReach,
+  type ProjectId,
+  folderReach,
 } from "@t3tools/contracts";
 import { cursorRuntimeAgentPolicy } from "@t3tools/provider-cursor/server";
 import * as Cause from "effect/Cause";
@@ -46,9 +47,8 @@ import { withTurnStartReservation, withWorkspaceLease } from "../workspace/works
 import * as GitWorkflowService from "../git/GitWorkflowService.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as ProjectService from "../project/ProjectService.ts";
-import * as ThreadWikiCheckouts from "../wiki/ThreadWikiCheckouts.ts";
-import * as WikiService from "../wiki/WikiService.ts";
 import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
+import * as ProjectRoots from "../workspace/ProjectRoots.ts";
 import * as ProviderAuthService from "../provider/ProviderAuthService.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import {
@@ -337,13 +337,59 @@ export const layer: Layer.Layer<
     const restoreMissingWorktree = yield* makeRestoreMissingWorktree;
     const worktreeRestore = yield* ThreadWorktreeRestore;
     const turnItemPositions = yield* TurnItemPositionStore.TurnItemPositionStoreV2;
-    // Astrolabe: optional, so a runtime without wikis starts turns unchanged.
-    const wikis = yield* Effect.serviceOption(WikiService.WikiService);
-    const wikiCheckouts = yield* Effect.serviceOption(ThreadWikiCheckouts.ThreadWikiCheckouts);
+    // Astrolabe: names the folders a session can't edit, for it to delegate work there.
+    const projectRoots = yield* Effect.serviceOption(ProjectRoots.ProjectRoots);
     // Astrolabe: reads the checkpoint the user's file edits are diffed from; without it, the
     // agent is asked to read those files instead.
     const git = yield* Effect.serviceOption(GitVcsDriver.GitVcsDriver);
     const hostPlatform = yield* HostProcess.Platform;
+
+    // Astrolabe: each folder outside the cwd says how the session's file tools reach it, and a
+    // folder they can't edit carries the key `delegate_task` names it by.
+    const withFolderReach = Effect.fn("ProviderTurnStartService.withFolderReach")(function* (
+      policy: ProviderAdapter.ProviderAdapterV2RuntimePolicy,
+      driver: string,
+      thread: { readonly projectId: ProjectId; readonly worktreePath: string | null },
+    ) {
+      const workspace = policy.workspace;
+      if (workspace === undefined) return policy;
+      const outside = folderReach(
+        driver,
+        cursorRuntimeAgentPolicy(policy, hostPlatform).sandboxEnabled,
+      );
+      const outsideCwd = new Set(workspace.extraRoots);
+      const reaches = workspace.folders.map((folder) =>
+        outsideCwd.has(folder.path) ? outside : "edit",
+      );
+      const roots =
+        reaches.every((reach) => reach === "edit") || Option.isNone(projectRoots)
+          ? []
+          : yield* projectRoots.value
+              .forThread(thread)
+              .pipe(
+                Effect.catch((cause) =>
+                  Effect.logWarning("Could not name the thread's folders.", { cause }).pipe(
+                    Effect.as([]),
+                  ),
+                ),
+              );
+      const keys = new Map(
+        roots.flatMap((root) => [
+          [root.path, root.key] as const,
+          ...(root.checkout === null ? [] : [[root.checkout, root.key] as const]),
+        ]),
+      );
+      return {
+        ...policy,
+        workspace: {
+          ...workspace,
+          folders: workspace.folders.map((folder, index) => {
+            const key = keys.get(folder.path);
+            return { ...folder, reach: reaches[index]!, ...(key === undefined ? {} : { key }) };
+          }),
+        },
+      };
+    });
 
     // Build draining callbacks outside startup scope so they cannot retain full thread history.
     const makeRunControls = (input: {
@@ -978,20 +1024,11 @@ export const layer: Layer.Layer<
         });
         return;
       }
-      const basePolicy = resolvedPolicy.success;
-      // Astrolabe: the session reaches each linked wiki through the thread's checkout of it.
-      const threadWikis = Option.isNone(wikiCheckouts)
-        ? { checkouts: [], workingIn: undefined }
-        : yield* wikiCheckouts.value.ensure({
-            threadId: projection.thread.id,
-            projectId: projection.thread.projectId,
-            worktreePath: projection.thread.worktreePath,
-          });
-      const wikiRoots = threadWikis.checkouts.map((checkout) => checkout.folder);
-      const resolvedRuntimePolicy =
-        wikiRoots.length === 0
-          ? basePolicy
-          : { ...basePolicy, writableRoots: [...(basePolicy.writableRoots ?? []), ...wikiRoots] };
+      const resolvedRuntimePolicy = yield* withFolderReach(
+        resolvedPolicy.success,
+        providerThread.driver,
+        projection.thread,
+      );
       if (!(yield* isCurrentAttemptInStatus("starting"))) return;
       const existingSessionProjection = projection.providerSessions.find(
         (candidate) => candidate.id === providerSessionId,
@@ -1185,9 +1222,8 @@ export const layer: Layer.Layer<
       const tokenCap = yield* handoffTokenCapConfig.pipe(
         Effect.orElseSucceed(() => DEFAULT_HANDOFF_TOKEN_CAP),
       );
-      // Astrolabe: a new native conversation learns its repository's linked wikis, and one with
-      // turns learns those linked since its last prompt. Slash commands (and /goal) stay verbatim,
-      // since providers parse everything after them as arguments, so they tell it nothing.
+      // Slash commands (and /goal) stay verbatim, since providers parse everything after them as
+      // arguments, so they get no notes.
       const isVerbatimPrompt = (text: string) => text.trimStart().startsWith("/");
       const deliveredRunIds = new Set(
         projection.attempts
@@ -1206,34 +1242,6 @@ export const layer: Layer.Layer<
               "",
           ),
       );
-      const wikiNoteLinkedSince = (linkedSince?: DateTime.Utc) =>
-        isVerbatimPrompt(userText) || Option.isNone(wikis)
-          ? Effect.succeed<string | null>(null)
-          : wikis.value
-              .agentNote({
-                projectId: projection.thread.projectId,
-                linkedSince,
-                checkouts: threadWikis.checkouts,
-                reach: wikiCheckoutReach(
-                  session.driver,
-                  cursorRuntimeAgentPolicy(resolvedRuntimePolicy, hostPlatform).sandboxEnabled,
-                ),
-                workingIn: threadWikis.workingIn,
-              })
-              .pipe(
-                Effect.catch((cause) =>
-                  Effect.logWarning("Could not read the wikis linked to this project.", {
-                    cause,
-                  }).pipe(Effect.as(null)),
-                ),
-              );
-      const everyLinkedWiki = yield* Effect.cached(wikiNoteLinkedSince());
-      const newlyLinkedWikis =
-        lastPrompt === undefined
-          ? everyLinkedWiki
-          : yield* Effect.cached(
-              wikiNoteLinkedSince(lastPrompt.startedAt ?? lastPrompt.requestedAt),
-            );
       // Astrolabe: boards the user changed since the agent's last prompt, as they now stand.
       const editedBoards =
         lastPrompt === undefined || isVerbatimPrompt(userText)
@@ -1297,14 +1305,9 @@ export const layer: Layer.Layer<
                   ),
                 ),
               );
-      const providerTextFor = (nativeThreadHasTurns: boolean) =>
-        (nativeThreadHasTurns ? newlyLinkedWikis : everyLinkedWiki).pipe(
-          Effect.map((note) =>
-            [userText, note, editedBoards, editedFiles]
-              .filter((part) => part !== null)
-              .join("\n\n"),
-          ),
-        );
+      const providerText = [userText, editedBoards, editedFiles]
+        .filter((part) => part !== null)
+        .join("\n\n");
       const handoffContextForThread = (loadedProviderThread: OrchestrationV2ProviderThread) => {
         const measuredContext = latestNativeContextUsage(projection, providerThread);
         const previousSelection =
@@ -1454,7 +1457,6 @@ export const layer: Layer.Layer<
           missedRunIds,
           nativeThreadHasTurns,
           budget: Effect.gen(function* () {
-            const providerText = yield* providerTextFor(nativeThreadHasTurns);
             return handoffBudget({
               tokenCap,
               modelContextWindow,
@@ -2316,7 +2318,6 @@ export const layer: Layer.Layer<
           ],
         });
       });
-      const providerText = yield* providerTextFor(nativeThreadHasTurns);
       let inlineDeliveredHandoffs: ReadonlyArray<OrchestrationV2ContextHandoff> = [];
       let promptDroppedOnTerminal = false;
       const inlineDeliveryLock = yield* Semaphore.make(1);

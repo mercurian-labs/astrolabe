@@ -95,12 +95,11 @@ type ViewProps = ComponentProps<typeof NativeStackView>;
 
 /** A board fills the screen, with its own bar where the tab bar would be. */
 const isBoardRoute = (route: { readonly name: string; readonly params?: object | undefined }) =>
-  route.name === "WikiCanvasReview" ||
-  (route.name === "WikiDocument" &&
-    route.params !== undefined &&
-    "name" in route.params &&
-    typeof route.params.name === "string" &&
-    isCanvasName(route.params.name));
+  route.name === "ProjectDocument" &&
+  route.params !== undefined &&
+  "name" in route.params &&
+  typeof route.params.name === "string" &&
+  isCanvasName(route.params.name);
 type Descriptor = ViewProps["descriptors"][string];
 type Route = ViewProps["state"]["routes"][number];
 

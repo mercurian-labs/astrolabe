@@ -1136,6 +1136,51 @@ it.live("removes a task folder's clean worktrees and keeps the one with uncommit
   ),
 );
 
+it.live("keeps a task folder whose only thread works in one of its repositories", () =>
+  runCleanupTest(
+    Effect.gen(function* () {
+      const { service, fs, repo, command, setTaskFolders, setThreads } = yield* cleanupFixture();
+      const api = `${repo}/dist/api`;
+      yield* fs.makeDirectory(api, { recursive: true });
+      yield* command(api, ["init", "-b", "main"]);
+      yield* command(api, ["config", "user.email", "cleanup@example.test"]);
+      yield* command(api, ["config", "user.name", "Cleanup test"]);
+      yield* fs.writeFileString(`${api}/tracked.txt`, "original\n");
+      yield* command(api, ["add", "."]);
+      yield* command(api, ["commit", "-m", "initial"]);
+      const context = yield* Layer.build(
+        layerTaskFoldersWithGit({
+          workspaceRoot: repo,
+          trackedFolders: [{ name: "api", path: api }],
+          thread: null,
+        }).pipe(Layer.provide(NodeCrypto.layer)),
+      );
+      const taskFolders = Context.get(context, TaskFolders.TaskFolders);
+      const plan = yield* taskFolders.plan({ projectId: ProjectId.make("project-1") });
+      const { taskFolder } = yield* taskFolders.create({
+        plan: plan!,
+        branch: "task",
+        projectStart: { refName: "main", baseRefName: "main" },
+        startFromOrigin: false,
+        projectCommands: "permitted",
+      });
+      const checkout = `${taskFolder.root}/dist/api`;
+      setTaskFolders(taskFolders);
+      // A delegated child rooted in that repository, its parent gone from view.
+      setThreads([shell({ branch: "task", worktreePath: checkout })]);
+
+      const report = yield* service.runNow;
+
+      expect(report.entries.find((entry) => entry.path === checkout)).toMatchObject({
+        outcome: "kept",
+        reason: "Works in one repository of another thread's task folder",
+      });
+      expect(yield* fs.exists(checkout)).toBe(true);
+      expect(yield* fs.exists(taskFolder.root)).toBe(true);
+    }),
+  ),
+);
+
 it.live("removes clean submodules recursively, including deinitialized repositories", () =>
   runCleanupTest(
     Effect.gen(function* () {

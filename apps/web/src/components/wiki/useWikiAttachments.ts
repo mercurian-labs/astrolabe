@@ -1,6 +1,6 @@
 import { attachmentPath, pastedFileName, type WikiPlacement } from "@mercurian/wiki/placement";
 import { linkFiles, shortestLink } from "@mercurian/wiki/resolve-link";
-import type { EnvironmentId, WikiChangeRequestId, WikiId } from "@t3tools/contracts";
+import type { EnvironmentId, WikiChangeRequestId, ProjectRootId } from "@t3tools/contracts";
 
 import { useStableCallback } from "~/hooks/useStableCallback";
 import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
@@ -25,20 +25,30 @@ const arrivingName = (file: File, arrival: WikiFileArrival, at: Date) =>
 /** Lands attachments of `source` where the wiki's settings put them. */
 export function useWikiAttachments(input: {
   readonly environmentId: EnvironmentId;
-  readonly wikiId: WikiId;
+  readonly wikiId: ProjectRootId;
   /** What's read and written: the change request edits land in, if one's named. */
   readonly savesTo: WikiChangeRequestId | undefined;
+  /** Astrolabe: a folder on disk the attachment is written into instead, uncommitted. */
+  readonly checkout?: string | undefined;
   readonly source: string | null;
   readonly placement: WikiPlacement;
   /** The commit an attachment just landed in. */
   readonly onLanded?: (commit: string) => void;
 }) {
-  const { environmentId, wikiId, savesTo, source, placement, onLanded } = input;
-  const landing = savesTo === undefined ? {} : { changeRequestId: savesTo };
+  const { environmentId, wikiId, savesTo, checkout, source, placement, onLanded } = input;
+  const landing =
+    checkout !== undefined
+      ? { checkout }
+      : savesTo === undefined
+        ? {}
+        : { changeRequestId: savesTo };
   const send = useWikiAutosaveCommand();
   const runFileList = useAtomQueryRunner(wikiEnvironment.fileList, QUIET_READ);
   const listFiles = async () => {
-    const listed = await runFileList({ environmentId, input: { wikiId, ...landing } });
+    const listed = await runFileList({
+      environmentId,
+      input: { wikiId, ...(savesTo === undefined ? {} : { changeRequestId: savesTo }) },
+    });
     return listed._tag === "Success" ? listed.value.files.map(({ file }) => file) : [];
   };
   /** Lands `name`'s bytes; the path it got, or null when the wiki refused it. */

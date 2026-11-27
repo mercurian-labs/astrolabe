@@ -11,23 +11,30 @@ import {
   documentFile,
   findMap,
   isCanvasFile,
-  isHidden,
   key,
   linkDestination,
   linkedDocument,
+  linkFiles,
   noteName,
+  projectBacklinks,
+  projectLinkDestination,
+  renameLinks,
   resolveLink,
+  resolveProjectLink,
   support,
   typedLinks,
   typesTo,
   unresolved,
+  unwrittenProjectFile,
   walk,
+  type ProjectFile,
+  type ProjectIndex,
   type WikiFiles,
   type WikiIndex,
 } from "@mercurian/wiki";
 import type {
   WikiChangeRequestDetail,
-  WikiId,
+  ProjectRootId,
   WikiIndexResult,
   WikiNoteResult,
   WikiQueryInput,
@@ -45,7 +52,7 @@ const outgoingTargets = (index: WikiIndex, file: string): ReadonlyArray<string> 
 };
 
 export const indexResult = (
-  wikiId: WikiId,
+  wikiId: ProjectRootId,
   commit: string,
   index: WikiIndex,
   editTimes: ReadonlyMap<string, string> = new Map(),
@@ -119,6 +126,42 @@ export const indexResult = (
   };
 };
 
+/**
+ * What the Projects tree's Docs filter keeps of a root: every document, and each of `others` (the
+ * files that aren't documents) a note's link or embed, wikilink or Markdown, or a canvas's card
+ * leads to.
+ */
+export const docPaths = (
+  index: WikiIndex,
+  others: ReadonlyArray<string>,
+): ReadonlyArray<string> => {
+  const files = linkFiles(others);
+  const linked = new Set<string>();
+  const follow = (target: string, from: string) => {
+    const file = resolveLink(target, from, files).file;
+    if (file !== null) linked.add(file);
+  };
+  for (const note of index.notes.values()) {
+    // Visits every link's target, wikilink or Markdown, and rewrites none.
+    renameLinks(note.source, (target) => {
+      follow(target, note.file);
+      return null;
+    });
+  }
+  for (const canvas of index.canvases.values()) {
+    for (const link of canvas.links) {
+      follow(link.card === "file" ? `/${link.target}` : link.target, canvas.file);
+    }
+  }
+  return [
+    ...index.notes.keys(),
+    ...index.maps.keys(),
+    ...index.bases.keys(),
+    ...index.canvases.keys(),
+    ...linked,
+  ].toSorted();
+};
+
 /** Names that searched and found more than one document: the one taken, and the rest. */
 const ambiguousLinks = (
   index: WikiIndex,
@@ -146,7 +189,7 @@ const ambiguousLinks = (
  * find; a client names a file with a leading `/`. A canvas reads as its outline.
  */
 export const noteResult = (
-  wikiId: WikiId,
+  wikiId: ProjectRootId,
   commit: string,
   index: WikiIndex,
   files: WikiFiles,
@@ -261,6 +304,145 @@ export const linksResult = (index: WikiIndex, requested: string): WikiLinksResul
   };
 };
 
+/** A project document as tools name it: `root:path`. */
+export const projectAddress = ({ root, file }: ProjectFile) => `${root}:${file}`;
+
+const sameFile = (a: ProjectFile | null, b: ProjectFile) =>
+  a !== null && a.root === b.root && a.file === b.file;
+
+export type ProjectDocumentLookup =
+  | { readonly kind: "found"; readonly file: ProjectFile }
+  | { readonly kind: "ambiguous"; readonly matches: ReadonlyArray<ProjectFile> }
+  /** Where writing it would land. */
+  | { readonly kind: "missing"; readonly file: ProjectFile };
+
+/**
+ * The document `name` means in `root`, or with no root its one match in the project, as a bare
+ * link finds it. A miss lands in `root`, else `fallbackRoot`.
+ */
+export const lookupProjectDocument = (
+  index: ProjectIndex,
+  name: string,
+  root: string | null,
+  fallbackRoot: string,
+): ProjectDocumentLookup => {
+  const own = root === null ? undefined : index.documents.get(root);
+  const searched =
+    root === null ? index.documents : own === undefined ? new Map() : new Map([[root, own]]);
+  const found = resolveProjectLink(name, { root: root ?? "", file: null }, searched);
+  if (found.file !== null) return { kind: "found", file: found.file };
+  if (found.ambiguous.length > 0) return { kind: "ambiguous", matches: found.ambiguous };
+  const into = root ?? fallbackRoot;
+  return {
+    kind: "missing",
+    file: unwrittenProjectFile(name, { root: into, file: null }, new Set([into])),
+  };
+};
+
+export interface ProjectLinksResult {
+  readonly repository: string;
+  readonly name: string;
+  readonly exists: boolean;
+  readonly outgoing: ReadonlyArray<{
+    readonly target: string;
+    /** The document it opens; null for a red link and for an ambiguous one. */
+    readonly to: string | null;
+    readonly unresolved: boolean;
+    /** The documents an ambiguous bare link could mean, in several roots. */
+    readonly ambiguous?: ReadonlyArray<string>;
+    readonly types: ReadonlyArray<string>;
+  }>;
+  readonly backlinks: ReadonlyArray<string>;
+  readonly typedBacklinks: ReadonlyArray<{
+    readonly source: string;
+    readonly types: ReadonlyArray<string>;
+  }>;
+  /** The project's red links: names linked to that no document carries yet. */
+  readonly unresolved: ReadonlyArray<{
+    readonly name: string;
+    readonly sources: ReadonlyArray<string>;
+  }>;
+}
+
+/** `WikiLinksResult` across every root of a project, each document named by its address. */
+export const projectLinksResult = (index: ProjectIndex, file: ProjectFile): ProjectLinksResult => {
+  type Link = { readonly target: string; readonly card?: "text" | "file" };
+  const destination = (link: Link, from: ProjectFile) => projectLinkDestination(index, link, from);
+  const leadsTo = (link: Link, from: ProjectFile, target: ProjectFile) => {
+    const landed = destination(link, from);
+    if (landed.file !== null) return sameFile(landed.file, target);
+    if (landed.ambiguous.length > 0) return false;
+    const unwritten = unwrittenProjectFile(link.target, from, index.documents);
+    return unwritten.root === target.root && key(unwritten.file) === key(target.file);
+  };
+  const rootIndex = index.roots.get(file.root);
+  const note = rootIndex?.notes.get(file.file);
+  const canvas = rootIndex?.canvases.get(file.file);
+  const typed = note === undefined ? [] : typedLinks(note.source, note.links);
+  const seen = new Set<string>();
+  const outgoing: Array<ProjectLinksResult["outgoing"][number]> = [];
+  for (const link of note?.links ?? canvas?.links ?? []) {
+    const landed = destination(link, file);
+    const id = landed.file === null ? `\0${key(link.target)}` : projectAddress(landed.file);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const types = typed.filter((each) =>
+      landed.file === null
+        ? key(each.target) === key(link.target)
+        : sameFile(destination(each, file).file, landed.file),
+    );
+    outgoing.push({
+      target: link.target,
+      to: landed.file === null ? null : projectAddress(landed.file),
+      unresolved: landed.file === null && landed.ambiguous.length === 0,
+      ...(landed.ambiguous.length > 0 ? { ambiguous: landed.ambiguous.map(projectAddress) } : {}),
+      types: [...new Set(types.flatMap((each) => each.types))],
+    });
+  }
+  const typedBacklinks: Array<ProjectLinksResult["typedBacklinks"][number]> = [];
+  const missing = new Map<string, { name: string; sources: string[] }>();
+  for (const [root, each] of index.roots) {
+    for (const source of each.notes.values()) {
+      const from = { root, file: source.file };
+      const types = typedLinks(source.source, source.links).filter((link) =>
+        leadsTo(link, from, file),
+      );
+      if (types.length > 0) {
+        typedBacklinks.push({
+          source: projectAddress(from),
+          types: [...new Set(types.flatMap((link) => link.types))],
+        });
+      }
+    }
+    const sources = [
+      ...[...each.notes.values()].map((source) => ({ file: source.file, links: source.links })),
+      ...[...each.canvases.values()].map((source) => ({
+        file: source.file,
+        links: source.links.filter((link) => link.card === "text"),
+      })),
+    ];
+    for (const source of sources) {
+      for (const link of source.links) {
+        const landed = destination(link, { root, file: source.file });
+        if (landed.file !== null || landed.ambiguous.length > 0) continue;
+        const entry = missing.get(key(link.target)) ?? { name: link.target, sources: [] };
+        const named = projectAddress({ root, file: source.file });
+        if (!entry.sources.includes(named)) entry.sources.push(named);
+        missing.set(key(link.target), entry);
+      }
+    }
+  }
+  return {
+    repository: file.root,
+    name: projectAddress(file),
+    exists: note !== undefined || canvas !== undefined,
+    outgoing,
+    backlinks: projectBacklinks(index, file).map(projectAddress),
+    typedBacklinks,
+    unresolved: [...missing.values()],
+  };
+};
+
 export interface WikiOrientEdge {
   readonly from: string;
   readonly type: string;
@@ -332,48 +514,3 @@ export const withCanvasOutlines = (detail: WikiChangeRequestDetail): WikiChangeR
     return { ...change, before: outline(change.before), after: outline(change.after) };
   }),
 });
-
-const MAX_SEARCH_FILES = 40;
-const MAX_LINES_PER_FILE = 5;
-const MAX_LINE_LENGTH = 240;
-
-export interface WikiSearchResult {
-  readonly matches: ReadonlyArray<{
-    readonly path: string;
-    readonly lines: ReadonlyArray<{ readonly line: number; readonly text: string }>;
-  }>;
-  /** True when more files or lines matched than the result carries. */
-  readonly truncated: boolean;
-}
-
-/** Case-insensitive substring search over document paths and lines, bounded for an agent's context. */
-export const searchFiles = (files: WikiFiles, query: string): WikiSearchResult => {
-  const needle = query.toLowerCase();
-  const matches: Array<WikiSearchResult["matches"][number]> = [];
-  let truncated = false;
-  // A hidden document is read only by its exact path, which search never offers.
-  for (const [path, source] of Object.entries(files).toSorted(([a], [b]) => a.localeCompare(b))) {
-    if (isHidden(path)) continue;
-    const lines: Array<{ line: number; text: string }> = [];
-    let more = false;
-    source.split("\n").forEach((text, position) => {
-      if (!text.toLowerCase().includes(needle)) return;
-      if (lines.length >= MAX_LINES_PER_FILE) {
-        more = true;
-        return;
-      }
-      lines.push({
-        line: position + 1,
-        text: text.length > MAX_LINE_LENGTH ? `${text.slice(0, MAX_LINE_LENGTH)}…` : text,
-      });
-    });
-    if (lines.length === 0 && !path.toLowerCase().includes(needle)) continue;
-    if (matches.length >= MAX_SEARCH_FILES) {
-      truncated = true;
-      break;
-    }
-    truncated ||= more;
-    matches.push({ path, lines });
-  }
-  return { matches, truncated };
-};

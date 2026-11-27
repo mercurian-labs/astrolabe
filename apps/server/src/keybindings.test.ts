@@ -572,16 +572,16 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
   it.effect("upserts and removes a removal rule, and the result carries the triggers", () =>
     Effect.gen(function* () {
       const keybindings = yield* Keybindings.Keybindings;
-      const removal = { key: "menu g w", command: "-section.wikis" } as const;
+      const removal = { key: "menu g s", command: "-section.settings" } as const;
       yield* keybindings.upsertKeybindingRule(removal);
       const removed = (yield* keybindings.getSnapshot).keybindingTriggers.triggers.filter(
-        (trigger) => trigger.command === "section.wikis",
+        (trigger) => trigger.command === "section.settings",
       );
-      assert.deepEqual(removed, [{ kind: "menu", command: "section.wikis", sequence: ["w", "w"] }]);
+      assert.deepEqual(removed, [{ kind: "menu", command: "section.settings", sequence: [","] }]);
 
       yield* keybindings.removeKeybindingRule(removal);
       const restored = (yield* keybindings.getSnapshot).keybindingTriggers.triggers.filter(
-        (trigger) => trigger.command === "section.wikis",
+        (trigger) => trigger.command === "section.settings",
       );
       assert.lengthOf(restored, 2);
     }).pipe(Effect.provide(layerKeybindings())),

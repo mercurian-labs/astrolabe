@@ -63,24 +63,22 @@ describe("workspace root navigation", () => {
     expect(workspaceUsesColumns("threads")).toBe(true);
     expect(workspaceUsesColumns("pullRequests")).toBe(true);
     expect(workspaceUsesColumns("issues")).toBe(true);
-    expect(workspaceUsesColumns("wikis")).toBe(false);
+    expect(workspaceUsesColumns("repositories")).toBe(false);
   });
 
-  it("keeps a saved order once Wikis, Projects and Issues make six sections", () => {
+  it("keeps a saved order once Projects and Issues make five sections", () => {
     expect(resolveWorkspaceTabOrder(undefined)).toEqual([
       "threads",
       "pullRequests",
-      "wikis",
       "repositories",
       "issues",
       "usage",
     ]);
-    expect(resolveWorkspaceTabOrder(["home", "usage", "issues", "threads"])).toEqual([
+    expect(resolveWorkspaceTabOrder(["home", "wikis", "usage", "issues", "threads"])).toEqual([
       "usage",
       "issues",
       "threads",
       "pullRequests",
-      "wikis",
       "repositories",
     ]);
   });
@@ -116,24 +114,25 @@ describe("workspace root navigation", () => {
     });
   });
 
-  it("Wikis keeps its own search and position beside the other roots", () => {
+  it("Projects keeps its own search and position beside the other roots", () => {
     let state = initialWorkspaceTabsState();
-    state = workspaceTabsReducer(state, { type: "select", tab: "wikis" });
-    state = workspaceTabsReducer(state, { type: "scroll", tab: "wikis", offset: 320 });
+    state = workspaceTabsReducer(state, { type: "select", tab: "repositories" });
+    state = workspaceTabsReducer(state, { type: "scroll", tab: "repositories", offset: 320 });
     state = workspaceTabsReducer(state, { type: "search" });
     state = workspaceTabsReducer(state, { type: "query", query: "roadmap" });
     state = workspaceTabsReducer(state, { type: "select", tab: "threads" });
     expect(state.tabs.threads.query).toBe("");
-    state = workspaceTabsReducer(state, { type: "select", tab: "wikis" });
-    expect(state.tabs.wikis).toMatchObject({ query: "roadmap", searchMode: "active" });
-    expect(workspaceTabsReducer(state, { type: "cancel" }).tabs.wikis.scrollOffset).toBe(320);
+    state = workspaceTabsReducer(state, { type: "select", tab: "repositories" });
+    expect(state.tabs.repositories).toMatchObject({ query: "roadmap", searchMode: "active" });
+    expect(workspaceTabsReducer(state, { type: "cancel" }).tabs.repositories.scrollOffset).toBe(
+      320,
+    );
   });
 
-  it("registers Wikis and Projects on iPhone only, until iPad and Android have a design", () => {
+  it("registers Projects on iPhone only, until iPad and Android have a design", () => {
     expect(registeredWorkspaceTabs("iphone")).toEqual([
       "threads",
       "pullRequests",
-      "wikis",
       "repositories",
       "issues",
       "usage",

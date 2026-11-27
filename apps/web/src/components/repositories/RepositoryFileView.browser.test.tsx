@@ -157,6 +157,11 @@ vi.mock(import("~/state/query"), async (original) => {
     })) as never,
   };
 });
+vi.mock(import("./ProjectDocumentView"), () => ({
+  default: ({ tab }: { readonly tab: { readonly path: string } }) => (
+    <p data-testid="document-editor">{tab.path}</p>
+  ),
+}));
 vi.mock(import("~/state/entities"), async (original) => ({
   ...(await original()),
   useProject: (() => null) as never,
@@ -204,6 +209,31 @@ const TRUSTED = {
 };
 
 describe("RepositoryFileView", () => {
+  it("opens a project's note in the document editor and its code in the code editor", async () => {
+    setup("hello\n");
+    await using screen = await render(
+      <RepositoryFileView tabKey="note" tab={{ ...tab, path: "docs/Plan.md" }} />,
+    );
+    await expect.element(screen.getByTestId("document-editor")).toHaveTextContent("docs/Plan.md");
+    await screen.rerender(<RepositoryFileView tabKey="code" tab={{ ...tab, path: "src/a.ts" }} />);
+    await expect.element(screen.getByRole("textbox")).toHaveTextContent("hello");
+    expect(screen.container.querySelector("[data-testid=document-editor]")).toBeNull();
+  });
+
+  it("keeps a note in a thread's linked tab, and a skill map, in the code editor", async () => {
+    setup("plain words\n");
+    const linked = { preview: () => undefined, saved: () => undefined };
+    await using screen = await render(
+      <RepositoryFileView tabKey="linked" tab={{ ...tab, path: "Plan.md" }} linked={linked} />,
+    );
+    await expect.element(screen.getByRole("textbox")).toHaveTextContent("plain words");
+    await screen.rerender(
+      <RepositoryFileView tabKey="map" tab={{ ...tab, path: "a.skillmap.md" }} />,
+    );
+    await expect.element(screen.getByRole("textbox")).toHaveTextContent("plain words");
+    expect(screen.container.querySelector("[data-testid=document-editor]")).toBeNull();
+  });
+
   it("shows typing in one editor in another editor of the same file, then saves", async () => {
     setup("hello\n");
     await using screen = await render(

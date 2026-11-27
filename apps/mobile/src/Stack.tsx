@@ -33,8 +33,7 @@ import {
   PullRequestFileRouteScreen,
 } from "./features/pull-requests/PullRequestRouteScreen";
 import { PullRequestFilesSheet } from "./features/pull-requests/PullRequestFiles";
-import { WikiCanvasReviewRouteScreen } from "./features/wikis/WikiCanvasReviewRouteScreen";
-import { WikiChangeRequestRouteScreen } from "./features/wikis/WikiChangeRequestRouteScreen";
+import { LegacyWikiRouteScreen } from "./features/wikis/LegacyWikiRouteScreen";
 import { WikiDocumentRouteScreen } from "./features/wikis/WikiDocumentRouteScreen";
 import { PullRequestReviewSheet } from "./features/pull-requests/PullRequestReviewSheet";
 import { PullRequestReviewersScreen } from "./features/pull-requests/PullRequestReviewersScreen";
@@ -639,21 +638,27 @@ const RootStackConfig = createWorkspaceStackNavigator({
       linking: "change-groups/:environmentId/:groupId",
       options: pageRoute({ header: "solid" }),
     }),
-    // Astrolabe: a wiki's documents and change requests.
-    WikiDocument: createNativeStackScreen({
+    // Astrolabe: a document in one of a project's folders: a note, canvas or base.
+    ProjectDocument: createNativeStackScreen({
       screen: WikiDocumentRouteScreen,
-      linking: "wikis/:environmentId/:wikiId/documents/:name",
+      linking: "projects/:environmentId/:projectId/:rootKey/documents/:name",
       options: pageRoute({ header: "solid" }),
     }),
+    // Astrolabe: links from the Wikis section, kept for one release; each redirects.
+    WikiDocument: createNativeStackScreen({
+      screen: LegacyWikiRouteScreen,
+      linking: "wikis/:environmentId/:wikiId/documents/:name",
+      options: pageRoute(),
+    }),
     WikiChangeRequest: createNativeStackScreen({
-      screen: WikiChangeRequestRouteScreen,
+      screen: LegacyWikiRouteScreen,
       linking: "wikis/:environmentId/:wikiId/changes/:changeRequestId",
       options: pageRoute(),
     }),
     WikiCanvasReview: createNativeStackScreen({
-      screen: WikiCanvasReviewRouteScreen,
+      screen: LegacyWikiRouteScreen,
       linking: "wikis/:environmentId/:wikiId/changes/:changeRequestId/canvases/:name",
-      options: pageRoute({ header: "solid" }),
+      options: pageRoute(),
     }),
     PullRequestGuideStop: createNativeStackScreen({
       screen: PullRequestGuideStopScreen,

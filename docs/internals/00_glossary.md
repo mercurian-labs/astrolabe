@@ -12,6 +12,10 @@ Shared vocabulary across T3 Code. Architecture and lifecycle constraints belong 
 | Project        | An environment-local workspace record rooted at a directory.                                      |
 | Workspace root | The project's base filesystem directory on the environment.                                       |
 | Worktree       | A separate Git checkout a thread can use instead of the project's main checkout.                  |
+| Project root   | One folder a project covers: the workspace root, a repository inside it, or an added folder.      |
+| Root key       | A project root's name, unique in its project. Addresses and links use it: `key:path#anchor`.      |
+| Project docs   | Notes, canvases, bases and skill maps kept as files in any of a project's roots.                  |
+| Draft          | A person's unpublished doc edits in a hosted repo's main checkout, kept on a `cr/` branch.        |
 | Thread         | The durable conversation and work history for a project. Survives provider process exits.         |
 | Turn           | One user-to-agent cycle (a run). Provider work can end before checkpoint and diff work settles.   |
 | T3 home        | The base data directory. Runtime state normally lives under its `userdata` directory.             |

@@ -29,5 +29,3 @@ const wikiTreeViewStore = storedChoice<WikiTreeView>({
 });
 
 export const useWikiTreeView = wikiTreeViewStore.useValue;
-
-export const storeWikiTreeView = (view: WikiTreeView) => wikiTreeViewStore.set(view);

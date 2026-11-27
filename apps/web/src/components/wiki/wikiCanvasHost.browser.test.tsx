@@ -1,4 +1,4 @@
-import { EnvironmentId, WikiId } from "@t3tools/contracts";
+import { EnvironmentId, ProjectRootId } from "@t3tools/contracts";
 import { expect, it, vi } from "vite-plus/test";
 
 import { render } from "../../../test/render";
@@ -18,7 +18,7 @@ it("reads a card's image from the board's own folder", async () => {
   await using _screen = await render(
     <WikiAsset
       environmentId={EnvironmentId.make("laptop")}
-      wikiId={WikiId.make("wiki")}
+      wikiId={ProjectRootId.make("wiki")}
       commit="abc"
       board="eb/Board.canvas"
       asset={{ kind: "image", path: "noroot.png" }}

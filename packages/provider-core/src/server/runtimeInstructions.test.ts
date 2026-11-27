@@ -3,6 +3,7 @@ import { assert, describe, it } from "@effect/vitest";
 import {
   AGENT_FEEDBACK_INSTRUCTIONS,
   buildRuntimeInstructions,
+  buildWorkspaceInstructions,
   PULL_REQUEST_LINKING_INSTRUCTIONS,
 } from "./runtimeInstructions.ts";
 
@@ -158,5 +159,30 @@ describe("buildRuntimeInstructions", () => {
     assert.isAbove(shown, 0);
     assert.include(block, `\n- Not listed: ${128 - shown} more\n</workspace_folders>`);
     assert.isBelow(new TextEncoder().encode(block).length, 4000);
+  });
+
+  it("tells the session how it reaches each folder its file tools can't edit", () => {
+    const lines = buildWorkspaceInstructions({
+      cwd: "/work/app",
+      workspace: {
+        folders: [
+          { name: "api", path: "/work/api", isGitRepository: true, reach: "edit" },
+          { name: "Docs", key: "docs", path: "/work/docs", isGitRepository: true, reach: "shell" },
+          {
+            name: "Handbook",
+            key: "handbook-2",
+            path: "/work/handbook",
+            isGitRepository: false,
+            reach: "none",
+          },
+        ],
+        extraRoots: ["/work/api", "/work/docs", "/work/handbook"],
+      },
+    }).split("\n");
+    assert.deepEqual(lines.slice(3, 6), [
+      "- api (Git repository): /work/api",
+      "- Docs (Git repository): /work/docs. Your sandbox refuses your edit tool here: write with a shell command that changes only the lines it needs, without rewriting the whole file or adding blank lines.",
+      '- Handbook (folder): /work/handbook. Your file tools can\'t reach it: hand any read or edit here to delegate_task with repository "handbook-2", and the child works in this folder.',
+    ]);
   });
 });

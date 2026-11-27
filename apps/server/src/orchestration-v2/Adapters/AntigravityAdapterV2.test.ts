@@ -656,7 +656,21 @@ describe("AntigravityAdapterV2 workspace changes", () => {
             attachments: [document],
           },
           modelSelection,
-          runtimePolicy: policyFor(workspaceB),
+          runtimePolicy: {
+            ...policyFor(workspaceB),
+            workspace: {
+              folders: [
+                {
+                  name: "Handbook",
+                  key: "handbook",
+                  path: workspaceA,
+                  isGitRepository: true,
+                  reach: "none",
+                },
+              ],
+              extraRoots: [workspaceA],
+            },
+          },
         })
         .pipe(Effect.forkScoped);
       yield* session.events.pipe(
@@ -677,6 +691,15 @@ describe("AntigravityAdapterV2 workspace changes", () => {
         ],
       );
       assert.include(JSON.stringify(sent.prompt), JSON.stringify(documentPath).slice(1, -1));
+      // Its file tools stay in its folder, so it learns which folders it must delegate.
+      const told = sent.prompt.flatMap((block) => (block.type === "text" ? [block.text] : []));
+      assert.isTrue(
+        told.some((text) =>
+          text.includes(
+            `- Handbook (Git repository): ${workspaceA}. Your file tools can't reach it: hand any read or edit here to delegate_task with repository "handbook"`,
+          ),
+        ),
+      );
       if (readTextFile === undefined) {
         return yield* Effect.die("Antigravity sessions must serve client file requests");
       }

@@ -8,9 +8,16 @@ import {
   linkFiles,
   linkPath,
   resolveLink,
+  resolveProjectLink,
   unwrittenFile,
+  unwrittenProjectFile,
   writtenLink,
+  writtenProjectLink,
+  type ProjectFile,
+  type ProjectLinker,
+  type ProjectLinkFiles,
   type ResolvedLink,
+  type ResolvedProjectLink,
   type WikiLinkFiles,
 } from "@mercurian/wiki/resolve-link";
 import type {
@@ -21,7 +28,6 @@ import type {
   WikiIndexError,
   WikiIndexResult,
   WikiMergePreview,
-  WikiMirrorStatus,
 } from "@t3tools/contracts";
 
 import { sourceControlClients } from "./sourceControlClients.ts";
@@ -52,7 +58,7 @@ export function wikiTerms(
 /** The comparison key the wiki uses for note names. */
 export const noteKey = (name: string): string => name.normalize("NFC").toLowerCase();
 
-export const noteNameOfFile = (file: string): string => file.replace(/\.md$/i, "");
+const noteNameOfFile = (file: string): string => file.replace(/\.md$/i, "");
 
 /** A document's path as a person reads it, for lists that hold both of two equal names. */
 export const documentPath = (file: string): string => file.replace(/\.(md|base|canvas)$/i, "");
@@ -177,6 +183,60 @@ export const wikiLinkFile = (
 ): string =>
   (index === null ? null : resolveWikiLink(index, target, from).file) ??
   unwrittenFile(target, from);
+
+/** A project's roots' indexes, by root key. */
+type ProjectLinkableIndex = ReadonlyMap<string, LinkableIndex>;
+
+/** What a link in a project can land on: each root's files, each made ready once. */
+const projectWikiLinkFiles = (roots: ProjectLinkableIndex): ProjectLinkFiles =>
+  new Map([...roots].map(([root, index]) => [root, wikiLinkFiles(index)] as const));
+
+/** Where a link written in `from` lands across a project, the way the server resolves it. */
+export const resolveProjectWikiLink = (
+  roots: ProjectLinkableIndex,
+  target: string,
+  from: ProjectLinker,
+): ResolvedProjectLink => resolveProjectLink(target, from, projectWikiLinkFiles(roots));
+
+/**
+ * What a `[[` in a file of `fromRoot` can complete to: every root's notes, canvases and bases, a
+ * file in another root labelled and written with its `root:`.
+ */
+export function projectWikiLinkOptions(
+  roots: ProjectLinkableIndex,
+  fromRoot: string,
+  showHidden: boolean,
+): ReadonlyArray<{ readonly label: string; readonly apply: string; readonly root: string }> {
+  const files = projectWikiLinkFiles(roots);
+  return [...roots].flatMap(([root, index]) =>
+    [...index.notes, ...index.canvases, ...index.bases].flatMap(({ file }) =>
+      !showHidden && isHidden(file)
+        ? []
+        : [
+            {
+              label: root === fromRoot ? noteNameOfFile(file) : `${root}:${noteNameOfFile(file)}`,
+              apply: writtenProjectLink({ root, file }, fromRoot, files),
+              root,
+            },
+          ],
+    ),
+  );
+}
+
+/**
+ * The file a link opens across a project: the one it lands on, else where writing it would land.
+ * Null for an ambiguous link, which the person has to choose for.
+ */
+export function projectWikiLinkFile(
+  roots: ProjectLinkableIndex | null,
+  target: string,
+  from: ProjectLinker,
+): ProjectFile | null {
+  if (roots === null) return unwrittenProjectFile(target, from, new Map());
+  const found = resolveProjectWikiLink(roots, target, from);
+  if (found.file !== null) return found.file;
+  return found.ambiguous.length > 0 ? null : unwrittenProjectFile(target, from, roots);
+}
 
 /** The repository file a whole-path link names when it is no document, as a code file's link is. */
 export const linkedFilePath = (target: string): string | null => {
@@ -405,42 +465,6 @@ function isWikiError(
   );
 }
 
-export type MirrorTone = "none" | "ok" | "pending" | "error" | "warning";
-
-/** The mirror's state in one short phrase and tone, for rows and headers. */
-export function summarizeMirror(
-  mirror: WikiMirrorStatus | null,
-  formatAgo: (iso: string) => string,
-): { readonly tone: MirrorTone; readonly label: string } {
-  if (mirror === null) return { tone: "none", label: "No mirror" };
-  if (mirror.lastError) return { tone: "error", label: "Mirror push failed" };
-  if (
-    mirror.overwroteRemoteAt &&
-    (mirror.lastPushedAt === null || mirror.overwroteRemoteAt >= mirror.lastPushedAt)
-  ) {
-    return { tone: "warning", label: "Mirror overwritten" };
-  }
-  if (mirror.lastPushedAt) {
-    return { tone: "ok", label: `Mirrored ${formatAgo(mirror.lastPushedAt)}` };
-  }
-  return { tone: "pending", label: "Mirror not pushed yet" };
-}
-
-/** A host wiki's state in one short phrase and tone, for its settings. */
-export function summarizeHost(
-  host: WikiHostStatus | null | undefined,
-  formatAgo: (iso: string) => string,
-): { readonly tone: MirrorTone; readonly label: string } {
-  if (host == null) return { tone: "none", label: "Not connected" };
-  // Being held behind is the sync working as designed; its `lastError` says why.
-  if (host.relation === "behind") return { tone: "warning", label: "Main is behind the host" };
-  if (host.lastError) return { tone: "error", label: "Sync failed" };
-  if (host.relation === "diverged") return { tone: "error", label: "Main has diverged" };
-  if (host.relation === "ahead") return { tone: "warning", label: "Main is ahead of the host" };
-  if (host.lastSyncedAt) return { tone: "ok", label: `Synced ${formatAgo(host.lastSyncedAt)}` };
-  return { tone: "pending", label: "Not synced yet" };
-}
-
 /** Whether a change request holds work the host has not received. */
 export const hasUnpublishedWork = (changeRequest: WikiChangeRequest): boolean =>
   changeRequest.status === "open" &&
@@ -453,40 +477,6 @@ export function wikiPullRequestHost(url: string): string | null {
   return /^https?:\/\/([^/]+)/i.exec(url)?.[1]?.toLowerCase() ?? null;
 }
 
-const hostedProjectKey = (projectId: string, number: number) => `project:${projectId}#${number}`;
-
-const hostedAddressKey = (host: string, repository: string, number: number) =>
-  `${host.toLowerCase()}/${repository.toLowerCase()}#${number}`;
-
-/**
- * The pull requests that are host wikis' own change requests, so a list showing those change
- * requests leaves their pull requests out and shows each change once. Each goes in twice, since
- * a list row from another checkout has another project and a host can spell its name two ways.
- */
-export function hostedPullRequestKeys(
-  wikis: ReadonlyArray<{
-    readonly projectId: string;
-    readonly changeRequests: ReadonlyArray<Pick<WikiChangeRequest, "pullRequest">>;
-  }>,
-): ReadonlySet<string> {
-  return new Set(
-    wikis.flatMap(({ projectId, changeRequests }) =>
-      changeRequests.flatMap(({ pullRequest }) =>
-        pullRequest == null
-          ? []
-          : [
-              hostedProjectKey(projectId, pullRequest.number),
-              hostedAddressKey(
-                wikiPullRequestHost(pullRequest.url) ?? "",
-                pullRequest.repository,
-                pullRequest.number,
-              ),
-            ],
-      ),
-    ),
-  );
-}
-
 /**
  * The merge a wiki's pull request starts on: the methods that keep its amendments one commit
  * each, best first; squashing joins them, so it comes only when nothing else is allowed.
@@ -495,33 +485,6 @@ export const wikiMergeMethod = <M extends string>(allowed: ReadonlyArray<M>): M 
   allowed.find((method) => method === "merge") ??
   allowed.find((method) => method === "rebase") ??
   allowed.find((method) => method === "squash");
-
-export const isHostedPullRequest = (
-  keys: ReadonlySet<string>,
-  entry: {
-    readonly projectId: string;
-    readonly host: string;
-    readonly repository: string;
-    readonly number: number;
-  },
-): boolean =>
-  keys.has(hostedProjectKey(entry.projectId, entry.number)) ||
-  keys.has(hostedAddressKey(entry.host, entry.repository, entry.number));
-
-/** The wikis on a host, as `hostedPullRequestKeys` reads them. */
-export const hostedWikis = <
-  T extends {
-    readonly wiki: { readonly host?: WikiHostStatus | null };
-    readonly changeRequests?: ReadonlyArray<Pick<WikiChangeRequest, "pullRequest">> | null;
-  },
->(
-  overviews: ReadonlyArray<T>,
-) =>
-  overviews.flatMap(({ wiki, changeRequests }) =>
-    wiki.host == null
-      ? []
-      : [{ projectId: wiki.host.projectId as string, changeRequests: changeRequests ?? [] }],
-  );
 
 /** The actor the server records for edits made from the app, as opposed to an agent's model. */
 export const PERSON_ACTOR = "You";

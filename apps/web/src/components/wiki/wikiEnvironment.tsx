@@ -4,32 +4,22 @@ import {
   EnvironmentId,
   type PullRequestRef,
   type UnifiedSettings,
-  type WikiChangeRequestId,
-  type WikiId,
+  type ProjectRootId,
 } from "@t3tools/contracts";
 import {
   type AtomCommand,
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import type { WikiOverview } from "@t3tools/client-runtime/state/wiki";
 import { wikiSaveFailure } from "@t3tools/client-runtime/wikiLogic";
-import { useAtomValue } from "@effect/atom-react";
 
 import { useEnvironmentSettings } from "~/hooks/useSettings";
 import { usePrimaryEnvironmentId, useEnvironments } from "~/state/environments";
 import { useEnvironmentQuery } from "~/state/query";
 import { useAtomCommand } from "~/state/use-atom-command";
-import { wikiEnvironment, wikiOverviewsAtom } from "~/state/wiki";
+import { wikiEnvironment } from "~/state/wiki";
 import { toastManager } from "../ui/toast";
-import type { FullPullRequestTarget } from "../pullRequest/pullRequestTabs";
-import {
-  describeWikiFailure,
-  hostedPullRequestKeys,
-  hostedWikis,
-  wikiPullRequestHost,
-  wikiTerms,
-} from "./wiki.logic";
+import { describeWikiFailure, wikiTerms } from "./wiki.logic";
 
 /**
  * The server whose wikis the page shows: the one the URL names while this workspace knows it,
@@ -45,32 +35,6 @@ export function useWikiEnvironment(requested: EnvironmentId | undefined) {
     environments[0]?.environmentId ??
     null;
   return { environments, environmentId };
-}
-
-/**
- * Every wiki on every connected server, with its index and change requests as they arrive.
- * `loading` holds while any server's list has not arrived yet. With `enabled` false it asks for
- * none, for a caller that needs them only sometimes (the palette's `:e`).
- */
-export function useWikiOverviews(enabled = true): {
-  readonly overviews: ReadonlyArray<WikiOverview>;
-  readonly loading: boolean;
-} {
-  const { environments } = useEnvironments();
-  const key = JSON.stringify(
-    enabled ? environments.map((environment) => environment.environmentId) : [],
-  );
-  const lists = useAtomValue(wikiOverviewsAtom(key));
-  return {
-    overviews: lists.flatMap((list) => list ?? []),
-    loading: lists.some((list) => list === null),
-  };
-}
-
-/** The pull requests that are host wikis' own change requests. */
-export function useHostedPullRequestKeys(enabled: boolean): ReadonlySet<string> {
-  const { overviews } = useWikiOverviews(enabled);
-  return hostedPullRequestKeys(hostedWikis(overviews));
 }
 
 /**
@@ -98,38 +62,11 @@ export function useWikiOfPullRequest(
   return wiki === null || changeRequest === null ? null : { wiki, changeRequest };
 }
 
-/**
- * The pull request a host wiki's change request is, once the host has it: a host wiki is
- * reviewed and merged on the same screen as a repository's pull requests.
- */
-export function useWikiChangeRequestPullRequest(
-  environmentId: EnvironmentId,
-  wikiId: WikiId,
-  changeRequestId: WikiChangeRequestId | null,
-): FullPullRequestTarget | null {
-  const list = useEnvironmentQuery(wikiEnvironment.list({ environmentId, input: {} }));
-  const host = list.data?.wikis.find((entry) => entry.wikiId === wikiId)?.host ?? null;
-  const changeRequests = useEnvironmentQuery(
-    host === null || changeRequestId === null
-      ? null
-      : wikiEnvironment.changeRequests({ environmentId, input: { wikiId } }),
-  );
-  const pullRequest =
-    changeRequests.data?.changeRequests.find((entry) => entry.changeRequestId === changeRequestId)
-      ?.pullRequest ?? null;
-  const pullRequestHost = pullRequest === null ? null : wikiPullRequestHost(pullRequest.url);
-  if (host === null || pullRequest === null || pullRequestHost === null) return null;
-  return {
-    environmentId,
-    projectId: host.projectId,
-    host: pullRequestHost,
-    repository: pullRequest.repository,
-    number: pullRequest.number,
-  };
-}
-
 /** What a wiki calls its reviews, by its host. */
-export function useWikiTerms(environmentId: EnvironmentId | undefined, wikiId: WikiId | undefined) {
+export function useWikiTerms(
+  environmentId: EnvironmentId | undefined,
+  wikiId: ProjectRootId | undefined,
+) {
   const { data } = useEnvironmentQuery(
     environmentId === undefined ? null : wikiEnvironment.list({ environmentId, input: {} }),
   );

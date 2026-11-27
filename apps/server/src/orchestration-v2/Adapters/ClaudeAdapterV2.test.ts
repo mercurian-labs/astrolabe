@@ -94,7 +94,7 @@ import { T3_CODE_DEVICE_TOOL_INSTRUCTIONS_WITH_TOOL_SEARCH } from "@t3tools/prov
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import { PreviewControlsToolkit } from "../../mcp/toolkits/previewControls/tools.ts";
 import { HtmlToolkit } from "../../mcp/toolkits/html/tools.ts";
-import { WikiToolkit } from "../../mcp/toolkits/wiki/tools.ts";
+import { ProjectDocsToolkit } from "../../mcp/toolkits/projectDocs/tools.ts";
 import { CanvasToolkit } from "../../mcp/toolkits/canvas/tools.ts";
 import { CodeToolkit } from "../../mcp/toolkits/code/tools.ts";
 import { MessageToolkit } from "../../mcp/toolkits/message/tools.ts";
@@ -830,7 +830,7 @@ describe("ClaudeAdapterV2 MCP query overrides", () => {
       ...Object.values(ThemeToolkit.tools),
       ...Object.values(PreviewControlsToolkit.tools),
       ...Object.values(HtmlToolkit.tools),
-      ...Object.values(WikiToolkit.tools),
+      ...Object.values(ProjectDocsToolkit.tools),
       ...Object.values(CodeToolkit.tools),
       ...Object.values(CanvasToolkit.tools),
       ...Object.values(MessageToolkit.tools),

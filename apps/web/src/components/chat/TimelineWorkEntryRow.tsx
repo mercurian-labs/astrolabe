@@ -11,7 +11,7 @@ import {
   type EnvironmentId,
   ThreadId,
   WikiChangeRequestId,
-  WikiId,
+  ProjectRootId,
 } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { Link } from "@tanstack/react-router";
@@ -53,7 +53,7 @@ import { Button, InlineButton } from "../ui/button";
 import { useAssetUrls } from "../../assets/assetUrls";
 import { observeResize } from "../../lib/observeResize";
 import { useThreadShell } from "../../state/entities";
-import { useOpenWikiTab } from "../wiki/useOpenWiki";
+import { useOpenWikiTab } from "../wiki/LegacyWikiTab";
 import {
   threadReadTargetId,
   threadReadTargetTitle,
@@ -689,7 +689,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
                 openWikiTab({
                   kind: "note",
                   environmentId: ctx.activeThreadEnvironmentId,
-                  wikiId: WikiId.make(changedCanvas.wikiId),
+                  wikiId: ProjectRootId.make(changedCanvas.wikiId),
                   file: changedCanvas.file,
                   changeRequestId: WikiChangeRequestId.make(changedCanvas.changeRequestId),
                 });

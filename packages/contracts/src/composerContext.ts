@@ -15,7 +15,7 @@ import {
   TurnItemId,
 } from "./baseSchemas.ts";
 import { GUEST_MESSAGE_MAX_LENGTH, GUEST_NAME_MAX_LENGTH } from "./guestShare.ts";
-import { WikiId } from "./wiki.ts";
+import { ProjectRootId } from "./projectRoots.ts";
 
 /** Image and file records reference `ChatAttachment` ids, never bytes. */
 
@@ -223,11 +223,14 @@ export const ThreadContextRecord = Schema.Struct({
 });
 export type ThreadContextRecord = typeof ThreadContextRecord.Type;
 
-/** Astrolabe: a wiki note, which the agent reads with its wiki tools. */
+/**
+ * Astrolabe: a note in a project root. A record saved before wikis became project roots holds the
+ * wiki's old id, which still decodes here and which the server still resolves.
+ */
 export const WikiNoteContextRecord = Schema.Struct({
   ...recordBase,
   kind: Schema.Literal("wiki-note"),
-  wikiId: WikiId.check(Schema.isMaxLength(255)),
+  wikiId: ProjectRootId.check(Schema.isMaxLength(255)),
   wikiName: TrimmedNonEmptyString.check(Schema.isMaxLength(255)),
   name: TrimmedNonEmptyString.check(Schema.isMaxLength(255)),
 });

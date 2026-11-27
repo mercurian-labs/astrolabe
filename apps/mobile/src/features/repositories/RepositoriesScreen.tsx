@@ -1,5 +1,6 @@
 /* oxlint-disable t3code/no-untranslated-copy -- Astrolabe-only copy, shipped in English. */
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
+import { ProjectId } from "@t3tools/contracts";
 import { useNavigation } from "@react-navigation/native";
 import { isScratchProject } from "@t3tools/client-runtime/state/projects";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
@@ -13,25 +14,30 @@ import { EmptyState } from "../../components/ui/EmptyState";
 import { relativeTime } from "../../lib/time";
 import { useProjects, useServerConfigs } from "../../state/entities";
 import { projectEnvironment } from "../../state/projects";
+import { projectRootsEnvironment } from "../../state/projectRoots";
 import { useEnvironmentQuery } from "../../state/query";
 import { repositoryScopeAtom } from "../../state/repositories";
 import { reviewEnvironment } from "../../state/review";
 import { vcsEnvironment } from "../../state/vcs";
-import { changeRequestProjectKindAtom } from "../../state/wiki";
 import { useWorkspaceState } from "../../state/workspace";
 import { PullRequestGlyph } from "../pull-requests/pullRequestGlyphs";
 import { ThreadListV2SectionDivider } from "../threads/thread-list-v2-items";
+import { resolveWorkspaceFilePath } from "../files/filePath";
+import { projectDocumentParams } from "../files/fileTreeDocs";
+import { isWikiDocument } from "@mercurian/wiki/resolve-link";
+import { useAtomQueryRunner } from "../../state/use-atom-query-runner";
 import { ListFilterMenu } from "../layout/workspace/ListFilterMenu";
 import { useWorkspaceTabs } from "../layout/workspace/WorkspaceTabsContext";
+
+const QUIET_READ = { reportFailure: false, reportDefect: false };
 
 const repositoryKey = (project: Pick<EnvironmentProject, "environmentId" | "id">) =>
   `${project.environmentId}:${project.id}`;
 
 /**
- * Astrolabe: the Repositories tab, as web's Repositories section lists a repository: with one
- * picked, its uncommitted changes, then the files its commits changed most recently, and a row
- * into its whole file tree; with every repository, each one's latest files. A file opens read
- * only, as a thread's Files view shows it; editing code stays on the computer for now.
+ * Astrolabe: the Projects tab. One project picked: its uncommitted and recent files, its tree and
+ * each folder it tracks outside it; else each project's latest files. A note, canvas or base opens
+ * as an editable document; any other file read only, as a thread's Files view shows it.
  */
 export function RepositoriesScreen() {
   const workspace = useWorkspaceTabs()!;
@@ -161,9 +167,23 @@ function RepositoryList({
 }) {
   const navigation = useNavigation();
   const workspace = useWorkspaceTabs()!;
-  const setChangeRequestKind = useAtomSet(changeRequestProjectKindAtom);
   const { environmentId } = repository;
   const cwd = repository.workspaceRoot;
+  const projectId = ProjectId.make(String(repository.id));
+  // Astrolabe: its roots, which say where a document opens; a picked project lists the folders
+  // it tracks outside its own, and every other list reads them only when a file is tapped.
+  const roots = useEnvironmentQuery(
+    full ? projectRootsEnvironment.list({ environmentId, input: { projectId } }) : null,
+  ).data?.roots;
+  const readRoots = useAtomQueryRunner(projectRootsEnvironment.list, QUIET_READ);
+  const base = cwd.replace(/[\\/]+$/, "");
+  const outside = (roots ?? []).filter(
+    (root) =>
+      root.kind === "tracked" &&
+      root.path !== base &&
+      !root.path.startsWith(`${base}/`) &&
+      !root.path.startsWith(`${base}\\`),
+  );
   const status = useEnvironmentQuery(
     full ? vcsEnvironment.status({ environmentId, input: { cwd } }) : null,
   );
@@ -178,13 +198,34 @@ function RepositoryList({
         })
       : null,
   );
-  const openFile = (path: string) => {
+  const openFile = async (path: string) => {
     Keyboard.dismiss();
-    // The root stack's file screen, reached from inside the tabs as a wiki document is.
+    const known =
+      roots ??
+      (isWikiDocument(path)
+        ? await readRoots({ environmentId, input: { projectId } }).then((result) =>
+            result._tag === "Success" ? result.value.roots : undefined,
+          )
+        : undefined);
+    const document =
+      known === undefined
+        ? null
+        : projectDocumentParams({
+            environmentId: String(environmentId),
+            projectId,
+            roots: known,
+            absolutePath: resolveWorkspaceFilePath(cwd, path),
+          });
+    if (document !== null) {
+      navigation.navigate("ProjectDocument", document);
+      return;
+    }
+    // The root stack's file screen, reached from inside the tabs.
     navigation.navigate("RepositoryFile", {
       environmentId: String(environmentId),
       cwd,
       projectName: repository.title,
+      projectId,
       path: path.split("/").filter(Boolean),
     });
   };
@@ -196,7 +237,7 @@ function RepositoryList({
     return (
       <View>
         {entries.map((entry) => (
-          <FileRow key={entry.path} path={entry.path} onPress={() => openFile(entry.path)} />
+          <FileRow key={entry.path} path={entry.path} onPress={() => void openFile(entry.path)} />
         ))}
         {entries.length === 0 ? (
           <Text className="px-4 py-6 text-center text-sm text-foreground-muted">
@@ -226,17 +267,31 @@ function RepositoryList({
                 environmentId: String(environmentId),
                 cwd,
                 projectName: repository.title,
+                projectId,
               })
             }
           />
+          {outside.map((root) => (
+            <LinkRow
+              key={root.key}
+              icon="folder"
+              label={root.state === "missing" ? `${root.name} · missing` : `Browse ${root.name}`}
+              disabled={root.state === "missing"}
+              onPress={() =>
+                navigation.navigate("RepositoryFiles", {
+                  environmentId: String(environmentId),
+                  cwd: root.path,
+                  projectName: `${repository.title} · ${root.name}`,
+                  projectId,
+                })
+              }
+            />
+          ))}
           {status.data?.isRepo === false ? null : (
             <LinkRow
               icon={PullRequestGlyph.pullRequest}
               label="Changes"
-              onPress={() => {
-                setChangeRequestKind("repositories");
-                workspace.dispatch({ type: "select", tab: "pullRequests" });
-              }}
+              onPress={() => workspace.dispatch({ type: "select", tab: "pullRequests" })}
             />
           )}
         </>
@@ -249,7 +304,7 @@ function RepositoryList({
               key={file.path}
               path={file.path}
               trailing={`+${file.insertions} −${file.deletions}`}
-              onPress={() => openFile(file.path)}
+              onPress={() => void openFile(file.path)}
             />
           ))}
         </>
@@ -262,7 +317,7 @@ function RepositoryList({
           key={file.path}
           path={file.path}
           trailing={relativeTime(file.changedAt)}
-          onPress={() => openFile(file.path)}
+          onPress={() => void openFile(file.path)}
         />
       ))}
     </View>
@@ -272,14 +327,17 @@ function RepositoryList({
 function LinkRow(props: {
   readonly icon: AppSymbolName;
   readonly label: string;
+  readonly disabled?: boolean;
   readonly onPress: () => void;
 }) {
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={props.label}
+      accessibilityState={{ disabled: props.disabled === true }}
+      disabled={props.disabled}
       onPress={props.onPress}
-      className="flex-row items-center gap-2 px-4 py-3 active:opacity-60"
+      className={`flex-row items-center gap-2 px-4 py-3 active:opacity-60 ${props.disabled ? "opacity-50" : ""}`}
     >
       <SymbolView name={props.icon} size={15} tintColorClassName="accent-icon" />
       <Text className="flex-1 text-sm font-t3-medium text-foreground-muted">{props.label}</Text>

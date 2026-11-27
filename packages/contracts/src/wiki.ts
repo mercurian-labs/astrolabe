@@ -1,6 +1,5 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import * as SchemaGetter from "effect/SchemaGetter";
 
 import {
   IsoDateTime,
@@ -13,10 +12,12 @@ import {
 } from "./baseSchemas.ts";
 import { SourceControlProviderKind } from "./sourceControl.ts";
 import { WikiCanvasAgentTransform, WikiCanvasTransform } from "./canvas.ts";
+import { ProjectRootId, RootKey } from "./projectRoots.ts";
 
-/** Astrolabe: local wikis. A wiki is a git repository of linked markdown notes. */
-export const WikiId = TrimmedNonEmptyString.pipe(Schema.brand("WikiId"));
-export type WikiId = typeof WikiId.Type;
+/**
+ * Astrolabe: a project root's documents (notes, bases, canvases), read and changed by root id.
+ * Ids a registered wiki had before it became a project's root still resolve on the server.
+ */
 export const WikiChangeRequestId = TrimmedNonEmptyString.pipe(Schema.brand("WikiChangeRequestId"));
 export type WikiChangeRequestId = typeof WikiChangeRequestId.Type;
 
@@ -34,20 +35,10 @@ export type WikiErrorReason = typeof WikiErrorReason.Type;
 export class WikiError extends Schema.TaggedError<WikiError>()("WikiError", {
   message: Schema.String,
   reason: WikiErrorReason,
-  wikiId: Schema.optional(WikiId),
+  wikiId: Schema.optional(ProjectRootId),
   changeRequestId: Schema.optional(WikiChangeRequestId),
   cause: Schema.optional(Schema.Defect()),
 }) {}
-
-export const WikiMirrorStatus = Schema.Struct({
-  url: TrimmedNonEmptyString,
-  lastPushedAt: Schema.NullOr(IsoDateTime),
-  lastPushedCommit: Schema.NullOr(Schema.String),
-  lastError: Schema.NullOr(Schema.String),
-  /** When a push last replaced commits that were made on the mirror directly. */
-  overwroteRemoteAt: Schema.NullOr(IsoDateTime),
-});
-export type WikiMirrorStatus = typeof WikiMirrorStatus.Type;
 
 /** How the wiki's main line stands against the host's, as of the last sync. */
 export const WikiHostRelation = Schema.Literals(["up-to-date", "behind", "ahead", "diverged"]);
@@ -66,10 +57,6 @@ export const WikiHostStatus = Schema.Struct({
   lastSyncedCommit: Schema.NullOr(Schema.String),
   relation: Schema.NullOr(WikiHostRelation),
   lastError: Schema.NullOr(Schema.String),
-  /** What stopped one change request following the host; the wiki itself syncs fine. */
-  changeRequestIssue: Schema.optionalKey(Schema.NullOr(Schema.String)),
-  /** Whether connecting made the backing project, so disconnecting can take it away again. */
-  createdProject: Schema.optionalKey(Schema.Boolean),
 });
 export type WikiHostStatus = typeof WikiHostStatus.Type;
 
@@ -94,102 +81,26 @@ export const WikiMapBackground = Schema.Struct({
 });
 export type WikiMapBackground = typeof WikiMapBackground.Type;
 
-/** What a linked project's agents are told, for one or several wikis. */
-export const wikiAgentGuidance = (names: ReadonlyArray<string>): string => {
-  const quoted = names.map((name) => `"${name}"`);
-  const list =
-    quoted.length < 2 ? quoted.join("") : `${quoted.slice(0, -1).join(", ")} and ${quoted.at(-1)}`;
-  return `This repository is linked to the ${names.length === 1 ? "wiki" : "wikis"} ${list}, where its research and plans live. When a task involves research, planning, or building a feature, first look at what ${names.length === 1 ? "it" : "they"} already say${names.length === 1 ? "s" : ""}. Write findings and plans there, not as files in this repository.`;
-};
-
-/** How a provider session's file tools reach the thread's wiki checkouts, outside its folder. */
-export type WikiCheckoutReach = "edit" | "shell" | "none";
-
-/**
- * Probed per provider: Cursor's sandbox refuses its edit tool in extra folders, and every MCP
- * call, but lets a shell command write there; Antigravity's file tools refuse any path outside
- * the working folder. `sandboxed` is whether the session's filesystem sandbox is on, as Cursor
- * decides it.
- */
-export const wikiCheckoutReach = (driver: string, sandboxed: boolean): WikiCheckoutReach =>
-  driver === "antigravity" ? "none" : driver === "cursor" && sandboxed ? "shell" : "edit";
-
-const reachClause: Record<WikiCheckoutReach, string> = {
-  edit: ". Read, search and edit its notes there with your file tools.",
-  shell:
-    ". Read and search it there with your file tools, but your sandbox refuses your edit tool outside this project: write notes there with a shell command that changes only the lines it needs, without rewriting the whole file or adding blank lines.",
-  none: ", but your file tools can't leave this project's folder: for a small read or edit use astrolabe_wiki_read, astrolabe_wiki_search and astrolabe_wiki_write; for a larger job (moving, splitting or merging notes, or editing more than three), delegate_task's wiki field.",
-};
-
-export interface WikiAgentCheckout {
-  readonly name: string;
-  /** Absolute path of the thread's checkout of the wiki. */
-  readonly folder: string;
-  readonly reach: WikiCheckoutReach;
-}
-
-/** What a thread's agent is told, after its message, about the wikis its repository is linked to. */
-export const linkedWikiAgentNote = (checkouts: ReadonlyArray<WikiAgentCheckout>): string | null =>
-  checkouts.length === 0
-    ? null
-    : `<astrolabe_wikis>
-${wikiAgentGuidance(checkouts.map((checkout) => checkout.name))}
-${checkouts.map((checkout) => `- "${checkout.name}" is checked out for this thread at ${checkout.folder}${reachClause[checkout.reach]}`).join("\n")}
-</astrolabe_wikis>`;
-
-/** What a child working in another thread's checkout of a wiki is told, after its message. */
-export const wikiCheckoutAgentNote = (name: string): string => `<astrolabe_wikis>
-Your working folder is a checkout of the wiki "${name}": its notes are the files here. Read, search and edit them with your file tools; your edits join the pull request of the thread that started you.
-</astrolabe_wikis>`;
-
-const WikiSummaryFields = {
-  wikiId: WikiId,
+export const WikiSummary = Schema.Struct({
+  wikiId: ProjectRootId,
   name: TrimmedNonEmptyString,
-  /** Absolute path of the checkout of the main line. */
+  /** Absolute path of the root's own folder. */
   root: TrimmedNonEmptyString,
   mainBranch: TrimmedNonEmptyString,
-  /** The repositories this wiki is linked to; their threads are told it holds their plans. */
-  projectIds: Schema.Array(ProjectId),
-  mirror: Schema.NullOr(WikiMirrorStatus),
   /** Absent from an older server, which has no host wikis. */
   host: Schema.optionalKey(Schema.NullOr(WikiHostStatus)),
-  /** The first is what maps draw on. Absent from an older server and from agents' list. */
+  /** The first is what maps draw on. Absent from an older server. */
   mapBackgrounds: Schema.optionalKey(Schema.Array(WikiMapBackground)),
   openChangeRequests: NonNegativeInt,
   createdAt: IsoDateTime,
-};
-
-/** Older servers send one nullable `projectId` instead of `projectIds`; it reads as the list. */
-export const WikiSummary = Schema.Struct({
-  ...WikiSummaryFields,
-  projectIds: Schema.optionalKey(WikiSummaryFields.projectIds),
-  projectId: Schema.optionalKey(Schema.NullOr(ProjectId)),
-}).pipe(
-  Schema.decodeTo(Schema.toType(Schema.Struct(WikiSummaryFields)), {
-    decode: SchemaGetter.transform(({ projectId, projectIds, ...summary }) => ({
-      ...summary,
-      projectIds: projectIds ?? (projectId ? [projectId] : []),
-    })),
-    encode: SchemaGetter.transform((summary) => summary),
-  }),
-);
+  /** The project whose folder this is, with `rootKey`; absent from an older server. */
+  projectId: Schema.optionalKey(ProjectId),
+  rootKey: Schema.optionalKey(RootKey),
+});
 export type WikiSummary = typeof WikiSummary.Type;
 
 export const WikiListResult = Schema.Struct({ wikis: Schema.Array(WikiSummary) });
 export type WikiListResult = typeof WikiListResult.Type;
-
-export const WikiRegisterInput = Schema.Struct({
-  /** An existing git repository's top-level folder. */
-  root: TrimmedNonEmptyString,
-  name: Schema.optional(TrimmedNonEmptyString),
-});
-export type WikiRegisterInput = typeof WikiRegisterInput.Type;
-
-export const WikiCreateInput = Schema.Struct({ name: TrimmedNonEmptyString });
-export type WikiCreateInput = typeof WikiCreateInput.Type;
-
-export const WikiTarget = Schema.Struct({ wikiId: WikiId });
-export type WikiTarget = typeof WikiTarget.Type;
 
 export const WikiEdgeRef = Schema.Struct({
   from: TrimmedNonEmptyString,
@@ -244,10 +155,20 @@ export const WikiCanvasSummary = Schema.Struct({
   editedAt: Schema.optional(IsoDateTime),
 });
 
-/** Reads come from a change request's head when one is named, else from the main line. */
+/**
+ * An absolute folder holding the root's files on disk: the root itself or, for Git, one of its
+ * worktrees. Read or written there as the files stand, uncommitted ones included.
+ */
+const WikiCheckoutFolder = Schema.optional(TrimmedNonEmptyString);
+
+/**
+ * Reads come from a change request's head when one is named, from `checkout` on disk when it is
+ * given, else from the main line. A folder without Git is always read on disk.
+ */
 export const WikiReadScope = Schema.Struct({
-  wikiId: WikiId,
+  wikiId: ProjectRootId,
   changeRequestId: Schema.optional(WikiChangeRequestId),
+  checkout: WikiCheckoutFolder,
 });
 export type WikiReadScope = typeof WikiReadScope.Type;
 
@@ -255,7 +176,7 @@ export type WikiReadScope = typeof WikiReadScope.Type;
 export const WikiLinkEdge = Schema.Struct({ from: Schema.String, to: Schema.String });
 
 export const WikiIndexResult = Schema.Struct({
-  wikiId: WikiId,
+  wikiId: ProjectRootId,
   commit: Schema.String,
   notes: Schema.Array(WikiNoteSummary),
   /** Every link between documents, by name, so a client can draw the wiki's graph. */
@@ -271,15 +192,16 @@ export const WikiIndexResult = Schema.Struct({
 export type WikiIndexResult = typeof WikiIndexResult.Type;
 
 export const WikiNoteInput = Schema.Struct({
-  wikiId: WikiId,
+  wikiId: ProjectRootId,
   /** A path from the root; a bare name searches as a link does. */
   name: TrimmedNonEmptyString,
   changeRequestId: Schema.optional(WikiChangeRequestId),
+  checkout: WikiCheckoutFolder,
 });
 export type WikiNoteInput = typeof WikiNoteInput.Type;
 
 export const WikiNoteResult = Schema.Struct({
-  wikiId: WikiId,
+  wikiId: ProjectRootId,
   commit: Schema.String,
   name: Schema.String,
   file: Schema.String,
@@ -305,9 +227,11 @@ const WIKI_READ_FILES_MAX = 64;
 
 /** Files by path, any depth, at a commit: `commit` when named, else as other reads choose. */
 export const WikiReadFilesInput = Schema.Struct({
-  wikiId: WikiId,
+  wikiId: ProjectRootId,
   changeRequestId: Schema.optional(WikiChangeRequestId),
   commit: Schema.optional(TrimmedNonEmptyString),
+  /** Read the files as they stand there instead, uncommitted ones included. */
+  checkout: WikiCheckoutFolder,
   paths: Schema.Array(TrimmedNonEmptyString).check(Schema.isMaxLength(WIKI_READ_FILES_MAX)),
   /** The file these paths are written in, which a bare name is searched from. */
   from: Schema.optional(TrimmedNonEmptyString),
@@ -316,7 +240,7 @@ export type WikiReadFilesInput = typeof WikiReadFilesInput.Type;
 
 /** Every file a wiki's repository holds at a commit, any depth, hidden folders left out. */
 export const WikiListFilesInput = Schema.Struct({
-  wikiId: WikiId,
+  wikiId: ProjectRootId,
   changeRequestId: Schema.optional(WikiChangeRequestId),
   commit: Schema.optional(TrimmedNonEmptyString),
 });
@@ -374,8 +298,9 @@ export type WikiCodeStatusResult = typeof WikiCodeStatusResult.Type;
  * or `source` YAML as a block in `note` holds it.
  */
 export const WikiQueryInput = Schema.Struct({
-  wikiId: WikiId,
+  wikiId: ProjectRootId,
   changeRequestId: Schema.optional(WikiChangeRequestId),
+  checkout: WikiCheckoutFolder,
   base: Schema.optional(TrimmedNonEmptyString),
   source: Schema.optional(Schema.String),
   note: Schema.optional(TrimmedNonEmptyString),
@@ -624,7 +549,7 @@ export type WikiAmendmentSummary = typeof WikiAmendmentSummary.Type;
 
 export const WikiChangeRequest = Schema.Struct({
   changeRequestId: WikiChangeRequestId,
-  wikiId: WikiId,
+  wikiId: ProjectRootId,
   title: TrimmedNonEmptyString,
   status: WikiChangeRequestStatus,
   /** A person's autosaved edits, unnamed so far and listed apart. Only its author sees one. */
@@ -651,7 +576,7 @@ export const WikiChangeRequest = Schema.Struct({
 export type WikiChangeRequest = typeof WikiChangeRequest.Type;
 
 export const WikiChangeRequestListInput = Schema.Struct({
-  wikiId: Schema.optional(WikiId),
+  wikiId: ProjectRootId,
   threadId: Schema.optional(ThreadId),
   status: Schema.optional(WikiChangeRequestStatus),
 });
@@ -663,7 +588,7 @@ export const WikiChangeRequestListResult = Schema.Struct({
 export type WikiChangeRequestListResult = typeof WikiChangeRequestListResult.Type;
 
 export const WikiChangeRequestTarget = Schema.Struct({
-  wikiId: WikiId,
+  wikiId: ProjectRootId,
   changeRequestId: WikiChangeRequestId,
 });
 export type WikiChangeRequestTarget = typeof WikiChangeRequestTarget.Type;
@@ -704,20 +629,12 @@ export const WikiChangeRequestDetail = Schema.Struct({
   warnings: Schema.optional(
     Schema.Array(Schema.Struct({ file: Schema.String, warning: Schema.String })),
   ),
-  /** Files in the reading thread's wiki checkout not saved to it yet: the turn's end lands them. */
-  unsaved: Schema.optional(Schema.Array(Schema.String)),
 });
 export type WikiChangeRequestDetail = typeof WikiChangeRequestDetail.Type;
 
-export const WikiChangeRequestOpenInput = Schema.Struct({
-  wikiId: WikiId,
-  title: TrimmedNonEmptyString,
-});
-export type WikiChangeRequestOpenInput = typeof WikiChangeRequestOpenInput.Type;
-
 /** Where an amendment lands: a named change request, or a new one opened with `title`. */
 const WikiWriteTarget = {
-  wikiId: WikiId,
+  wikiId: ProjectRootId,
   changeRequestId: Schema.optional(WikiChangeRequestId),
   title: Schema.optional(TrimmedNonEmptyString),
   message: TrimmedNonEmptyString,
@@ -792,7 +709,12 @@ export const WikiTransform = Schema.Union([
 ]);
 export type WikiTransform = typeof WikiTransform.Type;
 
-export const WikiTransformInput = Schema.Struct({ ...WikiWriteTarget, transform: WikiTransform });
+/** With `checkout`, or in a folder without Git, written uncommitted on disk there instead. */
+export const WikiTransformInput = Schema.Struct({
+  ...WikiWriteTarget,
+  checkout: WikiCheckoutFolder,
+  transform: WikiTransform,
+});
 export type WikiTransformInput = typeof WikiTransformInput.Type;
 
 export const WikiAmendResult = Schema.Struct({
@@ -814,7 +736,7 @@ export const WikiAmendResult = Schema.Struct({
 });
 export type WikiAmendResult = typeof WikiAmendResult.Type;
 
-/** A transform written into a thread's wiki checkout, uncommitted: the turn's end saves it. */
+/** A transform written into a checkout on disk, uncommitted. */
 export const WikiCheckoutTransformResult = Schema.Struct({
   /** Paths from the checkout's root. */
   written: Schema.Array(Schema.String),
@@ -849,12 +771,14 @@ export const WikiAutosaveWrite = Schema.Union([
 export type WikiAutosaveWrite = typeof WikiAutosaveWrite.Type;
 
 export const WikiAutosaveInput = Schema.Struct({
-  wikiId: WikiId,
+  wikiId: ProjectRootId,
   /** The change request being edited; without one, the edit lands in the person's draft. */
   changeRequestId: Schema.optional(WikiChangeRequestId),
   /** The document being edited: what names the amendment, and what later saves replace. */
   document: TrimmedNonEmptyString,
   write: WikiAutosaveWrite,
+  /** Astrolabe: an attachment written uncommitted into this checkout on disk instead. */
+  checkout: WikiCheckoutFolder,
 });
 export type WikiAutosaveInput = typeof WikiAutosaveInput.Type;
 
@@ -869,7 +793,7 @@ export const WikiAutosaveResult = Schema.Struct({
 export type WikiAutosaveResult = typeof WikiAutosaveResult.Type;
 
 export const WikiMoveInput = Schema.Struct({
-  wikiId: WikiId,
+  wikiId: ProjectRootId,
   /** The change request being edited; without one, the move lands in the person's draft. */
   changeRequestId: Schema.optional(WikiChangeRequestId),
   /** A document's path, or a folder's when `folder`. */
@@ -880,15 +804,45 @@ export const WikiMoveInput = Schema.Struct({
 });
 export type WikiMoveInput = typeof WikiMoveInput.Type;
 
+/**
+ * A person's move of a document or folder in a project root's checkout, with the links to it
+ * followed in the project's other roots. In a hosted repository's own folder on its default
+ * branch it lands in their draft; anywhere else on disk.
+ */
+export const WikiProjectMoveInput = Schema.Struct({
+  wikiId: ProjectRootId,
+  /** The root's own folder or one of its Git worktrees. */
+  checkout: TrimmedNonEmptyString,
+  /** A document's path from the root, or a folder's when `folder`. */
+  from: TrimmedNonEmptyString,
+  to: TrimmedNonEmptyString,
+  folder: Schema.optional(Schema.Boolean),
+});
+export type WikiProjectMoveInput = typeof WikiProjectMoveInput.Type;
+
+const WikiProjectMoveFiles = Schema.Struct({
+  rootKey: RootKey,
+  files: Schema.Array(Schema.String),
+});
+
+export const WikiProjectMoveResult = Schema.Struct({
+  savedTo: Schema.Literals(["draft", "disk"]),
+  /** Each root written, the moving one first. */
+  changed: Schema.Array(WikiProjectMoveFiles),
+  /** Roots whose links led to what moved but couldn't be written here, with those files. */
+  unchanged: Schema.Array(WikiProjectMoveFiles),
+});
+export type WikiProjectMoveResult = typeof WikiProjectMoveResult.Type;
+
 export const WikiDraftPromoteInput = Schema.Struct({
-  wikiId: WikiId,
+  wikiId: ProjectRootId,
   changeRequestId: WikiChangeRequestId,
   title: TrimmedNonEmptyString,
 });
 export type WikiDraftPromoteInput = typeof WikiDraftPromoteInput.Type;
 
 export const WikiDraftMoveInput = Schema.Struct({
-  wikiId: WikiId,
+  wikiId: ProjectRootId,
   changeRequestId: WikiChangeRequestId,
   to: WikiChangeRequestId,
   /** The files to move; without them, everything the draft changes. */
@@ -896,13 +850,15 @@ export const WikiDraftMoveInput = Schema.Struct({
 });
 export type WikiDraftMoveInput = typeof WikiDraftMoveInput.Type;
 
-/** A board drawn in a thread, saved into a wiki as a change request. */
+/** A board drawn in a thread, saved as a file in one of a project's folders. */
 export const WikiKeepCanvasInput = Schema.Struct({
-  wikiId: WikiId,
+  projectId: ProjectId,
+  /** The folder it goes in: a root key or a folder's path. Omit for `name`'s prefix or the only one. */
+  repository: Schema.optional(TrimmedNonEmptyString),
   threadId: ThreadId,
   /** The `astrolabe_canvas_show` call that drew it. */
   itemId: TurnItemId,
-  /** Its path from the wiki's root, with or without `.canvas`. */
+  /** Its path from the folder, with or without `.canvas`; `key:path` names the folder too. */
   name: TrimmedNonEmptyString,
   /** What the person said about it, which becomes the amendment's message. */
   comment: Schema.optional(TrimmedNonEmptyString),
@@ -910,62 +866,32 @@ export const WikiKeepCanvasInput = Schema.Struct({
 export type WikiKeepCanvasInput = typeof WikiKeepCanvasInput.Type;
 
 export const WikiKeepCanvasResult = Schema.Struct({
-  changeRequest: WikiChangeRequest,
+  rootKey: RootKey,
+  /** Its path from the folder. */
   file: Schema.String,
+  /** Where a person's keep in a repository's main checkout went for review; null when on disk. */
+  changeRequest: Schema.NullOr(WikiChangeRequest),
+  /** The checkout it was written in, uncommitted, when it didn't go to a change request. */
+  checkout: Schema.optional(Schema.String),
   /** What a person should know about how its code cards landed. */
   notes: Schema.Array(Schema.String),
 });
 export type WikiKeepCanvasResult = typeof WikiKeepCanvasResult.Type;
 
 export const WikiRevertInput = Schema.Struct({
-  wikiId: WikiId,
+  wikiId: ProjectRootId,
   changeRequestId: WikiChangeRequestId,
   commit: TrimmedNonEmptyString,
 });
 export type WikiRevertInput = typeof WikiRevertInput.Type;
 
-/** Astrolabe: a change request's worktree's unsaved document edits, landed as one amendment. */
-export const WikiSaveWorktreeInput = Schema.Struct({
-  wikiId: WikiId,
-  changeRequestId: WikiChangeRequestId,
-  message: TrimmedNonEmptyString,
-});
-export type WikiSaveWorktreeInput = typeof WikiSaveWorktreeInput.Type;
-
-export const WikiMergeResult = Schema.Struct({
-  changeRequest: WikiChangeRequest,
-  commit: Schema.String,
-});
-export type WikiMergeResult = typeof WikiMergeResult.Type;
-
 /** Close a change request, or reopen a closed one. */
 export const WikiSetChangeRequestStatusInput = Schema.Struct({
-  wikiId: WikiId,
+  wikiId: ProjectRootId,
   changeRequestId: WikiChangeRequestId,
   status: Schema.Literals(["open", "closed"]),
 });
 export type WikiSetChangeRequestStatusInput = typeof WikiSetChangeRequestStatusInput.Type;
-
-export const WikiSetMirrorInput = Schema.Struct({
-  wikiId: WikiId,
-  /** A git remote URL the main line is pushed to after every merge; null stops mirroring. */
-  url: Schema.NullOr(TrimmedNonEmptyString),
-});
-export type WikiSetMirrorInput = typeof WikiSetMirrorInput.Type;
-
-export const WikiSetMapBackgroundsInput = Schema.Struct({
-  wikiId: WikiId,
-  /** The whole list, in order. */
-  backgrounds: Schema.Array(WikiMapBackground),
-});
-export type WikiSetMapBackgroundsInput = typeof WikiSetMapBackgroundsInput.Type;
-
-export const WikiSetProjectLinkInput = Schema.Struct({
-  wikiId: WikiId,
-  projectId: ProjectId,
-  linked: Schema.Boolean,
-});
-export type WikiSetProjectLinkInput = typeof WikiSetProjectLinkInput.Type;
 
 export const WikiEventKind = Schema.Literals([
   "registered",
@@ -980,7 +906,7 @@ export const WikiEventKind = Schema.Literals([
 
 /** Pushed to subscribers after any change, so open views know to read again. */
 export const WikiEvent = Schema.Struct({
-  wikiId: WikiId,
+  wikiId: ProjectRootId,
   changeRequestId: Schema.NullOr(WikiChangeRequestId),
   kind: WikiEventKind,
   at: IsoDateTime,

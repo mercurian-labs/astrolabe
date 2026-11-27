@@ -15,6 +15,8 @@ export interface CanvasCodePin {
   readonly url: string;
   readonly commit: string;
   readonly repository: string;
+  /** The file's path in `repository`, which a card in a nested repository's folder spells longer. */
+  readonly path: string;
   readonly lines?: readonly [number, number] | undefined;
 }
 
@@ -23,17 +25,14 @@ export interface CanvasCodeUnpinned {
   readonly commit: string | null;
 }
 
-const codeText = (
-  path: string,
-  lines: readonly [number, number] | undefined,
-  commit: string | null,
-) => {
+const codeText = ({ root, path, lines }: CanvasCodeReference, commit: string | null) => {
   const at =
     lines === undefined ? "" : lines[0] === lines[1] ? `:${lines[0]}` : `:${lines[0]}-${lines[1]}`;
-  return `\`${path}${at}\`${commit === null ? "" : ` at \`${commit.slice(0, 12)}\``}`;
+  const where = root === undefined ? "" : `${root}:`;
+  return `\`${where}${path}${at}\`${commit === null ? "" : ` at \`${commit.slice(0, 12)}\``}`;
 };
 
-/** The document a kept board writes. `pin` answers for each code card's path and lines. */
+/** The document a kept board writes. `pin` answers for each code card's folder, path and lines. */
 export function keptCanvasSource(
   data: CanvasData,
   pin: (code: CanvasCodeReference) => CanvasCodePin | CanvasCodeUnpinned,
@@ -76,7 +75,7 @@ export function keptCanvasSource(
         }
         const pinned = pin(code);
         if (!("url" in pinned)) {
-          const said = codeText(code.path, code.lines, pinned.commit);
+          const said = codeText(code, pinned.commit);
           return {
             ...place(node),
             type: "text",
@@ -92,7 +91,7 @@ export function keptCanvasSource(
           astrolabe: {
             repository: pinned.repository,
             commit: pinned.commit,
-            path: code.path,
+            path: pinned.path,
             ...(pinned.lines === undefined ? {} : { lines: pinned.lines }),
             ...captioned,
           },

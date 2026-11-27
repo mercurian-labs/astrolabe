@@ -1,5 +1,6 @@
 import { EasDeviceHostConfigs, SimlockDeviceHostConfigs, SshDeviceHostConfigs } from "./device.ts";
 import { CodeIndexSettings, DEFAULT_CODE_INDEX_SETTINGS } from "./codeIndex.ts";
+import { WikiMapBackground } from "./wiki.ts";
 import {
   AuthOrchestrationOperateScope,
   AuthAccessWriteScope,
@@ -1553,6 +1554,10 @@ export const ServerSettings = Schema.Struct({
   wikiLocations: WikiLocationSettings.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_WIKI_LOCATION_SETTINGS)),
   ),
+  /** Astrolabe: tiles every project's maps can draw on; the first is the default. */
+  wikiMapBackgrounds: Schema.Array(WikiMapBackground).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
   /** Astrolabe: Settings › Change Requests › Grouping (see `changeGroups.ts`). */
   changeGroupGrouping: ChangeGroupGroupingSettings.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_CHANGE_GROUP_GROUPING_SETTINGS)),
@@ -2049,6 +2054,7 @@ export const ServerSettingsPatch = Schema.Struct({
   codeIndex: Schema.optionalKey(CodeIndexSettings),
   wikiCanvas: Schema.optionalKey(WikiCanvasSettings),
   wikiLocations: Schema.optionalKey(WikiLocationSettings),
+  wikiMapBackgrounds: Schema.optionalKey(Schema.Array(WikiMapBackground)),
   worktreesDirectory: Schema.optionalKey(TrimmedString),
   fastWorktreeCheckout: Schema.optionalKey(Schema.Boolean),
   responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),

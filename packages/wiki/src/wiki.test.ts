@@ -5,12 +5,15 @@ import {
   backlinks,
   findMap,
   indexFiles,
+  indexProject,
   keepWarningHistory,
   links,
   parseAmendmentTrailers,
   parseMap,
   planAmendment,
   planTransform,
+  projectBacklinks,
+  projectLinks,
   renameLinks,
   serializeCanvas,
   serializeMap,
@@ -278,6 +281,97 @@ describe("canvases in the index", () => {
       }),
     });
     expect(index.errors.some((error) => error.edge !== undefined)).toBe(true);
+  });
+});
+
+describe("a project's index", () => {
+  const index = indexProject([
+    [
+      "web",
+      {
+        "Index.md": "[[Plan]] [[app:Spec]] [[Spec]] [[Lib]] [[Red]] [[Plan|again]]",
+        "Plan.md": "",
+      },
+    ],
+    ["app", { "Spec.md": "[[web:Index]] [[Plan]]", "Plan.md": "" }],
+    [
+      "lib",
+      {
+        "Spec.md": "",
+        "Lib.md": "",
+        "Board.canvas": JSON.stringify({
+          nodes: [
+            { id: "f", type: "file", file: "Lib.md" },
+            { id: "t", type: "text", text: "[[web:Plan]]" },
+          ],
+          edges: [],
+        }),
+      },
+    ],
+  ]);
+
+  it("keeps each link's root at both ends, an ambiguous one with its candidates", () => {
+    const from = (root: string, file: string) => ({ root, file });
+    expect(projectLinks(index)).toEqual([
+      { from: from("web", "Index.md"), target: "Plan", to: from("web", "Plan.md"), ambiguous: [] },
+      {
+        from: from("web", "Index.md"),
+        target: "app:Spec",
+        to: from("app", "Spec.md"),
+        ambiguous: [],
+      },
+      {
+        from: from("web", "Index.md"),
+        target: "Spec",
+        to: null,
+        ambiguous: [from("app", "Spec.md"), from("lib", "Spec.md")],
+      },
+      { from: from("web", "Index.md"), target: "Lib", to: from("lib", "Lib.md"), ambiguous: [] },
+      { from: from("web", "Index.md"), target: "Red", to: null, ambiguous: [] },
+      {
+        from: from("app", "Spec.md"),
+        target: "web:Index",
+        to: from("web", "Index.md"),
+        ambiguous: [],
+      },
+      { from: from("app", "Spec.md"), target: "Plan", to: from("app", "Plan.md"), ambiguous: [] },
+      {
+        from: from("lib", "Board.canvas"),
+        target: "Lib",
+        to: from("lib", "Lib.md"),
+        ambiguous: [],
+      },
+      {
+        from: from("lib", "Board.canvas"),
+        target: "web:Plan",
+        to: from("web", "Plan.md"),
+        ambiguous: [],
+      },
+    ]);
+  });
+
+  it("finds backlinks across roots, a red link's where writing it would land, an ambiguous one's nowhere", () => {
+    expect(projectBacklinks(index, { root: "web", file: "Plan.md" })).toEqual([
+      { root: "web", file: "Index.md" },
+      { root: "lib", file: "Board.canvas" },
+    ]);
+    expect(projectBacklinks(index, { root: "app", file: "Plan.md" })).toEqual([
+      { root: "app", file: "Spec.md" },
+    ]);
+    expect(projectBacklinks(index, { root: "web", file: "Red.md" })).toEqual([
+      { root: "web", file: "Index.md" },
+    ]);
+    expect(projectBacklinks(index, { root: "lib", file: "Spec.md" })).toEqual([]);
+    expect(projectBacklinks(index, { root: "lib", file: "Lib.md" })).toEqual([
+      { root: "web", file: "Index.md" },
+      { root: "lib", file: "Board.canvas" },
+    ]);
+  });
+
+  it("indexes each root as it would alone", () => {
+    expect(index.roots.get("app")?.notes).toEqual(
+      indexFiles({ "Spec.md": "[[web:Index]] [[Plan]]", "Plan.md": "" }).notes,
+    );
   });
 });
 

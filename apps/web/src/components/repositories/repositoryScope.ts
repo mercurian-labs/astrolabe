@@ -7,7 +7,7 @@ import { storedChoice, storedName } from "../projects/storedChoice";
 const NO_CHOICES: Readonly<Record<string, boolean>> = {};
 
 /** Whether each worktree shows its file tree (true) or its rows (false), by `worktreeFilesKey`. */
-export const storedWorktreeFiles = (storageKey: string) =>
+const storedWorktreeFiles = (storageKey: string) =>
   storedChoice<Readonly<Record<string, boolean>>>({
     storageKey,
     fallback: NO_CHOICES,

@@ -20,7 +20,6 @@ import {
   FileTextIcon,
   FolderIcon,
   LayersIcon,
-  LinkIcon,
   MessagesSquareIcon,
   PackageIcon,
   SettingsIcon,
@@ -40,7 +39,7 @@ import { PierreEntryIcon } from "./PierreEntryIcon";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 import { ComposerBanner } from "./ComposerBanner";
 import { resolvePullRequestState } from "../pullRequest/pullRequestPresentation";
-import type { ComposerWikiLinkItem, ComposerWikiNoteItem } from "./composerWikiNoteItems";
+import type { ComposerWikiNoteItem } from "./composerWikiNoteItems";
 import type { ComposerChangeGroupItem } from "@t3tools/client-runtime/changeGroups";
 
 export type ComposerCommandItem =
@@ -91,7 +90,6 @@ export type ComposerCommandItem =
       description: string;
     }
   | ComposerWikiNoteItem
-  | ComposerWikiLinkItem
   | ComposerChangeGroupItem
   | {
       id: string;
@@ -185,7 +183,7 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
                   : props.triggerKind === "pull-request"
                     ? gt("Finding pull request...")
                     : props.triggerKind === "wiki-note"
-                      ? gt("Loading wiki notes...")
+                      ? gt("Loading documents...")
                       : gt("Searching workspace files...")
                 : (props.emptyStateText ??
                   (props.triggerKind === "skill"
@@ -260,9 +258,6 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
       {props.item.type === "wiki-note" ? (
         <FileTextIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
       ) : null}
-      {props.item.type === "wiki-link" ? (
-        <LinkIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
-      ) : null}
       {props.item.type === "environment" ? (
         <EnvironmentMachineIcon
           kind={props.item.machine}
@@ -333,7 +328,7 @@ const LISTBOX_LABEL_BY_TRIGGER: Record<ComposerTriggerKind, string> = {
   "pull-request": msg("Pull requests"),
   "slash-command": msg("Commands"),
   skill: msg("Skills"),
-  "wiki-note": "Wiki notes",
+  "wiki-note": msg("Documents"),
 };
 
 const SKILL_SOURCE_ICON_BY_KIND: Record<ProviderSkillSourceKind, LucideIcon> = {

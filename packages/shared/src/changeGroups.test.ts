@@ -2,17 +2,10 @@ import {
   DEFAULT_CHANGE_GROUP_GROUPING_SETTINGS,
   type ChangeGroupDecisions,
   type ThreadPullRequestLink,
-  type WikiChangeRequestId,
-  type WikiId,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import {
-  deriveChangeGroups,
-  findChangeGroup,
-  type ChangeGroupThread,
-  type ChangeGroupWikiChange,
-} from "./changeGroups.ts";
+import { deriveChangeGroups, findChangeGroup, type ChangeGroupThread } from "./changeGroups.ts";
 
 const settings = DEFAULT_CHANGE_GROUP_GROUPING_SETTINGS;
 const link = (
@@ -20,6 +13,7 @@ const link = (
   title: string,
   state: "open" | "merged" | "closed" = "open",
   updatedAt = "2026-10-19T10:00:00Z",
+  headBranch = "feature",
 ) =>
   ({
     host: "github.com",
@@ -31,7 +25,7 @@ const link = (
     snapshot: {
       state,
       title,
-      headBranch: "feature",
+      headBranch,
       baseBranch: "main",
       isDraft: false,
       updatedAt,
@@ -62,7 +56,6 @@ const decided = (
 ): ChangeGroupDecisions => ({
   groupId,
   title: null,
-  armed: null,
   added: change.added ?? [],
   removed: change.removed ?? [],
   dismissed: [],
@@ -73,40 +66,20 @@ const threadsOf = (groups: ReturnType<typeof derive>, groupId: string) =>
   groups
     .find((group) => group.groupId === groupId)
     ?.threads.map((entry) => [entry.threadId, entry.reason]);
-const docs = (
-  id: string,
-  threadId: string | null,
-  title = "Document the feature",
-  status: "open" | "merged" | "closed" = "open",
-  updatedAt = "2026-10-19T11:00:00Z",
-): ChangeGroupWikiChange => ({
-  wikiName: "Handbook",
-  changeRequest: {
-    changeRequestId: id as WikiChangeRequestId,
-    wikiId: "w1" as WikiId,
-    title,
-    status,
-    threadId: threadId as never,
-    updatedAt,
-  },
-});
 const derive = (
   threads: ChangeGroupThread[],
-  wikiChanges: ChangeGroupWikiChange[] = [],
   decisions: ChangeGroupDecisions[] = [],
   overrides: Partial<typeof settings> = {},
-) =>
-  deriveChangeGroups({ threads, wikiChanges, decisions, settings: { ...settings, ...overrides } });
+) => deriveChangeGroups({ threads, decisions, settings: { ...settings, ...overrides } });
 
 describe("change groups", () => {
-  it("gather a thread's pull requests and the docs it wrote", () => {
-    const [group] = derive([thread("t1", [link(12, "Add search")])], [docs("cr1", "t1")]);
+  it("gather a thread's pull requests", () => {
+    const [group] = derive([thread("t1", [link(12, "Add search"), link(13, "Search UI")])]);
     expect(group?.groupId).toBe("t1");
     expect(group?.members.map((member) => [member.key, member.reason])).toEqual([
       ["pr:github.com/acme/app#12", "same-thread"],
-      ["wiki:w1/cr1", "same-thread"],
+      ["pr:github.com/acme/app#13", "same-thread"],
     ]);
-    expect(group?.state).toBe("in-sync");
   });
 
   it("leave a lone change request ungrouped", () => {
@@ -117,19 +90,16 @@ describe("change groups", () => {
     const threads = [
       thread("coordinator", [link(1, "Server")]),
       thread("child", [link(2, "Client")], { id: "coordinator", as: "subagent" }),
-      thread("fork", [], { id: "child", as: "fork" }),
+      thread("fork", [link(3, "Docs")], { id: "child", as: "fork" }),
     ];
-    const wiki = [docs("cr1", "fork")];
-    const [group] = derive(threads, wiki);
+    const [group] = derive(threads);
     expect(group?.groupId).toBe("coordinator");
     expect(group?.members.map((member) => member.reason)).toEqual([
       "same-thread",
       "coordinator",
       "lineage",
     ]);
-    expect(derive(threads, wiki, [], { coordinator: false }).map((g) => g.groupId)).toEqual([
-      "child",
-    ]);
+    expect(derive(threads, [], { coordinator: false }).map((g) => g.groupId)).toEqual(["child"]);
   });
 
   it("move members as people decide, one group at a time", () => {
@@ -140,7 +110,6 @@ describe("change groups", () => {
     const decision: ChangeGroupDecisions = {
       groupId: "b",
       title: "Three and two",
-      armed: false,
       added: [
         {
           member: { kind: "pull-request", host: "github.com", repository: "acme/app", number: 2 },
@@ -153,10 +122,9 @@ describe("change groups", () => {
       pending: [],
       updatedAt: "2026-10-19T12:00:00Z",
     };
-    const groups = derive(threads, [], [decision]);
+    const groups = derive(threads, [decision]);
     const b = groups.find((group) => group.groupId === "b");
     expect(b?.title).toBe("Three and two");
-    expect(b?.armed).toBe(false);
     expect(b?.members.map((member) => [member.key, member.reason, member.note])).toEqual([
       ["pr:github.com/acme/app#3", "same-thread", ""],
       ["pr:github.com/acme/app#2", "suggested", "Both change the importer"],
@@ -164,27 +132,10 @@ describe("change groups", () => {
     // Group a keeps one member, so it no longer shows.
     expect(groups.some((group) => group.groupId === "a")).toBe(false);
     const removed = derive(
-      threads,
-      [docs("cr1", "b")],
-      [{ ...decision, added: [], removed: ["wiki:w1/cr1"] }],
+      [thread("b", [link(3, "Three"), link(4, "Four")])],
+      [{ ...decision, added: [], removed: ["pr:github.com/acme/app#4"] }],
     );
     expect(removed.find((group) => group.groupId === "b")?.members).toHaveLength(1);
-  });
-
-  it("join docs written outside a thread by a shared issue key", () => {
-    const [group] = derive(
-      [thread("t1", [link(1, "M-12 Search server"), link(2, "Search client")])],
-      [docs("cr1", null, "M-12: document search")],
-    );
-    expect(group?.members.find((member) => member.side === "docs")?.reason).toBe("reference");
-    expect(
-      derive(
-        [thread("t1", [link(1, "M-12 Search server"), link(2, "Search client")])],
-        [docs("cr1", null, "M-12: document search")],
-        [],
-        { references: false },
-      )[0]?.members,
-    ).toHaveLength(2);
   });
 
   it("list the threads working on the effort: its own, those that opened members, their family", () => {
@@ -202,7 +153,7 @@ describe("change groups", () => {
       ["losing-fork", "fork"],
     ]);
     expect(groups[0]?.threadIds).toEqual(["coordinator", "child", "losing-fork"]);
-    expect(threadsOf(derive(threads, [], [], { lineage: false }), "coordinator")).toEqual([
+    expect(threadsOf(derive(threads, [], { lineage: false }), "coordinator")).toEqual([
       ["coordinator", "opened"],
       ["child", "opened"],
     ]);
@@ -218,9 +169,7 @@ describe("change groups", () => {
       ["t1", "opened"],
       ["review", "same-branch"],
     ]);
-    expect(threadsOf(derive(threads, [], [], { sameBranch: false }), "t1")).toEqual([
-      ["t1", "opened"],
-    ]);
+    expect(threadsOf(derive(threads, [], { sameBranch: false }), "t1")).toEqual([["t1", "opened"]]);
   });
 
   it("add a thread that worked on a member pull request's branch before moving on", () => {
@@ -247,9 +196,7 @@ describe("change groups", () => {
       ["titled", "reference"],
       ["branched", "reference"],
     ]);
-    expect(threadsOf(derive(threads, [], [], { references: false }), "t1")).toEqual([
-      ["t1", "opened"],
-    ]);
+    expect(threadsOf(derive(threads, [], { references: false }), "t1")).toEqual([["t1", "opened"]]);
   });
 
   it("keep a thread in every group it was added to, and out of one it was taken out of", () => {
@@ -265,7 +212,7 @@ describe("change groups", () => {
         note: "",
       },
     ];
-    const both = derive(threads, [], [decided("a", { added }), decided("b", { added })]);
+    const both = derive(threads, [decided("a", { added }), decided("b", { added })]);
     expect(threadsOf(both, "a")).toEqual([
       ["a", "opened"],
       ["shared", "manual"],
@@ -279,7 +226,7 @@ describe("change groups", () => {
       groups.find((group) => group.groupId === groupId)?.members.map((member) => member.key);
     const owning = [thread("a", [link(1, "One")]), thread("b", [link(3, "Three")])];
     const own = [...owning, thread("shared", [link(5, "Five"), link(6, "Six")])];
-    const brought = derive(own, [], [decided("a", { added }), decided("b", { added })]);
+    const brought = derive(own, [decided("a", { added }), decided("b", { added })]);
     expect(membersOf(brought, "b")).toEqual([
       "pr:github.com/acme/app#3",
       "pr:github.com/acme/app#5",
@@ -287,38 +234,33 @@ describe("change groups", () => {
     ]);
     expect(membersOf(brought, "a")).toEqual(["pr:github.com/acme/app#1"]);
     // One taken out stays out, and one added elsewhere by itself stays there.
-    const pinned = derive(
-      own,
-      [],
-      [
-        decided("a", {
-          added: [
-            ...added,
-            {
-              member: {
-                kind: "pull-request",
-                host: "github.com",
-                repository: "acme/app",
-                number: 6,
-              },
-              reason: "manual",
-              note: "",
+    const pinned = derive(own, [
+      decided("a", {
+        added: [
+          ...added,
+          {
+            member: {
+              kind: "pull-request",
+              host: "github.com",
+              repository: "acme/app",
+              number: 6,
             },
-          ],
-        }),
-        decided("b", { added, removed: ["pr:github.com/acme/app#5"] }),
-      ],
-    );
+            reason: "manual",
+            note: "",
+          },
+        ],
+      }),
+      decided("b", { added, removed: ["pr:github.com/acme/app#5"] }),
+    ]);
     expect(membersOf(pinned, "a")).toEqual([
       "pr:github.com/acme/app#1",
       "pr:github.com/acme/app#6",
     ]);
     expect(membersOf(pinned, "b")).toEqual(["pr:github.com/acme/app#3"]);
-    const takenOut = derive(
-      threads,
-      [],
-      [decided("a", { added }), decided("b", { added, removed: ["thread:shared", "thread:b"] })],
-    );
+    const takenOut = derive(threads, [
+      decided("a", { added }),
+      decided("b", { added, removed: ["thread:shared", "thread:b"] }),
+    ]);
     expect(threadsOf(takenOut, "a")).toEqual([
       ["a", "opened"],
       ["shared", "manual"],
@@ -341,16 +283,10 @@ describe("change groups", () => {
   });
 
   it("say where the group stands", () => {
-    const state = (
-      prs: ThreadPullRequestLink[],
-      wiki: ChangeGroupWikiChange[],
-      overrides: Partial<typeof settings> = {},
-    ) => derive([thread("t", prs)], wiki, [], overrides)[0]?.state;
-    expect(state([link(1, "A"), link(2, "B")], [])).toBe("docs-missing");
-    expect(state([link(1, "A", "merged")], [docs("c", "t", "D", "merged")])).toBe("merged");
-    expect(state([link(1, "A")], [docs("c", "t", "D", "merged")])).toBe("waiting-on-code");
-    const newerCode = [link(1, "A", "open", "2026-10-19T12:00:00Z")];
-    expect(state(newerCode, [docs("c", "t")])).toBe("docs-behind");
-    expect(state(newerCode, [docs("c", "t")], { flagDocsBehind: false })).toBe("in-sync");
+    const state = (prs: ThreadPullRequestLink[]) => derive([thread("t", prs)])[0]?.state;
+    expect(state([link(1, "A"), link(2, "B")])).toBe("docs-missing");
+    expect(state([link(1, "A", "merged"), link(2, "B", "merged")])).toBe("merged");
+    const draft = link(2, "Docs", "open", "2026-10-19T10:00:00Z", "cr/0123456789ab");
+    expect(state([link(1, "A"), draft])).toBe("in-sync");
   });
 });

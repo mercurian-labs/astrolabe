@@ -110,7 +110,7 @@ export function showPullRequest(
 }
 
 /** Opens tabs dragged from the sidebar where they land on `paneId`, `front` in front. */
-export function placeChangeRequestTabs(
+function placeChangeRequestTabs(
   keys: readonly string[],
   front: string,
   paneId: string,

@@ -7,7 +7,6 @@ import {
   WikiKeepCanvasResult,
 } from "@t3tools/contracts";
 import * as FileSystem from "effect/FileSystem";
-import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import { McpSchema, Tool, Toolkit } from "effect/ai";
 
@@ -15,6 +14,7 @@ import * as ThreadManagementService from "../../../orchestration-v2/ThreadManage
 import * as ProjectService from "../../../project/ProjectService.ts";
 import * as GitVcsDriver from "../../../vcs/GitVcsDriver.ts";
 import * as CanvasKeep from "../../../wiki/CanvasKeep.ts";
+import * as ProjectRoots from "../../../workspace/ProjectRoots.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as OrchestratorMcpService from "../../OrchestratorMcpService.ts";
 
@@ -42,9 +42,9 @@ const CanvasShowTool = Tool.make(CANVAS_SHOW_TOOL_NAME, {
     ThreadManagementService.ThreadManagementService,
     OrchestratorMcpService.OrchestratorMcpService,
     ProjectService.ProjectService,
+    ProjectRoots.ProjectRoots,
     GitVcsDriver.GitVcsDriver,
     FileSystem.FileSystem,
-    Path.Path,
   ],
 })
   .annotate(Tool.Title, "Draw a canvas")
@@ -54,13 +54,17 @@ const CanvasShowTool = Tool.make(CANVAS_SHOW_TOOL_NAME, {
 
 const CanvasKeepTool = Tool.make(CANVAS_KEEP_TOOL_NAME, {
   description:
-    "Save a board from `astrolabe_canvas_show` into a wiki. It joins your thread's open pull request and fixes where its cards sit. Call it when the user asks to keep a board.",
+    "Save a board from `astrolabe_canvas_show` as a .canvas file in one of your project's folders, with its cards where they sat and each code card linked to its folder's pushed code. It is written uncommitted into your thread's checkout of that folder, so it rides your thread's branch. Call it when the user asks to keep a board.",
   parameters: Schema.Struct({
-    wiki: Schema.NonEmptyString.annotate({
-      description: "The wiki's id or name, as the note on your linked wikis gives it.",
-    }),
+    repository: Schema.optional(
+      Schema.NonEmptyString.annotate({
+        description:
+          "Which of the project's folders: its key, name or path. Omit when `name` starts with folder:, or when your thread can write only one folder.",
+      }),
+    ),
     name: Schema.NonEmptyString.annotate({
-      description: "Its path in the wiki, as Name.canvas at the top or area/Name.canvas.",
+      description:
+        "Its path from the folder, as Name.canvas at the top or area/Name.canvas; folder:area/Name.canvas names the folder too.",
     }),
     itemId: Schema.NonEmptyString.annotate({
       description: "The itemId from the user's board reference.",

@@ -2,16 +2,14 @@
 import {
   changeRequestFiles,
   documentPath,
-  draftLabel,
   draftMoveTargets,
 } from "@t3tools/client-runtime/wikiLogic";
 import type { EnvironmentId, WikiChangeRequest, WikiChangeRequestId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
-import { ChevronDownIcon, TriangleAlertIcon } from "lucide-react";
+import { TriangleAlertIcon } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 
 import { ensureLocalApi } from "~/localApi";
-import { useEnvironmentQuery } from "~/state/query";
 import { wikiEnvironment } from "~/state/wiki";
 import { Alert, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
@@ -27,10 +25,8 @@ import {
 } from "../ui/dialog";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
-import { mergeBlockedReason } from "./wiki.logic";
 import { useChangeRequestTurn } from "./wikiAutosave";
 import { useWikiCommand, useWikiTerms } from "./wikiEnvironment";
 
@@ -46,7 +42,7 @@ interface DraftActionsInput {
   readonly onLanded?: (changeRequestId: WikiChangeRequestId, files: ReadonlyArray<string>) => void;
 }
 
-/** A draft's ways out, wherever they're offered: its pill, and its own tab. */
+/** A draft's ways out, as its pill in a Projects document offers them. */
 export function useWikiDraftActions({
   environmentId,
   draft,
@@ -66,7 +62,7 @@ export function useWikiDraftActions({
   };
   const discard = async () => {
     const confirmed = await ensureLocalApi().dialogs.confirm(
-      "Discard this draft? Its edits leave your documents. You can reopen it from Changes.",
+      "Discard this draft? Its edits leave your documents.",
       { variant: "destructive" },
     );
     if (!confirmed) return;
@@ -100,71 +96,6 @@ export function useWikiDraftActions({
     discard: () => void discard(),
     dialogs,
   };
-}
-
-/**
- * Where a document with a draft says so, in place of `Main`: how much the draft holds, and the
- * ways out of it. Never silent, and on every document of the wiki, because an edit to any of them
- * lands here.
- */
-export function WikiDraftPill({
-  onOpen,
-  ...input
-}: DraftActionsInput & {
-  /** Opens the draft's own tab, where its amendments and files are. */
-  readonly onOpen: () => void;
-}) {
-  const { environmentId, draft } = input;
-  const actions = useWikiDraftActions(input);
-  const terms = useWikiTerms(environmentId, draft.wikiId);
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <Menu open={open} onOpenChange={setOpen}>
-        <MenuTrigger render={<Button variant="outline" size="xs" />} aria-label="Draft actions">
-          {draftLabel(draft)}
-          <ChevronDownIcon />
-        </MenuTrigger>
-        <MenuPopup align="start">
-          {open ? <DraftConflict environmentId={environmentId} draft={draft} /> : null}
-          <MenuItem onClick={onOpen}>Open draft</MenuItem>
-          <MenuSeparator />
-          <MenuItem disabled={!actions.canAct} onClick={actions.promote}>
-            {`Make it a ${terms.singular}…`}
-          </MenuItem>
-          <MenuItem disabled={!actions.canAct} onClick={actions.move}>
-            Move to another one…
-          </MenuItem>
-          <MenuItem disabled={!actions.canAct} variant="destructive" onClick={actions.discard}>
-            Discard…
-          </MenuItem>
-        </MenuPopup>
-      </Menu>
-      {actions.dialogs}
-    </>
-  );
-}
-
-/** What would stop this draft merging, asked only while its menu is open. */
-function DraftConflict({
-  environmentId,
-  draft,
-}: {
-  readonly environmentId: EnvironmentId;
-  readonly draft: WikiChangeRequest;
-}) {
-  const { data } = useEnvironmentQuery(
-    wikiEnvironment.changeRequest({
-      environmentId,
-      input: { wikiId: draft.wikiId, changeRequestId: draft.changeRequestId },
-    }),
-  );
-  if (data?.mergePreview.status !== "conflict") return null;
-  return (
-    <p className="max-w-64 px-2 py-1.5 text-xs text-muted-foreground">
-      {mergeBlockedReason({ canWrite: true, preview: data.mergePreview })}
-    </p>
-  );
 }
 
 function PromoteDraftDialog({

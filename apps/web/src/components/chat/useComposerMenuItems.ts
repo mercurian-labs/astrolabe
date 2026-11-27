@@ -9,7 +9,6 @@ import {
   matchComposerEnvironmentItems,
   matchComposerThreadItems,
 } from "@t3tools/client-runtime/composerThreadItems";
-import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { useState } from "react";
 import type {
   EnvironmentId,
@@ -36,7 +35,7 @@ import {
   getProviderSlashCommandsForSlashMenu,
 } from "@t3tools/client-runtime/providerSkills";
 import { searchProviderSkills } from "../../providerSkillSearch";
-import { useProject, useVisibleThreadShells } from "~/state/entities";
+import { useVisibleThreadShells } from "~/state/entities";
 import { useEnvironmentIdentities, useEnvironmentMachines } from "~/state/environments";
 import { offersLinkedEnvironmentsAtom } from "~/state/peerLinks";
 import {
@@ -158,18 +157,15 @@ export function useComposerMenuItems({
     messages,
   );
 
-  // The list alone decides whether `[[` is a trigger; indexes load only while it is one.
+  // The list alone decides whether `[[` is a trigger (the project has folders to hold
+  // documents); indexes load only while it is one.
   const wikiList = useEnvironmentQuery(wikiEnvironment.list({ environmentId, input: {} }));
-  const wikiNotesAvailable = (wikiList.data?.wikis.length ?? 0) > 0;
+  const wikiNotesAvailable =
+    activeProjectId !== null &&
+    (wikiList.data?.wikis ?? []).some((wiki) => wiki.projectId === activeProjectId);
   const isWikiNoteTrigger = composerTriggerKind === "wiki-note" && wikiNotesAvailable;
   const [wikiOverviews] = useAtomValue(
     wikiOverviewsAtom(JSON.stringify(isWikiNoteTrigger ? [environmentId] : [])),
-  );
-  const canLinkWikis = useAtomValue(wikiEnvironment.setProjectLink.permissionAtom(environmentId));
-  const activeProject = useProject(
-    isWikiNoteTrigger && activeProjectId !== null
-      ? scopeProjectRef(environmentId, activeProjectId)
-      : null,
   );
 
   const pullRequestListTargets =
@@ -373,15 +369,12 @@ export function useComposerMenuItems({
       }));
     }
     if (composerTrigger.kind === "wiki-note") {
-      if (!isWikiNoteTrigger) return [];
+      if (!isWikiNoteTrigger || activeProjectId === null) return [];
       return composerWikiNoteItems({
         overviews: wikiOverviews ?? [],
-        project:
-          activeProject === null || activeProject.isScratch
-            ? null
-            : { id: activeProject.id, title: activeProject.title },
+        projectId: activeProjectId,
+        cwd: gitCwd,
         query: composerTrigger.query,
-        canLink: canLinkWikis,
       });
     }
     if (

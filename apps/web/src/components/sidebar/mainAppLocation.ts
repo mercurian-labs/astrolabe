@@ -17,7 +17,7 @@ export function isSidebarUtilityPage(pathname: string) {
   return pathname.startsWith("/projects/");
 }
 
-/** Astrolabe: Pull Requests, a section of its own beside the threads and wikis. */
+/** Astrolabe: Pull Requests, a section of its own beside the threads. */
 export function isPullRequestsPath(pathname: string) {
   return pathname === "/pull-requests";
 }
@@ -32,14 +32,9 @@ export function isWorkflowsPath(pathname: string) {
   return pathname === "/workflows";
 }
 
-/** Astrolabe: Repositories, a section of its own beside the wikis. */
+/** Astrolabe: Repositories, a section of its own beside the threads. */
 export function isRepositoriesPath(pathname: string) {
   return pathname === "/repositories";
-}
-
-/** `/wikis` and every wiki under it: Astrolabe's second section, beside the threads. */
-export function isWikisPath(pathname: string) {
-  return pathname === "/wikis" || pathname.startsWith("/wikis/");
 }
 
 // Pages the root route always renders without the app shell, so they are never

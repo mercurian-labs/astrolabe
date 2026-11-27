@@ -28,6 +28,7 @@ import {
   type CanvasDrawing,
 } from "./canvas.ts";
 import { canvasLinks, canvasOutline, canvasSourceOutline, renameInCanvas } from "./canvasIndex.ts";
+import { keptCanvasSource } from "./canvasKeep.ts";
 
 const fixtureFolder = new URL("./fixtures/obsidian-canvas/", import.meta.url);
 const fixture = (name: string) => NodeFS.readFileSync(new URL(name, fixtureFolder), "utf8");
@@ -492,6 +493,30 @@ describe("parseCanvas", () => {
     });
     expect(nodes[0]).toMatchObject({
       astrolabe: { code: { path: "a.ts", lines: [1, 2], commit: "abc" } },
+    });
+  });
+
+  it("reads which folder a thread's code card is in, and names it when it can't link", () => {
+    const data = canvasData({
+      nodes: [
+        {
+          id: "c",
+          type: "link",
+          url: "",
+          x: 0,
+          y: 0,
+          width: 100,
+          height: 60,
+          astrolabe: { code: { root: "api", path: "src/index.ts", lines: [3, 3] } },
+        },
+      ],
+    });
+    const code = data.nodes[0]?.type === "link" ? data.nodes[0].astrolabe?.code : undefined;
+    expect(code).toEqual({ root: "api", path: "src/index.ts", lines: [3, 3] });
+    const kept = JSON.parse(keptCanvasSource(data, () => ({ commit: "f".repeat(40) }), "seed"));
+    expect(kept.nodes[0]).toMatchObject({
+      type: "text",
+      text: `\`api:src/index.ts:3\` at \`${"f".repeat(12)}\``,
     });
   });
 });
