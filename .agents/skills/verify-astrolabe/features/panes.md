@@ -9,7 +9,9 @@ problems and places (`repo-search:`, `repo-problems:`, `repo-locations:`), docum
 requests tab only when restored from an older layout) are
 all tabs that split right or down. The sidebar section only decides what the sidebar lists.
 The rail's Issues is not a panes route: upstream's `/issues` page replaces the panes while it is
-open (the sidebar keeps the Agents list), and the arrangement comes back unchanged on leaving. A
+open (the sidebar keeps the Agents list), and the arrangement comes back unchanged on leaving.
+`/workflows` (the rail's Workflows, shown only when a workflow environment is reachable) replaces
+them the same way. A
 thread's surfaces are tabs linked to its chat (`panes/linkedTabs.ts`): they show only while that
 chat is the one in front, and park, remembering where they stood, while another chat is. Nothing
 else links to a chat: chats, documents, change groups, project files and
@@ -32,16 +34,18 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   `localStorage['astrolabe:workspace:v1']` and every `[data-pane-id]`'s tabs unchanged across the
   switch, the ChatView count unchanged, the URL, and the sidebar's lit row.
 
-- **Linked New tab** (the chat header's **New linked tab** `[data-new-linked-tab]`, `t` `n` `tab.newLinked`, or `rightPanel.toggle` with no linked tabs): an empty tab owned by the chat, showing T3 Code's launcher (`[aria-label="Open a surface"]`: Browser `B`,
+- **Linked New tab** (the chat header's **New linked tab** `[data-new-linked-tab]` while the chat
+  has no linked tabs, else the filter's footer item of that name; `t` `n` `tab.newLinked`, or `rightPanel.toggle` with no linked tabs): an empty tab owned by the chat, showing T3 Code's launcher (`[aria-label="Open a surface"]`: Browser `B`,
   Terminal `T`, Files `F`, Diff `D`, Pull request `P`, Device `M`,
   Graph `G`, Lineage `I`, and upstream's Side chat `S` where the chat offers side chats; it is
   disabled with "Side chats start after the first message." on a chat with none yet, and a side
-  chat cannot start another). Rows without a source are disabled `div`s whose hover says why.
+  chat cannot start another). Rows without a source are disabled `div`s whose hover says why;
+  Diff and Pull request are buttons only when the thread has them.
   The surface picked takes the New tab's place (same pane and index), linked
   (`workspace.targetPane(pane, blank)`, placed by `arriveAtTarget` as the record gains it).
 - **New tab** (`+` at the end of every strip, `button[name='New tab']`; `mod+t`,
   `rightPanel.new`, in the focused pane): opens an unowned empty tab at the end of that
-  pane's tabs, in front, at once (no menu). It shows `panes/TabLauncher.tsx`
+  pane's tabs (or after the current tab, per Settings' New tab position), in front, at once (no menu). It shows `panes/TabLauncher.tsx`
   (`[aria-label="Open a tab"]`): **New chat** `N` (the front chat's project with one
   project; with several, always the palette's project list), **Project file** `R` (project list, then its files; one project skips
   the list), **Project diff** `C` (each project's Uncommitted changes and Branch
@@ -50,7 +54,8 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   launcher's. The pick takes the New tab's place (`putInPlace`); a new chat arriving while a
   New tab is focused lands in it. A lone empty pane shows the same launcher, in every
   section. A New tab opened beside linked tabs stays when the chat changes.
-- **Lineage** (`I`, `components/lineage/`): the thread's fork family drawn left to
+- **Lineage** (`I`, `components/lineage/`, server `orchestration-v2/ThreadLineage.ts`,
+  `client-runtime/src/state/threadLineageHttp.ts`): the thread's fork family drawn left to
   right in `section[aria-label="Thread lineage"]`. The viewed thread runs along the
   centre lane, with one column per checkpoint across the family. Forks curve off the
   checkpoint they left from; merge-backs are dotted. Every line ends on a dot, a fork
@@ -91,12 +96,18 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   thread's surface is `chat-surface:<env>:<thread>:<surface id>`, owned by `chat:<env>:<thread>`.
   Switching chats parks the old chat's owned tabs and brings the new chat's back where they
   stood, else into the pane the old ones vacated, else a new pane right of the chat (0.45 of
-  its room). A chat's linked tab never shares its chat's pane: dragging it onto that strip shows no
+  its room). By default a chat's linked tab never shares its chat's pane: dragging it onto that strip shows no
   drop line (the pane's edges still split), and `settleLinks` moves one that lands there anyway, or
-  whose chat is dragged in, to the chat's other linked tabs, else a new pane beside it. Closing a chat drops its owned tabs (its thread's record keeps the surfaces, which
+  whose chat is dragged in, to the chat's other linked tabs, else a new pane beside it. Settings ›
+  General › Panes › Advanced can put them in the chat's pane instead (Terminal placement and Side
+  pane placement **As a tab**), at the New tab position. Closing a chat drops its owned tabs (its thread's record keeps the surfaces, which
   come back next time). Hiding (the chat's panel closing) parks its linked tabs, except an empty
-  one, which closes; closing a tab (its ✕, `:q`, the tab menu, Close pane, `t` `c`,
-  `rightPanel.close`) deletes it, a surface through T3 Code's own close, so a terminal ends. An
+  one, which closes. A linked tab has no ✕: its end button is a minus, `Minimize <title>`
+  (`[data-tab-minimize]`), and it, a middle-click, Cmd+W (`rightPanel.close`), `:q` and the tab
+  menu's **Minimize** (before Close) hide the tab into the linked tabs filter, not delete it.
+  Minimizing the last one showing closes the panel and leaves its key in `owners` and `parked`
+  (the header reads e.g. `Linked tabs (1, 1 hidden)`). The filter's trash deletes it (so do the
+  tab menu's Close and Close pane), a surface through T3 Code's own close, so a terminal ends. An
   open panel with no linked tabs shows an owned empty tab with T3 Code's launcher; closing the
   front chat's last linked tab closes its panel, and closing its last surface keeps the panel
   open while other linked tabs remain. Linked tabs are added only as a linked New tab; there is no
@@ -111,8 +122,8 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   the focused tab's link item: a local graph's follow/pin (repositories.md) or Unlink tab, and
   is faint otherwise.
 - **Linked tabs filter** (`panes/LinkedTabsFilter.tsx`): one button in a pane's chat header,
-  after the thread details and terminal drawer toggles, in place of T3 Code's right-panel toggle.
-  With no linked tabs it is **New linked tab** (`[data-new-linked-tab]`, square-plus), opening a
+  after the thread details and Toggle terminal toggles, in place of T3 Code's right-panel toggle.
+  With no linked tabs (a terminal hidden with Cmd+J aside) it is **New linked tab** (`[data-new-linked-tab]`, square-plus), opening a
   linked New tab in a new pane right of the chat. With some it is `[data-right-panel-toggle]`, a
   rounded square holding their count (label `Linked tabs (N)`, or `Linked tabs (N, M hidden)` with
   a primary dot), pressed while any shows, and it opens a multi-select combobox popup
@@ -129,7 +140,7 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   linked New tab. The header has no
   maximize of its own; the pane strip's does that.
 - **Link marker** (`LinkMarker` in `panes/workspaceTabs.tsx`, `panes/linkMarks.ts`): a chain
-  (`[data-link-mark=<ink>]`) in the ✕'s place on every linked tab on screen and on its owner (hovering the tab swaps it for the ✕; on a device without hover both show), with
+  (`[data-link-mark=<ink>]`) in the ✕'s place on every linked tab on screen and on its owner (hovering the tab swaps it for the ✕, or a linked tab's minus; on a device without hover both show), with
   the owner's name (or `N linked tabs follow this tab`) on hover. Each owner on screen takes
   the next ink in reading order (`--link-ink-1..4`, the first is `--primary`). No motion.
 - **Change groups**: **Open as a tab group** in a group's tab opens its threads after the chat
@@ -175,22 +186,24 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   tab), Close pane (disabled for a lone pane holding only an empty tab). The same
   actions are commands (`pane.splitRight`, `pane.splitDown`, `pane.close`,
   `pane.toggleMaximized`, `pane.toggleFullScreen`): the keyboard menu's `p` group
-  (`v`, `s`, `c`, `m` for maximize, `f` for full screen, `r` for upstream's
+  (`v`, `s`, `c`, `m` for maximize, `f` for full screen, `h` `j` `k` `l` to move the pane's tabs
+  toward that side, `=` to cycle the pane's size, `r` for upstream's
   `rightPanel.toggle`, which hides or brings back the front chat's linked tabs), `:vs` and `:sp` in the Command Palette, or any shortcut bound to them
   (which-key.md). A split moves focus into the new pane, on the moved tab's pill; splitting a
   New tab focuses its launcher (`Open a tab`) instead.
-  `:q` closes the focused pane's active tab.
+  `:q` closes the focused pane's active tab (minimizes a linked one).
 - **Tab context menu** (right-click): **Open in Projects** for a thread's Files, Diff and
   opened file, **Open as its own tab** for a
   thread's file, Diff and pull request, then T3 Code's own items for the tab (**Rename** for a
   device, **Copy path** for a workspace file, **Mute tab** / **Unmute tab** for a browser
-  tab), a local graph's link item or **Unlink tab** for a tab still linked, Close, Close
-  others, Close tabs to the right, Split right, Split down. A lone tab cannot split.
+  tab), a local graph's link item or **Unlink tab** for a tab still linked, **Minimize** for a
+  chat's linked tab, Close, Close others, Close tabs to the right, Split right, Split down. A lone
+  tab cannot split.
   Right-clicking a tab inside a Cmd/Shift selection of several shows **Close (N)**,
   **Split right (N)**, **Split down (N)** instead (no Open in); each ends the selection.
   Escape clears a selection. A middle-click (`preview_act click button="middle"`) closes a
-  tab. Every tab has a ✕ (a linked one's shows on hover, over its chain mark) except a lone pane's lone empty
-  tab.
+  tab, or minimizes a linked one. Every tab has a ✕ except a lone pane's lone empty tab and a
+  chat's linked tab, whose end button is `Minimize <title>` (shown on hover, over its chain mark).
 - **Dividers**: between panes, a 1px line with a 3px `role=separator` handle
   (`aria-orientation` vertical for a side-by-side split, horizontal for a stacked one)
   that turns the primary colour on hover or drag (`data-active`). Dragging it rewrites
@@ -261,14 +274,18 @@ ChatView's panel props and renders the live surface into the pane showing its ta
   `astrolabe:group-panel-runs:v1`. Maximize pane is in memory only.
 - **Narrow windows**: the panes stay panes (no sheet); they scroll sideways below their
   minimum widths.
+- **Settings** (Settings › General › Panes, `components/settings/SettingsPanels.tsx`): **Open
+  beside**; under Advanced, Terminal placement (**Below the chat** / **As a tab**), Side pane
+  placement (**Beside the chat** / **As a tab** in the chat's pane), Side pane opens on, and New
+  tab position (**At the end** / **After the current tab**, for `+`, Cmd+T and a new linked tab).
 
 ## How to get to it (user POV)
 
 Press **+** at the end of any pane's tabs (or Cmd+T): a New tab opens there with **Open a tab**;
 pick one and it takes the New tab's place. Open a chat and press **New linked tab** at the end of
-its header (or Cmd+Alt+B): a linked pane opens to the chat's right with the surface launcher;
-pressed again, another joins it in front. The button then reads **Linked tabs (N)** and opens
-their filter: **Hide all** sets them aside (`Linked tabs (N, M hidden)`), and **Show all**
+its header (or Cmd+Alt+B): a linked pane opens to the chat's right with the surface launcher.
+The button then reads **Linked tabs (N)** and opens their filter: its **New linked tab** adds
+another in front, **Hide all** sets them aside (`Linked tabs (N, M hidden)`), and **Show all**
 brings them back.
 
 ## Driving it with the Browser panel
@@ -278,9 +295,10 @@ buttons. With two panes, add `>> nth=N` to `New tab`, `Maximize pane` and
 `Pane actions`.
 
 ```
-preview_act click  role=button[name='New linked tab']                        # in the chat header
+preview_act click  role=button[name='New linked tab']                        # in the chat header, only while it has no linked tabs
 preview_act click  <x,y of [data-right-panel-toggle]>                       # Linked tabs (N[, M hidden]); a name regex with \( times out
-preview_act click  [aria-label='Open a surface'] >> role=button[name=/^Diff/]  # launcher; an unavailable surface is a disabled row, not a button
+preview_act click  [data-slot=combobox-popup] >> role=button[name='New linked tab']  # with linked tabs: the filter's footer
+preview_act click  [aria-label='Open a surface'] >> role=button[name=/^Files/]  # launcher; names carry the key hint; an unavailable surface is a disabled row, not a button
 preview_act click  role=button[name='New tab'] >> nth=0                      # + : a New tab, no menu
 preview_act click  [aria-label='Open a tab'] >> role=button[name=/^Project file/]
 preview_act click  role=button[name='Pane actions'] >> nth=0
@@ -339,8 +357,8 @@ and returning shows the first chat's again. After a reload both reads return the
 - The launcher's Diff row is a disabled `div`, not a button, outside a git-backed
   server thread; Files needs a project. Pick a seeded thread in a repository.
 - Tab names differ from menu labels: a restored Linked pull requests tab shows as "Pull
-  requests", a pull request as `#<n>`, a browser by page title or host, terminals as
-  "Terminal 1".
+  requests", a pull request as `#<n>`, a browser by page title or host, the chat's terminal
+  as "Terminal".
 - Focus in a terminal keeps Cmd+K for the terminal. Click a non-terminal tab before
   using the keyboard menu (or the leader key; Cmd+K is the default `whichKey.open`).
 - The panes engine (`panesHost.ts`, `PaneView.tsx`, `PaneTree.tsx`, `maximize.ts`,
@@ -363,11 +381,13 @@ and returning shows the first chat's again. After a reload both reads return the
   `orchestration_v2_projection_threads`. On 2026-10-20 neither the seeded data nor the
   live data had a merge-back (`orchestration_v2_projection_context_transfers` type
   `merge_back`), so only the layout tests cover dotted curves.
-- The bottom terminal drawer is T3 Code's own (Toggle terminal drawer, Cmd+J),
-  under the chat column, not a pane. Cmd+J (and `terminal.toggle` from which-key or the
+- The terminal is a tab, not upstream's drawer: Cmd+J (header **Toggle terminal**) splits the
+  chat's pane downward with one `chat-terminal:` tab, titled "Terminal", linked to the chat and
+  holding every terminal of the thread (`sectionTabs/sectionTabs.ts`; Terminal placement **As a
+  tab** puts it in the chat's pane instead). Cmd+J (and `terminal.toggle` from which-key or the
   palette, faint there otherwise) reaches only the chat that is the focused pane's tab in
   front (`takesTerminalToggle`, checked in `useChatShortcuts`): with a file, document, linked
   surface or other tab focused it does nothing, and no other visible or hidden chat answers.
-- Closing a chat's drawer gives focus back to that chat's own composer (per-chat composer
+- Hiding a chat's terminal gives focus back to that chat's own composer (per-chat composer
   refs, `composerHandleContext.ts`); a chat beside it never takes focus, and type-to-focus
   and paste-to-focus act only for the focused chat tab.

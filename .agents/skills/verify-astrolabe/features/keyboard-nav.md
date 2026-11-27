@@ -24,7 +24,8 @@ composer. Never anything inside one (no stop for a tab strip, the timeline or th
   `mod+F6`/`mod+Shift+F6` for browsers that keep plain F6 (`workspace.focusNext`/`Previous`,
   `lib/workspaceFocus.ts`), cycle the visible `[data-workspace-area]` stops in
   `data-workspace-order` and wrap: the rail (`rail`, `aria-label="Sections"`), the sidebar
-  (`sidebar`, labelled "Agents"), the conversation and the message input, thread details,
+  (`sidebar`, `role=navigation` labelled after the section: "Agents", "Projects" or
+  "Changes"; `AppSidebarLayout.tsx`), the conversation and the message input, thread details,
   each pane (`pane`, one stop per pane, keyed `data-workspace-focus-key="pane:<id>"`), panels and the
   terminal. Each restores its last focused control; the first landing in a pane focuses its
   tab in front (`[data-pane-tab][aria-selected=true]`). Panes `inert` behind a maximized one and a
@@ -90,7 +91,8 @@ composer. Never anything inside one (no stop for a tab strip, the timeline or th
   its first focusable control, not the current file.
 - **Rail list** (focus on a rail button, `[data-app-rail] [data-sidebar=menu-button]`;
   each is a tooltip trigger, so its `data-slot` reads `tooltip-trigger`): the sections
-  (Agents, Projects, Changes, Issues where supported),
+  (Agents, Projects, Changes, Issues where supported, Workflows while a workflow environment
+  is reachable, so the number of `j` steps to the foot differs between servers),
   then at the foot the update control when shown (`Check for updates`, or the providers'
   "Update N providers" pill), **Usage**, and **Settings**. With cloud sign-in configured the
   Settings slot is the account menu: signed in it is named after the user, uses the solid
@@ -122,13 +124,14 @@ Space `d` scrolls the place half a page.
 
 ```
 preview_act press     key=k modifiers=["Meta"]                    # Cmd+K, then
-preview_act press     key=h                                       # h focuses a row (a click hands focus to the composer)
-preview_act press     key=l modifiers=["Control"]                 # to the main area (run this on Projects: on a chat it lands in the composer, where Ctrl+H does nothing)
-preview_act press     key=h modifiers=["Control"]                 # back to the sidebar
-preview_act press     j                                           # next row
-preview_act press     Space                                       # leader
-preview_act press     l                                           # focus right, arms
-preview_act press     l                                           # again, within 500 ms
+preview_act press     key=h                                       # h focuses a row (from the rail it does nothing: left edge, no wrap)
+preview_act press     key=l modifiers=["Control"]                 # to the pane (`pane p0`), on what last had focus there: `Conversation` after a timeline click, else the composer, where Ctrl+H does nothing
+preview_act press     key=h modifiers=["Control"]                 # back to a sidebar row (`place: sidebar`, ringed)
+preview_act press     key=j                                       # next row
+preview_act press     key=h modifiers=["Control"]                 # the rail (Ctrl+H twice from the pane); Ctrl+L returns to the row you left
+preview_act press     key=Space                                   # leader
+preview_act press     key=l                                       # focus right, arms
+preview_act press     key=l                                       # again, within 500 ms
 preview_act press     key=d modifiers=["Control"]                 # scroll down half a page
 ```
 
@@ -202,7 +205,7 @@ Read the scroll position of the place keys act from, as `scroll.ts` picks its ar
 ```
 
 **Proof:** after each key the read names the expected place and element, `marked`
-equals `place`, `bar` is a `linear-gradient` in the focus bar colour (`--focus-bar`)
+equals `place`, `bar` is a `linear-gradient(oklch(…))` in the focus bar colour (`--focus-bar`)
 with `barHit: true` on a pane or the chat (both null on the sidebar and the rail), a
 row or rail button reached by the list keys reads `ringed: true`, and `hit` is true
 (the focused element paints at its centre). After Space `d`, `scrollTop` grows by half
@@ -296,6 +299,9 @@ dark: only one pill carries the bar.
 - Rows rendered after the last row focus (a new thread) are tab stops until a row
   takes focus again.
 - At 980px or less the right panel has no panes; keep the viewport wider.
+- `keyboardNav/placeLists.ts` still lists `wiki-sidebar-row` and `wiki-sidebar-row-slim`,
+  which nothing renders since Projects took over the wikis (#194). A known leftover in code,
+  not a walk failure; leave it.
 
 ## Owns
 

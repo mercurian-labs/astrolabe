@@ -39,17 +39,22 @@ same commands, and all three kinds of trigger (Shortcut, Menu keys, Alias) live 
   and Not bound / Not available here is a `role=status` note. After a command runs the
   popover fades out, so wait for `[data-which-key]` to detach before reading "closed".
   A prefix the user added with no built-in name shows as `+N` (its entry count).
-- **Groups** (defaults): `g` t Agents, r Projects, p Changes, f Workflows,
-  i Issues (`section.issues`, upstream's `/issues`), u Usage, s Settings. `t` `]` next tab, `[` previous, `c` close (all on the focused pane's
+- **Groups** (defaults): `g` t Agents, r Projects (`/repositories`), p Changes, i Issues
+  (`section.issues`, upstream's `/issues`), f Workflows, u Usage, s Settings; a section the
+  rail hides shows faint under its fallback name ("Section: Changes", "Section: Issues",
+  "Section: Workflows"). `t` `]` next tab, `[` previous, `c` close (all on the focused pane's
   tab), `k` the focused tab's link item (panes.md, Linked tabs): "Unlink tab", "Link to the file
   in front" for a pinned local graph, or a faint "Unlink tab" with nothing to link, `n` New linked tab for the focused chat (or the chat a
-  focused linked tab belongs to; faint otherwise), `r` reopen closed (panel and
+  focused linked tab belongs to; faint otherwise), `e` Edit file (`file.toggleEdit`, on a
+  focused linked file tab: "Edit file", or "Preview file" while editing), `r` reopen closed (panel and
   browser tabs, not chats), `h` Back and `l` Forward on the focused pane's tab (upstream's
   `navigation.back`/`forward` through their shortcuts: in Agents, Projects
   and Changes they walk the tab in front's history and are faint at either
   end; elsewhere the route history). On a chat tab or a thread's surface (`navigatesInPlace`)
   `h` and `l` are always faint and `mod+[`/`mod+]` do nothing: no route-history fallback. `p` `v` split right, `s` split down, `c` close pane, `m`
-  maximize/restore, `f` Full screen pane / Exit full screen (panes.md), `r` Toggle
+  maximize/restore, `f` Full screen pane / Exit full screen (panes.md), `h`/`j`/`k`/`l`
+  Move pane left/down/up/right (the pane's tabs trade places with that neighbour; repeatable),
+  `=` Cycle pane size (repeatable), `r` Toggle
   right panel (parks or restores the front chat's linked tabs); the focus moves are root keys now, not in Panes.
   `s` `s` toggle sidebar. `r` `g` Open local graph, faint unless a Projects file
   tab is focused. `e` Editor acts on the focused code file, note or results tab: `f` find,
@@ -80,7 +85,10 @@ same commands, and all three kinds of trigger (Shortcut, Menu keys, Alias) live 
   Search, and Cmd+P in it closes the palette (from Search, the file picker or
   content search, Cmd+P switches to it). Empty, it lists every command once (label,
   its alias such as `q[uit]` or else its menu keys as `Space t ]`, its shortcut)
-  under Commands, then upstream's Actions. An alias runs its command: `q` closes the
+  under Commands, then upstream's Actions. Actions holds the open thread's menu
+  (`CommandPaletteThreadActions.tsx`): Settle thread (⌘⇧S), Pin thread (⌘⇧P), a Snooze
+  submenu, Mark unread, Copy… and the rest. This is what upstream's "settle, pin, snooze and
+  more from cmd+k" means here; those rows are in neither the keyboard menu nor Search. An alias runs its command: `q` closes the
   focused pane's front tab, whatever it is; `w` send or save, `sp`/`vs` split, `e <name>` a document,
   `b <name>` a thread (open chat tabs first), `noh`. Picking `b`/`e` fills the line
   and waits for the name. Any other line shows
@@ -157,7 +165,8 @@ palette: `document.querySelector('[data-command-palette] input')?.value` and its
 rows `[...document.querySelectorAll('[data-command-palette] [data-slot=command-item]')].map(r => r.innerText)`.
 The field shows no `:` in the Command Palette (a chevron leads it instead); the
 query is `':' + value`. The
-dialog's name stays `Search` in both modes: type with
+dialog's name stays `Search` in both modes, though in `:` mode the Command element inside it
+is labelled "Command palette": target `role=dialog[name='Search']`, and type with
 `preview_act type role=dialog[name='Search'] >> role=combobox`.
 
 Rules: back up `$home/userdata/keybindings.json` (the walk's `.t3`, never
@@ -169,8 +178,8 @@ and copy the backup back when done. The server picks changes up live.
 1. **Menu basics.** On a chat: Cmd+K → menu at the top right (the paint read above)
    with the nineteen top-level rows (Search's row shows only `/`), `Esc close` footer
    → Ctrl+N twice, Ctrl+P → `:` row highlighted → `g` (or click Go to) → heading
-   `Menu › Go to`, rows Agents, Projects, Changes (a faint "Section: Changes"
-   where pull requests are unsupported), Issues, Usage, Settings → click **Backspace back**
+   `Menu › Go to`, rows Agents, Projects, Changes, Issues, Workflows, Usage, Settings
+   (Changes, Issues and Workflows faint as "Section: …" where the rail hides them) → click **Backspace back**
    → heading `Menu` → `g` → `z` → "Not bound", still open → click Agents, or `r` (`/repositories`) → the URL changes, menu closed.
 2. **Leader across sections.** On Projects, click the heading → Space → menu after the
    delay, heading `Menu`, rows say "Search"/"Add a project", and no `w` row.
@@ -231,6 +240,8 @@ of the root menu, a group and the Command Palette.
   `menu g s`. The Command Palette's list prefixes them with the leader's label.
 - A changed leader key or leftover rules outlive the flow: reset the leader and
   restore `keybindings.json` before the next feature.
+- Comments in `whichKey/handles.ts` still mention "New document" and the Wikis area. Known
+  leftovers in code after #194; leave them.
 
 ## Owns
 

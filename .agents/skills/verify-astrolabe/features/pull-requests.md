@@ -14,20 +14,29 @@ thread's own Pull request tab. Shown only when a connected server reports
   **Changes** / "Changes"; the route is still `/pull-requests` and
   upstream's own strings ("Open pull requests" in the palette, "pull request" inside a
   review) are unchanged.
-- **Docs pull requests**: there are no wiki change requests any more. A pull request whose head
-  branch is `cr/<id>` was opened from a person's docs draft (project-docs.md) and is the docs
-  side of a change group (`packages/shared/src/changeGroups.ts`). Its review adds a **Docs**
-  tab, second in `nav[aria-label='Pull request tabs']` (`PullRequestDetailPanel.tsx`,
-  `wiki/WikiPullRequestTab.tsx`: amendments with **Revert**, **Publish now** while work is
-  unpublished, the writing thread's `ul[aria-label='Pull requests']`; _selector to confirm on
-  walk_ beyond those), and its merge starts on Merge commit.
+- **Docs pull requests**: there are no wiki change requests in the UI any more. A pull request
+  whose head branch is `cr/<id>` was opened from a person's docs draft (project-docs.md) and is
+  the docs side of a change group (`packages/shared/src/changeGroups.ts`); that branch check is
+  all the group and mobile's Docs label use. The web review's **Docs** tab, second in
+  `nav[aria-label='Pull request tabs']`, shows only when `useWikiOfPullRequest`
+  (`wiki/wikiEnvironment.tsx`) finds the server's change-request record whose `pullRequest`
+  matches, and the merge starting on Merge commit keys off the same record
+  (`PullRequestDetailPanel.tsx`). So a `cr/` pull request with no record counts as docs in its
+  group but has no Docs tab. The tab (`wiki/WikiPullRequestTab.tsx`) lists amendments with
+  **Revert**, **Publish now** while work is unpublished, and the writing thread's
+  `ul[aria-label='Pull requests']`, under which a nudge reads "Pull request #n merged" ("Merge
+  these docs too, so they match the code on main.") or "Pull request #n closed without merging"
+  ("Close this <noun> too?" with a button). Merging while those code pull requests are open asks
+  first: "Pull request #n hasn't merged yet, so these docs would describe code that isn't on
+  main. Merge them anyway?"
 - **Mobile**: the tab reads "Changes": change groups above the host's pull requests. A pull request opened from a docs
   draft (its branch is `cr/<id>`) shows a `Docs` label over its merge button and starts on a
   merge commit. Walk on an iPhone with agent-device.
 - **Change groups** (`components/changeRequests/groups/`, `@t3tools/shared/changeGroups`,
   server `changeGroups/ChangeGroupService.ts`, decisions in `<state>/change-groups.json`, every
   branch a thread was on in `<state>/thread-branches.json`):
-  `ul[aria-label="Change groups"]` heads the list (a collapsible `button "Groups N"`, the count at the right in the new design and "Groups · N" in the classic one; merged groups are hidden),
+  `ul[aria-label="Change groups"]` (`role=presentation`, so use this CSS form, not a role
+  locator) heads the list (a collapsible `button "Groups N"`, the count at the right in the new design and "Groups · N" in the classic one; merged groups are hidden),
   each card `button "<title>, change group, <state>"` with a primary-colour dot, its members as
   buttons (`<member>, in <group>`) and `button "N threads in <group>"`. A group needs two
   members (or a decision); its id is the root thread. Its threads: the root, those that opened
@@ -43,8 +52,8 @@ thread's own Pull request tab. Shown only when a connected server reports
   the app asks), Code / Documentation rows (each opens beside) and a **Threads** section (each
   `button "Open <title>"` with its reason and Working / Settled / Idle; `workspace.openChat`:
   comes forward if open, else fills a focused empty tab, else a new tab after the chat in front)
-  with ✕ to take out. **Add a thread** (`useChangeGroupActions.ts`, search `Search threads`,
-  empty text "No other threads.") lists **New thread**, then the starters **Update the docs**
+  with ✕ to take out. **Add a thread** (`ChangeGroupView.tsx`, its actions in
+  `useChangeGroupActions.ts`; search `Search threads`, empty text "No other threads.") lists **New thread**, then the starters **Update the docs**
   (Docs behind) and **Draft the docs** (Docs missing with Offer drafts on), then the
   environment's other threads. New thread or a starter opens a draft in the root thread's
   project in a pane right of the group's (`SectionTabContent.tsx` `showBeside`; the group stays
@@ -194,8 +203,8 @@ thread's own Pull request tab. Shown only when a connected server reports
   line, not a fade (Summary's section headings and Code's file headers are sticky). Outside
   the shared panes the panel keeps T3 Code's crumbs.
 - **The review**: `nav[aria-label='Pull request tabs']` holds **Summary** (reviewers,
-  labels, description, checks, comments), **Docs** (second, only on a pull request from a docs
-  draft's `cr/` branch; `PullRequestDetailPanel.tsx`), **Guide** (only with Settings → Source Control
+  labels, description, checks, comments), **Docs** (second, only on a docs pull request the
+  server has a change-request record for, above; `PullRequestDetailPanel.tsx`), **Guide** (only with Settings → Source Control
   → review guides on), **Timeline** and **Code** (the diff, with scope, split/stacked,
   file tree, Viewed). Every review opens on Summary. A written guide coming on screen in
   the focused pane collapses the sidebar (wide windows only, on Changes) and maximizes the pane when
@@ -209,7 +218,8 @@ thread's own Pull request tab. Shown only when a connected server reports
 
 ## How to get to it (user POV)
 
-The **Changes** icon in the icon rail (between Projects and Usage), the
+The **Changes** icon in the icon rail (after Projects, before **Issues** when the host
+supports them and **Workflows** when reachable; Usage sits in the rail's foot), the
 keyboard menu's `g p`, **Open pull requests** in the Command Palette (type "pull
 requests", which also finds Settings › Changes), or
 a pull request link in a conversation. Each lands on the last list filters (localStorage
@@ -273,6 +283,8 @@ Save a screenshot of the section.
   the group's Threads row ("Opened a pull request"), not a same-named sidebar row. A settled
   root isn't under Active in the sidebar; merged groups are hidden from the Changes list, so
   reach one through a member thread's thread details row.
+- A group's tab needs an unmerged group in the seeded data (two members, or a decision); a seed
+  with none can't reach it, so check `Groups N` before planning a group walk.
 - Thread starters and draft rows write nothing until a send: discard each draft from its row
   (and turn Offer drafts back off) before ending a walk.
 
@@ -290,7 +302,9 @@ the @ items), `chat/ChangeGroupContextChip.tsx`, `chat/ThreadDetailsPrRowMenu.ts
 `components/settings/ChangeRequestSettings.tsx` and `routes/_chat.settings.change-requests.tsx`,
 `pullRequest/PullRequestTabHeading.tsx` (the header), the
 change-group branch of `sectionTabs/`, `packages/shared/src/changeGroups.ts`,
-`packages/contracts/src/changeGroups.ts`, `client-runtime/src/wikiPullRequests.ts`, server
+`packages/contracts/src/changeGroups.ts`, the Docs tab in `components/wiki/WikiPullRequestTab.tsx`
+and `useWikiOfPullRequest` in `wiki/wikiEnvironment.tsx`, `client-runtime/src/wikiPullRequests.ts`
+(read only by `WikiPullRequestTab.tsx`), server
 `changeGroups/ChangeGroupService.ts` and `mcp/toolkits/changeGroups/`, the section shell in
 `pullRequest/PullRequestsPage.tsx` (sidebar portal, selection, drag, row menu, URL), its list
 in `PullRequestsColumn.tsx` (`PullRequestsSidebarList`) and `PullRequestListGroups.tsx`, and

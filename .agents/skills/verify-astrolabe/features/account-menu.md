@@ -8,13 +8,18 @@ Settings. Builds without sign-in keep a plain Settings button.
 ## States
 
 - **No cloud config**: a plain Settings button (no `aria-haspopup`) that opens
-  `dialog "Settings"` at `/settings/general`. No menu, no account dialogs. This also covers values the client rejects: a relay URL that isn't `https`, an
-  auth URL that is `http` off localhost, or either with a path, query or hash
-  (`cloud/publicConfig.ts`). Vite reads them at startup, so a `.env` change needs a dev
-  restart.
+  `dialog "Settings"` at `/settings/general`. No menu, no account dialogs, no
+  Workspaces in the Settings nav, and `/settings/workspaces` redirects to
+  `/settings/general` (LIVE). This also covers values the client rejects. The auth
+  URL must be `https`, or `http` on a local hostname, with no path, query or hash
+  (`packages/shared/src/mercurianAccount.ts:72-82`). The relay URL must be `https`
+  with no username, password, path, query or hash (`packages/shared/src/relayUrl.ts:1-18`).
+  `cloud/publicConfig.ts:81-84` only requires both. Vite reads them at startup, so a
+  `.env` change needs a dev restart.
 - **Config set, cloud down**: with no stored token it shows Signed out at once, but **Sign in**
   then fails silently (only `console.error("Sign-in failed")`, no dialog). With a stored token it
-  stays on Loading and retries every 15 s. The token lives in localStorage
+  stays on Loading and retries every 15 s, and re-reads the session on window focus
+  (`cloud/managedAuth.tsx:72-80`). The token lives in localStorage
   `astrolabe:cloud-session-token`; removing it and reloading resets the web state.
 - **Loading** (session not known yet): the gear with only **Settings**.
 - **Signed out**: a gear named "Settings". Menu: **Sign in**, **Settings**.
@@ -44,14 +49,17 @@ below.
 ## Driving it with the Browser panel
 
 With cloud config only (without it the rail's Settings is a plain button with no
-`aria-haspopup`, and the query below returns null). Locator clicks on the rail can
-time out at the scroll step; click the trigger from `preview_evaluate` instead:
+`aria-haspopup`, and the query below returns null). The walk that proved it set
+`T3CODE_AUTH_URL=<local API>` and `T3CODE_RELAY_URL=https://relay.invalid` in `.env`
+(LIVE). Locator clicks on the rail can time out at the scroll step; click the
+trigger from `preview_evaluate` instead:
 
 ```
 preview_evaluate  document.querySelector('nav[aria-label="Sections"] button[aria-haspopup="menu"]').click()
-preview_act click     role=menuitem[name='Sign in']        # signed out
+preview_act click     role=menuitem[name='Sign in']        # signed out: menu is Sign in, Settings
 preview_evaluate  document.querySelector('[aria-label="Sign-in code"]')?.textContent
 # approve it: scripts/cloud-kit.sh approve <code> <email>   (see SKILL.md, Cloud)
+# "Set up remote access" opens on its own: press Escape before reopening the menu
 preview_act click     role=menuitem[name='Account']        # signed in: account dialog
 preview_act click     role=menuitem[name='Workspaces']     # → /settings/workspaces
 preview_act click     role=menuitem[name='Sign out']
@@ -63,10 +71,13 @@ the trigger is in `[data-sidebar=footer]`.
 
 ## End state that proves it
 
-- Signed out: the trigger is named "Settings" and the menu holds Sign in and
-  Settings.
-- After approval, the trigger's `aria-label` is the user's name or email, and
-  the menu holds Account, Workspaces, Settings and Sign out.
+- Signed out: the trigger is named "Settings" and the menu holds exactly Sign in
+  and Settings. Sign in shows "Sign in to Astrolabe" with the code, **Cancel** and
+  **Open sign-in page** (LIVE).
+- After approval, the trigger's `aria-label` is the user's name or email ("walker"
+  for `walker@walk.test`), the "Set up remote access" wizard opens, and the menu
+  shows a header (initial, name, email) then Account, Workspaces, Settings and
+  Sign out (LIVE).
 - Signing out on Settings › Workspaces brings the gear back and leaves no
   `[Live Query Error]` in the console (hook `console.error` from
   `preview_evaluate` before signing out).
@@ -89,6 +100,8 @@ appear; close it.
 
 `apps/web/src/components/sidebar/AccountMenu.tsx`, its mounts in
 `AppIconRail.tsx` and `SidebarChrome.tsx`,
-`apps/web/src/components/clerk/CloudAccountDialogs.tsx`,
-and on mobile `apps/mobile/src/features/settings/SettingsAuthRouteScreen.tsx`.
+`apps/web/src/components/clerk/CloudAccountDialogs.tsx`, `T3ConnectAccountPages.tsx`,
+`components/cloud/ConnectOnboardingDialog.tsx`, `apps/web/src/cloud/account.ts` and
+`managedAuth.tsx`, the URL rules in `packages/shared/src/mercurianAccount.ts` and
+`relayUrl.ts`, and on mobile `apps/mobile/src/features/settings/SettingsAuthRouteScreen.tsx`.
 No tests cover the menu itself yet.

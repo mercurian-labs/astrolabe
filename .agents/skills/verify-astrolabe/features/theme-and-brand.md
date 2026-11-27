@@ -18,15 +18,20 @@ spelling live in
 - The composer's primary button draws Astrolabe's own Send, Queue, Steer and
   Stop icons (`components/brand/ComposerControlIcons.tsx`) on
   `bg-message-action`.
-- Mercurian's `focusBar` role is rust (`#a0492a` light, `#d4774f` dark): the bar
+- Mercurian's `focusBar` role is rust, stored as oklch
+  (`packages/shared/src/mercurianTheme.ts:38,103`): `#a0492a` light (LIVE), about
+  `#d4774f` dark (converted, not walked). The bar
   on the focused place's tab in front, through `--focus-bar` (its behaviour is in
   keyboard-nav.md). The theme editor shows it as the **Focus bar** row
   (`[data-theme-color-role=focusBar]`, under Brand & content, with Advanced on).
   The editor paints its draft on the live app, so the bar changes as the row is
   edited.
-- The page title reads "Astrolabe (Beta)" while booting and "Astrolabe (Dev)" once loaded in dev
-  (a server version can set another stage label). A Nightly hosted build reads "Astrolabe
-  (Nightly)", and Latest drops the label (`branding.ts`, `branding.logic.ts`). Brand marks and the
+- Vite writes the build's stage into `index.html`'s title before boot
+  (`apps/web/vite.config.ts:319-324`), so a dev build reads "Astrolabe (Dev)" from the first
+  frame (LIVE). "(Beta)" shows only in a production build with no hosted channel
+  (`branding.logic.ts:27`), and a server version can set another stage label. A Nightly hosted
+  build reads "Astrolabe (Nightly)", and Latest drops the label (`branding.ts`,
+  `branding.logic.ts`). Brand marks and the
   wordmark appear on the boot screen and the welcome wizard, and the monogram heads the icon rail.
   The monogram also replaces T3's glyph in the chat timeline: on the plain "Created thread" row
   (`components/chat/V2LifecycleRow.tsx`) and as the `t3-code` work-log icon for thread-create
@@ -35,7 +40,8 @@ spelling live in
   relay service is Remote access. The allowed exceptions (the "T3 Code" theme card and a few
   more) are listed in `docs/operations/astrolabe-identity.md`; judge grep hits against that
   list, not this one. Upstream's app-store links are hidden, not kept (`branding.ts` sets
-  them to null). What users add and run threads in is a **project** everywhere; "repository"
+  them to null). The GitHub star prompt points at our repository
+  (`components/GitHubStarPrompt.tsx`). What users add and run threads in is a **project** everywhere; "repository"
   means the git repository only.
 
 ## How to get to it (user POV)
@@ -74,9 +80,11 @@ preview_act press      key=a  modifiers=["Meta","Alt"]                // opens C
 
 **Proof:** `themeId` is `mercurian` on a fresh incognito profile, and the
 `dark` class follows the emulated scheme. The cards read `mercurian`, `default`
-(T3 Code), `t3-chat`, `grove`, `ocean`, `ember`, with no `iris`; screenshot the
-grid. The **Focus bar hex value** field reads `#a0492a` on the light half. The
-Change theme list starts Mercurian, T3 Code, with no Iris (Escape closes it).
+(T3 Code), `t3-chat`, `grove`, `ocean`, `ember` in that order, with no `iris` (LIVE);
+screenshot the grid. **Duplicate Mercurian** opens the editor with **Focus bar hex value**,
+which reads `#a0492a` on the light half, and `--pivot` resolves to `#a0492a` (LIVE). Closing
+the editor leaves `themeId` `mercurian`. The Change theme list starts Mercurian, T3 Code,
+with no Iris (Escape closes it).
 
 The composer's primary button is ink (`bg-message-action`) with a rust centre
 dot. Insert a character in the composer first (`[data-testid=composer-editor]`,
@@ -94,7 +102,9 @@ snapshot. On a window 768px or wider, `elementFromPoint` at the centre of
 layer (`[data-app-rail-mark] > span > span:last-child`) has a `backgroundColor`
 of `rgb(160, 73, 42)` and a `maskImage` (in dev Vite inlines the small rust layer as a
 `data:image/svg+xml` URI, so don't match on its file name).
-`document.title` contains "Astrolabe".
+`document.title` contains "Astrolabe" on web. With a thread open, web reads
+`<project> / <thread> - Astrolabe (Dev)`; desktop drops the app name
+(`branding.logic.ts:84`), so prove the title on web, or with no thread open.
 On Settings → Connections and the account dialog,
 `/T3 Connect|T3 Code settings/.test(document.body.innerText)` is `false`.
 

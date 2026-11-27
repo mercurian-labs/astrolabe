@@ -41,6 +41,11 @@ actions at its right end.
   with at least one project; with none the list reads "No projects yet" with
   `button "Add project"`. An empty list reads "No threads match these filters", or "No threads
   yet" with no filter (`Sidebar.tsx`).
+- Projects' title row: heading **Projects**, then **Search files**, **Add a project** (the
+  palette's add flow), the filter and, with one repository shown, the branch picker
+  (`components/repositories/RepositorySidebar.tsx`). Changes' title row holds its heading and the
+  page's **Refresh pull requests** (`components/pullRequest/PullRequestsSidebar.tsx`). No section has a
+  New document button.
 - **Pills** (`[aria-label='Thread filters']`, a plain div, so a CSS locator not a role one; under the title row): **Needs you** is a
   one-tap toggle (`aria-pressed`, a dashed outline while off) shown while it is on or any
   visible thread needs you; one pill names the picked projects (up to three icons, the names,
@@ -57,7 +62,7 @@ actions at its right end.
   clears a query; Escape on an empty field brings the heading and button back.
   The keyboard menu's `/` opens the Search palette instead, not this field (a plain `/` while a
   sidebar row has focus does open it); its `n`
-  presses the row's New thread / New document button (which-key.md).
+  presses the row's New thread / Add a project button (which-key.md).
 - **New thread** creates a draft directly only with one project or on Shift+click;
   with several projects it opens the Search palette (`dialog "Search"`) on its Projects
   list, the "New thread in…" picker. It is disabled with no projects. Each project row in
@@ -71,7 +76,8 @@ actions at its right end.
 - **Icon rail** (`nav[aria-label='Sections']`, at wide widths on web and desktop; absent in a
   narrow window, 700px for one): the sections on top
   (Agents, Projects, Changes when the server supports pull requests, Issues when it
-  supports issues), the current one marked with a bar and `aria-current="page"`. **Issues**
+  supports issues, **Workflows** only while a workflow environment is reachable, opening
+  `/workflows`, `routes/_chat.workflows.tsx`), the current one marked with a bar and `aria-current="page"`. **Issues**
   opens upstream's `/issues` page (`routes/_chat.issues.tsx`) in place of the panes: the rail
   lights Issues (never Agents), the sidebar keeps the Agents list with no row lit, and the
   arrangement comes back unchanged on leaving. There is no Issues link in the sidebar's own
@@ -85,16 +91,17 @@ actions at its right end.
   Usage and Settings open as full-screen modals (`dialog "Usage"`, `dialog "Settings"`) over
   the section you were on, whose sidebar stays as it was underneath; on Usage the toggle is
   hidden, but `mod+b` still toggles the sidebar behind the modal. While one is open, two rail
-  buttons carry `aria-current="page"`: the section underneath and Usage (or Settings). The rail's sections are the keyboard menu's Go to
-  (`useAppSections`). Agents goes to the focused chat's (or focused linked tab's) thread,
+  buttons carry `aria-current="page"`: the section underneath and Usage (or Settings). The rail's sections, Workflows
+  included, are the keyboard menu's Go to (`useAppSections`). Agents goes to the focused chat's (or focused linked tab's) thread,
   else `/`; nothing comes forward (`panes/agentsRoute.ts`, `useNavigateToAgents` in
   `sidebar/mainAppLocation.ts`). In Agents a row is lit only while that thread's chat or one
   of its linked tabs has focus; a focused document, file, empty tab or pull request lights
   none (`focusedChatOf` in `panes/workspace.ts`). Every section shares one set of panes;
   only the sidebar differs ([repositories.md](repositories.md),
   [pull-requests.md](pull-requests.md)). The rail stays when the sidebar collapses, starting below the title
-  bar, which still runs to the window's left edge. The sidebar footer keeps only
-  update notices on desktop. On narrow windows (sheet sidebar) the rail, and with it the
+  bar, which still runs to the window's left edge. At desktop widths the sidebar footer holds
+  only the provider-update pill, the architecture warning and the undo notice; the app's update
+  control is the rail's (`SidebarChrome.tsx`). On narrow windows (sheet sidebar) the rail, and with it the
   monogram, is absent; the header row carries no brand at any width, and below 768px it starts
   with the sheet's own Toggle main sidebar (`md:hidden`). The footer keeps Settings (or the
   account menu), Projects, Changes (when the server supports pull requests) and
@@ -143,8 +150,8 @@ preview_act click  role=button[name='Search threads']       # swaps the heading 
 preview_act type   role=combobox[name='Search threads']  text=<title words>
 preview_act click  role=combobox[name=/^Filter threads/]   # popup stays open across picks
 preview_act click  role=option[name=/^<project>/]           # under All projects: unticks it, keeps the rest
-preview_evaluate   localStorage['astrolabe:threads-filter:v1']
-preview_act click  role=button[name=/^Remove filter: /]     # the pill's ×
+preview_evaluate   localStorage['astrolabe:threads-filter:v1']  # {"projects":[…the rest],"statuses":[]}
+preview_act click  role=button[name=/^Remove filter: /]     # the pill's ×; the key reads null again
 preview_act click  role=button[name='New thread']           # picker with >1 project; Shift+click: /draft/<id>
 ```
 

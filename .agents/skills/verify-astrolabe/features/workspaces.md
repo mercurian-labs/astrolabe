@@ -21,8 +21,12 @@ It needs a cloud: run the stack with `vp run dev` in `infra/cloud` (it builds
 `@mercurian/auth` first; plain `alchemy dev --stage <name>` skips that), with its own
 `CLOUD_POSTGRES_PORT`, and give the worktree a `.env` with
 `T3CODE_AUTH_URL=<the API URL it prints>` and a relay URL. Cloud features turn on only when
-**both** are set; without them the route redirects to `/settings/general` (see above).
-`T3CODE_RELAY_URL=https://relay.invalid` is enough when relay features aren't under test.
+**both** are set and valid; otherwise the route redirects to `/settings/general` (see above).
+The auth URL must be a bare origin, `http` only on a local hostname; the relay URL must be
+`https` (`packages/shared/src/mercurianAccount.ts:72-78`, `relayUrl.ts:1-10`), so an `http`
+local relay URL turns cloud features off. Use `T3CODE_RELAY_URL=https://relay.invalid` unless
+you have an `https` relay. A stack can share an `alchemy-floci` emulator another stack already
+runs; give it its own stage and `CLOUD_POSTGRES_PORT` (LIVE: stage `walk1127`, port 54351).
 Restart the dev server after changing `.env`. Worktree setup links `.env` to the main
 checkout's, so replace the link with a real file before adding lines, or you write into the
 main checkout.
@@ -46,11 +50,14 @@ pages works too (`<API>/device?user_code=<code>`, codes from
 preview_act click  role=dialog[name="Settings"] >> role=button[name="New workspace"]
 preview_act type   role=dialog[name="New workspace"] >> role=textbox[name="Name"]   text=Acme
 preview_act click  role=dialog[name="New workspace"] >> role=button[name="Create workspace"]
-preview_wait_for  text="Who can create teams"
+preview_wait_for  text="Who can create teams"                       # URL is /settings/workspaces?w=acme-<hex>
 preview_act click  #workspace-people >> role=button[name="Invite"]
-preview_act type   role=dialog[name="Invite to Acme"] >> role=textbox[name="Email"]  text=ben@example.test
+preview_act type   role=dialog[name="Invite to Acme"] >> role=textbox[name="Email"]  text=ben@walk.test
 preview_act click  role=dialog[name="Invite to Acme"] >> role=button[name="Send invitation"]
-# after the second person accepts (a pending invitation only offers Revoke):
+preview_wait_for  text="holds a seat until they answer"             # ben offers Revoke; Hand over… still disabled
+# accept as ben: cloud-kit.sh invitations ben@walk.test  (first field is the id), then
+#   cloud-kit.sh write ben@walk.test acceptInvitation '{"invitationId":"<id>"}'
+preview_wait_for  role=button[name="Remove Ben from the workspace"]   # no reload; the pending row also shows the email
 preview_act click  #workspace-people >> role=combobox[name="Role"]   then role=option[name="Admin"]
 preview_act click  #workspace-teams >> role=button[name="Manage"] >> nth=0   # rename, owners, "Delete team…"
 preview_act click  #workspace-leave >> role=button[name="Hand over…"]        # disabled under two people
@@ -60,7 +67,9 @@ preview_act click  #workspace-leave >> role=button[name="Delete…"]
 Settings is a modal (`role=dialog[name="Settings"]`), so nothing here is under `main`, and
 the workspace dialogs open beside it: scope to their own names. They are named by
 `aria-labelledby`, so `role=dialog[name="New workspace"]` finds one and CSS `[aria-label=…]`
-finds nothing. **New workspace** shows only
+finds nothing. A hidden `role=dialog` "Pull request composer" can sit in the DOM, so a bare CSS
+`[role=dialog]` query can hit it: scope by name (`[aria-label="Settings"]`). Playwright
+`role=dialog[name=…]` locators are fine. **New workspace** shows only
 for an approved account that owns no workspace yet; the cloud enforces the same rule. Rerun
 with a fresh `cloud-kit.sh person` or delete the workspace first. A new workspace starts with
 a team of the same name, invite policy "Owner and admins" and team policy "Everyone"
@@ -78,7 +87,10 @@ Postgres (`auth.organization`, `auth.member`, `auth.invitation`, `auth.team`,
 ## End state that proves it
 
 - A change made by the second person (accepting, creating a team) appears
-  without a reload.
+  without a reload. LIVE: a pending invitation reads "Invited as member · holds a seat until
+  they answer" with **Revoke**, and `#workspace-leave`'s **Hand over…** is disabled; once ben
+  accepts, People shows "Ben · ben@walk.test · Member" with one Role combobox and
+  **Hand over…** is enabled.
 - Renames, role and policy changes show at once and match the database.
 - Leaving a workspace, deleting one and deleting a team ask for the name to be typed; the
   button stays disabled until it matches.
@@ -108,9 +120,11 @@ Postgres (`auth.organization`, `auth.member`, `auth.invitation`, `auth.team`,
 
 ## Mobile
 
-The same screens live under Settings → Workspaces in the app (row shown once
-signed in). Walk them with `test-t3-mobile`: sign in from Settings → Account (the phone has
-no account menu) or the Workspaces screen's own row, read the
+The same screens live under Settings → Workspaces in the app. The Settings row shows only
+when signed in (`apps/mobile/src/features/settings/SettingsRouteScreen.tsx:142`); the
+screen's own sign-in prompt shows only if you sign out while on it
+(`WorkspacesRouteScreen.tsx:94-101`). Walk them with `test-t3-mobile`: sign in from
+Settings → Account (the phone has no account menu), read the
 pending code from `auth.device_code` (`client_id='astrolabe-mobile'`) and
 approve it with `cloud-kit.sh approve-latest astrolabe-mobile <email>`. Each
 view is its own stack entry: on iOS the native back button is labelled with the
