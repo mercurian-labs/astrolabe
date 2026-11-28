@@ -98,7 +98,7 @@ export type RightPanelSurface =
   | { id: "canvas"; kind: "canvas" }
   | { id: "lineage"; kind: "lineage" }
   /**
-   * An issue opened in the issues list's shared panel, or beside a thread. Like `pull-request`,
+   * An issue opened beside a thread. Like `pull-request`,
    * the reference lives in the id so several issues can stay open as peer tabs.
    */
   | {
@@ -145,12 +145,6 @@ const RIGHT_PANEL_STORAGE_VERSION = 18;
 export const PULL_REQUESTS_PANEL_REF = scopeThreadRef(
   EnvironmentId.make("pull-requests-panel"),
   ThreadId.make("pull-requests-panel"),
-);
-
-/** The issues page's shared panel, with the same fixed sentinel ref as the pull-request list. */
-export const ISSUES_PANEL_REF = scopeThreadRef(
-  EnvironmentId.make("issues-panel"),
-  ThreadId.make("issues-panel"),
 );
 
 /**

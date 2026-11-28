@@ -28,7 +28,6 @@ import {
   reopenClosedView,
 } from "../reopenClosedView";
 import {
-  ISSUES_PANEL_REF,
   PULL_REQUESTS_PANEL_REF,
   selectActiveRightPanel,
   selectSelectedRightPanelSurface,
@@ -51,7 +50,6 @@ import {
   resolveThreadRouteTarget,
 } from "../threadRoutes";
 import { toastManager } from "./ui/toast";
-import { readIssueListPreferences } from "./issue/issueListPreferences";
 
 declare module "@tanstack/react-router" {
   interface HistoryState {
@@ -94,8 +92,6 @@ function terminalStateOf(ref: ScopedThreadRef) {
 
 const isGlobalPullRequests = (ref: ScopedThreadRef) =>
   scopedThreadKey(ref) === scopedThreadKey(PULL_REQUESTS_PANEL_REF);
-const isGlobalIssues = (ref: ScopedThreadRef) =>
-  scopedThreadKey(ref) === scopedThreadKey(ISSUES_PANEL_REF);
 
 export function ReopenClosedViewShortcut() {
   const gt = useGT();
@@ -134,7 +130,7 @@ export function ReopenClosedViewShortcut() {
     const { drop, restore } = planNextReopen(useClosedViewStore.getState().entries, (entry) => {
       const ref = entry.threadRef;
       const panel = selectThreadRightPanelState(panelsByThread, ref);
-      if (isGlobalPullRequests(ref) || isGlobalIssues(ref)) {
+      if (isGlobalPullRequests(ref)) {
         return {
           environmentKnown: true,
           catalogReady: true,
@@ -170,8 +166,7 @@ export function ReopenClosedViewShortcut() {
 
     const ref = restore.threadRef;
     const globalPullRequests = isGlobalPullRequests(ref);
-    const globalIssues = isGlobalIssues(ref);
-    const thread = globalPullRequests || globalIssues ? null : readThreadShell(ref);
+    const thread = globalPullRequests ? null : readThreadShell(ref);
     const owner = thread ?? drafts.getDraftThreadByRef(ref);
     const project = owner ? readProject(scopeProjectRef(ref.environmentId, owner.projectId)) : null;
     if (!(await reopenClosedView(restore, { openPreview, workspaceAvailable: project !== null }))) {
@@ -191,8 +186,6 @@ export function ReopenClosedViewShortcut() {
         to: "/pull-requests",
         search: (previous) => pullRequestsSearchForRestore(previous, selected),
       });
-    } else if (globalIssues) {
-      destination = linkOptions({ to: "/issues", search: readIssueListPreferences() });
     } else {
       const draftId = thread === null ? drafts.getDraftIdByRef(ref) : null;
       destination =

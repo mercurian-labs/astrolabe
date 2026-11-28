@@ -2,6 +2,7 @@ import { Outlet, createFileRoute, redirect } from "@tanstack/react-router";
 
 import {
   isAppModalPage,
+  isIssuesPath,
   isPullRequestsPath,
   isRepositoriesPath,
   useSectionPathname,
@@ -18,7 +19,7 @@ import { useShownThreadRouteTarget } from "../hooks/useShownThreadRouteTarget";
 function ChatRouteLayout() {
   // Render both routes here so draft promotion keeps the same ChatView mounted.
   const { shownTarget, modalOpen } = useShownThreadRouteTarget();
-  // Astrolabe: Agents, Projects and Changes share one set of panes; their routes only say which
+  // Astrolabe: Agents, Projects, Changes and Issues share one set of panes; their routes only say which
   // sidebar shows and, in Agents, which thread it selects. The start page is Agents with no
   // thread selected; only with nothing in the panes does it start a draft, as T3 Code's does.
   const sectionPathname = useSectionPathname();
@@ -29,7 +30,8 @@ function ChatRouteLayout() {
     shownTarget !== null ||
     (onStartPage && !starting) ||
     isRepositoriesPath(sectionPathname) ||
-    isPullRequestsPath(sectionPathname);
+    isPullRequestsPath(sectionPathname) ||
+    isIssuesPath(sectionPathname);
   return (
     <>
       {shownTarget?.kind === "server" && !modalOpen ? (

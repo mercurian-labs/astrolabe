@@ -4,11 +4,10 @@ import type {
   ScopedThreadRef,
 } from "@t3tools/contracts";
 import { resolveIssueLinkTarget } from "@t3tools/client-runtime/issue-links";
-import { useNavigate } from "@tanstack/react-router";
 import type { MouseEvent } from "react";
 
-import { readIssueListPreferences } from "../components/issue/issueListPreferences";
-import { ISSUES_PANEL_REF, PULL_REQUESTS_PANEL_REF, useRightPanelStore } from "../rightPanelStore";
+import { showIssue } from "../components/issue/issueWorkspace";
+import { PULL_REQUESTS_PANEL_REF, useRightPanelStore } from "../rightPanelStore";
 import { useProjects, useServerConfigs } from "../state/entities";
 
 /**
@@ -31,7 +30,6 @@ export function useOpenIssueLink(
 ) => boolean {
   const allProjects = useProjects();
   const serverConfigs = useServerConfigs();
-  const navigate = useNavigate();
   return (event, targetUrl, targetEnvironmentId, trackers) => {
     if (event.metaKey || event.ctrlKey) return false;
     const resolvedPanelRef = panelRef ?? threadRef;
@@ -55,29 +53,10 @@ export function useOpenIssueLink(
       key: target.ref.key,
       url: targetUrl,
     };
-    // A list page's panel is the Issues page's: the pull request list's own panel shows pull
-    // requests only. Opening the tab here, not only through the URL, also brings back one that
-    // is already open.
-    if (resolvedPanelRef === PULL_REQUESTS_PANEL_REF || resolvedPanelRef === ISSUES_PANEL_REF) {
-      useRightPanelStore.getState().openIssue(ISSUES_PANEL_REF, { ...surface, environmentId });
-      const selection = {
-        selectedEnvironmentId: environmentId,
-        selectedProjectId: target.ref.projectId,
-        ...(target.ref.host === undefined ? {} : { selectedHost: target.ref.host }),
-        tracker: target.ref.tracker,
-        scope: target.ref.scope,
-        key: target.ref.key,
-      };
-      // Already on the Issues page, the list keeps the filters it is showing.
-      if (window.location.pathname === "/issues") {
-        void navigate({
-          from: "/issues",
-          to: "/issues",
-          search: (previous) => ({ ...previous, ...selection }),
-        });
-      } else {
-        void navigate({ to: "/issues", search: { ...readIssueListPreferences(), ...selection } });
-      }
+    // Astrolabe: off a thread (a pull request's or issue's tab) the issue shows in the shared
+    // panes' tab in front, as a pull request link does there.
+    if (resolvedPanelRef === PULL_REQUESTS_PANEL_REF) {
+      showIssue({ ...surface, environmentId }, "replace");
       return true;
     }
     useRightPanelStore.getState().openIssue(resolvedPanelRef, {

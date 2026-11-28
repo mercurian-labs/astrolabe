@@ -28,10 +28,6 @@ export const PullRequestMarkdownContext = createContext<{
   repository: string | null;
 } | null>(null);
 
-/** The list page panel that links in thread-less markdown open in; the Issues page provides its own. */
-export const PullRequestMarkdownPanelContext =
-  createContext<ScopedThreadRef>(PULL_REQUESTS_PANEL_REF);
-
 function PullRequestHostVideo({
   environmentId,
   cwd,
@@ -85,7 +81,6 @@ function PullRequestBodySegmentView({
 }) {
   const gt = useGT();
   const context = useContext(PullRequestMarkdownContext);
-  const listPanelRef = useContext(PullRequestMarkdownPanelContext);
   const repository = context?.repository ?? undefined;
   if (segment.kind === "table") {
     return (
@@ -127,7 +122,8 @@ function PullRequestBodySegmentView({
         text={segment.kind === "markdown" ? segment.text : `![](<${segment.url}>)`}
         cwd={cwd}
         threadRef={threadRef}
-        pullRequestPanelRef={threadRef ?? listPanelRef}
+        // Thread-less markdown (a pull request's or issue's tab) opens its links in the shared panes.
+        pullRequestPanelRef={threadRef ?? PULL_REQUESTS_PANEL_REF}
         environmentId={environmentId}
         {...(context ? { extensions: context.extensions } : {})}
         lineBreaks={lineBreaks}
