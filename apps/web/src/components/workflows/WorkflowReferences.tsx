@@ -11,7 +11,7 @@ import { CircleCheckIcon, CircleDotIcon, ExternalLinkIcon, LinkIcon } from "luci
 import { isElectron } from "~/env";
 import { isTerminalFocused } from "../../lib/terminalFocus";
 import { cn } from "../../lib/utils";
-import { ISSUES_PANEL_REF, useRightPanelStore } from "../../rightPanelStore";
+import { showIssue } from "../issue/issueWorkspace";
 import { IssueDetailPanel } from "../issue/IssueDetailPanel";
 import { readIssueListPreferences } from "../issue/issueListPreferences";
 import { PullRequestDetailPanel } from "../pullRequest/PullRequestDetailPanel";
@@ -95,28 +95,9 @@ export function useOpenReferencePage(
     const issue = workflowReferenceIssue(reference);
     if (issue !== null) {
       return () => {
-        // The Issues page shows the issue its panel has open; the address keeps the list's place.
-        useRightPanelStore.getState().openIssue(ISSUES_PANEL_REF, {
-          environmentId,
-          projectId: issue.projectId,
-          tracker: issue.tracker,
-          ...(issue.host === undefined ? {} : { host: issue.host }),
-          scope: issue.scope,
-          key: issue.key,
-          ...(reference.url === null ? {} : { url: reference.url }),
-        });
-        void navigate({
-          to: "/issues",
-          search: {
-            ...readIssueListPreferences(),
-            selectedEnvironmentId: environmentId,
-            selectedProjectId: issue.projectId,
-            ...(issue.host === undefined ? {} : { selectedHost: issue.host }),
-            tracker: issue.tracker,
-            scope: issue.scope,
-            key: issue.key,
-          },
-        });
+        // Astrolabe: the issue opens as a tab of the shared panes, beside the Issues list.
+        showIssue({ ...issue, environmentId }, "new-tab");
+        void navigate({ to: "/issues", search: readIssueListPreferences() });
       };
     }
     const pullRequest = workflowReferencePullRequest(reference);

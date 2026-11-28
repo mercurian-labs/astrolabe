@@ -2,6 +2,7 @@ import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { EnvironmentId, ThreadId, type ScopedThreadRef } from "@t3tools/contracts";
 
 import { parseChangeGroupTabKey } from "~/components/changeRequests/groups/changeGroupTabs";
+import { issueTargetOfKey } from "~/components/issue/issueTabs";
 import { parseRepositoryTabKey } from "~/components/repositories/repositoryTabs";
 import { parseWikiTabKey } from "~/components/wiki/wikiTabs";
 
@@ -74,12 +75,13 @@ export function parseChatTerminalKey(key: string): string | null {
   return parseChatTabKey(chatKey) === null ? null : chatKey;
 }
 
-/** Whether a key names a chat, wiki or repository tab, which any section's panes can hold. */
+/** Whether a key names a chat, wiki, repository, change group or issue tab, which any section's panes can hold. */
 export function isSectionTabKey(key: string): boolean {
   return (
     parseChatTabKey(key) !== null ||
     parseWikiTabKey(key) !== null ||
     parseRepositoryTabKey(key) !== null ||
-    parseChangeGroupTabKey(key) !== null
+    parseChangeGroupTabKey(key) !== null ||
+    issueTargetOfKey(key) !== null
   );
 }

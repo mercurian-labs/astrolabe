@@ -2,6 +2,7 @@ import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { EnvironmentId, ProjectId, ScopedThreadRef } from "@t3tools/contracts";
 import { useSyncExternalStore } from "react";
 
+import { issueTabKey } from "~/components/issue/issueTabs";
 import { pullRequestTargetOfKey } from "~/components/pullRequest/pullRequestTabs";
 import {
   parseRepositoryTabKey,
@@ -320,7 +321,7 @@ export interface ThreadCheckout {
 
 /**
  * The tab a thread's surface becomes on its own: a file of its checkout, the checkout's
- * uncommitted changes for its diff, or its pull request named in full. Null for a surface that
+ * uncommitted changes for its diff, or its pull request or issue named in full. Null for a surface that
  * means nothing without its thread (a terminal, a browser, the Graph).
  */
 export function standaloneKeyOf(surface: RightPanelSurface, checkout: ThreadCheckout) {
@@ -343,6 +344,11 @@ export function standaloneKeyOf(surface: RightPanelSurface, checkout: ThreadChec
               number: surface.number,
             }),
           );
+    case "issue":
+      return issueTabKey({
+        ...surface,
+        environmentId: surface.environmentId ?? checkout.environmentId,
+      });
     default:
       return null;
   }

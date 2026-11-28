@@ -34,6 +34,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
 import { AccountMenu } from "./AccountMenu";
 import {
+  isIssuesPath,
   isPullRequestsPath,
   isSidebarUtilityPage,
   isRepositoriesPath,
@@ -160,6 +161,8 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   const isOnUtilityPage = isSidebarUtilityPage(sectionPathname);
   const isOnRepositories = isRepositoriesPath(sectionPathname);
   const isOnPullRequests = isPullRequestsPath(sectionPathname);
+  // Issues has no button of its own here, so Changes' gives way to Agents there too.
+  const isOnIssues = isIssuesPath(sectionPathname);
   const pullRequestsSupported = usePullRequestsSupported();
   const closeMobileSidebar = () => {
     if (isMobile) {
@@ -248,7 +251,7 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
               onClick={handleRepositoriesClick}
             />
           )}
-          {isOnPullRequests ? (
+          {isOnPullRequests || isOnIssues ? (
             <SidebarUtilityItem
               icon={<MessagesSquare />}
               label={gt("Agents")}
