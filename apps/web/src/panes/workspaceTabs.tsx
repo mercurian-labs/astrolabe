@@ -79,12 +79,31 @@ import {
  */
 export function createWorkspaceHost(): WorkspaceHost {
   const containers = new Map<string, HTMLDivElement>();
+  // A node put under another parent comes back scrolled to the top, with no scroll event, and a
+  // hidden one has no offset left to read: each scroller's last offset is kept as it scrolls, and
+  // put back once its moved tab shows. Chromium fires a scroll event at 0 once a tab is hidden, so
+  // a hidden tab's events are ignored.
+  const offsets = new WeakMap<Element, { readonly top: number; readonly left: number }>();
+  const moved = new WeakSet<HTMLDivElement>();
+  const rememberOffset = ({ target, currentTarget }: Event) => {
+    if (currentTarget instanceof HTMLElement && currentTarget.style.display === "none") return;
+    if (target instanceof Element) {
+      offsets.set(target, { top: target.scrollTop, left: target.scrollLeft });
+    }
+  };
+  const restoreOffsets = (container: HTMLDivElement) => {
+    for (const element of container.querySelectorAll("*")) {
+      const offset = offsets.get(element);
+      if (offset) element.scrollTo({ ...offset, behavior: "instant" });
+    }
+  };
   const containerFor = (key: string) => {
     let container = containers.get(key);
     if (!container) {
       container = document.createElement("div");
       container.className = "absolute inset-0 flex min-h-0 min-w-0 flex-col bg-background";
       container.dataset.workspaceTab = key;
+      container.addEventListener("scroll", rememberOffset, { capture: true, passive: true });
       containers.set(key, container);
     }
     return container;
@@ -114,11 +133,15 @@ export function createWorkspaceHost(): WorkspaceHost {
         if (isEmptyTab(key)) continue;
         const container = containerFor(key);
         // Moving a node that is already in place would still detach and reattach it.
-        const moved = container.parentNode !== slot;
-        if (moved) slot.appendChild(container);
+        const moves = container.parentNode !== slot;
+        if (moves) {
+          slot.appendChild(container);
+          moved.add(container);
+        }
         container.style.display = key === leaf.active ? "" : "none";
+        if (key === leaf.active && moved.delete(container)) restoreOffsets(container);
         // The move took focus out of the terminal, and a drag leaves it on the tab.
-        if (moved && key === leaf.active && leaf.id === workspace.arrangement().focused) {
+        if (moves && key === leaf.active && leaf.id === workspace.arrangement().focused) {
           focusMovedTerminal(key);
         }
       }
