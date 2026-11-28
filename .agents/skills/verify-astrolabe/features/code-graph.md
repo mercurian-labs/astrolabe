@@ -10,7 +10,9 @@ with `astrolabe_code_graph_show`. User guide: `docs/user/code-graph.md`.
 
 ## Sub-features
 
-- **Thread Graph tab**: the chat's **New linked tab** → `Open a surface` → **Graph** (`G`); the
+- **Thread Graph tab**: the chat's **New linked tab** (the header button with no linked tabs yet,
+  else the linked tabs filter's footer) → `Open a surface` → **Graph** (`G`; a disabled row on a
+  draft thread); the
   pane's `+` New tab does not list it, and **Toggle thread details panel** opens upstream's
   thread details card, not a launcher. Header: no Back/Forward
   (a thread's surface never navigates in place), the view menu
@@ -18,7 +20,8 @@ with `astrolabe_code_graph_show`. User guide: `docs/user/code-graph.md`.
   story by title), **Back to the thread's changes** (after a click re-rooted it), **Reset the graph**
   (after an expansion), **Fit the graph**, **Graph settings**. Roots are the files in the thread's
   checkpoint summaries, in the thread's worktree (else the project folder); none reads "This
-  thread hasn't changed any files yet."
+  thread hasn't changed any files yet.", and a thread with no project reads "The graph needs the
+  thread's project." Changed files missing from the checkout show a notice instead of a graph.
 - **Levels**: Graph settings › Filters › **Level** (`role=combobox[name='Level']`: `Folders`,
   `Modules`, `Files`, `Definitions`, `Members`) and **Depth** 0–3. Kept per device: `astrolabe:thread-code-graph:v1` (thread tab),
   `astrolabe:repository-local-graph:v1` (Projects).
@@ -29,7 +32,8 @@ with `astrolabe_code_graph_show`. User guide: `docs/user/code-graph.md`.
   Projects: the file pane) and re-roots; click a folder or module shows its contents;
   double-click a dot toggles its neighbours (the single click waits ~280 ms for it);
   right-click opens the app context menu (**Expand/Collapse neighbours**, **Show contents**,
-  **Centre here**, **Open**; on a cluster's disc **Hide contents**, **Centre here**, **Open**);
+  **Centre here**, **Open**; on a cluster's disc **Hide contents**, **Centre here**, and **Open**
+  only on a file or definition disc);
   click a disc off its dots hides its contents. No keyboard path: the canvas takes no focus.
 - **Clusters**: an opened folder, module, file or definition draws as a soft disc around its
   parts, its name above, the accent on its rim when it holds a root. At Definitions/Members
@@ -42,9 +46,13 @@ with `astrolabe_code_graph_show`. User guide: `docs/user/code-graph.md`.
 - **Work log row** (web and phone; `client-runtime/src/codeGraphStory.ts`, read by
   `work-log/presentation.ts` and `t3ToolSummary.ts`): a graph call reads `Showed “<title>” · N
   steps` (`Showed a picture of the code` with no title; no count for one step; `Showing …` while
-  it runs). Grouped with other calls it is its own clause (`Showed 2 code graphs` for several).
+  it runs; `Failed to show …` when the call failed). Grouped with other calls it is its own clause
+  (`Showed 2 code graphs` for several; `Tried to show …` when none finished).
   On the phone (`thread-work-log.tsx`) the row expands to the step captions, numbered when there
   are several, then "Open this thread on a computer to step through it."; no graph is drawn there.
+- **Code index settings** (`components/settings/CodeIndexSettings.tsx`): per project under
+  Settings → Projects → a project → **Code index** (Index this project, Skipped paths), and its
+  storage under Maintenance (**Code index storage**).
 
 ## Walk
 
@@ -68,9 +76,17 @@ with `astrolabe_code_graph_show`. User guide: `docs/user/code-graph.md`.
 7. Phone (test-t3-mobile): open the thread from step 5; the work log row reads `Showed “<title>” ·
    N steps`; tap it: the numbered captions and the "Open this thread on a computer" line.
 
+## Gotchas
+
+- The walk needs a thread whose changed files exist in its checkout. Otherwise the Graph tab
+  shows a notice, which today reads "These files isn't in this checkout." (a known copy bug,
+  `GraphPanel.tsx` `rootsLabel` into `CodeGraphView.tsx`'s not-found notice).
+- The file header's **Open local graph** hides when the file pane is narrower than 26rem
+  (`repositories/RepositoryFileView.tsx`); widen the pane or use the right-click menu.
+
 ## Owns
 
 `apps/web/src/components/codeGraph/`, `components/graph/` (GraphPanel, threadGraph,
-threadGraphStore, useCodeGraphViewOpener), `state/codeGraphViews.ts`,
+threadGraphStore, useCodeGraphViewOpener), `components/settings/CodeIndexSettings.tsx`, `state/codeGraphViews.ts`,
 `client-runtime/src/codeGraphViews.ts` and `codeGraphStory.ts`, `packages/graph`, server `codeIndex/queries.ts`
 (`localGraph`, `checkNodes`) and `codeIndex/levels.ts`, `mcp/toolkits/code/` (`astrolabe_code_graph_show`).

@@ -20,8 +20,9 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   list with a `Search filters` field: **Status** (**Has changes**, with its count of worktrees
   with uncommitted files once it is on and has counted them all; meanwhile
   `role=status` "Counting changes… N of M" sits under the pills, and an empty list reads
-  "Counting changes…"), **Projects** (**All
-  projects**, then each, every one ticked while none is picked). Each project row ends in
+  "Counting changes…"), **Show** (**Docs** / **All files**, project-docs.md), **Projects** (**All
+  projects**, then each, every one ticked while none is picked; picking one reads
+  `Filter projects (filtered)` and adds a `button "Remove filter: <name>"` pill). Each project row ends in
   `button "Show <project>'s worktrees"` (`"Hide <project>'s worktrees"` once open;
   `aria-expanded`; clicking it never ticks the row; gone while the search has text),
   folded by default; unfolded, its worktrees follow it indented, ticked unless hidden. A search
@@ -38,8 +39,9 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   name; its role name is the bare name, without the favicon's initials), open by default only
   for the focused tab's repository. An archived project is marked **Archived**, and its main
   checkout's actions menu adds `menuitem "Unarchive project"`. A folder that is not a git
-  repository stays on "Reading worktrees…" (known, older than the v0.1.6 merge), so unarchive
-  those from Settings › Projects. Every shown repository's worktree
+  repository lists as one checkout with a folder icon, no **main checkout** mark and its files
+  shown (no changes to swap to); an archived one gets the same **Unarchive project**
+  (`RepositoryWorktrees.tsx`, `RepositorySidebar.tsx`). Every shown repository's worktree
   list is read (`worktrees.list`, no `git status`: `changedFiles` is null in a list), but a
   folded one mounts no rows. With one repository, its worktrees bare: one collapsible section
   per listed git worktree (`ProjectWorktreeService`), headed by its branch (or short
@@ -87,14 +89,21 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   `[data-tab-end]`, so on a linked tab before its chain mark), none for the main
   checkout; hovering its title gives the path (or the changes' title) over
   `<branch> · worktree N` / `main checkout` / `not in a worktree`.
+- **Tracked folders** (`ProjectRootSections.tsx`, mounted under the project's worktrees in
+  `RepositorySidebar.tsx`; added in Settings → Projects → <project> → **Repositories**,
+  `components/settings/ProjectRepositoriesSettings.tsx`): each folder outside the project
+  folder gets its own section (project-docs.md). Its file tabs are keyed
+  `wiki-file:<env>:<projectRootId>:…`, not `repo-file:` (`repositoryTabs.ts`), so
+  `[data-workspace-tab^="repo-file:"]` misses them. Its worktree headers have no **Show its
+  files** toggle and no compare item.
 - **Tree**: a worktree header's `button "Show its files"` / `"Show its changes"` swaps its
   rows for T3 Code's file browser (`FileBrowserPanel`, @pierre/trees) on that worktree, per
   worktree (`astrolabe:repository-worktree-files:v2`, a map of picks); until picked the main
   checkout shows its files and the others their changes. The focused tab's worktree opens on
   its own. Each panel is
   `[data-file-browser-panel="<env>:<worktree path>"]`, keyed by that pair. In the sidebar
-  its toolbar (refresh, search, expand all) is `hidden`; the header's **Search files** is
-  the search. Each worktree header subscribes to `worktrees.subscribeChanges`; while anyone does,
+  its toolbar (`Refresh workspace files`, search, `Expand all folders`) is `hidden` but stays in
+  the DOM; the header's **Search files** is the search. Each worktree header subscribes to `worktrees.subscribeChanges`; while anyone does,
   the server watches that worktree (@parcel/watcher, skipping `.git`, `node_modules` and
   git-ignored folders, plus the git dir's `HEAD`/`index`) and every ~250 ms of changes it pushes
   the changed folders, refreshes git status (`subscribeVcsStatus`) and the search index. The tree
@@ -108,11 +117,12 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   first repository's files), so Walk 4 and 5 hit-test a row and compare row paths.
 - **Search**: the header's search finds files by name, while one repository shows, in its
   focused-tab worktree, else its main checkout (`projects.searchEntries`); with several it asks
-  to pick one in the filter.
+  to pick one in the filter. With Docs on it keeps only documents.
 - **Main area**: the shared panes (panes.md; localStorage `astrolabe:workspace:v1`, history
   `astrolabe:workspace-tab-history:v1`); a reload keeps both. Each open tab renders into
   `[data-workspace-tab="<tab key>"]`. An empty tab shows the New tab launcher (**Open a tab**, panes.md).
-- **File tab** (`[data-workspace-tab^="repo-file:"]`): a header row (Back/Forward, then the
+- **File tab** (`[data-workspace-tab^="repo-file:"]`; a tracked folder's are `wiki-file:`): a
+  header row (Back/Forward, then the
   path as a breadcrumb, `navigation "File path breadcrumb"`: its folder muted, keeping its last
   segment whole and cutting the rest from its start, and wrapping away (with its `/`) before
   the file's name truncates, then the file's name, both inside `navigation "Breadcrumbs"`, whose
@@ -129,6 +139,9 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   file stays open with **Save** / **Discard**, and edits made offline that meet a changed file
   offer **Keep mine** / **Use the file's**. Cmd+F finds (with replace), Cmd+Shift+O is **Go to
   symbol**, Cmd+S saves (formatting first with **Format on save**).
+- **Other viewers** (`RepositoryFileViewers.tsx`, `RepositoryFileHeader.tsx`, `fileView.ts`):
+  images, video, audio, PDFs and other documents get their own viewers; a text file with a
+  rendered form can show it; a very large or binary file is not opened as text.
 - **Change markers** (`packages/editor/src/git/gitChanges.ts`): `.atlas-git-gutter` beside the
   line numbers holds `.atlas-git-marker.atlas-git-{added,modified,deleted}` against HEAD, or
   against the turn with **This turn**. A click (or Cmd+') shows the old lines with
@@ -153,7 +166,10 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   Cmd+. code actions (`.atlas-lightbulb`, `[aria-label="Code actions"]`); Cmd+Shift+I format.
   Inlay hints (`.atlas-inlay-hint`) and symbol marks (`.atlas-symbol-read`, `-write`) are on by
   default; inline diagnostics (`.atlas-inline-diagnostic`), semantic colours and code lens
-  (`.atlas-code-lens`) are off, in Settings → Appearance. Typing in a JSX tag writes its pair.
+  (`.atlas-code-lens`) are off, in Settings → Appearance (`LanguageFeatureSettings.tsx`: Inlay
+  hints, Type hints, Parameter hints, Inline diagnostics, Semantic colours, Code lens, Run
+  markers; with `FormatOnSaveSetting.tsx`, both through `TypographySettings.tsx`). Typing in a
+  JSX tag writes its pair.
   Back and Forward (`ctrl+-`, `ctrl+shift+-` in a code file) cross go-tos and results tabs.
   `mod+alt+o` opens the palette's `project-symbol-picker`; a server must be running, else the
   code index answers.
@@ -241,15 +257,18 @@ thread's Files and Diffs. User guide: `docs/user/projects.md`.
   commands are the keyboard menu's `e` group (which-key.md) and Settings → Keybindings →
   **Editors**.
 
-- **Mobile** (iPhone; iPad keeps two roots): a fourth tab `button "Projects"`
-  (`features/repositories/RepositoriesScreen.tsx`). `Filter by project` (All projects,
+- **Mobile** (iPhone; iPad keeps two roots): the third tab `button "Projects"`, after Agents
+  and Changes (`features/layout/workspace/navigation-tab-order.ts`,
+  `features/repositories/RepositoriesScreen.tsx`). `Filter by project` (All projects,
   each project; a name on two machines adds the machine). The pick lives in memory only, so
   an app restart returns to All projects. Every project: its eight latest files under its
   name; a project with no recent files is left out. One: **Browse all files** (route
-  `RepositoryFiles`, T3 Code's tree with no thread), **Changes** (selects that tab with its
-  project kind),
-  **Uncommitted · N**, **Recently changed**. Rows are buttons named by path; a file opens
-  read only on route `RepositoryFile`. Search (the tab's `Search files`) finds files by
+  `RepositoryFiles`, T3 Code's tree with no thread), a `Browse <root>` row per tracked folder
+  (`<root> · missing`, disabled, when it's gone), **Changes** (selects that tab with its
+  project kind; hidden when the folder isn't a repository),
+  **Uncommitted · N**, **Recently changed**. Rows are buttons named by path; a note, canvas or
+  base opens on `ProjectDocument` (project-docs.md), any other file read only on route
+  `RepositoryFile`. Search (the tab's `Search files`) finds files by
   name in a picked project (`projects.searchEntries`); with every project it narrows
   each one's eight latest files by path, and a project with no match drops out. Only
   projects on connected environments are listed. Both routes sit in the root stack: a
@@ -262,7 +281,8 @@ commit, a folder holding a `.ts` file and one uncommitted change, added with **A
 project**. With the **server** project that makes two projects.
 
 1. Click `button "Projects"`; with no project picked the list shows one header per
-   project.
+   project. A plain (non-git) folder added as a project lists as one checkout with a folder
+   icon and its files, never stuck on "Reading worktrees…".
 2. Pick only the scratch project in **Filter projects** (`role=combobox[name=/^Filter projects/]`;
    untick the others). The main
    checkout opens on its file tree (`button "Show its changes"`, `aria-pressed=true`); click
@@ -271,7 +291,8 @@ project**. With the **server** project that makes two projects.
    go back to the tree. Its `button "<main branch> worktree actions"` menu holds only
    `menuitem "Changes against its base"`: it opens `…:branch-range` in place; pick another
    branch from the title's combobox and the tab becomes "Against <branch>"; Back returns.
-3. Type in the file; within a second the file on disk changes (`git status` shows it).
+3. Type in the file's `.cm-content`; the header reads its breadcrumb (`src / a.ts`) and
+   **Saved**, and within a second the file on disk changes (`git status` shows it).
 4. With the main checkout's tree showing, wait for `[data-file-browser-panel] >> role=treeitem`, then
    prove the rows paint with `preview_evaluate`:
 
@@ -339,10 +360,12 @@ project**. With the **server** project that makes two projects.
     back. Turn the server off in Settings: the header reads **Off in settings**; **Turn on** there
     undoes it.
 
-## Source
+## Owns
 
 `apps/web/src/components/repositories/` (incl. `RepositoryGraphView.tsx`,
-`localGraph.ts`, `multibuffer/`), `components/search/ProjectContentSearchDialog.tsx`,
+`localGraph.ts`, `multibuffer/`, the file viewers; project-docs.md owns the document parts),
+`components/settings/ProjectRepositoriesSettings.tsx`, `LanguageFeatureSettings.tsx` and
+`FormatOnSaveSetting.tsx`, `components/search/ProjectContentSearchDialog.tsx`,
 `components/outline/`, `packages/editor/src/{lsp,git,multibuffer,outline}/`,
 `apps/server/src/documents/`, `apps/server/src/languageServers/`, the language tools in
 `mcp/toolkits/code/`, `components/codeGraph/`, `routes/_chat.repositories.tsx`,

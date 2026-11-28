@@ -55,7 +55,8 @@ A clean home is not empty: the server adds the directory it runs in
 in it. Chat tabs need at least two threads. `start-dev.sh` runs on `$run/home`,
 so seed that home with the server stopped:
 `vp run migrate-dev-db --base-dir "$run/home"` (or seed the worktree's `.t3`, as
-AGENTS.md describes, and use the `--home-dir "$PWD/.t3"` path above). The script reads
+AGENTS.md describes, and use the `--home-dir "$PWD/.t3"` path above). It fails with
+`ERR_MODULE_NOT_FOUND` when dependencies are stale after a merge; run `vp i` first. The script reads
 `~/.t3/userdata` by default; on a machine that runs Astrolabe itself, its real data is in
 `~/.astrolabe/userdata`, so add `--source ~/.astrolabe/userdata/statev2.sqlite`. The seed
 brings the source server's scratch folder (`~/.astrolabe/scratch`) in as an ordinary project
@@ -100,8 +101,10 @@ Alchemy's local AWS emulator; see its README). A second stage runs as
 `ALCHEMY_STAGE=<stage> CLOUD_POSTGRES_PORT=<port> vp run dev`; `vp run dev -- --stage <stage>`
 passes the `--` through and fails. A fresh worktree has no `.env` unless the main checkout has
 one to link (`scripts/setup-worktree.ts`): write the gitignored file for the walk with `T3CODE_AUTH_URL=<the API URL it prints>` and
-`T3CODE_RELAY_URL=https://relay.invalid` (or a real local relay), and delete it after. Restart
-the dev server after changing `.env`.
+`T3CODE_RELAY_URL=https://relay.invalid` (or a real `https` relay; an `http` one turns cloud features off), and delete it after. Restart
+the dev server after changing `.env`. `vp run dev` in `infra/cloud` may print
+`UNRESOLVED_IMPORT mysql2/promise` warnings; they are harmless. The `alchemy-floci` emulator
+may already be running for another stack: share it and don't stop it.
 
 [`scripts/cloud-kit.sh`](scripts/cloud-kit.sh) replaces hand-written SQL and
 curl during walks. Set `CLOUD_API_URL` (and `CLOUD_POSTGRES_PORT` when the stack
@@ -191,6 +194,8 @@ when the feature needs a real thread. Then:
   `Filter by project:` exists in both Projects and Changes. Scope to the section
   (`role=navigation[name='Changes'] >> …`) or match exactly with `[name="Changes" s]`; a
   click on an ambiguous locator waits out its timeout.
+- Once a linked tab exists (even minimized), **New linked tab** moves into the linked-tabs
+  filter's footer: open the filter with `[data-right-panel-toggle]`, then click it there.
 - `@pierre/trees` rows are clickable with `role=treeitem[name=…]`: Playwright pierces the
   tree's open shadow root.
 - Toasts are brief. To prove one, start a `MutationObserver` in `preview_evaluate` before the

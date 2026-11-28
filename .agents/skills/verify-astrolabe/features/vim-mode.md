@@ -79,7 +79,9 @@ show you know the way out. In Vim's normal mode `:` opens the Command Palette (s
   preview without these keys. In a Projects code file Cmd+I grows the selection and
   Cmd+Shift+K deletes the line instead.
 - **Typography**: with Vim on, Settings › Appearance › Typography › Monospace font's
-  description ends "the terminal, and Vim's normal mode."
+  description ends "the terminal, and Vim's normal mode." With **Separate fonts** on there is
+  no Monospace font row; the Code font row reads "Code blocks, diffs, file previews, and Vim's
+  normal mode." (`components/settings/TypographySettings.tsx`).
 - With the setting off, nothing changes: Escape leaves the composer as upstream does.
 
 ## How to get to it (user POV)
@@ -97,7 +99,7 @@ per call (`Escape`, `b`, `d`, `w`, `:`, `Enter`, `Space`).
 
 ```
 preview_act click     role=switch[name='Vim keybindings']        # opens the :q gate
-preview_act press     :   then q   then Enter                    # turns Vim on
+preview_act press     :   then q   then Enter                    # three presses; turns Vim on
 preview_wait_for  [data-testid=composer-editor]              # in a chat
 preview_act press     Escape                                     # normal mode
 preview_act press     :                                          # palette as ex line
@@ -105,6 +107,11 @@ preview_act type      role=dialog[name='Search'] >> role=combobox   text=s/hello
 preview_wait_for  text=Run in the editor                     # the row settles after typing
 preview_act press     Enter                                      # runs in the editor
 ```
+
+The gate (`role=textbox[name='Type :q and press Enter']`) is a one-line Vim editor, a DIV, not
+an input. `preview_act type ':q'` inserts the literal text and leaves Vim off: press `:`, `q`
+and `Enter` as three separate keys. Then the switch reads `aria-checked=true` and
+`t3code:client-settings:v1` holds `vimModeEnabled: true`.
 
 Read the composer's state, scoped to the focused pane: hidden chats stay mounted under
 `Activity`, so a bare `document.querySelector('[data-testid=composer-editor]')` can hit one.
@@ -142,8 +149,8 @@ Walk these end to end; each crosses into another feature.
    empty field) listing every command (Search, New thread, Close tab, Send the
    draft, Split down, Split right, Clear search highlight, …; from a note the write
    row reads Save now) → type `s/hello/bye/` → first row **Run in the
-   editor** → Enter → palette gone, draft "bye world", mode `normal`, focus in the
-   composer.
+   editor** → Enter → palette gone, draft "bye world", mode `normal`, monospace, focus in the
+   composer, nothing sent.
 4. **Note.** Open a note from Projects (Docs filter) → click into it → mode `normal`, code
    font, no `--NORMAL--` panel → `v` `e` → a selection drawn → Escape → `:w` Enter → "No edits to save" → `A`, `x`, Escape, `:w` Enter →
    the header reads Saving…, then Saved, with no dialog.
@@ -200,6 +207,10 @@ under the text and a hit-test lands on the text.
 - `preview_act press` does send modifiers (`modifiers: ["Meta"]`); `preview_act click`
   does not. Send an uppercase Vim key with `modifiers: ["Shift"]` (`G` that way works);
   `key: "A"` alone arrived as `a`.
+- Known copy leftovers after #194, not walk failures: the Vim keybindings row says "Edit the
+  composer and wiki notes…" (`VimModeSetting.tsx`), its settings search terms include "notes
+  wiki" (`settingsSearch.ts`), and Key mappings' description says "the composer's and notes'
+  Vim" (`VimrcSettings.tsx`). Leave them.
 
 ## Owns
 
@@ -213,7 +224,8 @@ under the text and a hit-test lands on the text.
 `components/settings/KeybindingsDeviceSettings.tsx`, `apps/web/src/editorKeybindings.ts`,
 `apps/web/src/vimScreenLines.ts` (`useVimScreenLines`, which applies Move by screen line to
 every Vim editor on the page), `appVimKeys` in `whichKey/doors.ts`,
-`components/wiki/WikiNoteEditor.tsx` and `WikiNoteView.tsx` (`:w`), the Vim compartment in
+`components/wiki/WikiNoteEditor.tsx` and `WikiNoteView.tsx` (`:w`; notes reach it through
+`components/repositories/ProjectDocumentView.tsx`), the Vim compartment in
 `components/repositories/RepositoryFileView.tsx`, the `markdown.*` defaults in
 `packages/shared/src/keybindings.ts`, and `vimModeEnabled` and `vimScreenLinesEnabled` in
 `packages/contracts/src/settings.ts`.
