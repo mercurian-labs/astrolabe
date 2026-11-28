@@ -413,11 +413,31 @@ describe("WorkspaceView chat tabs", () => {
     workspace.update(() => openTab(openTab(startingArrangement(), chatOf("B")), chatOf("A")));
     await using _screen = await mount("A");
     const scroller = document.querySelector<HTMLElement>('[data-scroller="A"]')!;
+    const scrolled = new Promise((resolve) => scroller.addEventListener("scroll", resolve));
     scroller.scrollTop = 1234;
+    await scrolled;
 
     await change(() => workspace.update((a) => activateTab(a, chatOf("B"))));
     await change(() => workspace.update((a) => activateTab(a, chatOf("A"))));
 
+    expect(document.querySelector('[data-scroller="A"]')).toBe(scroller);
+    expect(scroller.scrollTop).toBe(1234);
+
+    // A split puts the pane's tabs under another node: here the one showing.
+    await change(() => workspace.update((a) => splitTab(a, chatOf("B"), "right")));
+    expect(shows("A")).toBe(true);
+    expect(scroller.scrollTop).toBe(1234);
+
+    // And here a hidden one, whose offset the browser no longer holds once it moves.
+    await change(() =>
+      workspace.update((a) => {
+        const pane = leaves(a.root).find((leaf) => leaf.active === chatOf("A"))!;
+        return openTab(openTab(focusPane(a, pane.id), chatOf("D")), chatOf("C"));
+      }),
+    );
+    await change(() => workspace.update((a) => splitTab(a, chatOf("D"), "bottom")));
+    expect(shows("A")).toBe(false);
+    await change(() => workspace.update((a) => activateTab(a, chatOf("A"))));
     expect(document.querySelector('[data-scroller="A"]')).toBe(scroller);
     expect(scroller.scrollTop).toBe(1234);
   });
