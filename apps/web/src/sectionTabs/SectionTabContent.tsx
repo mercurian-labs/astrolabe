@@ -12,7 +12,12 @@ import {
 } from "~/components/repositories/RepositoryTabView";
 import type { EnvironmentChangeGroup } from "@t3tools/client-runtime/changeGroups";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { ThreadId, type ProjectId, type ScopedThreadRef } from "@t3tools/contracts";
+import {
+  ThreadId,
+  type IssueTrackerKind,
+  type ProjectId,
+  type ScopedThreadRef,
+} from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { Link, useLocation, type NavigateFn } from "@tanstack/react-router";
 import { T } from "gt-react";
@@ -29,11 +34,21 @@ import {
   EmptyHeader,
   EmptyTitle,
 } from "~/components/ui/empty";
+import { IssueDetailPanel } from "~/components/issue/IssueDetailPanel";
+import { IssueGlyph } from "~/components/issue/issuePresentation";
+import {
+  issueTabKey,
+  issueTabTitle,
+  issueTargetOfKey,
+  type IssueTabTarget,
+} from "~/components/issue/issueTabs";
+import { issueTabSeed } from "~/components/issue/issueWorkspace";
 import { PullRequestDetailPanel } from "~/components/pullRequest/PullRequestDetailPanel";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 import {
   guideShown,
   pullRequestActed,
+  pullRequestTabKey,
   settlePullRequestTabReveal,
   usePullRequestTabReveals,
 } from "~/components/pullRequest/pullRequestWorkspace";
@@ -106,6 +121,13 @@ export function useSectionTabLabel(key: string): PaneTabLabel | null {
     return {
       title: `#${pullRequest.number} ${pullRequest.repository}`,
       icon: <PullRequestGlyph.pullRequest className="size-3.5 shrink-0" />,
+    };
+  }
+  const issue = issueTargetOfKey(key);
+  if (issue !== null) {
+    return {
+      title: issueTabTitle(issue),
+      icon: <IssueGlyph.issue className="size-3.5 shrink-0" />,
     };
   }
   return null;
@@ -182,6 +204,8 @@ export function SectionTabContent({
   if (pullRequest !== null) {
     return <PanePullRequest tabKey={tabKey} target={pullRequest} store={store} active={active} />;
   }
+  const issue = issueTargetOfKey(tabKey);
+  if (issue !== null) return <PaneIssue tabKey={tabKey} target={issue} store={store} />;
   return null;
 }
 
@@ -329,6 +353,51 @@ function PanePullRequest({
             number: reference.number,
           }).id,
         );
+        store.update((arrangement) =>
+          leafWithTab(arrangement.root, next)
+            ? activateTab(arrangement, next)
+            : replaceTab(arrangement, tabKey, next),
+        );
+      }}
+    />
+  );
+}
+
+/** An issue in a pane; one picked inside it replaces it, and a linked pull request opens beside. */
+function PaneIssue({
+  tabKey,
+  target,
+  store,
+}: {
+  readonly tabKey: string;
+  readonly target: IssueTabTarget;
+  readonly store: PaneArrangementStore;
+}) {
+  const environmentId = target.environmentId as ScopedThreadRef["environmentId"];
+  return (
+    <IssueDetailPanel
+      key={tabKey}
+      environmentId={environmentId}
+      listEntry={issueTabSeed(tabKey)}
+      reference={{
+        projectId: target.projectId as ProjectId,
+        tracker: target.tracker as IssueTrackerKind,
+        ...(target.host ? { host: target.host } : {}),
+        scope: target.scope,
+        key: target.key,
+      }}
+      onSelectPullRequest={(reference) => {
+        const next = pullRequestTabKey({
+          environmentId: target.environmentId,
+          projectId: reference.projectId,
+          ...(reference.host === undefined ? {} : { host: reference.host }),
+          repository: reference.repository,
+          number: reference.number,
+        });
+        if (next !== null) store.update((arrangement) => showKeyIn(arrangement, next, "beside"));
+      }}
+      onSelectIssue={({ url: _url, ...reference }) => {
+        const next = issueTabKey({ ...reference, environmentId: target.environmentId });
         store.update((arrangement) =>
           leafWithTab(arrangement.root, next)
             ? activateTab(arrangement, next)

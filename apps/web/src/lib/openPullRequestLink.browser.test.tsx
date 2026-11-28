@@ -32,7 +32,13 @@ import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts/settings";
 import { __setClientSettingsForTests } from "../hooks/useSettings";
 import { ToastProvider } from "../components/ui/toast";
 import { AppAtomRegistryProvider } from "../rpc/atomRegistry";
-import { ISSUES_PANEL_REF, useRightPanelStore } from "../rightPanelStore";
+import { allTabs, startingArrangement, surfaceKey } from "../panes/arrangement";
+import { workspace } from "../panes/workspace";
+import {
+  PULL_REQUESTS_PANEL_REF,
+  pullRequestSurfaceId,
+  useRightPanelStore,
+} from "../rightPanelStore";
 import { useDiffPanelStore } from "../diffPanelStore";
 import { useOpenChangeRequestLink } from "./openPullRequestLink";
 
@@ -66,8 +72,9 @@ function CommitLink({ url = commitUrl }: { url?: string }) {
   );
 }
 
-function IssuesPagePullRequestLink() {
-  const open = useOpenChangeRequestLink(undefined, ISSUES_PANEL_REF);
+/** A link in thread-less markdown: a pull request's or an issue's tab. */
+function TabPullRequestLink() {
+  const open = useOpenChangeRequestLink(undefined, PULL_REQUESTS_PANEL_REF);
   return (
     <a
       href={pullRequestUrl}
@@ -171,17 +178,26 @@ it("opens an available commit in the closed Diff pane without the pane resetting
   );
 });
 
-it("opens a pull request linked on the Issues page beside its issues", async () => {
+it("opens a pull request linked in an issue's tab in the shared panes, staying in Issues", async () => {
   setup();
+  workspace.update(() => startingArrangement());
   await using screen = await render(
     <AppAtomRegistryProvider>
-      <IssuesPagePullRequestLink />
+      <TabPullRequestLink />
     </AppAtomRegistryProvider>,
     { router: "/issues" },
   );
   await screen.getByRole("link", { name: "Pull request" }).click();
-  expect(
-    useRightPanelStore.getState().byThreadKey[scopedThreadKey(ISSUES_PANEL_REF)],
-  ).toMatchObject({ isOpen: true, surfaces: [{ kind: "pull-request", number: 86 }] });
+  expect(allTabs(workspace.arrangement())).toContain(
+    surfaceKey(
+      pullRequestSurfaceId({
+        environmentId,
+        projectId: "project",
+        host: "github.com",
+        repository: "effect-ts/effect",
+        number: 86,
+      }),
+    ),
+  );
   expect(screen.router?.state.location.pathname).toBe("/issues");
 });

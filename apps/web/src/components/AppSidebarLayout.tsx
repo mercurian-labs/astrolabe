@@ -47,6 +47,7 @@ import { AppIconRail } from "./sidebar/AppIconRail";
 import { SidebarBrandWidthProbe } from "./sidebar/SidebarChrome";
 import {
   isAppModalPage,
+  isIssuesPath,
   isPullRequestsPath,
   isRepositoriesPath,
   useSectionPathname,
@@ -54,6 +55,7 @@ import {
 import type { SidebarRouteReveal } from "./sidebar/routeReveal";
 import { RepositorySidebar } from "./repositories/RepositorySidebar";
 import { PullRequestsSidebar } from "./pullRequest/PullRequestsSidebar";
+import { IssuesSidebar } from "./issue/IssuesSidebar";
 import { KeyboardNavigation } from "../keyboardNav/KeyboardNavigation";
 import { WhichKey } from "../whichKey/WhichKey";
 import { tabHistorySlot } from "../whichKey/handles";
@@ -279,7 +281,10 @@ function registerThreadUndoCommands(
   const threadSidebarShown = () => {
     const { pathname } = router.state.location;
     return (
-      !isAppModalPage(pathname) && !isRepositoriesPath(pathname) && !isPullRequestsPath(pathname)
+      !isAppModalPage(pathname) &&
+      !isRepositoriesPath(pathname) &&
+      !isPullRequestsPath(pathname) &&
+      !isIssuesPath(pathname)
     );
   };
   const unregister = registerCommands(
@@ -493,11 +498,12 @@ export function AppSidebarLayout({
   const pathname = useLocation({ select: (location) => location.pathname });
   const panelAnimationsSuppressed = usePanelNavigationSuppression(pathname);
   const routePanelAnimationsActive = panelAnimationsActive && !panelAnimationsSuppressed;
-  // Astrolabe: the section beside the threads (Projects, Changes), with its own
+  // Astrolabe: the section beside the threads (Projects, Changes, Issues), with its own
   // sidebar. Under Settings or Usage, the page the modal opened over.
   const sectionPathname = useSectionPathname();
   const isOnRepositories = isRepositoriesPath(sectionPathname);
   const isOnPullRequests = isPullRequestsPath(sectionPathname);
+  const isOnIssues = isIssuesPath(sectionPathname);
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
   const hasIconRail = !useMediaQuery("max-md") && showSidebar;
   const [sidebarWidth, setSidebarWidth] = useState(readInitialThreadSidebarWidth);
@@ -573,7 +579,13 @@ export function AppSidebarLayout({
               {...sidebarArea}
               role="navigation"
               aria-label={
-                isOnRepositories ? gt("Projects") : isOnPullRequests ? gt("Changes") : gt("Agents")
+                isOnRepositories
+                  ? gt("Projects")
+                  : isOnPullRequests
+                    ? gt("Changes")
+                    : isOnIssues
+                      ? gt("Issues")
+                      : gt("Agents")
               }
               resizable={{
                 collapseOnResize: true,
@@ -595,6 +607,8 @@ export function AppSidebarLayout({
                 <RepositorySidebar />
               ) : isOnPullRequests ? (
                 <PullRequestsSidebar />
+              ) : isOnIssues ? (
+                <IssuesSidebar />
               ) : (
                 <ThreadSidebar routeReveal={sidebarRouteReveal} />
               )}
