@@ -81,10 +81,12 @@ export function createWorkspaceHost(): WorkspaceHost {
   const containers = new Map<string, HTMLDivElement>();
   // A node put under another parent comes back scrolled to the top, with no scroll event, and a
   // hidden one has no offset left to read: each scroller's last offset is kept as it scrolls, and
-  // put back once its moved tab shows.
+  // put back once its moved tab shows. Chromium fires a scroll event at 0 once a tab is hidden, so
+  // a hidden tab's events are ignored.
   const offsets = new WeakMap<Element, { readonly top: number; readonly left: number }>();
   const moved = new WeakSet<HTMLDivElement>();
-  const rememberOffset = ({ target }: Event) => {
+  const rememberOffset = ({ target, currentTarget }: Event) => {
+    if (currentTarget instanceof HTMLElement && currentTarget.style.display === "none") return;
     if (target instanceof Element) {
       offsets.set(target, { top: target.scrollTop, left: target.scrollLeft });
     }
