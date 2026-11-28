@@ -495,6 +495,8 @@ function SidebarRestoreHandle({ options }: { options: SidebarResolvedResizableOp
     const gap = sidebar?.querySelector<HTMLElement>('[data-slot="sidebar-gap"]');
     if (!wrapper || !container || !gap) return null;
     let restorePending = false;
+    // Where the expanded sidebar starts: the gap stays in the layout's flow while collapsed.
+    const expandedLeft = gap.getBoundingClientRect().left;
     wrapper.dataset.sidebarDragState = "collapsed";
     return {
       width: 0,
@@ -508,7 +510,7 @@ function SidebarRestoreHandle({ options }: { options: SidebarResolvedResizableOp
           wrapper.dataset.sidebarDragState = restorePending ? "expanded" : "collapsed";
         }
         const width = clampSidebarWidth(nextWidth, options);
-        container.style.left = restorePending ? "0px" : `${-width}px`;
+        container.style.left = restorePending ? `${expandedLeft}px` : `${-width}px`;
         for (const element of [container, gap]) {
           element.style.width = `${restorePending || element === container ? width : 0}px`;
           element.style.transitionDuration = "0ms";
@@ -617,8 +619,12 @@ function SidebarRail({
           `${collapsePending && element !== sidebarContainer ? 0 : value}px`,
         );
       });
-      // Match the offcanvas left offset so releasing a drag cannot restart the slide.
-      if (canCollapse) sidebarContainer.style.left = collapsePending ? `${-value}px` : "0px";
+      // Match the offcanvas left offset so releasing a drag cannot restart the slide. Expanded, the
+      // container keeps its class's offset, which a layout may set (Astrolabe's beside its icon rail).
+      if (canCollapse) {
+        if (collapsePending) sidebarContainer.style.left = `${-value}px`;
+        else sidebarContainer.style.removeProperty("left");
+      }
     };
     widthTargets.forEach((element) => {
       element.style.setProperty("transition-duration", "0ms");

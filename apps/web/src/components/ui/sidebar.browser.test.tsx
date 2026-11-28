@@ -15,11 +15,17 @@ function CollapseFromInside() {
   );
 }
 
-function Harness(props: { readonly onResize?: (width: number) => void }) {
+function Harness(props: {
+  readonly onResize?: (width: number) => void;
+  /** Lays the sidebar out beside a 44px rail, as Astrolabe's icon rail does. */
+  readonly besideRail?: boolean;
+}) {
   return (
     <SidebarProvider defaultOpen>
+      {props.besideRail ? <div aria-hidden className="w-11 shrink-0" /> : null}
       <Sidebar
         collapsible="offcanvas"
+        {...(props.besideRail ? { className: "left-11" } : {})}
         resizable={{
           collapseOnResize: true,
           minWidth: 200,
@@ -176,6 +182,46 @@ describe("Sidebar", () => {
     expect(container.getBoundingClientRect().left).toBe(0);
     expect(onResize).toHaveBeenLastCalledWith(258);
     expect(sidebar.inert).toBe(false);
+  });
+
+  it("keeps a sidebar laid out beside a rail in place while it is dragged and restored", async () => {
+    await page.viewport(1280, 800);
+    await using screen = await render(<Harness besideRail />, { router: false });
+    const sidebar = screen.container.querySelector<HTMLElement>('[data-slot="sidebar"]')!;
+    const container = sidebar.querySelector<HTMLElement>('[data-slot="sidebar-container"]')!;
+    const rail = sidebar.querySelector<HTMLElement>('[data-sidebar="rail"]')!;
+    const pointer = {
+      bubbles: true,
+      cancelable: true,
+      pointerId: 1,
+      button: 0,
+      pointerType: "mouse",
+    };
+    const dispatch = (target: HTMLElement, type: string, clientX: number) =>
+      target.dispatchEvent(new PointerEvent(type, { ...pointer, clientX }));
+    expect(container.getBoundingClientRect().left).toBe(44);
+    const right = container.getBoundingClientRect().right;
+
+    dispatch(rail, "pointerdown", right);
+    dispatch(rail, "pointermove", right + 40);
+    await vi.waitFor(() => expect(container.getBoundingClientRect().right).toBe(right + 40));
+    expect(container.getBoundingClientRect().left).toBe(44);
+    dispatch(rail, "pointerup", right + 40);
+    expect(container.getBoundingClientRect().left).toBe(44);
+
+    dispatch(rail, "pointerdown", right + 40);
+    dispatch(rail, "pointermove", 0);
+    dispatch(rail, "pointerup", 0);
+    await vi.waitFor(() => expect(sidebar.dataset.state).toBe("collapsed"));
+    const handle = screen.container.querySelector<HTMLElement>(
+      '[data-slot="sidebar-restore-handle"]',
+    )!;
+    dispatch(handle, "pointerdown", 20);
+    dispatch(handle, "pointermove", 300);
+    await vi.waitFor(() => expect(container.getBoundingClientRect().left).toBe(44));
+    dispatch(handle, "pointerup", 300);
+    await vi.waitFor(() => expect(sidebar.dataset.state).toBe("expanded"));
+    expect(container.getBoundingClientRect().left).toBe(44);
   });
 
   it.each(["pointercancel", "lostpointercapture", "blur"])(
